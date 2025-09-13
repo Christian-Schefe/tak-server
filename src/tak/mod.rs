@@ -1,6 +1,8 @@
 mod board;
 mod game;
 
+use std::time::Duration;
+
 pub use game::TakGame;
 
 #[derive(Clone, PartialEq)]
@@ -37,9 +39,7 @@ pub struct TakGameSettings {
     pub half_komi: u32,
     pub reserve_pieces: u32,
     pub reserve_capstones: u32,
-    pub time_contingent_seconds: u32,
-    pub time_increment_seconds: u32,
-    pub time_extra: Option<TimeExtra>,
+    pub time_control: TakTimeControl,
 }
 
 impl TakGameSettings {
@@ -47,14 +47,15 @@ impl TakGameSettings {
         self.board_size >= 3
             && self.board_size <= 8
             && self.reserve_pieces > 0
-            && self.time_contingent_seconds > 0
+            && !self.time_control.contingent.is_zero()
     }
 }
 
 #[derive(Clone)]
-pub struct TimeExtra {
-    pub trigger_move: u32,
-    pub extra_seconds: u32,
+pub struct TakTimeControl {
+    pub contingent: Duration,
+    pub increment: Duration,
+    pub extra: Option<(u32, Duration)>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -117,6 +118,23 @@ pub enum TakGameState {
         reason: TakWinReason,
     },
     Draw,
+}
+
+impl TakGameState {
+    pub fn to_string(&self) -> String {
+        match self {
+            TakGameState::Ongoing => "0-0".to_string(),
+            TakGameState::Win { winner, reason } => match (winner, reason) {
+                (TakPlayer::White, TakWinReason::Road) => "R-0".to_string(),
+                (TakPlayer::White, TakWinReason::Flats) => "F-0".to_string(),
+                (TakPlayer::White, TakWinReason::Default) => "1-0".to_string(),
+                (TakPlayer::Black, TakWinReason::Road) => "0-R".to_string(),
+                (TakPlayer::Black, TakWinReason::Flats) => "0-F".to_string(),
+                (TakPlayer::Black, TakWinReason::Default) => "0-1".to_string(),
+            },
+            TakGameState::Draw => "1/2-1/2".to_string(),
+        }
+    }
 }
 
 #[derive(Clone, PartialEq)]

@@ -1,29 +1,83 @@
 mod json;
 mod v2;
 
-pub use json::ProtocolJSONHandler;
-pub use v2::ProtocolV2Handler;
+use std::time::Duration;
 
-use crate::{client::ClientId, game::Game, seek::Seek, tak::TakAction};
+use crate::{
+    client::ClientId,
+    game::{Game, GameId},
+    seek::Seek,
+    tak::{TakAction, TakGameState},
+};
 
-pub trait ProtocolHandler {
-    fn new(id: ClientId) -> Self
-    where
-        Self: Sized;
-    fn get_client_id(&self) -> ClientId;
-    fn clone_box(&self) -> BoxedProtocolHandler;
-
-    fn handle_message(&self, msg: String);
-
-    fn send_new_seek_message(&self, seek: &Seek);
-    fn send_remove_seek_message(&self, seek: &Seek);
-
-    fn send_new_game_message(&self, game: &Game);
-    fn send_remove_game_message(&self, game: &Game);
-
-    fn send_game_start_message(&self, game: &Game);
-    fn send_game_action_message(&self, game: &Game, action: &TakAction);
-    fn send_game_over_message(&self, game: &Game);
+pub enum Protocol {
+    V2,
+    JSON,
 }
 
-pub type BoxedProtocolHandler = Box<dyn ProtocolHandler + Send + Sync>;
+impl Protocol {
+    pub fn from_id(id: &str) -> Option<Self> {
+        match id {
+            "2" => Some(Protocol::V2),
+            "3" => Some(Protocol::JSON),
+            _ => None,
+        }
+    }
+}
+
+pub enum ServerMessage {
+    SeekList {
+        add: bool,
+        seek: Seek,
+    },
+    GameList {
+        add: bool,
+        game: Game,
+    },
+    GameStart {
+        game: Game,
+    },
+    GameAction {
+        game_id: GameId,
+        action: TakAction,
+    },
+    GameTimeUpdate {
+        game_id: GameId,
+        remaining: (Duration, Duration),
+    },
+    GameUndo {
+        game_id: GameId,
+    },
+    GameOver {
+        game_id: GameId,
+        game_state: TakGameState,
+    },
+    GameUndoRequest {
+        game_id: GameId,
+        request: bool,
+    },
+    GameDrawOffer {
+        game_id: GameId,
+        offer: bool,
+    },
+    PlayersOnline {
+        players: Vec<String>,
+    },
+    ObserveGame {
+        game: Game,
+    },
+}
+
+pub fn handle_client_message(protocol: &Protocol, id: &ClientId, msg: String) {
+    match protocol {
+        Protocol::V2 => v2::handle_client_message(id, msg),
+        Protocol::JSON => todo!(),
+    }
+}
+
+pub fn handle_server_message(protocol: &Protocol, id: &ClientId, msg: &ServerMessage) {
+    match protocol {
+        Protocol::V2 => v2::handle_server_message(id, msg),
+        Protocol::JSON => todo!(),
+    }
+}

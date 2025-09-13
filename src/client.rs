@@ -11,15 +11,16 @@ use tokio_util::{
 use uuid::Uuid;
 
 use crate::{
+    game::send_games_to,
     player::PlayerUsername,
-    protocol::{BoxedProtocolHandler, ProtocolHandler, ProtocolJSONHandler, ProtocolV2Handler},
+    protocol::{Protocol, ServerMessage, handle_client_message, handle_server_message},
     seek::send_seeks_to,
 };
 
 static CLIENT_SENDERS: LazyLock<Arc<DashMap<ClientId, UnboundedSender<String>>>> =
     LazyLock::new(|| Arc::new(DashMap::new()));
 
-static CLIENT_HANDLERS: LazyLock<Arc<DashMap<ClientId, BoxedProtocolHandler>>> =
+static CLIENT_HANDLERS: LazyLock<Arc<DashMap<ClientId, Protocol>>> =
     LazyLock::new(|| Arc::new(DashMap::new()));
 
 static CLIENT_TO_PLAYER: LazyLock<Arc<DashMap<ClientId, PlayerUsername>>> =
@@ -30,49 +31,29 @@ static PLAYER_TO_CLIENT: LazyLock<Arc<DashMap<PlayerUsername, ClientId>>> =
 
 pub type ClientId = Uuid;
 
-pub enum Protocol {
-    V2,
-    JSON,
-}
-
-impl Protocol {
-    pub fn from_id(id: &str) -> Option<Self> {
-        match id {
-            "2" => Some(Protocol::V2),
-            "3" => Some(Protocol::JSON),
-            _ => None,
-        }
-    }
-    pub fn get_handler(&self, id: ClientId) -> BoxedProtocolHandler {
-        match self {
-            Protocol::V2 => Box::new(ProtocolV2Handler::new(id)),
-            Protocol::JSON => Box::new(ProtocolJSONHandler::new(id)),
-        }
-    }
-}
-
 pub enum ClientMessage {
     Text(String),
     Close,
 }
 
-pub fn new_client() -> ClientId {
+fn new_client() -> ClientId {
     Uuid::new_v4()
 }
 
-fn deregister(id: &ClientId) {
+fn on_disconnect(id: &ClientId) {
     CLIENT_SENDERS.remove(id);
     CLIENT_HANDLERS.remove(id);
     let player = CLIENT_TO_PLAYER.remove(id);
     if let Some((_, username)) = player {
         PLAYER_TO_CLIENT.remove(&username);
+        update_online_players();
     }
 }
 
 pub fn handle_client_websocket(ws: WebSocket) {
     handle_client(
         ws,
-        |s| Message::Text(s.into()),
+        |s| Message::Binary(s.into()),
         |m| match m {
             Message::Text(t) => Some(ClientMessage::Text(t.to_string())),
             Message::Close(_) => Some(ClientMessage::Close),
@@ -103,7 +84,7 @@ fn handle_client<M, S, E>(
     on_connect(&client_id);
 }
 
-pub fn handle_send<S, M>(
+fn handle_send<S, M>(
     id: ClientId,
     mut ws_sender: impl SinkExt<M> + Unpin + Send + 'static,
     cancellation_token: CancellationToken,
@@ -114,7 +95,7 @@ pub fn handle_send<S, M>(
 {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
     CLIENT_SENDERS.insert(id, tx);
-    CLIENT_HANDLERS.insert(id, Protocol::V2.get_handler(id));
+    CLIENT_HANDLERS.insert(id, Protocol::V2);
 
     tokio::spawn(async move {
         while let Some(msg) = select! {
@@ -126,14 +107,14 @@ pub fn handle_send<S, M>(
                 break;
             }
         }
-        deregister(&id);
         let _ = ws_sender.close().await;
+        on_disconnect(&id);
         println!("Client {} send ended", id);
         cancellation_token.cancel();
     });
 }
 
-pub fn handle_receive<S, M, E>(
+fn handle_receive<S, M, E>(
     id: ClientId,
     mut ws_receiver: impl StreamExt<Item = Result<M, E>> + Unpin + Send + 'static,
     cancellation_token: CancellationToken,
@@ -161,7 +142,7 @@ pub fn handle_receive<S, M, E>(
                             println!("Client {} protocol switch error: {}", id, e);
                         });
                     } else if let Some(handler) = CLIENT_HANDLERS.get(&id) {
-                        handler.handle_message(text.to_string());
+                        handle_client_message(&handler, &id, text);
                     } else {
                         println!("Client {} has no protocol handler", id);
                     }
@@ -179,7 +160,7 @@ fn try_switch_protocol(id: &ClientId, protocol_msg: &str) -> Result<(), String> 
     if parts.len() == 2 {
         let protocol = Protocol::from_id(parts[1]).ok_or("Unknown protocol")?;
         if let Some(mut handler) = CLIENT_HANDLERS.get_mut(id) {
-            *handler = protocol.get_handler(*id);
+            *handler = protocol;
             println!("Client {} set protocol to {:?}", id, parts[1]);
             Ok(())
         } else {
@@ -212,7 +193,17 @@ pub fn associate_player(id: &ClientId, username: &PlayerUsername) -> Result<(), 
     }
     CLIENT_TO_PLAYER.insert(*id, username.clone());
     PLAYER_TO_CLIENT.insert(username.clone(), *id);
+    update_online_players();
     Ok(())
+}
+
+fn update_online_players() {
+    let players: Vec<PlayerUsername> = CLIENT_TO_PLAYER
+        .iter()
+        .map(|entry| entry.value().clone())
+        .collect();
+    let msg = ServerMessage::PlayersOnline { players };
+    try_protocol_broadcast(&msg);
 }
 
 pub fn get_associated_player(id: &ClientId) -> Option<PlayerUsername> {
@@ -227,17 +218,23 @@ fn on_connect(id: &ClientId) {
     let _ = try_send_to(id, "Welcome!");
     let _ = try_send_to(id, "Login or Register");
     send_seeks_to(id);
+    send_games_to(id);
 }
 
-pub fn try_protocol_broadcast(f: impl Fn(&BoxedProtocolHandler) -> ()) {
-    for entry in CLIENT_HANDLERS.iter() {
-        f(entry.value());
+pub fn try_protocol_send(id: &ClientId, msg: &ServerMessage) {
+    if let Some(handler) = CLIENT_HANDLERS.get(id) {
+        handle_server_message(&handler, id, msg);
     }
 }
 
-pub fn get_protocol_handler(id: &ClientId) -> BoxedProtocolHandler {
-    CLIENT_HANDLERS
-        .get(id)
-        .map(|entry| entry.value().clone_box())
-        .unwrap_or(Box::new(ProtocolV2Handler::new(*id)))
+pub fn try_protocol_multicast(ids: &[ClientId], msg: &ServerMessage) {
+    for id in ids {
+        try_protocol_send(id, msg);
+    }
+}
+
+pub fn try_protocol_broadcast(msg: &ServerMessage) {
+    for entry in CLIENT_HANDLERS.iter() {
+        handle_server_message(entry.value(), entry.key(), msg);
+    }
 }

@@ -212,4 +212,32 @@ impl TakBoard {
 
         false
     }
+
+    pub fn compute_hash_string(&self) -> String {
+        let mut hash = Vec::new();
+        for stack in &self.stacks {
+            match stack {
+                Some(s) => {
+                    let variant_char = match s.variant {
+                        TakVariant::Flat => 'F',
+                        TakVariant::Standing => 'S',
+                        TakVariant::Capstone => 'C',
+                    };
+                    let composition_str: String = s
+                        .composition
+                        .iter()
+                        .map(|p| match p {
+                            TakPlayer::White => 'W',
+                            TakPlayer::Black => 'B',
+                        })
+                        .collect();
+                    hash.push(format!("{}{}", variant_char, composition_str));
+                }
+                None => {
+                    hash.push("N".to_string());
+                }
+            }
+        }
+        hash.join(",")
+    }
 }

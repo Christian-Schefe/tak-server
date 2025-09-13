@@ -3,9 +3,10 @@ use std::sync::{Arc, LazyLock};
 use dashmap::DashMap;
 
 use crate::{
-    client::{ClientId, get_protocol_handler, try_protocol_broadcast},
+    client::{ClientId, try_protocol_broadcast, try_protocol_send},
     game::add_game_from_seek,
     player::PlayerUsername,
+    protocol::ServerMessage,
     tak::{TakGameSettings, TakPlayer},
 };
 
@@ -70,7 +71,11 @@ pub fn add_seek(
     SEEKS.insert(seek_id, seek.clone());
     SEEKS_BY_PLAYER.insert(player, seek_id);
 
-    try_protocol_broadcast(|handler| handler.send_new_seek_message(&seek));
+    let seek_new_msg = ServerMessage::SeekList {
+        add: true,
+        seek: seek.clone(),
+    };
+    try_protocol_broadcast(&seek_new_msg);
 
     Ok(())
 }
@@ -78,7 +83,11 @@ pub fn add_seek(
 pub fn send_seeks_to(id: &ClientId) {
     for entry in SEEKS.iter() {
         let seek = entry.value();
-        get_protocol_handler(id).send_new_seek_message(&seek);
+        let seek_msg = ServerMessage::SeekList {
+            add: true,
+            seek: seek.clone(),
+        };
+        try_protocol_send(id, &seek_msg);
     }
 }
 
@@ -90,7 +99,11 @@ pub fn remove_seek_of_player(player: &PlayerUsername) -> Result<Seek, String> {
         return Err("Seek ID not found".into());
     };
 
-    try_protocol_broadcast(|handler| handler.send_remove_seek_message(&seek));
+    let seek_remove_msg = ServerMessage::SeekList {
+        add: false,
+        seek: seek.clone(),
+    };
+    try_protocol_broadcast(&seek_remove_msg);
 
     Ok(seek)
 }
