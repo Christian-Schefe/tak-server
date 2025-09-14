@@ -15,7 +15,7 @@ use crate::{
         try_protocol_send,
     },
     player::PlayerUsername,
-    protocol::ServerMessage,
+    protocol::{ServerGameMessage, ServerMessage},
     seek::{GameType, Seek},
     tak::{TakAction, TakGame, TakGameState, TakPlayer, TakPos, TakVariant},
 };
@@ -90,8 +90,8 @@ fn insert_empty_game(
             .to_string(),
         "".to_string(),
         "0-0".to_string(),
-        "0".to_string(), //TODO: player ratings
-        "0".to_string(),
+        "-1000".to_string(), //TODO: player ratings (see open question in readme)
+        "-1000".to_string(),
         if seek.game_type == crate::seek::GameType::Unrated {
             "1"
         } else {
@@ -107,8 +107,8 @@ fn insert_empty_game(
         seek.game_settings.half_komi.to_string(),
         seek.game_settings.reserve_pieces.to_string(),
         seek.game_settings.reserve_capstones.to_string(),
-        "0".to_string(),
-        "0".to_string(),
+        "-1000".to_string(),
+        "-1000".to_string(),
         seek.game_settings
             .time_control
             .extra
@@ -246,10 +246,11 @@ pub fn try_do_action(
 
     send_time_update(game_id);
 
-    let action_msg = ServerMessage::GameAction {
+    let action_msg = ServerMessage::GameMessage {
         game_id: *game_id,
-        action: action.clone(),
+        message: ServerGameMessage::Action(action.clone()),
     };
+
     get_associated_client(&opponent).map(|id| try_protocol_send(&id, &action_msg));
     if let Some(spectators) = GAME_SPECTATORS.get(game_id) {
         try_protocol_multicast(&spectators.value(), &action_msg);
@@ -301,9 +302,9 @@ fn check_game_over(game_id: &GameId) {
         token.cancel();
     }
 
-    let game_over_msg = ServerMessage::GameOver {
+    let game_over_msg = ServerMessage::GameMessage {
         game_id: *game_id,
-        game_state: game.game.game_state.clone(),
+        message: ServerGameMessage::GameOver(game.game.game_state.clone()),
     };
     get_associated_client(&game.white).map(|id| try_protocol_send(&id, &game_over_msg));
     get_associated_client(&game.black).map(|id| try_protocol_send(&id, &game_over_msg));
@@ -361,9 +362,9 @@ pub fn offer_draw(username: &PlayerUsername, game_id: &GameId, offer: bool) -> R
     drop(game_ref);
 
     if !did_draw {
-        let draw_offer_msg = ServerMessage::GameDrawOffer {
+        let draw_offer_msg = ServerMessage::GameMessage {
             game_id: *game_id,
-            offer,
+            message: ServerGameMessage::DrawOffer { offer },
         };
         get_associated_client(&opponent).map(|id| try_protocol_send(&id, &draw_offer_msg));
     }
@@ -386,13 +387,16 @@ pub fn request_undo(
     drop(game_ref);
 
     if !did_undo {
-        let undo_request_msg = ServerMessage::GameUndoRequest {
+        let undo_request_msg = ServerMessage::GameMessage {
             game_id: *game_id,
-            request,
+            message: ServerGameMessage::UndoRequest { request },
         };
         get_associated_client(&opponent).map(|id| try_protocol_send(&id, &undo_request_msg));
     } else {
-        let undo_msg = ServerMessage::GameUndo { game_id: *game_id };
+        let undo_msg = ServerMessage::GameMessage {
+            game_id: *game_id,
+            message: ServerGameMessage::Undo,
+        };
         get_associated_client(&opponent).map(|id| try_protocol_send(&id, &undo_msg));
 
         if let Some((_, spectators)) = GAME_SPECTATORS.remove(game_id) {
@@ -418,9 +422,9 @@ fn send_time_update(game_id: &GameId) {
     };
     drop(game_ref);
 
-    let time_update_msg = ServerMessage::GameTimeUpdate {
+    let time_update_msg = ServerMessage::GameMessage {
         game_id: *game_id,
-        remaining,
+        message: ServerGameMessage::TimeUpdate { remaining },
     };
     get_associated_client(&players.0).map(|id| try_protocol_send(&id, &time_update_msg));
     get_associated_client(&players.1).map(|id| try_protocol_send(&id, &time_update_msg));

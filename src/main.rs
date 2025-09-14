@@ -5,10 +5,15 @@ use axum::{
     routing::any,
 };
 
-use crate::client::{handle_client_tcp, handle_client_websocket, launch_client_cleanup_task};
+use crate::{
+    client::{handle_client_tcp, handle_client_websocket, launch_client_cleanup_task},
+    email::send_email,
+    player::load_unique_usernames,
+};
 
 mod chat;
 mod client;
+mod email;
 mod game;
 mod player;
 mod protocol;
@@ -30,6 +35,8 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", ws_port))
         .await
         .unwrap();
+
+    load_unique_usernames().expect("Failed to load unique usernames");
 
     tokio::spawn(async move {
         serve_tcp_server().await;

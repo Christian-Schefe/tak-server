@@ -39,28 +39,9 @@ pub enum ServerMessage {
     GameStart {
         game: Game,
     },
-    GameAction {
+    GameMessage {
         game_id: GameId,
-        action: TakAction,
-    },
-    GameTimeUpdate {
-        game_id: GameId,
-        remaining: (Duration, Duration),
-    },
-    GameUndo {
-        game_id: GameId,
-    },
-    GameOver {
-        game_id: GameId,
-        game_state: TakGameState,
-    },
-    GameUndoRequest {
-        game_id: GameId,
-        request: bool,
-    },
-    GameDrawOffer {
-        game_id: GameId,
-        offer: bool,
+        message: ServerGameMessage,
     },
     PlayersOnline {
         players: Vec<String>,
@@ -73,14 +54,20 @@ pub enum ServerMessage {
         message: String,
         source: ChatMessageSource,
     },
-    ConfirmPrivateMessage {
-        to: PlayerUsername,
-        message: String,
-    },
     RoomMembership {
         room: String,
         joined: bool,
     },
+}
+
+#[derive(Clone, Debug)]
+pub enum ServerGameMessage {
+    Action(TakAction),
+    TimeUpdate { remaining: (Duration, Duration) },
+    Undo,
+    GameOver(TakGameState),
+    UndoRequest { request: bool },
+    DrawOffer { offer: bool },
 }
 
 #[derive(Clone, Debug)]

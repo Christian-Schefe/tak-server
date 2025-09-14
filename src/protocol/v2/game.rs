@@ -2,22 +2,19 @@ use crate::{
     client::{ClientId, get_associated_player, send_to},
     game::{GameId, offer_draw, request_undo, resign_game, try_do_action},
     player::PlayerUsername,
-    protocol::ServerMessage,
+    protocol::ServerGameMessage,
     tak::{TakAction, TakDir, TakGameState, TakPos, TakVariant},
 };
 
-pub fn handle_game_server_message(id: &ClientId, msg: &ServerMessage) {
+pub fn handle_game_server_message(id: &ClientId, game_id: &GameId, msg: &ServerGameMessage) {
     match msg {
-        ServerMessage::GameAction { game_id, action } => {
+        ServerGameMessage::Action(action) => {
             send_game_action_message(id, game_id, action);
         }
-        ServerMessage::GameOver {
-            game_id,
-            game_state,
-        } => {
+        ServerGameMessage::GameOver(game_state) => {
             send_game_over_message(id, game_id, game_state);
         }
-        ServerMessage::GameDrawOffer { game_id, offer } => {
+        ServerGameMessage::DrawOffer { offer } => {
             let message = format!(
                 "Game#{} {}",
                 game_id,
@@ -25,7 +22,7 @@ pub fn handle_game_server_message(id: &ClientId, msg: &ServerMessage) {
             );
             send_to(id, message);
         }
-        ServerMessage::GameUndoRequest { game_id, request } => {
+        ServerGameMessage::UndoRequest { request } => {
             let message = format!(
                 "Game#{} {}",
                 game_id,
@@ -37,11 +34,11 @@ pub fn handle_game_server_message(id: &ClientId, msg: &ServerMessage) {
             );
             send_to(id, message);
         }
-        ServerMessage::GameUndo { game_id } => {
+        ServerGameMessage::Undo => {
             let message = format!("Game#{} Undo", game_id);
             send_to(id, message);
         }
-        ServerMessage::GameTimeUpdate { game_id, remaining } => {
+        ServerGameMessage::TimeUpdate { remaining } => {
             let message = format!(
                 "Game#{} Timems {} {}",
                 game_id,
@@ -49,9 +46,6 @@ pub fn handle_game_server_message(id: &ClientId, msg: &ServerMessage) {
                 remaining.1.as_millis()
             );
             send_to(id, message);
-        }
-        _ => {
-            eprintln!("Unhandled server game message: {:?}", msg);
         }
     }
 }

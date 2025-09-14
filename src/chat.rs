@@ -80,11 +80,6 @@ pub fn send_message_to_player(
     let Some(from_username) = get_associated_player(from_client_id) else {
         return Err("Client not associated with a player".to_string());
     };
-    let confirm_msg = ServerMessage::ConfirmPrivateMessage {
-        to: to_username.clone(),
-        message: message.to_string(),
-    };
-    try_protocol_send(from_client_id, &confirm_msg);
     let Some(to_client_id) = get_associated_client(to_username) else {
         return Ok(());
     };

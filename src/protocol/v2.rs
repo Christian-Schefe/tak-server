@@ -1,6 +1,6 @@
 use crate::{
     client::{ClientId, send_to},
-    player::{login_guest, try_login},
+    player::{login_guest, try_login, try_register},
     protocol::ServerMessage,
 };
 
@@ -20,6 +20,7 @@ pub fn handle_client_message(id: &ClientId, msg: String) {
             send_to(id, "OK");
         }
         "Login" => handle_login_message(*id, &parts),
+        "Register" => handle_register_message(id, &parts),
         "Seek" => seek::handle_seek_message(id, &parts),
         "Accept" => seek::handle_accept_message(id, &parts),
         "Observe" => game_list::handle_observe_message(id, &parts, true),
@@ -42,13 +43,8 @@ pub fn handle_server_message(id: &ClientId, msg: &ServerMessage) {
         ServerMessage::SeekList { add, seek } => {
             seek::send_seek_list_message(id, &seek, *add);
         }
-        ServerMessage::GameAction { .. }
-        | ServerMessage::GameOver { .. }
-        | ServerMessage::GameDrawOffer { .. }
-        | ServerMessage::GameUndoRequest { .. }
-        | ServerMessage::GameUndo { .. }
-        | ServerMessage::GameTimeUpdate { .. } => {
-            game::handle_game_server_message(id, msg);
+        ServerMessage::GameMessage { game_id, message } => {
+            game::handle_game_server_message(id, game_id, message);
         }
         ServerMessage::PlayersOnline { players } => {
             let online_message = format!("Online {}", players.len());
@@ -62,9 +58,7 @@ pub fn handle_server_message(id: &ClientId, msg: &ServerMessage) {
         | ServerMessage::ObserveGame { .. } => {
             game_list::handle_server_game_list_message(id, msg);
         }
-        ServerMessage::ChatMessage { .. }
-        | ServerMessage::ConfirmPrivateMessage { .. }
-        | ServerMessage::RoomMembership { .. } => {
+        ServerMessage::ChatMessage { .. } | ServerMessage::RoomMembership { .. } => {
             chat::handle_server_chat_message(id, msg);
         }
     }
@@ -87,5 +81,24 @@ fn handle_login_message(id: ClientId, parts: &[&str]) {
         send_to(&id, "NOK");
     } else {
         send_to(&id, format!("Welcome {}!", username));
+    }
+}
+
+fn handle_register_message(id: &ClientId, parts: &[&str]) {
+    if parts.len() != 3 {
+        send_to(id, "NOK");
+        return;
+    }
+    let username = parts[1].to_string();
+    let email = parts[2].to_string();
+
+    if let Err(e) = try_register(&username, &email) {
+        println!("Error registering user {}: {}", username, e);
+        send_to(id, format!("Registration Error: {}", e));
+    } else {
+        send_to(
+            id,
+            format!("Registered {}. Check your email for password", username),
+        );
     }
 }

@@ -22,9 +22,6 @@ pub fn handle_server_chat_message(id: &ClientId, msg: &ServerMessage) {
             };
             send_to(id, msg);
         }
-        ServerMessage::ConfirmPrivateMessage { to, message } => {
-            send_to(id, format!("Told <{}> {}", to, message));
-        }
         ServerMessage::RoomMembership { room, joined } => {
             let msg = if *joined {
                 format!("Joined room {}", room)
@@ -88,6 +85,8 @@ pub fn handle_tell_message(id: &ClientId, parts: &[&str], msg: &str) {
     }
     let target_username = parts[1];
     let msg = msg.replacen(&format!("Tell {} ", target_username), "", 1);
+
+    send_to(id, format!("Told <{}> {}", target_username, msg));
     if msg.is_empty() {
         send_to(id, "NOK");
         return;
