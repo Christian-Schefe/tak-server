@@ -5,8 +5,9 @@ use axum::{
     routing::any,
 };
 
-use crate::client::{handle_client_tcp, handle_client_websocket};
+use crate::client::{handle_client_tcp, handle_client_websocket, launch_client_cleanup_task};
 
+mod chat;
 mod client;
 mod game;
 mod player;
@@ -33,9 +34,14 @@ async fn main() {
     tokio::spawn(async move {
         serve_tcp_server().await;
     });
+    launch_background_tasks();
 
     println!("WebSocket server listening on port {}", ws_port);
     axum::serve(listener, app).await.unwrap();
+}
+
+fn launch_background_tasks() {
+    launch_client_cleanup_task();
 }
 
 async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {

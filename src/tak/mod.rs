@@ -5,7 +5,7 @@ use std::time::Duration;
 
 pub use game::TakGame;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TakPlayer {
     White,
     Black,
@@ -20,7 +20,7 @@ impl TakPlayer {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TakAction {
     Place {
         pos: TakPos,
@@ -33,7 +33,7 @@ pub enum TakAction {
     },
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TakGameSettings {
     pub board_size: u32,
     pub half_komi: u32,
@@ -51,21 +51,21 @@ impl TakGameSettings {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TakTimeControl {
     pub contingent: Duration,
     pub increment: Duration,
     pub extra: Option<(u32, Duration)>,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TakVariant {
     Flat,
     Standing,
     Capstone,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TakPos {
     pub x: i32,
     pub y: i32,
@@ -102,7 +102,7 @@ impl TakPos {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TakDir {
     Up,
     Left,
@@ -110,7 +110,7 @@ pub enum TakDir {
     Down,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum TakGameState {
     Ongoing,
     Win {
@@ -137,7 +137,7 @@ impl TakGameState {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum TakWinReason {
     Road,
     Flats,

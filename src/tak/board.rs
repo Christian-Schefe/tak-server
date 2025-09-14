@@ -2,13 +2,13 @@ use std::collections::VecDeque;
 
 use crate::tak::{TakDir, TakPlayer, TakPos, TakVariant};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TakStack {
     variant: TakVariant,
     composition: Vec<TakPlayer>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TakBoard {
     size: u32,
     stacks: Vec<Option<TakStack>>,

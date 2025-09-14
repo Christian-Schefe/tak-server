@@ -1,4 +1,7 @@
-use std::sync::{Arc, LazyLock};
+use std::{
+    sync::{Arc, LazyLock},
+    time::{Duration, Instant},
+};
 
 use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
@@ -17,8 +20,9 @@ use crate::{
     seek::send_seeks_to,
 };
 
-static CLIENT_SENDERS: LazyLock<Arc<DashMap<ClientId, UnboundedSender<String>>>> =
-    LazyLock::new(|| Arc::new(DashMap::new()));
+static CLIENT_SENDERS: LazyLock<
+    Arc<DashMap<ClientId, (UnboundedSender<String>, CancellationToken)>>,
+> = LazyLock::new(|| Arc::new(DashMap::new()));
 
 static CLIENT_HANDLERS: LazyLock<Arc<DashMap<ClientId, Protocol>>> =
     LazyLock::new(|| Arc::new(DashMap::new()));
@@ -27,6 +31,9 @@ static CLIENT_TO_PLAYER: LazyLock<Arc<DashMap<ClientId, PlayerUsername>>> =
     LazyLock::new(|| Arc::new(DashMap::new()));
 
 static PLAYER_TO_CLIENT: LazyLock<Arc<DashMap<PlayerUsername, ClientId>>> =
+    LazyLock::new(|| Arc::new(DashMap::new()));
+
+static LAST_ACTIVITY: LazyLock<Arc<DashMap<ClientId, Instant>>> =
     LazyLock::new(|| Arc::new(DashMap::new()));
 
 pub type ClientId = Uuid;
@@ -94,7 +101,7 @@ fn handle_send<S, M>(
     M: Send + 'static,
 {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-    CLIENT_SENDERS.insert(id, tx);
+    CLIENT_SENDERS.insert(id, (tx, cancellation_token.clone()));
     CLIENT_HANDLERS.insert(id, Protocol::V2);
 
     tokio::spawn(async move {
@@ -128,6 +135,8 @@ fn handle_receive<S, M, E>(
             msg = ws_receiver.next() => msg,
             _ = cancellation_token.cancelled() => None,
         } {
+            LAST_ACTIVITY.insert(id, Instant::now());
+
             let msg = match msg_parser(msg) {
                 Some(m) => m,
                 None => {
@@ -171,12 +180,22 @@ fn try_switch_protocol(id: &ClientId, protocol_msg: &str) -> Result<(), String> 
     }
 }
 
+pub fn send_to<T>(id: &ClientId, msg: T)
+where
+    T: AsRef<str>,
+{
+    if let Err(e) = try_send_to(id, msg) {
+        println!("Failed to send message to client {}: {}", id, e);
+    }
+}
+
 pub fn try_send_to<T>(id: &ClientId, msg: T) -> Result<(), String>
 where
     T: AsRef<str>,
 {
     if let Some(sender) = CLIENT_SENDERS.get(id) {
         sender
+            .0
             .send(msg.as_ref().into())
             .map_err(|e| format!("Failed to send message: {}", e))
     } else {
@@ -215,8 +234,8 @@ pub fn get_associated_client(player: &PlayerUsername) -> Option<ClientId> {
 }
 
 fn on_connect(id: &ClientId) {
-    let _ = try_send_to(id, "Welcome!");
-    let _ = try_send_to(id, "Login or Register");
+    send_to(id, "Welcome!");
+    send_to(id, "Login or Register");
     send_seeks_to(id);
     send_games_to(id);
 }
@@ -237,4 +256,35 @@ pub fn try_protocol_broadcast(msg: &ServerMessage) {
     for entry in CLIENT_HANDLERS.iter() {
         handle_server_message(entry.value(), entry.key(), msg);
     }
+}
+
+fn close_client(id: &ClientId) {
+    let Some(cancellation_token) = CLIENT_SENDERS.get(id).map(|x| x.1.clone()) else {
+        return;
+    };
+    cancellation_token.cancel();
+}
+
+pub fn launch_client_cleanup_task() {
+    let timeout_duration = Duration::from_secs(300);
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            let now = Instant::now();
+            let inactive_clients: Vec<ClientId> = LAST_ACTIVITY
+                .iter()
+                .filter_map(|entry| {
+                    if now.duration_since(*entry.value()) > timeout_duration {
+                        Some(*entry.key())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            for client_id in inactive_clients {
+                println!("Cleaning up inactive client {}", client_id);
+                close_client(&client_id);
+            }
+        }
+    });
 }

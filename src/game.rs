@@ -31,7 +31,7 @@ static GAMES_DB_POOL: LazyLock<Pool<SqliteConnectionManager>> = LazyLock::new(||
 
 pub type GameId = u32;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Game {
     pub id: GameId,
     pub white: PlayerUsername,

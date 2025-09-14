@@ -10,7 +10,7 @@ use crate::{
     tak::{TakGameSettings, TakPlayer},
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Seek {
     pub id: SeekId,
     pub creator: PlayerUsername,
@@ -22,7 +22,7 @@ pub struct Seek {
 
 pub type SeekId = u32;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum GameType {
     Unrated,
     Rated,

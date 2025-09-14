@@ -7,7 +7,7 @@ use crate::tak::{
     TakAction, TakGameSettings, TakGameState, TakPlayer, TakVariant, TakWinReason, board::TakBoard,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TakGame {
     pub settings: TakGameSettings,
     pub board: TakBoard,
@@ -21,13 +21,13 @@ pub struct TakGame {
     pub clock: TakClock,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TakReserve {
     pub pieces: u32,
     pub capstones: u32,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct TakClock {
     pub remaining_time: (Duration, Duration),
     pub last_update_timestamp: Option<Instant>,

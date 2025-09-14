@@ -6,6 +6,7 @@ use std::time::Duration;
 use crate::{
     client::ClientId,
     game::{Game, GameId},
+    player::PlayerUsername,
     seek::Seek,
     tak::{TakAction, TakGameState},
 };
@@ -25,6 +26,7 @@ impl Protocol {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum ServerMessage {
     SeekList {
         add: bool,
@@ -66,6 +68,26 @@ pub enum ServerMessage {
     ObserveGame {
         game: Game,
     },
+    ChatMessage {
+        from: PlayerUsername,
+        message: String,
+        source: ChatMessageSource,
+    },
+    ConfirmPrivateMessage {
+        to: PlayerUsername,
+        message: String,
+    },
+    RoomMembership {
+        room: String,
+        joined: bool,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub enum ChatMessageSource {
+    Global,
+    Room(String),
+    Private,
 }
 
 pub fn handle_client_message(protocol: &Protocol, id: &ClientId, msg: String) {
