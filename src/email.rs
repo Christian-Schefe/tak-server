@@ -1,5 +1,7 @@
+use std::str::FromStr;
+
 use lettre::{
-    Address, Message, SmtpTransport, Transport, message::Mailbox,
+    Message, SmtpTransport, Transport, message::Mailbox,
     transport::smtp::authentication::Credentials,
 };
 
@@ -10,15 +12,8 @@ pub fn send_email(to: &str, subject: &str, body: &str) -> Result<(), String> {
         std::env::var("TAK_EMAIL_PASSWORD").map_err(|_| "TAK_EMAIL_PASSWORD env var not set")?;
     let from = std::env::var("TAK_EMAIL_FROM").map_err(|_| "TAK_EMAIL_FROM env var not set")?;
     let email = Message::builder()
-        .from(Mailbox::new(
-            None,
-            Address::try_from(from.to_string())
-                .map_err(|e| format!("Invalid from address: {}", e))?,
-        ))
-        .to(Mailbox::new(
-            None,
-            Address::try_from(to.to_string()).map_err(|e| format!("Invalid to address: {}", e))?,
-        ))
+        .from(Mailbox::from_str(&from).map_err(|e| format!("Invalid from address: {}", e))?)
+        .to(Mailbox::from_str(to).map_err(|e| format!("Invalid to address: {}", e))?)
         .subject(subject)
         .body(body.to_string())
         .map_err(|e| format!("Failed to build email: {}", e))?;

@@ -8,7 +8,11 @@ use std::{
 };
 use validator::Validate;
 
-use crate::client::{ClientId, associate_player};
+use crate::{
+    client::{ClientId, associate_player, get_associated_player},
+    email::send_email,
+    jwt::validate_jwt,
+};
 
 pub type PlayerUsername = String;
 
@@ -62,6 +66,8 @@ fn increment_guest_id() -> u32 {
 
 #[derive(Clone)]
 pub struct Player {
+    pub id: i32,
+    pub email: String,
     pub password_hash: String,
     pub is_bot: bool,
 }
@@ -81,6 +87,8 @@ pub fn fetch_player(username: &str) -> Option<Player> {
         |row| {
             Ok(Player {
                 password_hash: row.get("password")?,
+                id: row.get("id")?,
+                email: row.get("email")?,
                 is_bot: row.get::<_, i32>("isbot")? != 0,
             })
         },
@@ -94,19 +102,31 @@ pub fn fetch_player(username: &str) -> Option<Player> {
     }
 }
 
-pub fn validate_login(username: &PlayerUsername, password: &str) -> bool {
+pub fn validate_login(username: &PlayerUsername, password: &str) -> Result<(), String> {
     if let Some(player) = fetch_player(&username) {
-        bcrypt::verify(password, &player.password_hash).unwrap_or(false)
+        bcrypt::verify(password, &player.password_hash)
+            .map_err(|_| "Invalid username or password".into())
+            .and_then(|is_valid| {
+                if is_valid {
+                    Ok(())
+                } else {
+                    Err("Invalid username or password".into())
+                }
+            })
     } else {
-        false
+        Err("Invalid username or password".into())
     }
 }
 
-pub fn try_login(id: &ClientId, username: &PlayerUsername, password: &str) -> bool {
-    if !validate_login(username, password) {
-        return false;
-    }
-    associate_player(id, username).is_ok()
+pub fn try_login(id: &ClientId, username: &PlayerUsername, password: &str) -> Result<(), String> {
+    validate_login(username, password)?;
+    associate_player(id, username)
+}
+
+pub fn try_login_jwt(id: &ClientId, token: &str) -> Result<PlayerUsername, String> {
+    let username = validate_jwt(token)?;
+    associate_player(id, &username)?;
+    Ok(username)
 }
 
 pub fn login_guest(id: &ClientId, token: Option<&str>) {
@@ -191,13 +211,70 @@ fn create_player(username: &PlayerUsername, email: &str) -> Result<(), String> {
         (largest_player_id + 1, username, password_hash, email),
     )
     .map_err(|e| format!("Failed to insert player: {}", e))?;
+    send_password_email(email, username, &temp_password, false)?;
     Ok(())
 }
 
 fn generate_temporary_password() -> String {
     let rng = rand::rng();
     rng.sample_iter(&Alphanumeric)
-        .take(12)
+        .take(8)
         .map(char::from)
         .collect()
+}
+
+fn send_password_email(
+    to: &str,
+    username: &PlayerUsername,
+    temp_password: &str,
+    is_reset: bool,
+) -> Result<(), String> {
+    let subject = if is_reset {
+        "Password Reset"
+    } else {
+        "Welcome to Playtak!"
+    };
+    let body = format!(
+        "Hello {},\n\n\
+        {}\n\n\
+        Here are your login details:\n\
+        Username: {}\n\
+        Temporary Password: {}\n\n\
+        Please log in and change your password as soon as possible.\n\n\
+        Best regards,\n\
+        The Playtak Team",
+        username,
+        if is_reset {
+            "Your password has been reset successfully!"
+        } else {
+            "Your account has been created successfully!"
+        },
+        username,
+        temp_password
+    );
+    send_email(to, &subject, &body)
+}
+
+pub fn reset_password(id: &ClientId) -> Result<(), String> {
+    let Some(username) = get_associated_player(id) else {
+        return Err("Client not associated with any player".into());
+    };
+    let player = fetch_player(&username).ok_or("Player not found")?;
+    let temp_password = generate_temporary_password();
+    let password_hash = bcrypt::hash(&temp_password, bcrypt::DEFAULT_COST).unwrap();
+
+    let conn = PLAYER_DB_POOL
+        .get()
+        .map_err(|e| format!("Failed to get DB connection: {}", e))?;
+
+    // Note the order of statements: email is sent before DB update to avoid locking out user if email fails.
+    // Connection is established first to not unnecessarily send email if DB is unreachable.
+    send_password_email(&player.email, &username, &temp_password, true)?;
+
+    conn.execute(
+        "UPDATE players SET password = ?1 WHERE id = ?2",
+        (password_hash, player.id),
+    )
+    .map_err(|e| format!("Failed to update player password: {}", e))?;
+    Ok(())
 }

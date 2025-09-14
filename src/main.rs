@@ -2,12 +2,11 @@ use axum::{
     Router,
     extract::{WebSocketUpgrade, ws::WebSocket},
     response::IntoResponse,
-    routing::any,
+    routing::{any, post},
 };
 
 use crate::{
     client::{handle_client_tcp, handle_client_websocket, launch_client_cleanup_task},
-    email::send_email,
     player::load_unique_usernames,
 };
 
@@ -15,6 +14,7 @@ mod chat;
 mod client;
 mod email;
 mod game;
+mod jwt;
 mod player;
 mod protocol;
 mod seek;
@@ -25,7 +25,8 @@ async fn main() {
     dotenvy::dotenv().ok();
     let app = Router::new()
         .route("/", any(ws_handler))
-        .route("/ws", any(ws_handler));
+        .route("/ws", any(ws_handler))
+        .route("/auth/login", post(jwt::handle_login));
 
     let ws_port = std::env::var("TAK_WS_PORT")
         .unwrap_or_else(|_| "9999".to_string())
