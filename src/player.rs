@@ -1,10 +1,10 @@
 use dashmap::DashMap;
+use passwords::PasswordGenerator;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rand::{Rng, distr::Alphanumeric};
 use std::{
     sync::{Arc, LazyLock},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use validator::Validate;
 
@@ -38,6 +38,17 @@ static NEXT_GUEST_ID: LazyLock<Arc<std::sync::Mutex<u32>>> =
 
 static TAKEN_UNIQUE_USERNAMES: LazyLock<Arc<DashMap<PlayerUsername, ()>>> =
     LazyLock::new(|| Arc::new(DashMap::new()));
+
+const PASSWORD_RESET_TOKEN_TTL: Duration = Duration::from_secs(60 * 60 * 24);
+
+static PASSWORD_RESET_TOKENS: LazyLock<Arc<moka::sync::Cache<String, (PlayerUsername, Instant)>>> =
+    LazyLock::new(|| {
+        Arc::new(
+            moka::sync::Cache::builder()
+                .time_to_live(PASSWORD_RESET_TOKEN_TTL)
+                .build(),
+        )
+    });
 
 pub fn load_unique_usernames() -> Result<(), String> {
     let conn = PLAYER_DB_POOL
@@ -211,65 +222,120 @@ fn create_player(username: &PlayerUsername, email: &str) -> Result<(), String> {
         (largest_player_id + 1, username, password_hash, email),
     )
     .map_err(|e| format!("Failed to insert player: {}", e))?;
-    send_password_email(email, username, &temp_password, false)?;
+    send_password_email(email, username, &temp_password)?;
     Ok(())
 }
 
 fn generate_temporary_password() -> String {
-    let rng = rand::rng();
-    rng.sample_iter(&Alphanumeric)
-        .take(8)
-        .map(char::from)
-        .collect()
+    let password_gen = PasswordGenerator::new()
+        .length(8)
+        .numbers(true)
+        .lowercase_letters(true)
+        .uppercase_letters(false)
+        .spaces(false)
+        .symbols(false)
+        .exclude_similar_characters(true)
+        .strict(true);
+    password_gen.generate_one().unwrap()
 }
 
 fn send_password_email(
     to: &str,
     username: &PlayerUsername,
     temp_password: &str,
-    is_reset: bool,
 ) -> Result<(), String> {
-    let subject = if is_reset {
-        "Password Reset"
-    } else {
-        "Welcome to Playtak!"
-    };
+    let subject = "Welcome to Playtak!";
     let body = format!(
         "Hello {},\n\n\
-        {}\n\n\
+        Your account has been created successfully!\n\n\
         Here are your login details:\n\
         Username: {}\n\
         Temporary Password: {}\n\n\
         Please log in and change your password as soon as possible.\n\n\
         Best regards,\n\
         The Playtak Team",
-        username,
-        if is_reset {
-            "Your password has been reset successfully!"
-        } else {
-            "Your account has been created successfully!"
-        },
-        username,
-        temp_password
+        username, username, temp_password
     );
     send_email(to, &subject, &body)
 }
 
-pub fn reset_password(id: &ClientId) -> Result<(), String> {
-    let Some(username) = get_associated_player(id) else {
-        return Err("Client not associated with any player".into());
-    };
-    let player = fetch_player(&username).ok_or("Player not found")?;
-    let temp_password = generate_temporary_password();
-    let password_hash = bcrypt::hash(&temp_password, bcrypt::DEFAULT_COST).unwrap();
+fn send_reset_token_email(
+    to: &str,
+    username: &PlayerUsername,
+    reset_token: &str,
+) -> Result<(), String> {
+    let subject = "Playtak Password Reset Request";
+    let body = format!(
+        "Hello {},\n\n\
+        To reset your password, please use the following token:\n\
+        Reset Token: {}\n\n\
+        This token is valid for 24 hours.\n\n\
+        If you did not request a password reset, please ignore this email.\n\n\
+        Best regards,\n\
+        The Playtak Team",
+        username, reset_token
+    );
+    send_email(to, &subject, &body)
+}
+
+pub fn send_reset_token(username: &PlayerUsername, email: &str) -> Result<(), String> {
+    let player = fetch_player(username).ok_or("Player not found")?;
+    if player.email != email {
+        return Err("Email does not match".into());
+    }
+    let reset_token = generate_temporary_password();
+    PASSWORD_RESET_TOKENS.insert(reset_token.clone(), (username.clone(), Instant::now()));
+    send_reset_token_email(email, username, &reset_token)?;
+    Ok(())
+}
+
+pub fn reset_password(
+    username: &PlayerUsername,
+    reset_token: &str,
+    new_password: &str,
+) -> Result<(), String> {
+    let player = fetch_player(username).ok_or("Player not found")?;
+
+    let (token_username, token_time) = PASSWORD_RESET_TOKENS
+        .remove(reset_token)
+        .ok_or("Invalid or expired reset token")?;
+    if &token_username != username {
+        return Err("Invalid or expired reset token for this user".into());
+    }
+    if token_time.elapsed() > PASSWORD_RESET_TOKEN_TTL {
+        return Err("Invalid or expired reset token for this user".into());
+    }
+
+    let password_hash = bcrypt::hash(new_password, bcrypt::DEFAULT_COST)
+        .map_err(|e| format!("Failed to hash password: {}", e))?;
 
     let conn = PLAYER_DB_POOL
         .get()
         .map_err(|e| format!("Failed to get DB connection: {}", e))?;
 
-    // Note the order of statements: email is sent before DB update to avoid locking out user if email fails.
-    // Connection is established first to not unnecessarily send email if DB is unreachable.
-    send_password_email(&player.email, &username, &temp_password, true)?;
+    conn.execute(
+        "UPDATE players SET password = ?1 WHERE id = ?2",
+        (password_hash, player.id),
+    )
+    .map_err(|e| format!("Failed to update player password: {}", e))?;
+    Ok(())
+}
+
+pub fn change_password(
+    id: &ClientId,
+    current_password: &str,
+    new_password: &str,
+) -> Result<(), String> {
+    let username = get_associated_player(id).ok_or("Not logged in")?;
+    validate_login(&username, current_password)?;
+
+    let player = fetch_player(&username).ok_or("Player not found")?;
+    let password_hash = bcrypt::hash(new_password, bcrypt::DEFAULT_COST)
+        .map_err(|e| format!("Failed to hash password: {}", e))?;
+
+    let conn = PLAYER_DB_POOL
+        .get()
+        .map_err(|e| format!("Failed to get DB connection: {}", e))?;
 
     conn.execute(
         "UPDATE players SET password = ?1 WHERE id = ?2",

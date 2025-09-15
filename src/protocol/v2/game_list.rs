@@ -4,9 +4,8 @@ use crate::{
     client::{ClientId, get_associated_player, send_to},
     game::{Game, observe_game, unobserve_game},
     player::fetch_player,
-    protocol::ServerMessage,
+    protocol::{ServerGameMessage, ServerMessage},
     seek::GameType,
-    tak::TakPlayer,
 };
 
 pub fn handle_server_game_list_message(id: &ClientId, msg: &ServerMessage) {
@@ -27,21 +26,16 @@ pub fn handle_server_game_list_message(id: &ClientId, msg: &ServerMessage) {
         }
         ServerMessage::ObserveGame { game } => {
             send_game_string_message(id, game, "Observe");
-            for action in game.game.move_history.iter() {
+            for action in game.game.action_history.iter() {
                 super::game::send_game_action_message(id, &game.id, action);
             }
             let now = Instant::now();
-            let time_message = format!(
-                "Game#{} Timems {} {}",
-                game.id,
-                game.game
-                    .get_time_remaining(&TakPlayer::White, now)
-                    .as_millis(),
-                game.game
-                    .get_time_remaining(&TakPlayer::Black, now)
-                    .as_millis()
+            let remaining = game.game.get_time_remaining_both(now);
+            super::game::handle_game_server_message(
+                id,
+                &game.id,
+                &ServerGameMessage::TimeUpdate { remaining },
             );
-            send_to(id, time_message);
         }
         _ => {
             eprintln!("Unhandled server game list message: {:?}", msg);
@@ -81,18 +75,19 @@ pub fn handle_observe_message(id: &ClientId, parts: &[&str], observe: bool) {
 }
 
 pub fn send_game_string_message(id: &ClientId, game: &Game, operation: &str) {
+    let settings = &game.game.base.settings;
     let message = format!(
         "{} {} {} {} {} {} {} {} {} {} {} {} {} {}",
         operation,
         game.id,
         game.white,
         game.black,
-        game.game.settings.board_size,
-        game.game.settings.time_control.contingent.as_secs(),
-        game.game.settings.time_control.increment.as_secs(),
-        game.game.settings.half_komi,
-        game.game.settings.reserve_pieces,
-        game.game.settings.reserve_capstones,
+        settings.board_size,
+        settings.time_control.contingent.as_secs(),
+        settings.time_control.increment.as_secs(),
+        settings.half_komi,
+        settings.reserve_pieces,
+        settings.reserve_capstones,
         match game.game_type {
             GameType::Unrated => "1",
             GameType::Rated => "0",
@@ -103,16 +98,14 @@ pub fn send_game_string_message(id: &ClientId, game: &Game, operation: &str) {
             GameType::Rated => "0",
             GameType::Tournament => "1",
         },
-        game.game
-            .settings
+        settings
             .time_control
             .extra
             .as_ref()
             .map_or("0".to_string(), |(_, extra_time)| extra_time
                 .as_secs()
                 .to_string()),
-        game.game
-            .settings
+        settings
             .time_control
             .extra
             .as_ref()
@@ -129,6 +122,7 @@ pub fn send_game_start_message(id: &ClientId, game: &Game) {
     };
     let is_bot_game = fetch_player(&game.white).map_or(false, |p| p.is_bot)
         || fetch_player(&game.black).map_or(false, |p| p.is_bot);
+    let settings = &game.game.base.settings;
     let message = format!(
         "Game Start {} {} vs {} {} {} {} {} {} {} {} {} {} {} {} {}",
         game.id,
@@ -139,12 +133,12 @@ pub fn send_game_start_message(id: &ClientId, game: &Game) {
         } else {
             "black"
         },
-        game.game.settings.board_size,
-        game.game.settings.time_control.contingent.as_secs(),
-        game.game.settings.time_control.increment.as_secs(),
-        game.game.settings.half_komi,
-        game.game.settings.reserve_pieces,
-        game.game.settings.reserve_capstones,
+        settings.board_size,
+        settings.time_control.contingent.as_secs(),
+        settings.time_control.increment.as_secs(),
+        settings.half_komi,
+        settings.reserve_pieces,
+        settings.reserve_capstones,
         match game.game_type {
             GameType::Unrated => "1",
             GameType::Rated => "0",
@@ -155,15 +149,13 @@ pub fn send_game_start_message(id: &ClientId, game: &Game) {
             GameType::Rated => "0",
             GameType::Tournament => "1",
         },
-        game.game
-            .settings
+        settings
             .time_control
             .extra
             .as_ref()
             .map_or("0".to_string(), |(trigger_move, _)| trigger_move
                 .to_string()),
-        game.game
-            .settings
+        settings
             .time_control
             .extra
             .as_ref()

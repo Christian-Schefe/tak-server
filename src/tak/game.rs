@@ -8,33 +8,17 @@ use crate::tak::{
 };
 
 #[derive(Clone, Debug)]
-pub struct TakGame {
+pub struct TakBaseGame {
     pub settings: TakGameSettings,
     pub board: TakBoard,
     pub current_player: TakPlayer,
     pub reserves: (TakReserve, TakReserve),
-    pub move_history: Vec<TakAction>,
     pub game_state: TakGameState,
     pub board_hash_history: HashMap<String, u32>,
-    pub draw_offered: (bool, bool),
-    pub undo_requested: (bool, bool),
-    pub clock: TakClock,
+    pub ply_index: usize,
 }
 
-#[derive(Clone, Debug)]
-pub struct TakReserve {
-    pub pieces: u32,
-    pub capstones: u32,
-}
-
-#[derive(Clone, Debug)]
-pub struct TakClock {
-    pub remaining_time: (Duration, Duration),
-    pub last_update_timestamp: Option<Instant>,
-    pub has_gained_extra_time: (bool, bool),
-}
-
-impl TakGame {
+impl TakBaseGame {
     pub fn new(settings: TakGameSettings) -> Self {
         let board = TakBoard::new(settings.board_size);
         let reserve = TakReserve {
@@ -42,56 +26,15 @@ impl TakGame {
             capstones: settings.reserve_capstones,
         };
         let reserves = (reserve.clone(), reserve);
-        TakGame {
+        TakBaseGame {
+            settings,
             board,
             current_player: TakPlayer::White,
             reserves,
-            move_history: Vec::new(),
             game_state: TakGameState::Ongoing,
             board_hash_history: HashMap::new(),
-            draw_offered: (false, false),
-            undo_requested: (false, false),
-            clock: TakClock {
-                remaining_time: (
-                    settings.time_control.contingent,
-                    settings.time_control.contingent,
-                ),
-                last_update_timestamp: None,
-                has_gained_extra_time: (false, false),
-            },
-            settings,
+            ply_index: 0,
         }
-    }
-
-    pub fn check_timeout(&mut self, now: Instant) -> bool {
-        if self.game_state != TakGameState::Ongoing {
-            return false;
-        }
-        let time_remaining = self.get_time_remaining(&self.current_player, now);
-        if time_remaining.is_zero() {
-            self.game_state = TakGameState::Win {
-                winner: self.current_player.opponent(),
-                reason: TakWinReason::Default,
-            };
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn get_time_remaining(&self, player: &TakPlayer, now: Instant) -> Duration {
-        match player {
-            TakPlayer::White => self.clock.remaining_time.0,
-            TakPlayer::Black => self.clock.remaining_time.1,
-        }
-        .saturating_sub(
-            self.clock
-                .last_update_timestamp
-                .filter(|_| &self.current_player == player)
-                .map_or(Duration::ZERO, |last_update| {
-                    now.saturating_duration_since(last_update)
-                }),
-        )
     }
 
     pub fn can_do_action(&self, action: &TakAction) -> Result<(), String> {
@@ -102,7 +45,7 @@ impl TakGame {
         match action {
             TakAction::Place { pos, variant } => {
                 self.board.can_do_place(pos)?;
-                if self.move_history.len() < 2 && *variant != TakVariant::Flat {
+                if self.ply_index < 2 && *variant != TakVariant::Flat {
                     return Err("First two moves must be flat stones".to_string());
                 }
                 let reserve = match self.current_player {
@@ -120,7 +63,7 @@ impl TakGame {
             }
             TakAction::Move { pos, dir, drops } => {
                 self.board.can_do_move(pos, dir, drops)?;
-                if self.move_history.len() < 2 {
+                if self.ply_index < 2 {
                     return Err("Cannot move pieces before both players have placed at least one piece each".to_string());
                 }
                 Ok(())
@@ -129,21 +72,10 @@ impl TakGame {
     }
 
     pub fn do_action(&mut self, action: &TakAction) -> Result<(), String> {
-        let now = Instant::now();
-
-        let time_remaining = self.get_time_remaining(&self.current_player, now);
-        if time_remaining.is_zero() {
-            self.game_state = TakGameState::Win {
-                winner: self.current_player.opponent(),
-                reason: TakWinReason::Default,
-            };
-            return Err("Player has run out of time".to_string());
-        }
-
         self.can_do_action(&action)?;
         match &action {
             TakAction::Place { pos, variant } => {
-                let placing_player = if self.move_history.len() < 2 {
+                let placing_player = if self.ply_index < 2 {
                     self.current_player.opponent()
                 } else {
                     self.current_player.clone()
@@ -165,37 +97,11 @@ impl TakGame {
         }
 
         self.check_game_over();
-        self.update_clock(now);
 
         self.current_player = self.current_player.opponent();
-        self.move_history.push(action.clone());
+        self.ply_index += 1;
 
         Ok(())
-    }
-
-    fn update_clock(&mut self, now: Instant) {
-        let remaining = match self.current_player {
-            TakPlayer::White => &mut self.clock.remaining_time.0,
-            TakPlayer::Black => &mut self.clock.remaining_time.1,
-        };
-        if let Some(last_update) = self.clock.last_update_timestamp {
-            let elapsed = now.duration_since(last_update);
-            *remaining = remaining
-                .saturating_sub(elapsed)
-                .saturating_add(self.settings.time_control.increment);
-            if let Some((extra_move_index, extra_time)) = self.settings.time_control.extra {
-                let has_gained_extra_time = match self.current_player {
-                    TakPlayer::White => &mut self.clock.has_gained_extra_time.0,
-                    TakPlayer::Black => &mut self.clock.has_gained_extra_time.1,
-                };
-                let move_index = (self.move_history.len() / 2) + 1;
-                if !*has_gained_extra_time && extra_move_index as usize == move_index {
-                    *remaining = remaining.saturating_add(extra_time);
-                    *has_gained_extra_time = true;
-                }
-            }
-        }
-        self.clock.last_update_timestamp = Some(now);
     }
 
     fn check_game_over(&mut self) {
@@ -238,12 +144,143 @@ impl TakGame {
             self.game_state = TakGameState::Draw;
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct TakGame {
+    pub base: TakBaseGame,
+    pub action_history: Vec<TakAction>,
+    pub draw_offered: (bool, bool),
+    pub undo_requested: (bool, bool),
+    pub clock: TakClock,
+}
+
+#[derive(Clone, Debug)]
+pub struct TakReserve {
+    pub pieces: u32,
+    pub capstones: u32,
+}
+
+#[derive(Clone, Debug)]
+pub struct TakClock {
+    pub remaining_time: (Duration, Duration),
+    pub last_update_timestamp: Option<Instant>,
+    pub has_gained_extra_time: (bool, bool),
+}
+
+impl TakGame {
+    pub fn new(settings: TakGameSettings) -> Self {
+        let base_game = TakBaseGame::new(settings.clone());
+        TakGame {
+            base: base_game,
+            action_history: Vec::new(),
+            draw_offered: (false, false),
+            undo_requested: (false, false),
+            clock: TakClock {
+                remaining_time: (
+                    settings.time_control.contingent,
+                    settings.time_control.contingent,
+                ),
+                last_update_timestamp: None,
+                has_gained_extra_time: (false, false),
+            },
+        }
+    }
+
+    pub fn is_ongoing(&self) -> bool {
+        self.base.game_state == TakGameState::Ongoing
+    }
+
+    pub fn check_timeout(&mut self, now: Instant) -> bool {
+        if self.base.game_state != TakGameState::Ongoing {
+            return false;
+        }
+        let time_remaining = self.get_time_remaining(&self.base.current_player, now);
+        if time_remaining.is_zero() {
+            self.base.game_state = TakGameState::Win {
+                winner: self.base.current_player.opponent(),
+                reason: TakWinReason::Default,
+            };
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn get_time_remaining(&self, player: &TakPlayer, now: Instant) -> Duration {
+        match player {
+            TakPlayer::White => self.clock.remaining_time.0,
+            TakPlayer::Black => self.clock.remaining_time.1,
+        }
+        .saturating_sub(
+            self.clock
+                .last_update_timestamp
+                .filter(|_| &self.base.current_player == player)
+                .map_or(Duration::ZERO, |last_update| {
+                    now.saturating_duration_since(last_update)
+                }),
+        )
+    }
+
+    pub fn get_time_remaining_both(&self, now: Instant) -> (Duration, Duration) {
+        (
+            self.get_time_remaining(&TakPlayer::White, now),
+            self.get_time_remaining(&TakPlayer::Black, now),
+        )
+    }
+
+    pub fn do_action(&mut self, action: &TakAction) -> Result<(), String> {
+        let now = Instant::now();
+        let player = self.base.current_player.clone();
+
+        let time_remaining = self.get_time_remaining(&player, now);
+        if time_remaining.is_zero() {
+            self.base.game_state = TakGameState::Win {
+                winner: player.opponent(),
+                reason: TakWinReason::Default,
+            };
+            return Err("Player has run out of time".to_string());
+        }
+
+        self.base.do_action(action)?;
+        self.update_clock(now, &player);
+
+        self.action_history.push(action.clone());
+
+        Ok(())
+    }
+
+    fn update_clock(&mut self, now: Instant, player: &TakPlayer) {
+        let remaining = match player {
+            TakPlayer::White => &mut self.clock.remaining_time.0,
+            TakPlayer::Black => &mut self.clock.remaining_time.1,
+        };
+        let time_control = &self.base.settings.time_control;
+        if let Some(last_update) = self.clock.last_update_timestamp {
+            let elapsed = now.duration_since(last_update);
+            *remaining = remaining
+                .saturating_sub(elapsed)
+                .saturating_add(time_control.increment);
+            if let Some((extra_move_index, extra_time)) = time_control.extra {
+                let has_gained_extra_time = match player {
+                    TakPlayer::White => &mut self.clock.has_gained_extra_time.0,
+                    TakPlayer::Black => &mut self.clock.has_gained_extra_time.1,
+                };
+                let move_index = (self.base.ply_index / 2) + 1;
+                if !*has_gained_extra_time && extra_move_index as usize == move_index {
+                    *remaining = remaining.saturating_add(extra_time);
+                    *has_gained_extra_time = true;
+                }
+            }
+        }
+        self.clock.last_update_timestamp = Some(now);
+    }
 
     pub fn resign(&mut self, player: &TakPlayer) -> Result<(), String> {
-        if self.game_state != TakGameState::Ongoing {
+        if self.base.game_state != TakGameState::Ongoing {
             return Err("Game is already over".to_string());
         }
-        self.game_state = TakGameState::Win {
+        self.base.game_state = TakGameState::Win {
             winner: player.opponent(),
             reason: TakWinReason::Default,
         };
@@ -251,7 +288,7 @@ impl TakGame {
     }
 
     pub fn offer_draw(&mut self, player: &TakPlayer, offer: bool) -> Result<bool, String> {
-        if self.game_state != TakGameState::Ongoing {
+        if self.base.game_state != TakGameState::Ongoing {
             return Err("Game is already over".to_string());
         }
         match player {
@@ -259,7 +296,7 @@ impl TakGame {
             TakPlayer::Black => self.draw_offered.1 = offer,
         }
         if self.draw_offered.0 && self.draw_offered.1 {
-            self.game_state = TakGameState::Draw;
+            self.base.game_state = TakGameState::Draw;
             Ok(true)
         } else {
             Ok(false)
@@ -267,7 +304,7 @@ impl TakGame {
     }
 
     pub fn request_undo(&mut self, player: &TakPlayer, request: bool) -> Result<bool, String> {
-        if self.game_state != TakGameState::Ongoing {
+        if self.base.game_state != TakGameState::Ongoing {
             return Err("Game is already over".to_string());
         }
         match player {
@@ -284,18 +321,20 @@ impl TakGame {
     }
 
     pub fn undo_action(&mut self) -> Result<(), String> {
-        if self.game_state != TakGameState::Ongoing {
+        let now = Instant::now();
+        if self.base.game_state != TakGameState::Ongoing {
             return Err("Cannot undo action in a finished game".to_string());
         }
-
-        if self.move_history.pop().is_none() {
+        if self.action_history.pop().is_none() {
             return Err("No actions to undo".to_string());
         };
-        let mut game_clone = TakGame::new(self.settings.clone());
-        for action in &self.move_history {
+        let player = self.base.current_player.clone();
+        let mut game_clone = TakBaseGame::new(self.base.settings.clone());
+        for action in &self.action_history {
             game_clone.do_action(action)?;
         }
-        *self = game_clone;
+        self.base = game_clone;
+        self.update_clock(now, &player);
         Ok(())
     }
 }

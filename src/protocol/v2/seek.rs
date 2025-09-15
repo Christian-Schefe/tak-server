@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::{
     client::{ClientId, get_associated_player, send_to},
     player::fetch_player,
-    seek::{GameType, Seek, accept_seek, add_seek},
+    seek::{GameType, Seek, accept_seek, add_seek, remove_seek_of_player},
     tak::{TakGameSettings, TakPlayer, TakTimeControl},
 };
 
@@ -101,7 +101,11 @@ pub fn handle_add_seek_message(id: &ClientId, parts: &[&str]) -> Result<(), Stri
         },
     };
 
-    add_seek(username, opponent, color, game_settings, game_type)?;
+    if !game_settings.is_valid() {
+        remove_seek_of_player(&username)?;
+    } else {
+        add_seek(username, opponent, color, game_settings, game_type)?;
+    }
 
     Ok(())
 }

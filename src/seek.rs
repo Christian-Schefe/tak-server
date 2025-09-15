@@ -3,7 +3,7 @@ use std::sync::{Arc, LazyLock};
 use dashmap::DashMap;
 
 use crate::{
-    client::{ClientId, try_protocol_broadcast, try_protocol_send},
+    client::try_auth_protocol_broadcast,
     game::add_game_from_seek,
     player::PlayerUsername,
     protocol::ServerMessage,
@@ -50,12 +50,11 @@ pub fn add_seek(
     game_settings: TakGameSettings,
     game_type: GameType,
 ) -> Result<(), String> {
+    if !game_settings.is_valid() {
+        return Err("Invalid game settings".into());
+    }
     if SEEKS_BY_PLAYER.contains_key(&player) {
         remove_seek_of_player(&player)?;
-    }
-    if !game_settings.is_valid() {
-        println!("Player removed his seek due to invalid settings");
-        return Ok(());
     }
     let seek_id = increment_seek_id();
     let seek = Seek {
@@ -75,20 +74,13 @@ pub fn add_seek(
         add: true,
         seek: seek.clone(),
     };
-    try_protocol_broadcast(&seek_new_msg);
+    try_auth_protocol_broadcast(&seek_new_msg);
 
     Ok(())
 }
 
-pub fn send_seeks_to(id: &ClientId) {
-    for entry in SEEKS.iter() {
-        let seek = entry.value();
-        let seek_msg = ServerMessage::SeekList {
-            add: true,
-            seek: seek.clone(),
-        };
-        try_protocol_send(id, &seek_msg);
-    }
+pub fn get_seeks() -> Vec<Seek> {
+    SEEKS.iter().map(|entry| entry.value().clone()).collect()
 }
 
 pub fn remove_seek_of_player(player: &PlayerUsername) -> Result<Seek, String> {
@@ -103,7 +95,7 @@ pub fn remove_seek_of_player(player: &PlayerUsername) -> Result<Seek, String> {
         add: false,
         seek: seek.clone(),
     };
-    try_protocol_broadcast(&seek_remove_msg);
+    try_auth_protocol_broadcast(&seek_remove_msg);
 
     Ok(seek)
 }
@@ -119,8 +111,8 @@ pub fn accept_seek(id: &SeekId, player: &PlayerUsername) -> Result<(), String> {
             return Err("This seek is not for you".into());
         }
     }
-    remove_seek_of_player(&seek.creator)?;
-    let _ = remove_seek_of_player(&player);
     add_game_from_seek(&seek, &player)?;
+    let _ = remove_seek_of_player(&seek.creator);
+    let _ = remove_seek_of_player(&player);
     Ok(())
 }

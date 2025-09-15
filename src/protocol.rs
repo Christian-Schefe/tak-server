@@ -80,13 +80,24 @@ pub enum ChatMessageSource {
 pub fn handle_client_message(protocol: &Protocol, id: &ClientId, msg: String) {
     match protocol {
         Protocol::V2 => v2::handle_client_message(id, msg),
-        Protocol::JSON => todo!(),
+        Protocol::JSON => json::handle_client_message(id, msg),
     }
 }
 
 pub fn handle_server_message(protocol: &Protocol, id: &ClientId, msg: &ServerMessage) {
     match protocol {
         Protocol::V2 => v2::handle_server_message(id, msg),
-        Protocol::JSON => todo!(),
+        Protocol::JSON => json::handle_server_message(id, msg),
     }
+}
+
+pub fn on_authenticated(protocol: &Protocol, id: &ClientId, username: &PlayerUsername) {
+    match protocol {
+        Protocol::V2 => v2::on_authenticated(id, username),
+        Protocol::JSON => {}
+    }
+}
+
+pub fn register_http_endpoints(router: axum::Router) -> axum::Router {
+    router.nest("/v3", json::register_http_endpoints())
 }

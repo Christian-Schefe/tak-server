@@ -4,7 +4,7 @@ use dashmap::DashMap;
 
 use crate::{
     client::{
-        ClientId, get_associated_client, get_associated_player, try_protocol_broadcast,
+        ClientId, get_associated_client, get_associated_player, try_auth_protocol_broadcast,
         try_protocol_multicast, try_protocol_send,
     },
     player::PlayerUsername,
@@ -49,7 +49,7 @@ pub fn send_message_to_all(client_id: &ClientId, message: &str) -> Result<(), St
         message: message.to_string(),
         source: ChatMessageSource::Global,
     };
-    try_protocol_broadcast(&msg);
+    try_auth_protocol_broadcast(&msg);
     Ok(())
 }
 

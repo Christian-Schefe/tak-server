@@ -11,13 +11,13 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     client::{
-        ClientId, get_associated_client, try_protocol_broadcast, try_protocol_multicast,
+        ClientId, get_associated_client, try_auth_protocol_broadcast, try_protocol_multicast,
         try_protocol_send,
     },
     player::PlayerUsername,
     protocol::{ServerGameMessage, ServerMessage},
     seek::{GameType, Seek},
-    tak::{TakAction, TakGame, TakGameState, TakPlayer, TakPos, TakVariant},
+    tak::{TakAction, TakGame, TakPlayer, TakPos, TakVariant},
 };
 
 static GAMES_DB_POOL: LazyLock<Pool<SqliteConnectionManager>> = LazyLock::new(|| {
@@ -46,6 +46,9 @@ static GAME_TIMEOUT_TOKENS: LazyLock<Arc<DashMap<GameId, CancellationToken>>> =
     LazyLock::new(|| Arc::new(DashMap::new()));
 
 static GAME_SPECTATORS: LazyLock<Arc<DashMap<GameId, Vec<ClientId>>>> =
+    LazyLock::new(|| Arc::new(DashMap::new()));
+
+static GAME_BY_PLAYER: LazyLock<Arc<DashMap<PlayerUsername, GameId>>> =
     LazyLock::new(|| Arc::new(DashMap::new()));
 
 fn get_game_player(game: &Game, username: &PlayerUsername) -> Result<TakPlayer, String> {
@@ -173,12 +176,12 @@ fn save_to_database(game: &Game) -> Result<(), String> {
         .map_err(|_| "Failed to get DB connection")?;
     let notation = game
         .game
-        .move_history
+        .action_history
         .iter()
         .map(move_to_database_string)
         .collect::<Vec<_>>()
         .join(",");
-    let result = game.game.game_state.to_string();
+    let result = game.game.base.game_state.to_string();
     let params = [notation, result, game.id.to_string()];
     conn.execute(
         "UPDATE games SET notation = ?1, result = ?2 WHERE id = ?3",
@@ -189,6 +192,15 @@ fn save_to_database(game: &Game) -> Result<(), String> {
 }
 
 pub fn add_game_from_seek(seek: &Seek, opponent: &PlayerUsername) -> Result<(), String> {
+    if &seek.creator == opponent {
+        return Err("You cannot accept your own seek".into());
+    }
+    if has_active_game(&seek.creator) {
+        return Err("Player is already in a game".into());
+    }
+    if has_active_game(opponent) {
+        return Err("Player is already in a game".into());
+    }
     let (white, black) = match &seek.color {
         Some(TakPlayer::White) => (seek.creator.clone(), opponent.clone()),
         Some(TakPlayer::Black) => (opponent.clone(), seek.creator.clone()),
@@ -209,6 +221,8 @@ pub fn add_game_from_seek(seek: &Seek, opponent: &PlayerUsername) -> Result<(), 
         game_type: seek.game_type.clone(),
     };
     GAMES.insert(id, game.clone());
+    GAME_BY_PLAYER.insert(seek.creator.clone(), id);
+    GAME_BY_PLAYER.insert(opponent.clone(), id);
 
     println!("Game {} created", id);
 
@@ -220,7 +234,7 @@ pub fn add_game_from_seek(seek: &Seek, opponent: &PlayerUsername) -> Result<(), 
         add: true,
         game: game.clone(),
     };
-    try_protocol_broadcast(&game_new_msg);
+    try_auth_protocol_broadcast(&game_new_msg);
 
     let game_start_msg = ServerMessage::GameStart { game };
     get_associated_client(&seek.creator).map(|id| try_protocol_send(&id, &game_start_msg));
@@ -237,7 +251,7 @@ pub fn try_do_action(
         .get_mut(game_id)
         .ok_or_else(|| "Game ID not found".to_string())?;
     let player = get_game_player(&game_ref, username)?;
-    if game_ref.game.current_player != player {
+    if game_ref.game.base.current_player != player {
         return Err("It's not your turn".to_string());
     }
     game_ref.game.do_action(&action)?;
@@ -260,15 +274,22 @@ pub fn try_do_action(
     Ok(())
 }
 
-pub fn send_games_to(id: &ClientId) {
+pub fn get_games() -> Vec<Game> {
+    GAMES.iter().map(|entry| entry.value().clone()).collect()
+}
+
+pub fn has_active_game(player: &PlayerUsername) -> bool {
+    GAME_BY_PLAYER.contains_key(player)
+}
+
+pub fn get_active_game_of_player(player: &PlayerUsername) -> Option<Game> {
     for entry in GAMES.iter() {
         let game = entry.value();
-        let game_msg = ServerMessage::GameList {
-            add: true,
-            game: game.clone(),
-        };
-        try_protocol_send(id, &game_msg);
+        if &game.white == player || &game.black == player {
+            return Some(game.clone());
+        }
     }
+    None
 }
 
 pub fn resign_game(username: &PlayerUsername, game_id: &GameId) -> Result<(), String> {
@@ -286,7 +307,7 @@ pub fn resign_game(username: &PlayerUsername, game_id: &GameId) -> Result<(), St
 fn check_game_over(game_id: &GameId) {
     let game_ref = GAMES.get(game_id);
     let game = match game_ref.as_ref() {
-        Some(g) if g.game.game_state != TakGameState::Ongoing => g.value().clone(),
+        Some(g) if !g.game.is_ongoing() => g.value().clone(),
         _ => return,
     };
     drop(game_ref);
@@ -294,7 +315,7 @@ fn check_game_over(game_id: &GameId) {
     println!(
         "Game {} is over: {}",
         game.id,
-        game.game.game_state.to_string()
+        game.game.base.game_state.to_string()
     );
 
     GAMES.remove(game_id);
@@ -304,7 +325,7 @@ fn check_game_over(game_id: &GameId) {
 
     let game_over_msg = ServerMessage::GameMessage {
         game_id: *game_id,
-        message: ServerGameMessage::GameOver(game.game.game_state.clone()),
+        message: ServerGameMessage::GameOver(game.game.base.game_state.clone()),
     };
     get_associated_client(&game.white).map(|id| try_protocol_send(&id, &game_over_msg));
     get_associated_client(&game.black).map(|id| try_protocol_send(&id, &game_over_msg));
@@ -317,7 +338,7 @@ fn check_game_over(game_id: &GameId) {
         add: false,
         game: game.clone(),
     };
-    try_protocol_broadcast(&game_remove_msg);
+    try_auth_protocol_broadcast(&game_remove_msg);
 
     if let Err(e) = save_to_database(&game) {
         eprintln!("Failed to save game to database: {}", e);
@@ -397,9 +418,10 @@ pub fn request_undo(
             game_id: *game_id,
             message: ServerGameMessage::Undo,
         };
+        get_associated_client(&username).map(|id| try_protocol_send(&id, &undo_msg));
         get_associated_client(&opponent).map(|id| try_protocol_send(&id, &undo_msg));
 
-        if let Some((_, spectators)) = GAME_SPECTATORS.remove(game_id) {
+        if let Some(spectators) = GAME_SPECTATORS.get(game_id) {
             try_protocol_multicast(&spectators, &undo_msg);
         }
     }
@@ -411,12 +433,9 @@ fn send_time_update(game_id: &GameId) {
     let game_ref = GAMES.get(game_id);
     let now = Instant::now();
     let (players, remaining) = match game_ref.as_ref() {
-        Some(g) if g.game.game_state == TakGameState::Ongoing => (
+        Some(g) if g.game.is_ongoing() => (
             (g.white.clone(), g.black.clone()),
-            (
-                g.game.get_time_remaining(&TakPlayer::White, now),
-                g.game.get_time_remaining(&TakPlayer::Black, now),
-            ),
+            g.game.get_time_remaining_both(now),
         ),
         _ => return,
     };
@@ -441,12 +460,11 @@ pub fn run_timeout_waiter(game_id: GameId, cancel_token: CancellationToken) {
             };
             let now = Instant::now();
             game_ref.game.check_timeout(now);
-            if game_ref.game.game_state != TakGameState::Ongoing {
+            if !game_ref.game.is_ongoing() {
                 break;
             }
             let min_duration_to_timeout = {
-                let white_time = game_ref.game.get_time_remaining(&TakPlayer::White, now);
-                let black_time = game_ref.game.get_time_remaining(&TakPlayer::Black, now);
+                let (white_time, black_time) = game_ref.game.get_time_remaining_both(now);
                 white_time.min(black_time).max(Duration::from_millis(100))
             };
             drop(game_ref);

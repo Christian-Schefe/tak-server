@@ -28,6 +28,8 @@ async fn main() {
         .route("/ws", any(ws_handler))
         .route("/auth/login", post(jwt::handle_login));
 
+    let app = protocol::register_http_endpoints(app);
+
     let ws_port = std::env::var("TAK_WS_PORT")
         .unwrap_or_else(|_| "9999".to_string())
         .parse::<u16>()

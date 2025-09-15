@@ -14,10 +14,10 @@ use tokio_util::{
 use uuid::Uuid;
 
 use crate::{
-    game::send_games_to,
     player::PlayerUsername,
-    protocol::{Protocol, ServerMessage, handle_client_message, handle_server_message},
-    seek::send_seeks_to,
+    protocol::{
+        Protocol, ServerMessage, handle_client_message, handle_server_message, on_authenticated,
+    },
 };
 
 static CLIENT_SENDERS: LazyLock<
@@ -50,6 +50,7 @@ fn new_client() -> ClientId {
 fn on_disconnect(id: &ClientId) {
     CLIENT_SENDERS.remove(id);
     CLIENT_HANDLERS.remove(id);
+    LAST_ACTIVITY.remove(id);
     let player = CLIENT_TO_PLAYER.remove(id);
     if let Some((_, username)) = player {
         PLAYER_TO_CLIENT.remove(&username);
@@ -212,6 +213,9 @@ pub fn associate_player(id: &ClientId, username: &PlayerUsername) -> Result<(), 
     }
     CLIENT_TO_PLAYER.insert(*id, username.clone());
     PLAYER_TO_CLIENT.insert(username.clone(), *id);
+    if let Some(handler) = CLIENT_HANDLERS.get(id) {
+        on_authenticated(&handler, id, username);
+    }
     update_online_players();
     Ok(())
 }
@@ -222,7 +226,7 @@ fn update_online_players() {
         .map(|entry| entry.value().clone())
         .collect();
     let msg = ServerMessage::PlayersOnline { players };
-    try_protocol_broadcast(&msg);
+    try_auth_protocol_broadcast(&msg);
 }
 
 pub fn get_associated_player(id: &ClientId) -> Option<PlayerUsername> {
@@ -236,8 +240,6 @@ pub fn get_associated_client(player: &PlayerUsername) -> Option<ClientId> {
 fn on_connect(id: &ClientId) {
     send_to(id, "Welcome!");
     send_to(id, "Login or Register");
-    send_seeks_to(id);
-    send_games_to(id);
 }
 
 pub fn try_protocol_send(id: &ClientId, msg: &ServerMessage) {
@@ -252,9 +254,11 @@ pub fn try_protocol_multicast(ids: &[ClientId], msg: &ServerMessage) {
     }
 }
 
-pub fn try_protocol_broadcast(msg: &ServerMessage) {
+pub fn try_auth_protocol_broadcast(msg: &ServerMessage) {
     for entry in CLIENT_HANDLERS.iter() {
-        handle_server_message(entry.value(), entry.key(), msg);
+        if CLIENT_TO_PLAYER.contains_key(entry.key()) {
+            handle_server_message(&entry, entry.key(), msg);
+        }
     }
 }
 

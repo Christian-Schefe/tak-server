@@ -1,9 +1,14 @@
+use std::time::Instant;
+
 use crate::{
     client::{ClientId, send_to},
-    player::{login_guest, reset_password, try_login, try_login_jwt, try_register},
-    protocol::ServerMessage,
+    game::{get_active_game_of_player, get_games},
+    player::PlayerUsername,
+    protocol::{ServerGameMessage, ServerMessage},
+    seek::get_seeks,
 };
 
+mod auth;
 mod chat;
 mod game;
 mod game_list;
@@ -19,10 +24,12 @@ pub fn handle_client_message(id: &ClientId, msg: String) {
         "PING" => {
             send_to(id, "OK");
         }
-        "Login" => handle_login_message(id, &parts),
-        "LoginToken" => handle_login_token_message(id, &parts),
-        "Register" => handle_register_message(id, &parts),
-        "ResetPassword" => handle_reset_password_message(id),
+        "Login" => auth::handle_login_message(id, &parts),
+        "LoginToken" => auth::handle_login_token_message(id, &parts),
+        "Register" => auth::handle_register_message(id, &parts),
+        "SendResetToken" => auth::handle_reset_token_message(id, &parts),
+        "ResetPassword" => auth::handle_reset_password_message(id, &parts),
+        "ChangePassword" => auth::handle_change_password_message(id, &parts),
         "Seek" => seek::handle_seek_message(id, &parts),
         "Accept" => seek::handle_accept_message(id, &parts),
         "Observe" => game_list::handle_observe_message(id, &parts, true),
@@ -66,73 +73,35 @@ pub fn handle_server_message(id: &ClientId, msg: &ServerMessage) {
     }
 }
 
-fn handle_login_message(id: &ClientId, parts: &[&str]) {
-    if parts.len() >= 2 && parts[1] == "Guest" {
-        let token = parts.get(2).copied();
-        login_guest(id, token);
-        return;
+pub fn on_authenticated(id: &ClientId, username: &PlayerUsername) {
+    let seeks = get_seeks();
+    for seek in seeks {
+        let seek_msg = ServerMessage::SeekList { add: true, seek };
+        handle_server_message(id, &seek_msg);
     }
-    if parts.len() != 3 {
-        send_to(id, "NOK");
+    let games = get_games();
+    for game in games {
+        let game_msg = ServerMessage::GameList { add: true, game };
+        handle_server_message(id, &game_msg);
     }
-    let username = parts[1].to_string();
-    let password = parts[2].to_string();
-
-    if let Err(e) = try_login(id, &username, &password) {
-        println!("Login failed for user {}: {}", id, e);
-        send_to(id, "NOK");
-    } else {
-        send_to(id, format!("Welcome {}!", username));
-    }
-}
-
-fn handle_login_token_message(id: &ClientId, parts: &[&str]) {
-    if parts.len() != 2 {
-        send_to(id, "NOK");
-        return;
-    }
-    let token = parts[1];
-    match try_login_jwt(id, token) {
-        Ok(username) => {
-            send_to(id, format!("Welcome {}!", username));
+    if let Some(active_game) = get_active_game_of_player(username) {
+        let start_msg = ServerMessage::GameStart {
+            game: active_game.clone(),
+        };
+        handle_server_message(id, &start_msg);
+        for action in &active_game.game.action_history {
+            let action_msg = ServerMessage::GameMessage {
+                game_id: active_game.id,
+                message: ServerGameMessage::Action(action.clone()),
+            };
+            handle_server_message(id, &action_msg);
         }
-        Err(e) => {
-            println!("Login with token failed for user {}: {}", id, e);
-            send_to(id, "NOK");
-        }
-    }
-}
-
-fn handle_register_message(id: &ClientId, parts: &[&str]) {
-    if parts.len() != 3 {
-        send_to(id, "NOK");
-        return;
-    }
-    let username = parts[1].to_string();
-    let email = parts[2].to_string();
-
-    if let Err(e) = try_register(&username, &email) {
-        println!("Error registering user {}: {}", username, e);
-        send_to(id, format!("Registration Error: {}", e));
-    } else {
-        send_to(
-            id,
-            format!(
-                "Registered {}. Check your email for the temporary password",
-                username
-            ),
-        );
-    }
-}
-
-fn handle_reset_password_message(id: &ClientId) {
-    if let Err(e) = reset_password(id) {
-        println!("Error resetting password for client {}: {}", id, e);
-        send_to(id, format!("Password Reset Error: {}", e));
-    } else {
-        send_to(
-            id,
-            "Password reset. Check your email for the temporary password.",
-        );
+        let now = Instant::now();
+        let remaining = active_game.game.get_time_remaining_both(now);
+        let time_msg = ServerMessage::GameMessage {
+            game_id: active_game.id,
+            message: ServerGameMessage::TimeUpdate { remaining },
+        };
+        handle_server_message(id, &time_msg);
     }
 }
