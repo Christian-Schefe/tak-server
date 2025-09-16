@@ -6,17 +6,19 @@ To do:
 
 - [x] Chat rooms
 - [x] Registration
+- [x] Profanity filter
+- [ ] Game abandon after timeout on disconnect
 - [ ] Tests
 - [ ] Rematches
-- [ ] Mod and admin privileges
+- [x] Mod and admin privileges
 - [x] Player inactivity disconnect
-- [x] Password reset (behaviour is slightly different)
+- [x] Password reset
 - [ ] Broadcasting (is that in use?)
 - [ ] IRCBridge (is that in use?)
 
 To do extra features:
 
-- [ ] JSON protocol alternative
+- [ ] JSON protocol alternativef
 - [ ] REST endpoints
 - [x] JWT auth
 
@@ -30,4 +32,5 @@ Open questions / On hold:
 
 - Games DB uses autoincrement INTEGER PRIMARY KEY, Players DB uses non-autoincrement INT PRIMARY_KEY. Why?
 
-- Move undo: apply time increment?
+- Ban doesn't have any effect?
+- What's the point of sudo broadcast?

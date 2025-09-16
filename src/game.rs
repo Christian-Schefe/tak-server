@@ -322,6 +322,8 @@ fn check_game_over(game_id: &GameId) {
     if let Some((_, token)) = GAME_TIMEOUT_TOKENS.remove(game_id) {
         token.cancel();
     }
+    GAME_BY_PLAYER.remove(&game.white);
+    GAME_BY_PLAYER.remove(&game.black);
 
     let game_over_msg = ServerMessage::GameMessage {
         game_id: *game_id,
@@ -414,6 +416,8 @@ pub fn request_undo(
         };
         get_associated_client(&opponent).map(|id| try_protocol_send(&id, &undo_request_msg));
     } else {
+        send_time_update(game_id);
+
         let undo_msg = ServerMessage::GameMessage {
             game_id: *game_id,
             message: ServerGameMessage::Undo,

@@ -1,3 +1,5 @@
+use rustrict::CensorStr;
+
 use crate::{
     chat::{
         join_room, leave_room, send_message_to_all, send_message_to_player, send_message_to_room,
@@ -86,7 +88,7 @@ pub fn handle_tell_message(id: &ClientId, parts: &[&str], msg: &str) {
     let target_username = parts[1];
     let msg = msg.replacen(&format!("Tell {} ", target_username), "", 1);
 
-    send_to(id, format!("Told <{}> {}", target_username, msg));
+    send_to(id, format!("Told <{}> {}", target_username, msg.censor()));
     if msg.is_empty() {
         send_to(id, "NOK");
         return;

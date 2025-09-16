@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use crate::{
     client::{ClientId, get_associated_player, send_to},
-    game::{Game, observe_game, unobserve_game},
+    game::{Game, get_games, observe_game, unobserve_game},
     player::fetch_player,
     protocol::{ServerGameMessage, ServerMessage},
     seek::GameType,
@@ -40,6 +40,12 @@ pub fn handle_server_game_list_message(id: &ClientId, msg: &ServerMessage) {
         _ => {
             eprintln!("Unhandled server game list message: {:?}", msg);
         }
+    }
+}
+
+pub fn handle_game_list_message(id: &ClientId) {
+    for game in get_games() {
+        send_game_string_message(id, &game, "GameList Add");
     }
 }
 

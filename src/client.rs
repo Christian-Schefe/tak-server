@@ -206,10 +206,13 @@ where
 
 pub fn associate_player(id: &ClientId, username: &PlayerUsername) -> Result<(), String> {
     if CLIENT_TO_PLAYER.contains_key(id) {
-        return Err("Player already logged in".into());
+        return Err(format!("Player {} already logged in", username));
     }
     if PLAYER_TO_CLIENT.contains_key(username) {
-        return Err("Player already logged in from another client".into());
+        return Err(format!(
+            "Player {} already logged in from another client",
+            username
+        ));
     }
     CLIENT_TO_PLAYER.insert(*id, username.clone());
     PLAYER_TO_CLIENT.insert(username.clone(), *id);

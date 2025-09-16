@@ -1,7 +1,8 @@
 use dashmap::DashMap;
 use passwords::PasswordGenerator;
-use r2d2::Pool;
+use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
+use rustrict::CensorStr;
 use std::{
     sync::{Arc, LazyLock},
     time::{Duration, Instant},
@@ -81,6 +82,15 @@ pub struct Player {
     pub email: String,
     pub password_hash: String,
     pub is_bot: bool,
+    pub is_gagged: bool,
+    pub access_level: AccessLevel,
+}
+
+#[derive(Clone, PartialEq)]
+pub enum AccessLevel {
+    User,
+    Mod,
+    Admin,
 }
 
 pub fn fetch_player(username: &str) -> Option<Player> {
@@ -88,8 +98,7 @@ pub fn fetch_player(username: &str) -> Option<Player> {
         return None;
     }
     let username = username.to_string();
-    let cache = PLAYER_CACHE.clone();
-    if let Some(player) = cache.get(&username) {
+    if let Some(player) = PLAYER_CACHE.get(&username) {
         return Some(player);
     }
     let player = PLAYER_DB_POOL.get().ok()?.query_one(
@@ -101,16 +110,111 @@ pub fn fetch_player(username: &str) -> Option<Player> {
                 id: row.get("id")?,
                 email: row.get("email")?,
                 is_bot: row.get::<_, i32>("isbot")? != 0,
+                is_gagged: row.get::<_, i32>("is_gagged")? != 0,
+                access_level: if row.get::<_, i32>("is_admin")? != 0 {
+                    AccessLevel::Admin
+                } else if row.get::<_, i32>("is_mod")? != 0 {
+                    AccessLevel::Mod
+                } else {
+                    AccessLevel::User
+                },
             })
         },
     );
     match player {
         Ok(p) => {
-            cache.insert(username.clone(), p.clone());
+            PLAYER_CACHE.insert(username.clone(), p.clone());
             Some(p)
         }
         Err(_) => None,
     }
+}
+
+fn more_rights(this: &Player, target: &Player) -> bool {
+    match this.access_level {
+        AccessLevel::Admin => target.access_level != AccessLevel::Admin,
+        AccessLevel::Mod => target.access_level == AccessLevel::User,
+        AccessLevel::User => false,
+    }
+}
+
+fn more_rights_and_admin(this: &Player, target: &Player) -> bool {
+    this.access_level == AccessLevel::Admin && target.access_level != AccessLevel::Admin
+}
+
+pub fn set_gagged(id: &ClientId, username: &PlayerUsername, gagged: bool) -> Result<(), String> {
+    update_player(id, username, more_rights, |player, conn| {
+        if player.access_level != AccessLevel::User {
+            return Err(rusqlite::Error::InvalidQuery);
+        }
+        conn.execute(
+            "UPDATE players SET is_gagged = ?1 WHERE id = ?2",
+            (gagged as i32, player.id),
+        )
+    })
+}
+
+pub fn set_banned(id: &ClientId, username: &PlayerUsername, banned: bool) -> Result<(), String> {
+    update_player(id, username, more_rights, |player, conn| {
+        conn.execute(
+            "UPDATE players SET is_banned = ?1 WHERE id = ?2",
+            (banned as i32, player.id),
+        )
+    })
+}
+
+pub fn set_modded(id: &ClientId, username: &PlayerUsername, modded: bool) -> Result<(), String> {
+    update_player(id, username, more_rights_and_admin, |player, conn| {
+        conn.execute(
+            "UPDATE players SET is_mod = ?1 WHERE id = ?2",
+            (modded as i32, player.id),
+        )
+    })
+}
+
+pub fn set_admin(id: &ClientId, username: &PlayerUsername, admin: bool) -> Result<(), String> {
+    update_player(id, username, more_rights_and_admin, |player, conn| {
+        conn.execute(
+            "UPDATE players SET is_admin = ?1 WHERE id = ?2",
+            (admin as i32, player.id),
+        )
+    })
+}
+
+pub fn set_bot(id: &ClientId, username: &PlayerUsername, bot: bool) -> Result<(), String> {
+    update_player(id, username, more_rights_and_admin, |player, conn| {
+        conn.execute(
+            "UPDATE players SET isbot = ?1 WHERE id = ?2",
+            (bot as i32, player.id),
+        )
+    })
+}
+
+fn update_player(
+    id: &ClientId,
+    username: &PlayerUsername,
+    access_predicate: impl Fn(&Player, &Player) -> bool,
+    database_update_fn: impl Fn(
+        &Player,
+        &PooledConnection<SqliteConnectionManager>,
+    ) -> Result<usize, rusqlite::Error>,
+) -> Result<(), String> {
+    let Some(current_username) = get_associated_player(id) else {
+        return Err("Not logged in".into());
+    };
+    let Some(current_player) = fetch_player(&current_username) else {
+        return Err("Current player not found".into());
+    };
+    let player = fetch_player(username).ok_or("Player not found")?;
+    if !access_predicate(&current_player, &player) {
+        return Err("Insufficient access level".into());
+    }
+    let conn = PLAYER_DB_POOL
+        .get()
+        .map_err(|e| format!("Failed to get DB connection: {}", e))?;
+    database_update_fn(&player, &conn).map_err(|e| format!("Failed to update player: {}", e))?;
+    PLAYER_CACHE.invalidate(username);
+    Ok(())
 }
 
 pub fn validate_login(username: &PlayerUsername, password: &str) -> Result<(), String> {
@@ -140,16 +244,16 @@ pub fn try_login_jwt(id: &ClientId, token: &str) -> Result<PlayerUsername, Strin
     Ok(username)
 }
 
-pub fn login_guest(id: &ClientId, token: Option<&str>) {
+pub fn try_login_guest(id: &ClientId, token: Option<&str>) -> Result<PlayerUsername, String> {
     let guest_name = token
         .and_then(|x| GUEST_PLAYER_TOKENS.get(x))
         .unwrap_or_else(|| format!("Guest{}", increment_guest_id()));
 
-    if let Err(e) = associate_player(id, &guest_name) {
-        eprintln!("Failed to login guest player: {}", e);
-    } else if let Some(token) = token {
+    associate_player(id, &guest_name)?;
+    if let Some(token) = token {
         GUEST_PLAYER_TOKENS.insert(guest_name.clone(), token.to_string());
     }
+    Ok(guest_name)
 }
 
 #[derive(Validate)]
@@ -161,6 +265,9 @@ struct EmailValidator {
 pub fn try_register(username: &PlayerUsername, email: &str) -> Result<(), String> {
     if username.to_ascii_lowercase().starts_with("guest") {
         return Err("Username cannot start with 'Guest'".into());
+    }
+    if username.is_inappropriate() {
+        return Err("Username contains inappropriate content".into());
     }
     if username.len() < 3 || username.len() > 15 {
         return Err("Username must be between 3 and 15 characters".into());
@@ -318,6 +425,7 @@ pub fn reset_password(
         (password_hash, player.id),
     )
     .map_err(|e| format!("Failed to update player password: {}", e))?;
+    PLAYER_CACHE.invalidate(username);
     Ok(())
 }
 
@@ -342,5 +450,6 @@ pub fn change_password(
         (password_hash, player.id),
     )
     .map_err(|e| format!("Failed to update player password: {}", e))?;
+    PLAYER_CACHE.invalidate(&username);
     Ok(())
 }

@@ -1,15 +1,23 @@
 use crate::{
     client::{ClientId, send_to},
     player::{
-        change_password, login_guest, reset_password, send_reset_token, try_login, try_login_jwt,
-        try_register,
+        change_password, reset_password, send_reset_token, try_login, try_login_guest,
+        try_login_jwt, try_register,
     },
 };
 
 pub fn handle_login_message(id: &ClientId, parts: &[&str]) {
     if parts.len() >= 2 && parts[1] == "Guest" {
         let token = parts.get(2).copied();
-        login_guest(id, token);
+        match try_login_guest(id, token) {
+            Ok(username) => {
+                send_to(id, format!("Welcome {}!", username));
+            }
+            Err(e) => {
+                println!("Guest login failed for user {}: {}", id, e);
+                send_to(id, "NOK");
+            }
+        }
         return;
     }
     if parts.len() != 3 {

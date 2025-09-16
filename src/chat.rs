@@ -1,13 +1,14 @@
 use std::sync::{Arc, LazyLock};
 
 use dashmap::DashMap;
+use rustrict::CensorStr;
 
 use crate::{
     client::{
         ClientId, get_associated_client, get_associated_player, try_auth_protocol_broadcast,
         try_protocol_multicast, try_protocol_send,
     },
-    player::PlayerUsername,
+    player::{PlayerUsername, fetch_player},
     protocol::{ChatMessageSource, ServerMessage},
 };
 
@@ -44,9 +45,15 @@ pub fn send_message_to_all(client_id: &ClientId, message: &str) -> Result<(), St
     let Some(username) = get_associated_player(client_id) else {
         return Err("Client not associated with a player".to_string());
     };
+    let Some(player) = fetch_player(&username) else {
+        return Err("Associated player not found".to_string());
+    };
+    if player.is_gagged {
+        return Err("You are gagged and cannot send messages".to_string());
+    }
     let msg = ServerMessage::ChatMessage {
         from: username,
-        message: message.to_string(),
+        message: message.censor(),
         source: ChatMessageSource::Global,
     };
     try_auth_protocol_broadcast(&msg);
@@ -61,10 +68,16 @@ pub fn send_message_to_room(
     let Some(username) = get_associated_player(client_id) else {
         return Err("Client not associated with a player".to_string());
     };
+    let Some(player) = fetch_player(&username) else {
+        return Err("Associated player not found".to_string());
+    };
+    if player.is_gagged {
+        return Err("You are gagged and cannot send messages".to_string());
+    }
     if let Some(room) = CHAT_ROOMS.get(room_name) {
         let msg = ServerMessage::ChatMessage {
             from: username,
-            message: message.to_string(),
+            message: message.censor(),
             source: ChatMessageSource::Room(room_name.to_string()),
         };
         try_protocol_multicast(&room, &msg);
@@ -80,12 +93,18 @@ pub fn send_message_to_player(
     let Some(from_username) = get_associated_player(from_client_id) else {
         return Err("Client not associated with a player".to_string());
     };
+    let Some(from_player) = fetch_player(&from_username) else {
+        return Err("Associated player not found".to_string());
+    };
+    if from_player.is_gagged {
+        return Err("You are gagged and cannot send messages".to_string());
+    }
     let Some(to_client_id) = get_associated_client(to_username) else {
         return Ok(());
     };
     let msg = ServerMessage::ChatMessage {
         from: from_username,
-        message: message.to_string(),
+        message: message.censor(),
         source: ChatMessageSource::Private,
     };
     try_protocol_send(&to_client_id, &msg);

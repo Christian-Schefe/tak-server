@@ -9,11 +9,14 @@ use crate::{
     protocol::ServerMessage,
 };
 
+mod auth;
 mod seek;
 
 #[derive(Clone, Debug, Deserialize)]
 pub enum ClientMessage {
     Ping,
+    Login { token: String },
+    LoginGuest { token: Option<String> },
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -61,6 +64,12 @@ pub fn handle_client_message(id: &ClientId, msg: String) {
     match msg {
         ClientMessage::Ping => {
             send_json_to(id, &ClientResponse::Ok);
+        }
+        ClientMessage::Login { token } => {
+            auth::handle_login_message(id, &token);
+        }
+        ClientMessage::LoginGuest { token } => {
+            auth::handle_login_guest_message(id, token.as_deref());
         }
     };
 }

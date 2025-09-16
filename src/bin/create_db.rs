@@ -1,6 +1,3 @@
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
-
 fn main() {
     dotenvy::dotenv().ok();
 
@@ -29,23 +26,13 @@ fn main() {
         println!("Removed existing players DB at {}", players_db_path);
     }
 
-    let games_db_manager = SqliteConnectionManager::file(&games_db_path);
-    let games_db_pool = Pool::builder()
-        .max_size(5)
-        .build(games_db_manager)
-        .expect("Failed to create DB pool");
-    let conn = games_db_pool.get().expect("Failed to get DB connection");
+    let conn = rusqlite::Connection::open(&games_db_path).expect("Failed to open games DB");
     conn.execute_batch(games_db_sql)
         .expect("Failed to create games table");
 
     println!("Created new games DB at {}", games_db_path);
 
-    let players_db_manager = SqliteConnectionManager::file(&players_db_path);
-    let players_db_pool = Pool::builder()
-        .max_size(5)
-        .build(players_db_manager)
-        .expect("Failed to create DB pool");
-    let conn = players_db_pool.get().expect("Failed to get DB connection");
+    let conn = rusqlite::Connection::open(&players_db_path).expect("Failed to open players DB");
     conn.execute_batch(players_db_sql)
         .expect("Failed to create players table");
 
@@ -65,5 +52,5 @@ fn create_user(conn: &rusqlite::Connection, name: &str, password: &str) {
     let pw_hash = bcrypt::hash(password, bcrypt::DEFAULT_COST).expect("Failed to hash password");
     conn.execute(sql, [next_id.to_string(), name.to_string(), pw_hash])
         .expect("Failed to create user");
-    println!("Created user {}", name);
+    println!("Created user [{}] with password [{}]", name, password);
 }

@@ -13,6 +13,7 @@ mod chat;
 mod game;
 mod game_list;
 mod seek;
+mod sudo;
 
 pub fn handle_client_message(id: &ClientId, msg: String) {
     let parts = msg.split_whitespace().collect::<Vec<_>>();
@@ -31,6 +32,8 @@ pub fn handle_client_message(id: &ClientId, msg: String) {
         "ResetPassword" => auth::handle_reset_password_message(id, &parts),
         "ChangePassword" => auth::handle_change_password_message(id, &parts),
         "Seek" => seek::handle_seek_message(id, &parts),
+        "List" => seek::handle_seek_list_message(id),
+        "GameList" => game_list::handle_game_list_message(id),
         "Accept" => seek::handle_accept_message(id, &parts),
         "Observe" => game_list::handle_observe_message(id, &parts, true),
         "Unobserve" => game_list::handle_observe_message(id, &parts, false),
@@ -39,6 +42,7 @@ pub fn handle_client_message(id: &ClientId, msg: String) {
         "Tell" => chat::handle_tell_message(id, &parts, &msg),
         "JoinRoom" => chat::handle_room_membership_message(id, &parts, true),
         "LeaveRoom" => chat::handle_room_membership_message(id, &parts, false),
+        "Sudo" => sudo::handle_sudo_message(id, &parts),
         s if s.starts_with("Game#") => game::handle_game_message(id, &parts),
         _ => {
             println!("Unknown V2 message type: {}", parts[0]);

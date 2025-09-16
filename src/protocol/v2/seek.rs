@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::{
     client::{ClientId, get_associated_player, send_to},
     player::fetch_player,
-    seek::{GameType, Seek, accept_seek, add_seek, remove_seek_of_player},
+    seek::{GameType, Seek, accept_seek, add_seek, get_seeks, remove_seek_of_player},
     tak::{TakGameSettings, TakPlayer, TakTimeControl},
 };
 
@@ -11,6 +11,12 @@ pub fn handle_seek_message(id: &ClientId, parts: &[&str]) {
     if let Err(e) = handle_add_seek_message(id, parts) {
         println!("Error parsing Seek message: {}", e);
         send_to(id, "NOK");
+    }
+}
+
+pub fn handle_seek_list_message(id: &ClientId) {
+    for seek in get_seeks() {
+        send_seek_list_message(id, &seek, true);
     }
 }
 
