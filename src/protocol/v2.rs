@@ -1,11 +1,10 @@
 use std::time::Instant;
 
 use crate::{
-    client::{ClientId, send_to},
-    game::{get_active_game_of_player, get_games},
+    APP,
+    client::ClientId,
     player::PlayerUsername,
     protocol::{ServerGameMessage, ServerMessage},
-    seek::get_seeks,
 };
 
 mod auth;
@@ -14,6 +13,13 @@ mod game;
 mod game_list;
 mod seek;
 mod sudo;
+
+fn send_to<T>(id: &ClientId, msg: T)
+where
+    T: AsRef<str>,
+{
+    crate::client::send_to(&**APP.client_service, id, msg);
+}
 
 pub fn handle_client_message(id: &ClientId, msg: String) {
     let parts = msg.split_whitespace().collect::<Vec<_>>();
@@ -30,6 +36,18 @@ pub fn handle_client_message(id: &ClientId, msg: String) {
         "Register" => auth::handle_register_message(id, &parts),
         "SendResetToken" => auth::handle_reset_token_message(id, &parts),
         "ResetPassword" => auth::handle_reset_password_message(id, &parts),
+        _ => handle_logged_in_client_message(id, &parts, &msg),
+    };
+}
+
+pub fn handle_logged_in_client_message(id: &ClientId, parts: &[&str], msg: &str) {
+    let Some(username) = APP.client_service.get_associated_player(id) else {
+        println!("Client {} is not logged in", id);
+        send_to(id, "NOK");
+        return;
+    };
+
+    match parts[0] {
         "ChangePassword" => auth::handle_change_password_message(id, &parts),
         "Seek" => seek::handle_seek_message(id, &parts),
         "List" => seek::handle_seek_list_message(id),
@@ -78,17 +96,17 @@ pub fn handle_server_message(id: &ClientId, msg: &ServerMessage) {
 }
 
 pub fn on_authenticated(id: &ClientId, username: &PlayerUsername) {
-    let seeks = get_seeks();
+    let seeks = APP.seek_service.get_seeks();
     for seek in seeks {
         let seek_msg = ServerMessage::SeekList { add: true, seek };
         handle_server_message(id, &seek_msg);
     }
-    let games = get_games();
+    let games = APP.game_service.get_games();
     for game in games {
         let game_msg = ServerMessage::GameList { add: true, game };
         handle_server_message(id, &game_msg);
     }
-    if let Some(active_game) = get_active_game_of_player(username) {
+    if let Some(active_game) = APP.game_service.get_active_game_of_player(username) {
         let start_msg = ServerMessage::GameStart {
             game: active_game.clone(),
         };

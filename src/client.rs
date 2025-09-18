@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, LazyLock},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -14,27 +14,12 @@ use tokio_util::{
 use uuid::Uuid;
 
 use crate::{
+    ServiceError, ServiceResult,
     player::PlayerUsername,
     protocol::{
         Protocol, ServerMessage, handle_client_message, handle_server_message, on_authenticated,
     },
 };
-
-static CLIENT_SENDERS: LazyLock<
-    Arc<DashMap<ClientId, (UnboundedSender<String>, CancellationToken)>>,
-> = LazyLock::new(|| Arc::new(DashMap::new()));
-
-static CLIENT_HANDLERS: LazyLock<Arc<DashMap<ClientId, Protocol>>> =
-    LazyLock::new(|| Arc::new(DashMap::new()));
-
-static CLIENT_TO_PLAYER: LazyLock<Arc<DashMap<ClientId, PlayerUsername>>> =
-    LazyLock::new(|| Arc::new(DashMap::new()));
-
-static PLAYER_TO_CLIENT: LazyLock<Arc<DashMap<PlayerUsername, ClientId>>> =
-    LazyLock::new(|| Arc::new(DashMap::new()));
-
-static LAST_ACTIVITY: LazyLock<Arc<DashMap<ClientId, Instant>>> =
-    LazyLock::new(|| Arc::new(DashMap::new()));
 
 pub type ClientId = Uuid;
 
@@ -47,65 +32,136 @@ fn new_client() -> ClientId {
     Uuid::new_v4()
 }
 
-fn on_disconnect(id: &ClientId) {
-    CLIENT_SENDERS.remove(id);
-    CLIENT_HANDLERS.remove(id);
-    LAST_ACTIVITY.remove(id);
-    let player = CLIENT_TO_PLAYER.remove(id);
-    if let Some((_, username)) = player {
-        PLAYER_TO_CLIENT.remove(&username);
-        update_online_players();
+pub fn send_to<T>(client_service: &dyn ClientService, id: &ClientId, msg: T)
+where
+    T: AsRef<str>,
+{
+    let _ = client_service.try_send_to(id, msg.as_ref());
+}
+
+pub fn try_send_to<T>(
+    client_service: &dyn ClientService,
+    id: &ClientId,
+    msg: T,
+) -> Result<(), String>
+where
+    T: AsRef<str>,
+{
+    client_service.try_send_to(id, msg.as_ref())
+}
+
+#[async_trait::async_trait]
+pub trait ClientService {
+    fn try_send_to(&self, id: &ClientId, msg: &str) -> Result<(), String>;
+    fn associate_player(&self, id: &ClientId, username: &PlayerUsername) -> ServiceResult<()>;
+    fn get_associated_player(&self, id: &ClientId) -> Option<PlayerUsername>;
+    fn get_associated_client(&self, player: &PlayerUsername) -> Option<ClientId>;
+    fn try_protocol_send(&self, id: &ClientId, msg: &ServerMessage);
+    fn try_protocol_multicast(&self, ids: &[ClientId], msg: &ServerMessage);
+    fn try_auth_protocol_broadcast(&self, msg: &ServerMessage);
+    async fn launch_client_cleanup_task(&self);
+    async fn handle_client_websocket(&self, ws: WebSocket);
+    async fn handle_client_tcp(&self, tcp: TcpStream);
+}
+
+#[derive(Clone)]
+pub struct ClientServiceImpl {
+    client_senders: Arc<DashMap<ClientId, (UnboundedSender<String>, CancellationToken)>>,
+    client_handlers: Arc<DashMap<ClientId, Protocol>>,
+    client_to_player: Arc<DashMap<ClientId, PlayerUsername>>,
+    player_to_client: Arc<DashMap<PlayerUsername, ClientId>>,
+    last_activity: Arc<DashMap<ClientId, Instant>>,
+}
+
+impl ClientServiceImpl {
+    pub fn new() -> Self {
+        Self {
+            client_senders: Arc::new(DashMap::new()),
+            client_handlers: Arc::new(DashMap::new()),
+            client_to_player: Arc::new(DashMap::new()),
+            player_to_client: Arc::new(DashMap::new()),
+            last_activity: Arc::new(DashMap::new()),
+        }
     }
-}
 
-pub fn handle_client_websocket(ws: WebSocket) {
-    handle_client(
-        ws,
-        |s| Message::Binary(s.into()),
-        |m| match m {
-            Message::Text(t) => Some(ClientMessage::Text(t.to_string())),
-            Message::Close(_) => Some(ClientMessage::Close),
-            _ => None,
-        },
-    );
-}
+    fn on_disconnect(&self, id: &ClientId) {
+        self.client_senders.remove(id);
+        self.client_handlers.remove(id);
+        self.last_activity.remove(id);
+        let player = self.client_to_player.remove(id);
+        if let Some((_, username)) = player {
+            self.player_to_client.remove(&username);
+            self.update_online_players();
+        }
+    }
 
-pub fn handle_client_tcp(tcp: TcpStream) {
-    let framed = Framed::new(tcp, LinesCodec::new());
-    handle_client(framed, |s| s.to_string(), |s| Some(ClientMessage::Text(s)));
-}
+    fn handle_client_websocket(&'static self, ws: WebSocket) {
+        self.handle_client(
+            ws,
+            |s| Message::Binary(s.into()),
+            |m| match m {
+                Message::Text(t) => Some(ClientMessage::Text(t.to_string())),
+                Message::Close(_) => Some(ClientMessage::Close),
+                _ => None,
+            },
+        );
+    }
 
-fn handle_client<M, S, E>(
-    socket: S,
-    msg_factory: impl Fn(String) -> M + Send + 'static,
-    msg_parser: impl Fn(M) -> Option<ClientMessage> + Send + 'static,
-) where
-    S: futures_util::Sink<M> + futures_util::Stream<Item = Result<M, E>> + Unpin + Send + 'static,
-    M: Send + 'static,
-{
-    let (ws_sender, ws_receiver) = socket.split();
-    let client_id = new_client();
-    let cancellation_token = CancellationToken::new();
-    let cancellation_token_clone = cancellation_token.clone();
-    handle_receive::<S, M, E>(client_id, ws_receiver, cancellation_token, msg_parser);
-    handle_send::<S, M>(client_id, ws_sender, cancellation_token_clone, msg_factory);
-    on_connect(&client_id);
-}
+    fn handle_client_tcp(&'static self, tcp: TcpStream) {
+        let framed = Framed::new(tcp, LinesCodec::new());
+        self.handle_client(framed, |s| s.to_string(), |s| Some(ClientMessage::Text(s)));
+    }
 
-fn handle_send<S, M>(
-    id: ClientId,
-    mut ws_sender: impl SinkExt<M> + Unpin + Send + 'static,
-    cancellation_token: CancellationToken,
-    msg_factory: impl Fn(String) -> M + Send + 'static,
-) where
-    S: futures_util::Sink<M> + Unpin + Send + 'static,
-    M: Send + 'static,
-{
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-    CLIENT_SENDERS.insert(id, (tx, cancellation_token.clone()));
-    CLIENT_HANDLERS.insert(id, Protocol::V2);
+    async fn handle_client<M, S, E>(
+        &self,
+        socket: S,
+        msg_factory: impl Fn(String) -> M + Send + 'static,
+        msg_parser: impl Fn(M) -> Option<ClientMessage> + Send + 'static,
+    ) where
+        S: futures_util::Sink<M>
+            + futures_util::Stream<Item = Result<M, E>>
+            + Unpin
+            + Send
+            + 'static,
+        M: Send + 'static,
+        E: 'static,
+    {
+        let (ws_sender, ws_receiver) = socket.split();
+        let client_id = new_client();
+        let cancellation_token = CancellationToken::new();
+        let cancellation_token_clone = cancellation_token.clone();
 
-    tokio::spawn(async move {
+        let client_service = self.clone();
+        let receive_task = tokio::spawn(async move {
+            client_service
+                .handle_receive::<S, M, E>(client_id, ws_receiver, cancellation_token, msg_parser)
+                .await;
+        });
+        let client_service = self.clone();
+        let send_task = tokio::spawn(async move {
+            client_service
+                .handle_send::<S, M>(client_id, ws_sender, cancellation_token_clone, msg_factory)
+                .await;
+        });
+        self.on_connect(&client_id);
+        let _ = tokio::join!(receive_task, send_task);
+    }
+
+    async fn handle_send<S, M>(
+        &self,
+        id: ClientId,
+        mut ws_sender: impl SinkExt<M> + Unpin + Send + 'static,
+        cancellation_token: CancellationToken,
+        msg_factory: impl Fn(String) -> M + Send + 'static,
+    ) where
+        S: futures_util::Sink<M> + Unpin + Send + 'static,
+        M: Send + 'static,
+    {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        self.client_senders
+            .insert(id, (tx, cancellation_token.clone()));
+        self.client_handlers.insert(id, Protocol::V2);
+
         while let Some(msg) = select! {
             msg = rx.recv() => msg,
             _ = cancellation_token.cancelled() => None,
@@ -116,27 +172,26 @@ fn handle_send<S, M>(
             }
         }
         let _ = ws_sender.close().await;
-        on_disconnect(&id);
+        self.on_disconnect(&id);
         println!("Client {} send ended", id);
         cancellation_token.cancel();
-    });
-}
+    }
 
-fn handle_receive<S, M, E>(
-    id: ClientId,
-    mut ws_receiver: impl StreamExt<Item = Result<M, E>> + Unpin + Send + 'static,
-    cancellation_token: CancellationToken,
-    msg_parser: impl Fn(M) -> Option<ClientMessage> + Send + 'static,
-) where
-    S: futures_util::Stream<Item = Result<M, E>> + Unpin + Send + 'static,
-    M: Send + 'static,
-{
-    tokio::spawn(async move {
+    async fn handle_receive<S, M, E>(
+        &self,
+        id: ClientId,
+        mut ws_receiver: impl StreamExt<Item = Result<M, E>> + Unpin + Send + 'static,
+        cancellation_token: CancellationToken,
+        msg_parser: impl Fn(M) -> Option<ClientMessage> + Send + 'static,
+    ) where
+        S: futures_util::Stream<Item = Result<M, E>> + Unpin + Send + 'static,
+        M: Send + 'static,
+    {
         while let Some(Ok(msg)) = select! {
             msg = ws_receiver.next() => msg,
             _ = cancellation_token.cancelled() => None,
         } {
-            LAST_ACTIVITY.insert(id, Instant::now());
+            self.last_activity.insert(id, Instant::now());
 
             let msg = match msg_parser(msg) {
                 Some(m) => m,
@@ -148,10 +203,10 @@ fn handle_receive<S, M, E>(
             match msg {
                 ClientMessage::Text(text) => {
                     if text.starts_with("Protocol") {
-                        try_switch_protocol(&id, &text).unwrap_or_else(|e| {
+                        self.try_switch_protocol(&id, &text).unwrap_or_else(|e| {
                             println!("Client {} protocol switch error: {}", id, e);
                         });
-                    } else if let Some(handler) = CLIENT_HANDLERS.get(&id) {
+                    } else if let Some(handler) = self.client_handlers.get(&id) {
                         handle_client_message(&handler, &id, text);
                     } else {
                         println!("Client {} has no protocol handler", id);
@@ -162,123 +217,119 @@ fn handle_receive<S, M, E>(
         }
         println!("Client {} received ended", id);
         cancellation_token.cancel();
-    });
-}
+    }
 
-fn try_switch_protocol(id: &ClientId, protocol_msg: &str) -> Result<(), String> {
-    let parts: Vec<&str> = protocol_msg.split_whitespace().collect();
-    if parts.len() == 2 {
-        let protocol = Protocol::from_id(parts[1]).ok_or("Unknown protocol")?;
-        if let Some(mut handler) = CLIENT_HANDLERS.get_mut(id) {
-            *handler = protocol;
-            println!("Client {} set protocol to {:?}", id, parts[1]);
-            Ok(())
+    fn try_switch_protocol(&self, id: &ClientId, protocol_msg: &str) -> Result<(), String> {
+        let parts: Vec<&str> = protocol_msg.split_whitespace().collect();
+        if parts.len() == 2 {
+            let protocol = Protocol::from_id(parts[1]).ok_or("Unknown protocol")?;
+            if let Some(mut handler) = self.client_handlers.get_mut(id) {
+                *handler = protocol;
+                println!("Client {} set protocol to {:?}", id, parts[1]);
+                Ok(())
+            } else {
+                Err("Client handler not found".into())
+            }
         } else {
-            Err("Client handler not found".into())
-        }
-    } else {
-        Err("Invalid protocol message format".into())
-    }
-}
-
-pub fn send_to<T>(id: &ClientId, msg: T)
-where
-    T: AsRef<str>,
-{
-    if let Err(e) = try_send_to(id, msg) {
-        println!("Failed to send message to client {}: {}", id, e);
-    }
-}
-
-pub fn try_send_to<T>(id: &ClientId, msg: T) -> Result<(), String>
-where
-    T: AsRef<str>,
-{
-    if let Some(sender) = CLIENT_SENDERS.get(id) {
-        sender
-            .0
-            .send(msg.as_ref().into())
-            .map_err(|e| format!("Failed to send message: {}", e))
-    } else {
-        Err("Sender not initialized".into())
-    }
-}
-
-pub fn associate_player(id: &ClientId, username: &PlayerUsername) -> Result<(), String> {
-    if CLIENT_TO_PLAYER.contains_key(id) {
-        return Err(format!("Player {} already logged in", username));
-    }
-    if PLAYER_TO_CLIENT.contains_key(username) {
-        return Err(format!(
-            "Player {} already logged in from another client",
-            username
-        ));
-    }
-    CLIENT_TO_PLAYER.insert(*id, username.clone());
-    PLAYER_TO_CLIENT.insert(username.clone(), *id);
-    if let Some(handler) = CLIENT_HANDLERS.get(id) {
-        on_authenticated(&handler, id, username);
-    }
-    update_online_players();
-    Ok(())
-}
-
-fn update_online_players() {
-    let players: Vec<PlayerUsername> = CLIENT_TO_PLAYER
-        .iter()
-        .map(|entry| entry.value().clone())
-        .collect();
-    let msg = ServerMessage::PlayersOnline { players };
-    try_auth_protocol_broadcast(&msg);
-}
-
-pub fn get_associated_player(id: &ClientId) -> Option<PlayerUsername> {
-    CLIENT_TO_PLAYER.get(id).map(|entry| entry.value().clone())
-}
-
-pub fn get_associated_client(player: &PlayerUsername) -> Option<ClientId> {
-    PLAYER_TO_CLIENT.get(player).map(|entry| *entry.value())
-}
-
-fn on_connect(id: &ClientId) {
-    send_to(id, "Welcome!");
-    send_to(id, "Login or Register");
-}
-
-pub fn try_protocol_send(id: &ClientId, msg: &ServerMessage) {
-    if let Some(handler) = CLIENT_HANDLERS.get(id) {
-        handle_server_message(&handler, id, msg);
-    }
-}
-
-pub fn try_protocol_multicast(ids: &[ClientId], msg: &ServerMessage) {
-    for id in ids {
-        try_protocol_send(id, msg);
-    }
-}
-
-pub fn try_auth_protocol_broadcast(msg: &ServerMessage) {
-    for entry in CLIENT_HANDLERS.iter() {
-        if CLIENT_TO_PLAYER.contains_key(entry.key()) {
-            handle_server_message(&entry, entry.key(), msg);
+            Err("Invalid protocol message format".into())
         }
     }
+
+    fn update_online_players(&self) {
+        let players: Vec<PlayerUsername> = self
+            .client_to_player
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect();
+        let msg = ServerMessage::PlayersOnline { players };
+        self.try_auth_protocol_broadcast(&msg);
+    }
+
+    fn on_connect(&self, id: &ClientId) {
+        send_to(self, id, "Welcome!");
+        send_to(self, id, "Login or Register");
+    }
+
+    fn close_client(&self, id: &ClientId) {
+        let Some(cancellation_token) = self.client_senders.get(id).map(|x| x.1.clone()) else {
+            return;
+        };
+        cancellation_token.cancel();
+    }
 }
 
-fn close_client(id: &ClientId) {
-    let Some(cancellation_token) = CLIENT_SENDERS.get(id).map(|x| x.1.clone()) else {
-        return;
-    };
-    cancellation_token.cancel();
-}
+#[async_trait::async_trait]
+impl ClientService for ClientServiceImpl {
+    fn try_send_to(&self, id: &ClientId, msg: &str) -> Result<(), String> {
+        if let Some(sender) = self.client_senders.get(id) {
+            sender
+                .0
+                .send(msg.into())
+                .map_err(|e| format!("Failed to send message: {}", e))
+        } else {
+            Err("Sender not initialized".into())
+        }
+    }
 
-pub fn launch_client_cleanup_task() {
-    let timeout_duration = Duration::from_secs(300);
-    tokio::spawn(async move {
+    fn associate_player(&self, id: &ClientId, username: &PlayerUsername) -> ServiceResult<()> {
+        if self.client_to_player.contains_key(id) {
+            return ServiceError::not_possible(format!("Player {} already logged in", username));
+        }
+        if self.player_to_client.contains_key(username) {
+            return ServiceError::not_possible(format!(
+                "Player {} already logged in from another client",
+                username
+            ));
+        }
+        self.client_to_player.insert(*id, username.clone());
+        self.player_to_client.insert(username.clone(), *id);
+        if let Some(handler) = self.client_handlers.get(id) {
+            on_authenticated(&handler, id, username);
+        }
+        self.update_online_players();
+        Ok(())
+    }
+
+    fn get_associated_player(&self, id: &ClientId) -> Option<PlayerUsername> {
+        self.client_to_player
+            .get(id)
+            .map(|entry| entry.value().clone())
+    }
+
+    fn get_associated_client(&self, player: &PlayerUsername) -> Option<ClientId> {
+        self.player_to_client
+            .get(player)
+            .map(|entry| *entry.value())
+    }
+
+    fn try_protocol_send(&self, id: &ClientId, msg: &ServerMessage) {
+        if let Some(handler) = self.client_handlers.get(id) {
+            handle_server_message(&handler, id, msg);
+        }
+    }
+
+    fn try_protocol_multicast(&self, ids: &[ClientId], msg: &ServerMessage) {
+        for id in ids {
+            self.try_protocol_send(id, msg);
+        }
+    }
+
+    fn try_auth_protocol_broadcast(&self, msg: &ServerMessage) {
+        for entry in self.client_handlers.iter() {
+            if self.client_to_player.contains_key(entry.key()) {
+                handle_server_message(&entry, entry.key(), msg);
+            }
+        }
+    }
+
+    async fn launch_client_cleanup_task(&self) {
+        let timeout_duration = Duration::from_secs(300);
+
         loop {
             tokio::time::sleep(Duration::from_secs(60)).await;
             let now = Instant::now();
-            let inactive_clients: Vec<ClientId> = LAST_ACTIVITY
+            let inactive_clients: Vec<ClientId> = self
+                .last_activity
                 .iter()
                 .filter_map(|entry| {
                     if now.duration_since(*entry.value()) > timeout_duration {
@@ -290,8 +341,25 @@ pub fn launch_client_cleanup_task() {
                 .collect();
             for client_id in inactive_clients {
                 println!("Cleaning up inactive client {}", client_id);
-                close_client(&client_id);
+                self.close_client(&client_id);
             }
         }
-    });
+    }
+
+    async fn handle_client_websocket(&self, ws: WebSocket) {
+        self.handle_client(
+            ws,
+            |s| Message::Binary(s.into()),
+            |m| match m {
+                Message::Text(t) => Some(ClientMessage::Text(t.to_string())),
+                Message::Close(_) => Some(ClientMessage::Close),
+                _ => None,
+            },
+        );
+    }
+
+    async fn handle_client_tcp(&self, tcp: TcpStream) {
+        let framed = Framed::new(tcp, LinesCodec::new());
+        self.handle_client(framed, |s| s.to_string(), |s| Some(ClientMessage::Text(s)));
+    }
 }

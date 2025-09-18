@@ -1,15 +1,13 @@
+use std::sync::LazyLock;
+
 use axum::{
     Router,
-    extract::{WebSocketUpgrade, ws::WebSocket},
-    response::IntoResponse,
+    extract::WebSocketUpgrade,
+    response::Response,
     routing::{any, post},
 };
 
-use crate::{
-    client::{handle_client_tcp, handle_client_websocket, launch_client_cleanup_task},
-    player::load_unique_usernames,
-};
-
+mod app;
 mod chat;
 mod client;
 mod email;
@@ -20,9 +18,14 @@ mod protocol;
 mod seek;
 mod tak;
 
+pub use app::*;
+
+pub static APP: LazyLock<AppState> = LazyLock::new(construct_app);
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
+
     let app = Router::new()
         .route("/", any(ws_handler))
         .route("/ws", any(ws_handler))
@@ -39,7 +42,9 @@ async fn main() {
         .await
         .unwrap();
 
-    load_unique_usernames().expect("Failed to load unique usernames");
+    APP.player_service
+        .load_unique_usernames()
+        .expect("Failed to load unique usernames");
 
     tokio::spawn(async move {
         serve_tcp_server().await;
@@ -51,16 +56,14 @@ async fn main() {
 }
 
 fn launch_background_tasks() {
-    launch_client_cleanup_task();
+    APP.client_service.launch_client_cleanup_task();
 }
 
-async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
+async fn ws_handler(ws: WebSocketUpgrade) -> Response {
     ws.protocols(["binary"])
-        .on_upgrade(move |socket| handle_websocket(socket))
-}
-
-async fn handle_websocket(socket: WebSocket) {
-    handle_client_websocket(socket);
+        .on_upgrade(move |socket| async move {
+            APP.client_service.handle_client_websocket(socket);
+        })
 }
 
 async fn serve_tcp_server() {
@@ -75,6 +78,6 @@ async fn serve_tcp_server() {
     loop {
         let (socket, addr) = listener.accept().await.unwrap();
         println!("New TCP connection from {}", addr);
-        handle_client_tcp(socket);
+        APP.client_service.handle_client_tcp(socket);
     }
 }
