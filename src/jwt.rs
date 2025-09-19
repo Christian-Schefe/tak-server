@@ -1,8 +1,8 @@
 use std::sync::LazyLock;
 
 use axum::{
-    Json, RequestPartsExt,
-    extract::FromRequestParts,
+    Json, RequestPartsExt, debug_handler,
+    extract::{FromRequestParts, State},
     http::{StatusCode, request::Parts},
     response::{IntoResponse, Response},
 };
@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::player::{PlayerUsername, validate_login};
+use crate::{AppState, player::PlayerUsername};
 use axum_extra::{
     TypedHeader,
     headers::{Authorization, authorization::Bearer},
@@ -99,10 +99,10 @@ pub fn generate_jwt(username: &PlayerUsername) -> String {
     token
 }
 
-pub fn validate_jwt(token: &str) -> Result<PlayerUsername, String> {
+pub fn validate_jwt(token: &str) -> Option<PlayerUsername> {
     match decode::<Claims>(token, &KEYS.decoding, &Validation::default()) {
-        Ok(data) => Ok(data.claims.sub),
-        Err(_) => Err("Invalid token".to_string()),
+        Ok(data) => Some(data.claims.sub),
+        Err(_) => None,
     }
 }
 
@@ -117,9 +117,13 @@ pub struct AuthBody {
     pub token: String,
 }
 
-#[axum::debug_handler]
-pub async fn handle_login(Json(payload): Json<AuthPayload>) -> Result<Json<AuthBody>, AuthError> {
-    validate_login(&payload.username, &payload.password)
+#[debug_handler]
+pub async fn handle_login(
+    State(app): State<AppState>,
+    Json(payload): Json<AuthPayload>,
+) -> Result<Json<AuthBody>, AuthError> {
+    app.player_service
+        .validate_login(&payload.username, &payload.password)
         .map_err(|_| AuthError::WrongCredentials)?;
     let token = generate_jwt(&payload.username);
     Ok(Json(AuthBody { token }))

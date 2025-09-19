@@ -5,12 +5,16 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    client::{ClientId, send_to},
-    protocol::ServerMessage,
+    AppState, ArcClientService, ArcPlayerService, client::ClientId, protocol::ServerMessage,
 };
 
 mod auth;
 mod seek;
+
+pub struct ProtocolJsonHandler {
+    client_service: ArcClientService,
+    player_service: ArcPlayerService,
+}
 
 #[derive(Clone, Debug, Deserialize)]
 pub enum ClientMessage {
@@ -25,51 +29,60 @@ pub enum ClientResponse {
     Ok,
 }
 
-pub fn handle_server_message(_id: &ClientId, msg: &ServerMessage) {
-    match msg {
-        _ => todo!(),
+impl ProtocolJsonHandler {
+    pub fn new(client_service: ArcClientService, player_service: ArcPlayerService) -> Self {
+        Self {
+            client_service,
+            player_service,
+        }
+    }
+
+    pub fn handle_server_message(&self, _id: &ClientId, msg: &ServerMessage) {
+        match msg {
+            _ => todo!(),
+        }
+    }
+
+    pub fn send_json_to(&self, id: &ClientId, msg: &impl serde::Serialize) {
+        match serde_json::to_string(msg) {
+            Ok(json) => crate::client::send_to(&**self.client_service, id, &json),
+            Err(e) => eprintln!(
+                "Failed to serialize message to JSON for client {}: {}",
+                id, e
+            ),
+        }
+    }
+
+    pub fn handle_client_message(&self, id: &ClientId, msg: String) {
+        let msg = match serde_json::from_str::<ClientMessage>(&msg) {
+            Ok(msg) => msg,
+            Err(e) => {
+                println!("Failed to parse JSON message from client {}: {}", id, e);
+                self.send_json_to(
+                    id,
+                    &ClientResponse::Error {
+                        message: "Invalid JSON".to_string(),
+                    },
+                );
+                return;
+            }
+        };
+        match msg {
+            ClientMessage::Ping => {
+                self.send_json_to(id, &ClientResponse::Ok);
+            }
+            ClientMessage::Login { token } => {
+                self.handle_login_message(id, &token);
+            }
+            ClientMessage::LoginGuest { token } => {
+                self.handle_login_guest_message(id, token.as_deref());
+            }
+        };
     }
 }
 
-pub fn register_http_endpoints() -> Router {
+pub fn register_http_endpoints() -> Router<AppState> {
     Router::new()
         .route("/seek", post(seek::handle_add_seek_endpoint))
         .route("/seek", delete(seek::handle_remove_seek_endpoint))
-}
-
-pub fn send_json_to(id: &ClientId, msg: &impl serde::Serialize) {
-    match serde_json::to_string(msg) {
-        Ok(json) => send_to(id, &json),
-        Err(e) => eprintln!(
-            "Failed to serialize message to JSON for client {}: {}",
-            id, e
-        ),
-    }
-}
-
-pub fn handle_client_message(id: &ClientId, msg: String) {
-    let msg = match serde_json::from_str::<ClientMessage>(&msg) {
-        Ok(msg) => msg,
-        Err(e) => {
-            println!("Failed to parse JSON message from client {}: {}", id, e);
-            send_json_to(
-                id,
-                &ClientResponse::Error {
-                    message: "Invalid JSON".to_string(),
-                },
-            );
-            return;
-        }
-    };
-    match msg {
-        ClientMessage::Ping => {
-            send_json_to(id, &ClientResponse::Ok);
-        }
-        ClientMessage::Login { token } => {
-            auth::handle_login_message(id, &token);
-        }
-        ClientMessage::LoginGuest { token } => {
-            auth::handle_login_guest_message(id, token.as_deref());
-        }
-    };
 }

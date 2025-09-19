@@ -1,12 +1,13 @@
 use std::time::Duration;
 
-use axum::{Json, http::StatusCode};
+use axum::{Json, extract::State, http::StatusCode};
 use serde::Deserialize;
 
 use crate::{
+    AppState,
     jwt::Claims,
-    player::{PlayerUsername, fetch_player},
-    seek::{GameType, add_seek, remove_seek_of_player},
+    player::PlayerUsername,
+    seek::GameType,
     tak::{TakGameSettings, TakPlayer, TakTimeControl},
 };
 
@@ -38,12 +39,14 @@ pub enum SeekColor {
     White,
     Black,
 }
-
 pub async fn handle_add_seek_endpoint(
     claims: Claims,
+    State(app): State<AppState>,
     Json(msg): Json<AddSeekMessage>,
 ) -> Result<(), (StatusCode, String)> {
-    fetch_player(&claims.sub).ok_or((StatusCode::NOT_FOUND, "Player not found".to_string()))?;
+    app.player_service
+        .fetch_player(&claims.sub)
+        .ok_or((StatusCode::NOT_FOUND, "Player not found".to_string()))?;
     let seek = msg.seek;
     let game_settings = TakGameSettings {
         board_size: seek.board_size,
@@ -73,19 +76,27 @@ pub async fn handle_add_seek_endpoint(
     } else {
         GameType::Rated
     };
-    add_seek(
-        claims.sub.to_string(),
-        seek.opponent,
-        color,
-        game_settings,
-        game_type,
-    )
-    .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    app.seek_service
+        .add_seek(
+            claims.sub.to_string(),
+            seek.opponent,
+            color,
+            game_settings,
+            game_type,
+        )
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     Ok(())
 }
 
-pub async fn handle_remove_seek_endpoint(claims: Claims) -> Result<(), (StatusCode, String)> {
-    fetch_player(&claims.sub).ok_or((StatusCode::NOT_FOUND, "Player not found".to_string()))?;
-    remove_seek_of_player(&claims.sub).map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))?;
+pub async fn handle_remove_seek_endpoint(
+    claims: Claims,
+    State(app): State<AppState>,
+) -> Result<(), (StatusCode, String)> {
+    app.player_service
+        .fetch_player(&claims.sub)
+        .ok_or((StatusCode::NOT_FOUND, "Player not found".to_string()))?;
+    app.seek_service
+        .remove_seek_of_player(&claims.sub)
+        .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))?;
     Ok(())
 }
