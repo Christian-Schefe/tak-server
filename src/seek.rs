@@ -3,9 +3,7 @@ use std::sync::Arc;
 use dashmap::DashMap;
 
 use crate::{
-    ServiceError, ServiceResult,
-    client::ClientService,
-    game::GameService,
+    ArcClientService, ArcGameService, ServiceError, ServiceResult,
     player::PlayerUsername,
     protocol::ServerMessage,
     tak::{TakGameSettings, TakPlayer},
@@ -46,18 +44,15 @@ pub trait SeekService {
 
 #[derive(Clone)]
 pub struct SeekServiceImpl {
-    client_service: Arc<Box<dyn ClientService + Send + Sync>>,
-    game_service: Arc<Box<dyn GameService + Send + Sync>>,
+    client_service: ArcClientService,
+    game_service: ArcGameService,
     seeks: Arc<DashMap<SeekId, Seek>>,
     seeks_by_player: Arc<DashMap<PlayerUsername, SeekId>>,
     next_seek_id: Arc<std::sync::Mutex<SeekId>>,
 }
 
 impl SeekServiceImpl {
-    pub fn new(
-        client_service: Arc<Box<dyn ClientService + Send + Sync>>,
-        game_service: Arc<Box<dyn GameService + Send + Sync>>,
-    ) -> Self {
+    pub fn new(client_service: ArcClientService, game_service: ArcGameService) -> Self {
         Self {
             client_service,
             game_service,

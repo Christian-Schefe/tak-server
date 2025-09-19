@@ -3,20 +3,32 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use crate::{
+    chat::{ChatService, ChatServiceImpl},
     client::{ClientService, ClientServiceImpl},
     email::{EmailService, EmailServiceImpl},
     game::{GameService, GameServiceImpl},
     player::{PlayerService, PlayerServiceImpl},
+    protocol::{ProtocolService, ProtocolServiceImpl},
     seek::{SeekService, SeekServiceImpl},
 };
 
+pub type ArcClientService = Arc<Box<dyn ClientService + Send + Sync + 'static>>;
+pub type ArcGameService = Arc<Box<dyn GameService + Send + Sync + 'static>>;
+pub type ArcSeekService = Arc<Box<dyn SeekService + Send + Sync + 'static>>;
+pub type ArcPlayerService = Arc<Box<dyn PlayerService + Send + Sync + 'static>>;
+pub type ArcEmailService = Arc<Box<dyn EmailService + Send + Sync + 'static>>;
+pub type ArcProtocolService = Arc<Box<dyn ProtocolService + Send + Sync + 'static>>;
+pub type ArcChatService = Arc<Box<dyn ChatService + Send + Sync + 'static>>;
+
 #[derive(Clone)]
 pub struct AppState {
-    pub client_service: Arc<Box<dyn ClientService + Send + Sync>>,
-    pub game_service: Arc<Box<dyn GameService + Send + Sync>>,
-    pub seek_service: Arc<Box<dyn SeekService + Send + Sync>>,
-    pub player_service: Arc<Box<dyn PlayerService + Send + Sync>>,
-    pub email_service: Arc<Box<dyn EmailService + Send + Sync>>,
+    pub client_service: ArcClientService,
+    pub game_service: ArcGameService,
+    pub seek_service: ArcSeekService,
+    pub player_service: ArcPlayerService,
+    pub email_service: ArcEmailService,
+    pub protocol_service: ArcProtocolService,
+    pub chat_service: ArcChatService,
 }
 
 #[derive(Debug, Error)]
@@ -41,6 +53,9 @@ pub enum ServiceError {
 
     #[error("internal error: {0}")]
     Internal(String),
+
+    #[error("bad request: {0}")]
+    BadRequest(String),
 }
 
 #[derive(Debug, Error)]
@@ -86,13 +101,23 @@ impl ServiceError {
     {
         Err(ServiceError::Internal(msg.into()))
     }
+
+    pub fn bad_request<T, R>(msg: T) -> ServiceResult<R>
+    where
+        T: Into<String>,
+    {
+        Err(ServiceError::BadRequest(msg.into()))
+    }
 }
 
 pub type ServiceResult<T> = Result<T, ServiceError>;
 
 pub fn construct_app() -> AppState {
+    let protocol_service: Arc<Box<dyn ProtocolService + Send + Sync>> =
+        Arc::new(Box::new(ProtocolServiceImpl::new()));
+
     let client_service: Arc<Box<dyn ClientService + Send + Sync>> =
-        Arc::new(Box::new(ClientServiceImpl::new()));
+        Arc::new(Box::new(ClientServiceImpl::new(protocol_service.clone())));
 
     let game_service: Arc<Box<dyn GameService + Send + Sync>> =
         Arc::new(Box::new(GameServiceImpl::new(client_service.clone())));
@@ -108,11 +133,21 @@ pub fn construct_app() -> AppState {
         PlayerServiceImpl::new(client_service.clone(), email_service.clone()),
     ));
 
-    AppState {
+    let chat_service: Arc<Box<dyn ChatService + Send + Sync>> = Arc::new(Box::new(
+        ChatServiceImpl::new(client_service.clone(), player_service.clone()),
+    ));
+
+    let app = AppState {
         client_service,
         game_service,
         seek_service,
         player_service,
         email_service,
-    }
+        chat_service,
+        protocol_service: protocol_service.clone(),
+    };
+
+    protocol_service.init(&app);
+
+    app
 }

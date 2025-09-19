@@ -10,8 +10,8 @@ use tokio::select;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    DatabaseError, ServiceError, ServiceResult,
-    client::{ClientId, ClientService},
+    ArcClientService, DatabaseError, ServiceError, ServiceResult,
+    client::ClientId,
     player::PlayerUsername,
     protocol::{ServerGameMessage, ServerMessage},
     seek::{GameType, Seek},
@@ -68,7 +68,7 @@ pub trait GameService {
 
 #[derive(Clone)]
 pub struct GameServiceImpl {
-    client_service: Arc<Box<dyn ClientService + Send + Sync>>,
+    client_service: ArcClientService,
     games: Arc<DashMap<GameId, Game>>,
     game_timeout_tokens: Arc<DashMap<GameId, CancellationToken>>,
     game_spectators: Arc<DashMap<GameId, Vec<ClientId>>>,
@@ -76,7 +76,7 @@ pub struct GameServiceImpl {
 }
 
 impl GameServiceImpl {
-    pub fn new(client_service: Arc<Box<dyn ClientService + Send + Sync>>) -> Self {
+    pub fn new(client_service: ArcClientService) -> Self {
         Self {
             client_service,
             games: Arc::new(DashMap::new()),

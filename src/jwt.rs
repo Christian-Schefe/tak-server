@@ -1,8 +1,8 @@
 use std::sync::LazyLock;
 
 use axum::{
-    Json, RequestPartsExt,
-    extract::FromRequestParts,
+    Json, RequestPartsExt, debug_handler,
+    extract::{FromRequestParts, State},
     http::{StatusCode, request::Parts},
     response::{IntoResponse, Response},
 };
@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::{APP, player::PlayerUsername};
+use crate::{AppState, player::PlayerUsername};
 use axum_extra::{
     TypedHeader,
     headers::{Authorization, authorization::Bearer},
@@ -117,9 +117,12 @@ pub struct AuthBody {
     pub token: String,
 }
 
-#[axum::debug_handler]
-pub async fn handle_login(Json(payload): Json<AuthPayload>) -> Result<Json<AuthBody>, AuthError> {
-    APP.player_service
+#[debug_handler]
+pub async fn handle_login(
+    State(app): State<AppState>,
+    Json(payload): Json<AuthPayload>,
+) -> Result<Json<AuthBody>, AuthError> {
+    app.player_service
         .validate_login(&payload.username, &payload.password)
         .map_err(|_| AuthError::WrongCredentials)?;
     let token = generate_jwt(&payload.username);

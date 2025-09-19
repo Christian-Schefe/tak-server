@@ -14,11 +14,9 @@ use tokio_util::{
 use uuid::Uuid;
 
 use crate::{
-    ServiceError, ServiceResult,
+    ArcProtocolService, ServiceError, ServiceResult,
     player::PlayerUsername,
-    protocol::{
-        Protocol, ServerMessage, handle_client_message, handle_server_message, on_authenticated,
-    },
+    protocol::{Protocol, ServerMessage},
 };
 
 pub type ClientId = Uuid;
@@ -39,17 +37,6 @@ where
     let _ = client_service.try_send_to(id, msg.as_ref());
 }
 
-pub fn try_send_to<T>(
-    client_service: &dyn ClientService,
-    id: &ClientId,
-    msg: T,
-) -> Result<(), String>
-where
-    T: AsRef<str>,
-{
-    client_service.try_send_to(id, msg.as_ref())
-}
-
 #[async_trait::async_trait]
 pub trait ClientService {
     fn try_send_to(&self, id: &ClientId, msg: &str) -> Result<(), String>;
@@ -66,6 +53,7 @@ pub trait ClientService {
 
 #[derive(Clone)]
 pub struct ClientServiceImpl {
+    protocol_service: ArcProtocolService,
     client_senders: Arc<DashMap<ClientId, (UnboundedSender<String>, CancellationToken)>>,
     client_handlers: Arc<DashMap<ClientId, Protocol>>,
     client_to_player: Arc<DashMap<ClientId, PlayerUsername>>,
@@ -74,8 +62,9 @@ pub struct ClientServiceImpl {
 }
 
 impl ClientServiceImpl {
-    pub fn new() -> Self {
+    pub fn new(protocol_service: ArcProtocolService) -> Self {
         Self {
+            protocol_service,
             client_senders: Arc::new(DashMap::new()),
             client_handlers: Arc::new(DashMap::new()),
             client_to_player: Arc::new(DashMap::new()),
@@ -93,23 +82,6 @@ impl ClientServiceImpl {
             self.player_to_client.remove(&username);
             self.update_online_players();
         }
-    }
-
-    fn handle_client_websocket(&'static self, ws: WebSocket) {
-        self.handle_client(
-            ws,
-            |s| Message::Binary(s.into()),
-            |m| match m {
-                Message::Text(t) => Some(ClientMessage::Text(t.to_string())),
-                Message::Close(_) => Some(ClientMessage::Close),
-                _ => None,
-            },
-        );
-    }
-
-    fn handle_client_tcp(&'static self, tcp: TcpStream) {
-        let framed = Framed::new(tcp, LinesCodec::new());
-        self.handle_client(framed, |s| s.to_string(), |s| Some(ClientMessage::Text(s)));
     }
 
     async fn handle_client<M, S, E>(
@@ -207,7 +179,8 @@ impl ClientServiceImpl {
                             println!("Client {} protocol switch error: {}", id, e);
                         });
                     } else if let Some(handler) = self.client_handlers.get(&id) {
-                        handle_client_message(&handler, &id, text);
+                        self.protocol_service
+                            .handle_client_message(&handler, &id, text);
                     } else {
                         println!("Client {} has no protocol handler", id);
                     }
@@ -284,7 +257,8 @@ impl ClientService for ClientServiceImpl {
         self.client_to_player.insert(*id, username.clone());
         self.player_to_client.insert(username.clone(), *id);
         if let Some(handler) = self.client_handlers.get(id) {
-            on_authenticated(&handler, id, username);
+            self.protocol_service
+                .on_authenticated(&handler, id, username);
         }
         self.update_online_players();
         Ok(())
@@ -304,7 +278,8 @@ impl ClientService for ClientServiceImpl {
 
     fn try_protocol_send(&self, id: &ClientId, msg: &ServerMessage) {
         if let Some(handler) = self.client_handlers.get(id) {
-            handle_server_message(&handler, id, msg);
+            self.protocol_service
+                .handle_server_message(&handler, id, msg);
         }
     }
 
@@ -317,7 +292,8 @@ impl ClientService for ClientServiceImpl {
     fn try_auth_protocol_broadcast(&self, msg: &ServerMessage) {
         for entry in self.client_handlers.iter() {
             if self.client_to_player.contains_key(entry.key()) {
-                handle_server_message(&entry, entry.key(), msg);
+                self.protocol_service
+                    .handle_server_message(&entry, entry.key(), msg);
             }
         }
     }
@@ -355,11 +331,13 @@ impl ClientService for ClientServiceImpl {
                 Message::Close(_) => Some(ClientMessage::Close),
                 _ => None,
             },
-        );
+        )
+        .await;
     }
 
     async fn handle_client_tcp(&self, tcp: TcpStream) {
         let framed = Framed::new(tcp, LinesCodec::new());
-        self.handle_client(framed, |s| s.to_string(), |s| Some(ClientMessage::Text(s)));
+        self.handle_client(framed, |s| s.to_string(), |s| Some(ClientMessage::Text(s)))
+            .await;
     }
 }

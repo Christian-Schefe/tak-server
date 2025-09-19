@@ -1,9 +1,10 @@
 mod json;
 mod v2;
 
-use std::time::Duration;
+use std::{sync::OnceLock, time::Duration};
 
 use crate::{
+    AppState,
     client::ClientId,
     game::{Game, GameId},
     player::PlayerUsername,
@@ -77,27 +78,65 @@ pub enum ChatMessageSource {
     Private,
 }
 
-pub fn handle_client_message(protocol: &Protocol, id: &ClientId, msg: String) {
-    match protocol {
-        Protocol::V2 => v2::handle_client_message(id, msg),
-        Protocol::JSON => json::handle_client_message(id, msg),
+pub trait ProtocolService {
+    fn init(&self, client_service: &AppState);
+    fn handle_client_message(&self, protocol: &Protocol, id: &ClientId, msg: String);
+    fn handle_server_message(&self, protocol: &Protocol, id: &ClientId, msg: &ServerMessage);
+    fn on_authenticated(&self, protocol: &Protocol, id: &ClientId, username: &PlayerUsername);
+    fn register_http_endpoints(&self, router: axum::Router<AppState>) -> axum::Router<AppState>;
+}
+
+pub struct ProtocolServiceImpl {
+    v2: OnceLock<v2::ProtocolV2Handler>,
+    json: OnceLock<json::ProtocolJsonHandler>,
+}
+
+impl ProtocolServiceImpl {
+    pub fn new() -> Self {
+        Self {
+            v2: OnceLock::new(),
+            json: OnceLock::new(),
+        }
     }
 }
 
-pub fn handle_server_message(protocol: &Protocol, id: &ClientId, msg: &ServerMessage) {
-    match protocol {
-        Protocol::V2 => v2::handle_server_message(id, msg),
-        Protocol::JSON => json::handle_server_message(id, msg),
+impl ProtocolService for ProtocolServiceImpl {
+    fn init(&self, app: &AppState) {
+        let _ = self.v2.set(v2::ProtocolV2Handler::new(
+            app.client_service.clone(),
+            app.seek_service.clone(),
+            app.player_service.clone(),
+            app.chat_service.clone(),
+            app.game_service.clone(),
+        ));
+        let _ = self.json.set(json::ProtocolJsonHandler::new(
+            app.client_service.clone(),
+            app.player_service.clone(),
+        ));
     }
-}
 
-pub fn on_authenticated(protocol: &Protocol, id: &ClientId, username: &PlayerUsername) {
-    match protocol {
-        Protocol::V2 => v2::on_authenticated(id, username),
-        Protocol::JSON => {}
+    fn handle_client_message(&self, protocol: &Protocol, id: &ClientId, msg: String) {
+        match protocol {
+            Protocol::V2 => self.v2.get().unwrap().handle_client_message(id, msg),
+            Protocol::JSON => self.json.get().unwrap().handle_client_message(id, msg),
+        }
     }
-}
 
-pub fn register_http_endpoints(router: axum::Router) -> axum::Router {
-    router.nest("/v3", json::register_http_endpoints())
+    fn handle_server_message(&self, protocol: &Protocol, id: &ClientId, msg: &ServerMessage) {
+        match protocol {
+            Protocol::V2 => self.v2.get().unwrap().handle_server_message(id, msg),
+            Protocol::JSON => self.json.get().unwrap().handle_server_message(id, msg),
+        }
+    }
+
+    fn on_authenticated(&self, protocol: &Protocol, id: &ClientId, username: &PlayerUsername) {
+        match protocol {
+            Protocol::V2 => self.v2.get().unwrap().on_authenticated(id, username),
+            Protocol::JSON => {}
+        }
+    }
+
+    fn register_http_endpoints(&self, router: axum::Router<AppState>) -> axum::Router<AppState> {
+        router.nest("/v3", json::register_http_endpoints())
+    }
 }

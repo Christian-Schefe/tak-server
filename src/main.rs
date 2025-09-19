@@ -20,7 +20,7 @@ mod tak;
 
 pub use app::*;
 
-pub static APP: LazyLock<AppState> = LazyLock::new(construct_app);
+static APP: LazyLock<AppState> = LazyLock::new(construct_app);
 
 #[tokio::main]
 async fn main() {
@@ -31,7 +31,7 @@ async fn main() {
         .route("/ws", any(ws_handler))
         .route("/auth/login", post(jwt::handle_login));
 
-    let app = protocol::register_http_endpoints(app);
+    let app = APP.protocol_service.register_http_endpoints(app);
 
     let ws_port = std::env::var("TAK_WS_PORT")
         .unwrap_or_else(|_| "9999".to_string())
@@ -52,17 +52,21 @@ async fn main() {
     launch_background_tasks();
 
     println!("WebSocket server listening on port {}", ws_port);
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app.with_state(APP.clone()))
+        .await
+        .unwrap();
 }
 
 fn launch_background_tasks() {
-    APP.client_service.launch_client_cleanup_task();
+    tokio::spawn(async move {
+        APP.client_service.launch_client_cleanup_task().await;
+    });
 }
 
 async fn ws_handler(ws: WebSocketUpgrade) -> Response {
     ws.protocols(["binary"])
         .on_upgrade(move |socket| async move {
-            APP.client_service.handle_client_websocket(socket);
+            APP.client_service.handle_client_websocket(socket).await;
         })
 }
 
@@ -78,6 +82,8 @@ async fn serve_tcp_server() {
     loop {
         let (socket, addr) = listener.accept().await.unwrap();
         println!("New TCP connection from {}", addr);
-        APP.client_service.handle_client_tcp(socket);
+        tokio::spawn(async move {
+            APP.client_service.handle_client_tcp(socket).await;
+        });
     }
 }
