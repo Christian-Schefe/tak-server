@@ -576,3 +576,54 @@ impl GameService for GameServiceImpl {
         Ok(())
     }
 }
+
+#[derive(Clone, Default)]
+pub struct MockGameService {}
+
+impl GameService for MockGameService {
+    fn get_games(&self) -> Vec<Game> {
+        vec![]
+    }
+    fn has_active_game(&self, _player: &PlayerUsername) -> bool {
+        false
+    }
+    fn get_active_game_of_player(&self, _player: &PlayerUsername) -> Option<Game> {
+        None
+    }
+    fn add_game_from_seek(&self, _seek: &Seek, _opponent: &PlayerUsername) -> ServiceResult<()> {
+        Ok(())
+    }
+    fn try_do_action(
+        &self,
+        _username: &PlayerUsername,
+        _game_id: &GameId,
+        _action: TakAction,
+    ) -> ServiceResult<()> {
+        Ok(())
+    }
+    fn resign_game(&self, _username: &PlayerUsername, _game_id: &GameId) -> ServiceResult<()> {
+        Ok(())
+    }
+    fn offer_draw(
+        &self,
+        _username: &PlayerUsername,
+        _game_id: &GameId,
+        _offer: bool,
+    ) -> ServiceResult<()> {
+        Ok(())
+    }
+    fn request_undo(
+        &self,
+        _username: &PlayerUsername,
+        _game_id: &GameId,
+        _request: bool,
+    ) -> ServiceResult<()> {
+        Ok(())
+    }
+    fn observe_game(&self, _id: &ClientId, _game_id: &GameId) -> ServiceResult<()> {
+        Ok(())
+    }
+    fn unobserve_game(&self, _id: &ClientId, _game_id: &GameId) -> ServiceResult<()> {
+        Ok(())
+    }
+}

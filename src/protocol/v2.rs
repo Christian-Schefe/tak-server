@@ -73,6 +73,10 @@ impl ProtocolV2Handler {
                 self.send_to(id, online_message);
                 self.send_to(id, players_message);
             }
+            ServerMessage::AcceptRematch { seek_id } => {
+                let rematch_message = format!("Accept Rematch {}", seek_id);
+                self.send_to(id, rematch_message);
+            }
             ServerMessage::GameList { .. }
             | ServerMessage::GameStart { .. }
             | ServerMessage::ObserveGame { .. } => {
@@ -127,6 +131,7 @@ impl ProtocolV2Handler {
         match parts[0] {
             "ChangePassword" => self.handle_change_password_message(id, &username, &parts),
             "Seek" => self.handle_seek_message(id, &username, &parts),
+            "Rematch" => self.handle_rematch_message(id, &username, &parts),
             "List" => self.handle_seek_list_message(id),
             "GameList" => self.handle_game_list_message(id),
             "Accept" => self.handle_accept_message(id, &username, &parts),

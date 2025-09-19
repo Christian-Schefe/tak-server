@@ -33,7 +33,7 @@ pub enum TakAction {
     },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TakGameSettings {
     pub board_size: u32,
     pub half_komi: u32,
@@ -51,7 +51,7 @@ impl TakGameSettings {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TakTimeControl {
     pub contingent: Duration,
     pub increment: Duration,

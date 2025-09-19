@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use crate::{
     client::ClientId,
+    game::GameId,
     player::PlayerUsername,
     protocol::v2::ProtocolV2Handler,
     seek::{GameType, Seek},
@@ -10,7 +11,7 @@ use crate::{
 
 impl ProtocolV2Handler {
     pub fn handle_seek_message(&self, id: &ClientId, username: &PlayerUsername, parts: &[&str]) {
-        if let Err(e) = self.handle_add_seek_message(username, parts) {
+        if let Err(e) = self.handle_add_seek_message(username, parts, None) {
             println!("Error parsing Seek message: {}", e);
             self.send_to(id, "NOK");
         }
@@ -26,6 +27,7 @@ impl ProtocolV2Handler {
         &self,
         username: &PlayerUsername,
         parts: &[&str],
+        rematch: Option<GameId>,
     ) -> Result<(), String> {
         if parts.len() != 13 && parts.len() != 12 && parts.len() != 11 && parts.len() != 10 {
             println!("Invalid Seek message format: {:?}", parts);
@@ -113,6 +115,17 @@ impl ProtocolV2Handler {
             self.seek_service
                 .remove_seek_of_player(&username)
                 .map_err(|e| e.to_string())?;
+        } else if let Some(from_game) = rematch {
+            self.seek_service
+                .add_rematch_seek(
+                    username.to_string(),
+                    opponent,
+                    color,
+                    game_settings,
+                    game_type,
+                    from_game,
+                )
+                .map_err(|e| e.to_string())?;
         } else {
             self.seek_service
                 .add_seek(
@@ -191,5 +204,22 @@ impl ProtocolV2Handler {
                 .map_or("0", |p| if p.is_bot { "1" } else { "0" })
         );
         self.send_to(id, message);
+    }
+
+    pub fn handle_rematch_message(&self, id: &ClientId, username: &PlayerUsername, parts: &[&str]) {
+        if parts.len() < 2 {
+            println!("Invalid Rematch message format: {:?}", parts);
+            self.send_to(id, "NOK");
+            return;
+        }
+        let Ok(game_id) = parts[1].parse::<u32>() else {
+            println!("Invalid Game ID in Rematch message: {}", parts[1]);
+            self.send_to(id, "NOK");
+            return;
+        };
+        if let Err(e) = self.handle_add_seek_message(username, &parts[1..], Some(game_id)) {
+            println!("Error parsing Seek message: {}", e);
+            self.send_to(id, "NOK");
+        }
     }
 }

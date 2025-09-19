@@ -1,5 +1,5 @@
 use std::{
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -340,4 +340,74 @@ impl ClientService for ClientServiceImpl {
         self.handle_client(framed, |s| s.to_string(), |s| Some(ClientMessage::Text(s)))
             .await;
     }
+}
+
+#[derive(Clone, Default)]
+pub struct MockClientService {
+    pub sent_messages: Arc<Mutex<Vec<(ClientId, ServerMessage)>>>,
+    pub sent_broadcasts: Arc<Mutex<Vec<ServerMessage>>>,
+    pub associated_players: Arc<Mutex<Vec<(ClientId, PlayerUsername)>>>,
+}
+
+#[allow(unused)]
+impl MockClientService {
+    pub fn get_messages(&self) -> Vec<(ClientId, ServerMessage)> {
+        self.sent_messages.lock().unwrap().clone()
+    }
+
+    pub fn get_broadcasts(&self) -> Vec<ServerMessage> {
+        self.sent_broadcasts.lock().unwrap().clone()
+    }
+}
+
+#[async_trait::async_trait]
+impl ClientService for MockClientService {
+    fn try_send_to(&self, _id: &ClientId, _msg: &str) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn associate_player(&self, id: &ClientId, username: &PlayerUsername) -> ServiceResult<()> {
+        let mut assoc = self.associated_players.lock().unwrap();
+        assoc.push((id.clone(), username.clone()));
+        Ok(())
+    }
+
+    fn get_associated_player(&self, id: &ClientId) -> Option<PlayerUsername> {
+        self.associated_players
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(cid, _)| cid == id)
+            .map(|(_, username)| username.clone())
+    }
+
+    fn get_associated_client(&self, player: &PlayerUsername) -> Option<ClientId> {
+        self.associated_players
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(_, username)| username == player)
+            .map(|(cid, _)| cid.clone())
+    }
+
+    fn try_protocol_send(&self, id: &ClientId, msg: &ServerMessage) {
+        let mut sent = self.sent_messages.lock().unwrap();
+        sent.push((id.clone(), msg.clone()));
+    }
+
+    fn try_protocol_multicast(&self, ids: &[ClientId], msg: &ServerMessage) {
+        let mut sent = self.sent_messages.lock().unwrap();
+        for id in ids {
+            sent.push((id.clone(), msg.clone()));
+        }
+    }
+
+    fn try_auth_protocol_broadcast(&self, msg: &ServerMessage) {
+        let mut sent = self.sent_broadcasts.lock().unwrap();
+        sent.push(msg.clone());
+    }
+
+    async fn launch_client_cleanup_task(&self) {}
+    async fn handle_client_websocket(&self, _ws: WebSocket) {}
+    async fn handle_client_tcp(&self, _tcp: TcpStream) {}
 }

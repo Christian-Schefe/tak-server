@@ -2,19 +2,21 @@
 
 This is a rewrite of the java server at https://github.com/USTakAssociation/playtak-api in rust.
 
+In progress:
+
+- Tests
+
 To do:
 
 - [x] Chat rooms
 - [x] Registration
 - [x] Profanity filter
-- [ ] Game abandon after timeout on disconnect
-- [ ] Tests
-- [ ] Rematches
+- [x] Rematches
 - [x] Mod and admin privileges
 - [x] Player inactivity disconnect
 - [x] Password reset
-- [ ] Broadcasting (is that in use?)
-- [ ] IRCBridge (is that in use?)
+- [ ] Game abandon after timeout on disconnect
+- [ ] Tests
 
 To do extra features:
 
@@ -25,6 +27,8 @@ To do extra features:
 Open questions / On hold:
 
 - [ ] Player ratings
+- [ ] Broadcasting (is that in use?)
+- [ ] IRCBridge (is that in use?)
 
 - Rating computation is done in typescript service, values set in java code are simply overwritten. The old server computes a value (which seems to differ from the typescript service? Also contains database indirection (via ratingbase) for no good reason?) as a placeholder for games until the rating service is run. Should the java algorithm be copied as is, or be adjusted?
 

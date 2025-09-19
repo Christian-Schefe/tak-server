@@ -4,12 +4,13 @@ use dashmap::DashMap;
 
 use crate::{
     ArcClientService, ArcGameService, ServiceError, ServiceResult,
+    game::GameId,
     player::PlayerUsername,
     protocol::ServerMessage,
     tak::{TakGameSettings, TakPlayer},
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Seek {
     pub id: SeekId,
     pub creator: PlayerUsername,
@@ -17,6 +18,7 @@ pub struct Seek {
     pub color: Option<TakPlayer>,
     pub game_settings: TakGameSettings,
     pub game_type: GameType,
+    pub rematch_from: Option<GameId>,
 }
 
 pub type SeekId = u32;
@@ -36,6 +38,15 @@ pub trait SeekService {
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
         game_type: GameType,
+    ) -> ServiceResult<SeekId>;
+    fn add_rematch_seek(
+        &self,
+        player: PlayerUsername,
+        opponent: Option<PlayerUsername>,
+        color: Option<TakPlayer>,
+        game_settings: TakGameSettings,
+        game_type: GameType,
+        from_game: GameId,
     ) -> ServiceResult<()>;
     fn get_seeks(&self) -> Vec<Seek>;
     fn remove_seek_of_player(&self, player: &PlayerUsername) -> ServiceResult<Seek>;
@@ -48,6 +59,7 @@ pub struct SeekServiceImpl {
     game_service: ArcGameService,
     seeks: Arc<DashMap<SeekId, Seek>>,
     seeks_by_player: Arc<DashMap<PlayerUsername, SeekId>>,
+    rematch_seeks: Arc<DashMap<GameId, SeekId>>,
     next_seek_id: Arc<std::sync::Mutex<SeekId>>,
 }
 
@@ -58,6 +70,7 @@ impl SeekServiceImpl {
             game_service,
             seeks: Arc::new(DashMap::new()),
             seeks_by_player: Arc::new(DashMap::new()),
+            rematch_seeks: Arc::new(DashMap::new()),
             next_seek_id: Arc::new(std::sync::Mutex::new(1)),
         }
     }
@@ -71,17 +84,16 @@ impl SeekServiceImpl {
         *id_lock += 1;
         seek_id
     }
-}
 
-impl SeekService for SeekServiceImpl {
-    fn add_seek(
+    fn add_seek_internal(
         &self,
         player: PlayerUsername,
         opponent: Option<PlayerUsername>,
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
         game_type: GameType,
-    ) -> ServiceResult<()> {
+        from_game: Option<GameId>,
+    ) -> ServiceResult<SeekId> {
         if !game_settings.is_valid() {
             return ServiceError::validation_err("Invalid game settings");
         }
@@ -96,6 +108,7 @@ impl SeekService for SeekServiceImpl {
             color,
             game_settings,
             game_type,
+            rematch_from: from_game,
         };
 
         let seek_id = seek.id;
@@ -108,6 +121,55 @@ impl SeekService for SeekServiceImpl {
         };
         self.client_service
             .try_auth_protocol_broadcast(&seek_new_msg);
+
+        Ok(seek_id)
+    }
+}
+
+impl SeekService for SeekServiceImpl {
+    fn add_seek(
+        &self,
+        player: PlayerUsername,
+        opponent: Option<PlayerUsername>,
+        color: Option<TakPlayer>,
+        game_settings: TakGameSettings,
+        game_type: GameType,
+    ) -> ServiceResult<SeekId> {
+        self.add_seek_internal(player, opponent, color, game_settings, game_type, None)
+    }
+
+    fn add_rematch_seek(
+        &self,
+        player: PlayerUsername,
+        opponent: Option<PlayerUsername>,
+        color: Option<TakPlayer>,
+        game_settings: TakGameSettings,
+        game_type: GameType,
+        from_game: GameId,
+    ) -> ServiceResult<()> {
+        // rematch seek entry is removed when the rematch seek gets accepted, so no need to remove it here
+        if let Some(existing_seek_id) = self.rematch_seeks.get(&from_game) {
+            let accept_rematch_msg = ServerMessage::AcceptRematch {
+                seek_id: *existing_seek_id,
+            };
+            drop(existing_seek_id);
+            self.client_service
+                .get_associated_client(&player)
+                .map(|id| {
+                    self.client_service
+                        .try_protocol_send(&id, &accept_rematch_msg);
+                });
+            return Ok(());
+        }
+        let seek_id = self.add_seek_internal(
+            player,
+            opponent,
+            color,
+            game_settings,
+            game_type,
+            Some(from_game),
+        )?;
+        self.rematch_seeks.insert(from_game, seek_id);
 
         Ok(())
     }
@@ -126,6 +188,10 @@ impl SeekService for SeekServiceImpl {
         let Some((_, seek)) = self.seeks.remove(&seek_id) else {
             return ServiceError::not_found("Seek ID not found");
         };
+
+        if let Some(from_game) = seek.rematch_from {
+            self.rematch_seeks.remove(&from_game);
+        }
 
         let seek_remove_msg = ServerMessage::SeekList {
             add: false,
@@ -152,5 +218,241 @@ impl SeekService for SeekServiceImpl {
         let _ = self.remove_seek_of_player(&seek.creator);
         let _ = self.remove_seek_of_player(&player);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use uuid::Uuid;
+
+    use crate::{
+        client::{ClientService, MockClientService},
+        game::MockGameService,
+        tak::TakTimeControl,
+    };
+
+    #[allow(unused)]
+    use super::*;
+
+    #[test]
+    fn test_add_seek() {
+        let mock_client_service = MockClientService::default();
+        let mock_game_service = MockGameService::default();
+        let seek_service = SeekServiceImpl::new(
+            Arc::new(Box::new(mock_client_service.clone())),
+            Arc::new(Box::new(mock_game_service.clone())),
+        );
+
+        let game_settings = TakGameSettings {
+            board_size: 5,
+            half_komi: 0,
+            reserve_pieces: 21,
+            reserve_capstones: 1,
+            time_control: TakTimeControl {
+                contingent: Duration::from_secs(300),
+                increment: Duration::from_secs(5),
+                extra: None,
+            },
+        };
+
+        let expected_seek = Seek {
+            id: 1,
+            creator: "player1".to_string(),
+            opponent: None,
+            color: None,
+            game_settings: game_settings.clone(),
+            game_type: GameType::Rated,
+            rematch_from: None,
+        };
+
+        let invalid_game_settings = TakGameSettings {
+            board_size: 0,
+            half_komi: 0,
+            reserve_pieces: 0,
+            reserve_capstones: 0,
+            time_control: TakTimeControl {
+                contingent: Duration::from_secs(0),
+                increment: Duration::from_secs(0),
+                extra: None,
+            },
+        };
+
+        assert!(
+            seek_service
+                .add_seek(
+                    "player1".to_string(),
+                    None,
+                    None,
+                    invalid_game_settings,
+                    GameType::Rated,
+                )
+                .is_err()
+        );
+
+        seek_service
+            .add_seek(
+                "player1".to_string(),
+                None,
+                None,
+                game_settings.clone(),
+                GameType::Rated,
+            )
+            .expect("Failed to add seek");
+
+        let sent_messages = mock_client_service.get_broadcasts();
+        assert!(sent_messages.len() == 1);
+        assert!(matches!(
+            &sent_messages[0],
+            ServerMessage::SeekList {
+                add: true,
+                seek
+            } if expected_seek == *seek
+        ));
+        assert!(seek_service.get_seeks().len() == 1);
+        assert!(seek_service.get_seeks()[0] == expected_seek);
+    }
+
+    #[test]
+    fn test_remove_seek() {
+        let mock_client_service = MockClientService::default();
+        let mock_game_service = MockGameService::default();
+        let seek_service = SeekServiceImpl::new(
+            Arc::new(Box::new(mock_client_service.clone())),
+            Arc::new(Box::new(mock_game_service.clone())),
+        );
+
+        let game_settings = TakGameSettings {
+            board_size: 5,
+            half_komi: 0,
+            reserve_pieces: 21,
+            reserve_capstones: 1,
+            time_control: TakTimeControl {
+                contingent: Duration::from_secs(300),
+                increment: Duration::from_secs(5),
+                extra: None,
+            },
+        };
+
+        let expected_seek = Seek {
+            id: 1,
+            creator: "player1".to_string(),
+            opponent: None,
+            color: None,
+            game_settings: game_settings.clone(),
+            game_type: GameType::Rated,
+            rematch_from: None,
+        };
+
+        seek_service
+            .add_seek(
+                "player1".to_string(),
+                None,
+                None,
+                game_settings.clone(),
+                GameType::Rated,
+            )
+            .expect("Failed to add seek");
+
+        seek_service
+            .remove_seek_of_player(&"player1".to_string())
+            .expect("Failed to remove seek");
+
+        let sent_messages = mock_client_service.get_broadcasts();
+        assert!(sent_messages.len() == 2);
+        assert!(matches!(
+            &sent_messages[1],
+            ServerMessage::SeekList {
+                add: false,
+                seek
+            } if expected_seek == *seek
+        ));
+        assert!(seek_service.get_seeks().is_empty());
+    }
+
+    #[test]
+    fn test_rematch_seek() {
+        let mock_client_service = MockClientService::default();
+        let mock_game_service = MockGameService::default();
+        let seek_service = SeekServiceImpl::new(
+            Arc::new(Box::new(mock_client_service.clone())),
+            Arc::new(Box::new(mock_game_service.clone())),
+        );
+
+        let p1 = Uuid::new_v4();
+        let p2 = Uuid::new_v4();
+
+        mock_client_service
+            .associate_player(&p1, &"player1".to_string())
+            .unwrap();
+        mock_client_service
+            .associate_player(&p2, &"player2".to_string())
+            .unwrap();
+
+        let game_settings = TakGameSettings {
+            board_size: 5,
+            half_komi: 0,
+            reserve_pieces: 21,
+            reserve_capstones: 1,
+            time_control: TakTimeControl {
+                contingent: Duration::from_secs(300),
+                increment: Duration::from_secs(5),
+                extra: None,
+            },
+        };
+
+        let expected_seek = Seek {
+            id: 1,
+            creator: "player1".to_string(),
+            opponent: None,
+            color: None,
+            game_settings: game_settings.clone(),
+            game_type: GameType::Rated,
+            rematch_from: Some(1),
+        };
+
+        seek_service
+            .add_rematch_seek(
+                "player1".to_string(),
+                None,
+                None,
+                game_settings.clone(),
+                GameType::Rated,
+                1,
+            )
+            .expect("Failed to add seek");
+
+        let sent_broadcasts = mock_client_service.get_broadcasts();
+        assert_eq!(sent_broadcasts.len(), 1);
+        assert!(matches!(
+            &sent_broadcasts[0],
+            ServerMessage::SeekList {
+                add: true,
+                seek
+            } if expected_seek == *seek
+        ));
+        assert_eq!(seek_service.get_seeks().len(), 1);
+        assert_eq!(seek_service.get_seeks()[0], expected_seek);
+
+        seek_service
+            .add_rematch_seek(
+                "player2".to_string(),
+                None,
+                None,
+                game_settings.clone(),
+                GameType::Rated,
+                1,
+            )
+            .expect("Failed to add seek");
+
+        let sent_messages = mock_client_service.get_messages();
+        assert_eq!(sent_messages.len(), 1);
+        assert!(matches!(
+            &sent_messages[0],
+            (uuid, ServerMessage::AcceptRematch { seek_id: 1 }) if *uuid == p2
+        ));
+        assert_eq!(seek_service.get_seeks().len(), 1);
+        assert_eq!(seek_service.get_seeks()[0], expected_seek);
     }
 }

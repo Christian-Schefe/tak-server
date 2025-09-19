@@ -8,7 +8,7 @@ use crate::{
     client::ClientId,
     game::{Game, GameId},
     player::PlayerUsername,
-    seek::Seek,
+    seek::{Seek, SeekId},
     tak::{TakAction, TakGameState},
 };
 
@@ -58,6 +58,9 @@ pub enum ServerMessage {
     RoomMembership {
         room: String,
         joined: bool,
+    },
+    AcceptRematch {
+        seek_id: SeekId,
     },
 }
 
