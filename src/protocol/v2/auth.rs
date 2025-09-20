@@ -17,6 +17,7 @@ impl ProtocolV2Handler {
         }
         if parts.len() != 3 {
             self.send_to(id, "NOK");
+            return;
         }
         let username = parts[1].to_string();
         let password = parts[2].to_string();

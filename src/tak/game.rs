@@ -233,13 +233,8 @@ impl TakGame {
         let now = Instant::now();
         let player = self.base.current_player.clone();
 
-        let time_remaining = self.get_time_remaining(&player, now);
-        if time_remaining.is_zero() {
-            self.base.game_state = TakGameState::Win {
-                winner: player.opponent(),
-                reason: TakWinReason::Default,
-            };
-            return Err("Player has run out of time".to_string());
+        if self.check_timeout(now) {
+            return Err("Game is already over due to timeout".to_string());
         }
 
         self.base.do_action(action)?;
@@ -277,6 +272,10 @@ impl TakGame {
     }
 
     pub fn resign(&mut self, player: &TakPlayer) -> Result<(), String> {
+        let now = Instant::now();
+        if self.check_timeout(now) {
+            return Err("Game is already over due to timeout".to_string());
+        }
         if self.base.game_state != TakGameState::Ongoing {
             return Err("Game is already over".to_string());
         }

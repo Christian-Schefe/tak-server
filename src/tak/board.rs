@@ -241,3 +241,79 @@ impl TakBoard {
         hash.join(",")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_place_and_move() {
+        let mut board = TakBoard::new(5);
+        let pos = TakPos { x: 0, y: 0 };
+        let player = TakPlayer::White;
+        let variant = TakVariant::Flat;
+
+        assert!(board.do_place(&pos, &variant, &player).is_ok());
+        assert!(board.can_do_move(&pos, &TakDir::Right, &[1]).is_ok());
+        assert!(board.do_move(&pos, &TakDir::Right, &[1]).is_ok());
+
+        let new_pos = TakPos { x: 1, y: 0 };
+        assert!(board.stacks[(new_pos.y * board.size as i32 + new_pos.x) as usize].is_some());
+    }
+
+    #[test]
+    fn test_block() {
+        let mut board = TakBoard::new(5);
+        let pos = TakPos { x: 1, y: 1 };
+        let wall_pos = TakPos { x: 2, y: 1 };
+        let cap_pos = TakPos { x: 1, y: 2 };
+        let player = TakPlayer::White;
+        let variant = TakVariant::Flat;
+
+        assert!(board.do_place(&pos, &variant, &player).is_ok());
+        assert!(
+            board
+                .do_place(&wall_pos, &TakVariant::Standing, &player)
+                .is_ok()
+        );
+        assert!(
+            board
+                .do_place(&cap_pos, &TakVariant::Capstone, &player)
+                .is_ok()
+        );
+        assert!(board.can_do_move(&pos, &TakDir::Right, &[1]).is_err());
+        assert!(board.can_do_move(&pos, &TakDir::Up, &[1]).is_err());
+    }
+
+    #[test]
+    fn test_caps_smash() {
+        let mut board = TakBoard::new(5);
+        let pos = TakPos { x: 0, y: 0 };
+        let cap_pos = TakPos { x: 1, y: 0 };
+        let player = TakPlayer::White;
+        let variant = TakVariant::Capstone;
+
+        assert!(board.do_place(&pos, &variant, &player).is_ok());
+        assert!(
+            board
+                .do_place(&cap_pos, &TakVariant::Standing, &player)
+                .is_ok()
+        );
+        assert_eq!(board.can_do_move(&pos, &TakDir::Right, &[1]), Ok(()));
+        assert!(board.do_move(&pos, &TakDir::Right, &[1]).is_ok());
+    }
+
+    #[test]
+    fn test_road_detection() {
+        let mut board = TakBoard::new(5);
+        let player = TakPlayer::White;
+        let variant = TakVariant::Flat;
+
+        for x in 0..5 {
+            let pos = TakPos { x, y: 0 };
+            assert!(board.do_place(&pos, &variant, &player).is_ok());
+        }
+
+        assert!(board.check_for_road(&player));
+    }
+}

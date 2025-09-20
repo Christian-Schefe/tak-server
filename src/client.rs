@@ -34,7 +34,9 @@ pub fn send_to<T>(client_service: &dyn ClientService, id: &ClientId, msg: T)
 where
     T: AsRef<str>,
 {
-    let _ = client_service.try_send_to(id, msg.as_ref());
+    if let Err(e) = client_service.try_send_to(id, msg.as_ref()) {
+        println!("Failed to send message to client {}: {}", id, e);
+    }
 }
 
 #[async_trait::async_trait]
@@ -47,6 +49,7 @@ pub trait ClientService {
     fn try_protocol_multicast(&self, ids: &[ClientId], msg: &ServerMessage);
     fn try_auth_protocol_broadcast(&self, msg: &ServerMessage);
     fn close_client(&self, id: &ClientId);
+    fn get_offline_since(&self, player: &PlayerUsername) -> Result<Option<Instant>, ()>;
     async fn launch_client_cleanup_task(&self);
     async fn handle_client_websocket(&self, ws: WebSocket);
     async fn handle_client_tcp(&self, tcp: TcpStream);
@@ -60,6 +63,7 @@ pub struct ClientServiceImpl {
     client_to_player: Arc<DashMap<ClientId, PlayerUsername>>,
     player_to_client: Arc<DashMap<PlayerUsername, ClientId>>,
     last_activity: Arc<DashMap<ClientId, Instant>>,
+    last_disconnect: Arc<moka::sync::Cache<PlayerUsername, Instant>>,
 }
 
 impl ClientServiceImpl {
@@ -71,6 +75,11 @@ impl ClientServiceImpl {
             client_to_player: Arc::new(DashMap::new()),
             player_to_client: Arc::new(DashMap::new()),
             last_activity: Arc::new(DashMap::new()),
+            last_disconnect: Arc::new(
+                moka::sync::Cache::builder()
+                    .time_to_live(Duration::from_secs(600))
+                    .build(),
+            ),
         }
     }
 
@@ -82,6 +91,7 @@ impl ClientServiceImpl {
         if let Some((_, username)) = player {
             self.player_to_client.remove(&username);
             self.update_online_players();
+            self.last_disconnect.insert(username, Instant::now());
         }
     }
 
@@ -116,7 +126,6 @@ impl ClientServiceImpl {
                 .handle_send::<S, M>(client_id, ws_sender, cancellation_token_clone, msg_factory)
                 .await;
         });
-        self.on_connect(&client_id);
         let _ = tokio::join!(receive_task, send_task);
     }
 
@@ -134,6 +143,8 @@ impl ClientServiceImpl {
         self.client_senders
             .insert(id, (tx, cancellation_token.clone()));
         self.client_handlers.insert(id, Protocol::V2);
+
+        self.on_connect(&id);
 
         while let Some(msg) = select! {
             msg = rx.recv() => msg,
@@ -220,6 +231,7 @@ impl ClientServiceImpl {
     }
 
     fn on_connect(&self, id: &ClientId) {
+        println!("Client {} connected", id);
         send_to(self, id, "Welcome!");
         send_to(self, id, "Login or Register");
     }
@@ -297,6 +309,14 @@ impl ClientService for ClientServiceImpl {
             return;
         };
         cancellation_token.cancel();
+    }
+
+    fn get_offline_since(&self, player: &PlayerUsername) -> Result<Option<Instant>, ()> {
+        if self.player_to_client.contains_key(player) {
+            Err(())
+        } else {
+            Ok(self.last_disconnect.get(player))
+        }
     }
 
     async fn launch_client_cleanup_task(&self) {
@@ -409,6 +429,10 @@ impl ClientService for MockClientService {
     }
 
     fn close_client(&self, _id: &ClientId) {}
+
+    fn get_offline_since(&self, _player: &PlayerUsername) -> Result<Option<Instant>, ()> {
+        Ok(None)
+    }
 
     async fn launch_client_cleanup_task(&self) {}
     async fn handle_client_websocket(&self, _ws: WebSocket) {}

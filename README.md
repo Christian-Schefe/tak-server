@@ -15,26 +15,28 @@ To do:
 - [x] Mod and admin privileges
 - [x] Player inactivity disconnect
 - [x] Password reset
-- [ ] Game abandon after timeout on disconnect
+- [x] Game abandon after timeout on disconnect
 - [ ] Tests
 
 To do extra features:
 
-- [ ] JSON protocol alternativef
-- [ ] REST endpoints
+- [x] REST endpoints
 - [x] JWT auth
+- [ ] JSON protocol alternative
 
 Open questions / On hold:
 
-- [ ] Player ratings
 - [ ] Broadcasting (is that in use?)
 - [ ] IRCBridge (is that in use?)
 
-- Rating computation is done in typescript service, values set in java code are simply overwritten. The old server computes a value (which seems to differ from the typescript service? Also contains database indirection (via ratingbase) for no good reason?) as a placeholder for games until the rating service is run. Should the java algorithm be copied as is, or be adjusted?
-
-- The text protocol system can't handle passwords with spaces correctly.
-
+- Old Java code does a complicated calculation for temporary rating that seems excessive, as it anyway overwritten by the typescript service.
+- The text protocol system can't handle passwords with spaces.
 - Games DB uses autoincrement INTEGER PRIMARY KEY, Players DB uses non-autoincrement INT PRIMARY_KEY. Why?
-
 - Ban doesn't have any effect?
 - What's the point of sudo broadcast?
+
+Changes:
+
+- Ban prevents login
+- sudo broadcast is a noop
+- sudo reload is a noop as profanity filter is now a library.

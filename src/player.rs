@@ -39,20 +39,21 @@ struct EmailValidator {
 
 #[derive(Clone)]
 pub struct Player {
-    pub id: i32,
+    pub id: i64,
     pub username: PlayerUsername,
-    pub email: String,
-    pub rating: i32,
+    pub email: Option<String>,
+    pub rating: f64,
     pub password_hash: String,
     pub is_bot: bool,
     pub is_gagged: bool,
     pub is_mod: bool,
     pub is_admin: bool,
+    pub is_banned: bool,
 }
 
 pub trait PlayerService {
     fn load_unique_usernames(&self) -> ServiceResult<()>;
-    fn fetch_player(&self, username: &str) -> Option<Player>;
+    fn fetch_player(&self, username: &str) -> ServiceResult<Player>;
     fn validate_login(&self, username: &PlayerUsername, password: &str) -> ServiceResult<()>;
     fn try_login(
         &self,
@@ -183,12 +184,8 @@ impl PlayerServiceImpl {
             &PooledConnection<SqliteConnectionManager>,
         ) -> Result<usize, rusqlite::Error>,
     ) -> ServiceResult<()> {
-        let Some(current_player) = self.fetch_player(&username) else {
-            return ServiceError::not_found("Current player not found");
-        };
-        let Some(player) = self.fetch_player(target_username) else {
-            return ServiceError::not_found("Target player not found");
-        };
+        let current_player = self.fetch_player(&username)?;
+        let player = self.fetch_player(target_username)?;
         if !access_predicate(&current_player, &player) {
             return ServiceError::unauthorized("Insufficient rights");
         }
@@ -313,9 +310,7 @@ impl PlayerServiceImpl {
     }
 
     fn update_password(&self, username: &PlayerUsername, new_password: &str) -> ServiceResult<()> {
-        let Some(player) = self.fetch_player(&username) else {
-            return ServiceError::not_found("Player not found");
-        };
+        let player = self.fetch_player(&username)?;
         let password_hash = bcrypt::hash(new_password, bcrypt::DEFAULT_COST)
             .map_err(|e| ServiceError::Internal(format!("Failed to hash password: {}", e)))?;
 
@@ -352,37 +347,41 @@ impl PlayerService for PlayerServiceImpl {
         Ok(())
     }
 
-    fn fetch_player(&self, username: &str) -> Option<Player> {
+    fn fetch_player(&self, username: &str) -> ServiceResult<Player> {
         if username.starts_with("Guest") {
-            return None;
+            return ServiceError::not_found("Player not found");
         }
         let username = username.to_string();
         if let Some(player) = self.player_cache.get(&username) {
-            return Some(player);
+            return Ok(player);
         }
-        let player = PLAYER_DB_POOL.get().ok()?.query_one(
-            "SELECT * FROM players WHERE name = ?1",
-            [username.clone()],
-            |row| {
-                Ok(Player {
-                    password_hash: row.get("password")?,
-                    username: row.get("name")?,
-                    rating: row.get("rating")?,
-                    id: row.get("id")?,
-                    email: row.get("email")?,
-                    is_bot: row.get::<_, i32>("isbot")? != 0,
-                    is_gagged: row.get::<_, i32>("is_gagged")? != 0,
-                    is_mod: row.get::<_, i32>("is_mod")? != 0,
-                    is_admin: row.get::<_, i32>("is_admin")? != 0,
-                })
-            },
-        );
+        let player = PLAYER_DB_POOL
+            .get()
+            .map_err(|e| DatabaseError::ConnectionError(e))?
+            .query_one(
+                "SELECT * FROM players WHERE name = ?1",
+                [username.clone()],
+                |row| {
+                    Ok(Player {
+                        password_hash: row.get("password")?,
+                        username: row.get("name")?,
+                        rating: row.get("rating")?,
+                        id: row.get("id")?,
+                        email: row.get("email")?,
+                        is_bot: row.get::<_, i32>("isbot")? != 0,
+                        is_gagged: row.get::<_, i32>("is_gagged")? != 0,
+                        is_mod: row.get::<_, i32>("is_mod")? != 0,
+                        is_admin: row.get::<_, i32>("is_admin")? != 0,
+                        is_banned: row.get::<_, i32>("is_banned")? != 0,
+                    })
+                },
+            );
         match player {
             Ok(p) => {
                 self.player_cache.insert(username.clone(), p.clone());
-                Some(p)
+                Ok(p)
             }
-            Err(_) => None,
+            Err(e) => Err(ServiceError::Database(DatabaseError::QueryError(e))),
         }
     }
 
@@ -425,10 +424,9 @@ impl PlayerService for PlayerServiceImpl {
         )?;
         if let Some(ban_msg) = banned {
             self.client_service.close_client(id);
-            if let Some(target_player) = self.fetch_player(target_username) {
-                self.send_ban_email(&target_player.email, target_username, &ban_msg)?;
-            } else {
-                return ServiceError::not_found("Target player not found");
+            let target_player = self.fetch_player(target_username)?;
+            if let Some(email) = &target_player.email {
+                self.send_ban_email(email, target_username, &ban_msg)?;
             }
         }
         Ok(())
@@ -492,23 +490,22 @@ impl PlayerService for PlayerServiceImpl {
     }
 
     fn validate_login(&self, username: &PlayerUsername, password: &str) -> ServiceResult<()> {
-        if let Some(player) = self.fetch_player(&username) {
-            bcrypt::verify(password, &player.password_hash)
-                .map_err(|_| ServiceError::Unauthorized("Invalid username or password".into()))
-                .and_then(|is_valid| {
-                    if is_valid {
-                        Ok(())
-                    } else {
-                        Err(ServiceError::Unauthorized(
-                            "Invalid username or password".into(),
-                        ))
-                    }
-                })
-        } else {
-            Err(ServiceError::Unauthorized(
+        let player = self.fetch_player(&username)?;
+        let valid = bcrypt::verify(password, &player.password_hash)
+            .map_err(|_| ServiceError::BadRequest("Failed to hash password".into()))?;
+
+        println!(
+            "Login attempt for user {}: {}, {}",
+            username,
+            password,
+            if valid { "success" } else { "failure" }
+        );
+        if !valid {
+            return Err(ServiceError::Unauthorized(
                 "Invalid username or password".into(),
-            ))
+            ));
         }
+        Ok(())
     }
 
     fn try_login(
@@ -518,12 +515,20 @@ impl PlayerService for PlayerServiceImpl {
         password: &str,
     ) -> ServiceResult<()> {
         self.validate_login(username, password)?;
+        let player = self.fetch_player(username)?;
+        if player.is_banned {
+            return ServiceError::unauthorized("User is banned");
+        }
         self.client_service.associate_player(id, username)
     }
 
     fn try_login_jwt(&self, id: &ClientId, token: &str) -> ServiceResult<PlayerUsername> {
         let username =
             validate_jwt(token).ok_or(ServiceError::Unauthorized("Invalid token".into()))?;
+        let player = self.fetch_player(&username)?;
+        if player.is_banned {
+            return ServiceError::unauthorized("User is banned");
+        }
         self.client_service.associate_player(id, &username)?;
         Ok(username)
     }
@@ -575,10 +580,8 @@ impl PlayerService for PlayerServiceImpl {
     }
 
     fn send_reset_token(&self, username: &PlayerUsername, email: &str) -> ServiceResult<()> {
-        let Some(player) = self.fetch_player(username) else {
-            return ServiceError::not_found("Player not found");
-        };
-        if player.email != email {
+        let player = self.fetch_player(username)?;
+        if player.email.is_none_or(|e| e != email) {
             return ServiceError::validation_err("Email does not match");
         }
         let reset_token = Self::generate_temporary_password();
@@ -594,9 +597,7 @@ impl PlayerService for PlayerServiceImpl {
         reset_token: &str,
         new_password: &str,
     ) -> ServiceResult<()> {
-        let Some(player) = self.fetch_player(username) else {
-            return ServiceError::not_found("Player not found");
-        };
+        let player = self.fetch_player(username)?;
 
         let Some((token_username, token_time)) = self.password_reset_tokens.remove(reset_token)
         else {
@@ -641,9 +642,7 @@ impl PlayerService for PlayerServiceImpl {
         target_username: &PlayerUsername,
         new_password: &str,
     ) -> ServiceResult<()> {
-        let Some(player) = self.fetch_player(&username) else {
-            return ServiceError::not_found("Player not found");
-        };
+        let player = self.fetch_player(&username)?;
         if !player.is_admin {
             return ServiceError::unauthorized("Only admins can set passwords directly");
         }
@@ -698,16 +697,18 @@ impl PlayerService for PlayerServiceImpl {
             .prepare(&query)
             .map_err(|e| DatabaseError::QueryError(e))?;
         let players = stmt.query_map(params, |row| {
+            let email: Option<String> = row.get("email")?;
             Ok(Player {
                 password_hash: row.get("password")?,
                 username: row.get("name")?,
                 rating: row.get("rating")?,
                 id: row.get("id")?,
-                email: row.get("email")?,
+                email: email.filter(|v| !v.is_empty()),
                 is_bot: row.get::<_, i32>("isbot")? != 0,
                 is_gagged: row.get::<_, i32>("is_gagged")? != 0,
                 is_mod: row.get::<_, i32>("is_mod")? != 0,
                 is_admin: row.get::<_, i32>("is_admin")? != 0,
+                is_banned: row.get::<_, i32>("is_banned")? != 0,
             })
         });
         let result = players

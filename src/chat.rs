@@ -74,9 +74,10 @@ impl ChatService for ChatServiceImpl {
     }
 
     fn send_message_to_all(&self, username: &PlayerUsername, message: &str) -> Result<(), String> {
-        let Some(player) = self.player_service.fetch_player(username) else {
-            return Err("Associated player not found".to_string());
-        };
+        let player = self
+            .player_service
+            .fetch_player(username)
+            .map_err(|e| e.to_string())?;
         if player.is_gagged {
             return Err("You are gagged and cannot send messages".to_string());
         }
@@ -95,9 +96,10 @@ impl ChatService for ChatServiceImpl {
         room_name: &str,
         message: &str,
     ) -> Result<(), String> {
-        let Some(player) = self.player_service.fetch_player(&username) else {
-            return Err("Associated player not found".to_string());
-        };
+        let player = self
+            .player_service
+            .fetch_player(&username)
+            .map_err(|e| e.to_string())?;
         if player.is_gagged {
             return Err("You are gagged and cannot send messages".to_string());
         }
@@ -118,9 +120,10 @@ impl ChatService for ChatServiceImpl {
         to_username: &PlayerUsername,
         message: &str,
     ) -> Result<(), String> {
-        let Some(from_player) = self.player_service.fetch_player(from_username) else {
-            return Err("Associated player not found".to_string());
-        };
+        let from_player = self
+            .player_service
+            .fetch_player(from_username)
+            .map_err(|e| e.to_string())?;
         if from_player.is_gagged {
             return Err("You are gagged and cannot send messages".to_string());
         }

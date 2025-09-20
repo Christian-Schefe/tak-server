@@ -233,7 +233,6 @@ mod tests {
         tak::TakTimeControl,
     };
 
-    #[allow(unused)]
     use super::*;
 
     #[test]

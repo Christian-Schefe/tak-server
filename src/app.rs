@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use axum::response::IntoResponse;
 use thiserror::Error;
 
 use crate::{
@@ -107,6 +108,26 @@ impl ServiceError {
         T: Into<String>,
     {
         Err(ServiceError::BadRequest(msg.into()))
+    }
+}
+
+impl IntoResponse for ServiceError {
+    fn into_response(self) -> axum::http::Response<axum::body::Body> {
+        let (status, msg) = match self {
+            ServiceError::NotFound(msg) => (axum::http::StatusCode::NOT_FOUND, msg),
+            ServiceError::Unauthorized(msg) => (axum::http::StatusCode::UNAUTHORIZED, msg),
+            ServiceError::Validation(msg) => (axum::http::StatusCode::BAD_REQUEST, msg),
+            ServiceError::Database(_) => (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Database error".to_string(),
+            ),
+            ServiceError::NotPossible(msg) => (axum::http::StatusCode::BAD_REQUEST, msg),
+            ServiceError::Other(msg) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, msg),
+            ServiceError::Internal(msg) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, msg),
+            ServiceError::BadRequest(msg) => (axum::http::StatusCode::BAD_REQUEST, msg),
+        };
+        let body = serde_json::json!({ "error": msg });
+        (status, axum::Json(body)).into_response()
     }
 }
 

@@ -1,10 +1,10 @@
 use std::time::Duration;
 
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{Json, extract::State};
 use serde::Deserialize;
 
 use crate::{
-    AppState,
+    AppState, ServiceError,
     jwt::Claims,
     player::PlayerUsername,
     seek::GameType,
@@ -39,14 +39,13 @@ pub enum SeekColor {
     White,
     Black,
 }
+
 pub async fn handle_add_seek_endpoint(
     claims: Claims,
     State(app): State<AppState>,
     Json(msg): Json<AddSeekMessage>,
-) -> Result<(), (StatusCode, String)> {
-    app.player_service
-        .fetch_player(&claims.sub)
-        .ok_or((StatusCode::NOT_FOUND, "Player not found".to_string()))?;
+) -> Result<(), ServiceError> {
+    app.player_service.fetch_player(&claims.sub)?;
     let seek = msg.seek;
     let game_settings = TakGameSettings {
         board_size: seek.board_size,
@@ -76,27 +75,21 @@ pub async fn handle_add_seek_endpoint(
     } else {
         GameType::Rated
     };
-    app.seek_service
-        .add_seek(
-            claims.sub.to_string(),
-            seek.opponent,
-            color,
-            game_settings,
-            game_type,
-        )
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+    app.seek_service.add_seek(
+        claims.sub.to_string(),
+        seek.opponent,
+        color,
+        game_settings,
+        game_type,
+    )?;
     Ok(())
 }
 
 pub async fn handle_remove_seek_endpoint(
     claims: Claims,
     State(app): State<AppState>,
-) -> Result<(), (StatusCode, String)> {
-    app.player_service
-        .fetch_player(&claims.sub)
-        .ok_or((StatusCode::NOT_FOUND, "Player not found".to_string()))?;
-    app.seek_service
-        .remove_seek_of_player(&claims.sub)
-        .map_err(|e| (StatusCode::NOT_FOUND, e.to_string()))?;
+) -> Result<(), ServiceError> {
+    app.player_service.fetch_player(&claims.sub)?;
+    app.seek_service.remove_seek_of_player(&claims.sub)?;
     Ok(())
 }

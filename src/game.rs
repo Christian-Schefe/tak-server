@@ -1,4 +1,5 @@
 use std::{
+    ops::Add,
     sync::{Arc, LazyLock},
     time::{Duration, Instant},
 };
@@ -28,6 +29,9 @@ static GAMES_DB_POOL: LazyLock<Pool<SqliteConnectionManager>> = LazyLock::new(||
 });
 
 pub type GameId = u32;
+
+const GAME_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(120);
+const GAME_TOURNAMENT_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(900);
 
 #[derive(Clone, Debug)]
 pub struct Game {
@@ -71,7 +75,7 @@ pub struct GameServiceImpl {
     client_service: ArcClientService,
     player_service: ArcPlayerService,
     games: Arc<DashMap<GameId, Game>>,
-    game_timeout_tokens: Arc<DashMap<GameId, CancellationToken>>,
+    game_ended_tokens: Arc<DashMap<GameId, CancellationToken>>,
     game_spectators: Arc<DashMap<GameId, Vec<ClientId>>>,
     game_by_player: Arc<DashMap<PlayerUsername, GameId>>,
 }
@@ -82,7 +86,7 @@ impl GameServiceImpl {
             client_service,
             player_service,
             games: Arc::new(DashMap::new()),
-            game_timeout_tokens: Arc::new(DashMap::new()),
+            game_ended_tokens: Arc::new(DashMap::new()),
             game_spectators: Arc::new(DashMap::new()),
             game_by_player: Arc::new(DashMap::new()),
         }
@@ -114,12 +118,8 @@ impl GameServiceImpl {
         let conn = GAMES_DB_POOL
             .get()
             .map_err(|e| DatabaseError::ConnectionError(e))?;
-        let Some(white_player) = self.player_service.fetch_player(white) else {
-            return ServiceError::not_found("White player not found");
-        };
-        let Some(black_player) = self.player_service.fetch_player(black) else {
-            return ServiceError::not_found("Black player not found");
-        };
+        let white_player = self.player_service.fetch_player(white)?;
+        let black_player = self.player_service.fetch_player(black)?;
         let params = [
             chrono::Utc::now().naive_utc().to_string(),
             seek.game_settings.board_size.to_string(),
@@ -250,7 +250,7 @@ impl GameServiceImpl {
         );
 
         self.games.remove(game_id);
-        if let Some((_, token)) = self.game_timeout_tokens.remove(game_id) {
+        if let Some((_, token)) = self.game_ended_tokens.remove(game_id) {
             token.cancel();
         }
         self.game_by_player.remove(&game.white);
@@ -326,9 +326,13 @@ impl GameServiceImpl {
                 }
                 let min_duration_to_timeout = {
                     let (white_time, black_time) = game_ref.game.get_time_remaining_both(now);
-                    white_time.min(black_time).max(Duration::from_millis(100))
+                    white_time.min(black_time).add(Duration::from_millis(100))
                 };
                 drop(game_ref);
+                println!(
+                    "Game {}: waiting for timeout check in {:?}",
+                    game_id, min_duration_to_timeout
+                );
                 select! {
                     _ = cancel_token.cancelled() => {
                         return;
@@ -336,7 +340,67 @@ impl GameServiceImpl {
                     _ = tokio::time::sleep(min_duration_to_timeout) => {}
                 }
             }
-            game_service.game_timeout_tokens.remove(&game_id);
+            game_service.check_game_over(&game_id);
+        });
+    }
+
+    fn run_disconnect_waiter(&self, game_id: GameId, cancel_token: CancellationToken) {
+        let game_service = self.clone();
+        tokio::spawn(async move {
+            loop {
+                let Some(mut game_ref) = game_service.games.get_mut(&game_id) else {
+                    return;
+                };
+                let now = Instant::now();
+                if !game_ref.game.is_ongoing() {
+                    break;
+                }
+
+                let white_last_active = game_service
+                    .client_service
+                    .get_offline_since(&game_ref.white)
+                    .unwrap_or(Some(now));
+                let black_last_active = game_service
+                    .client_service
+                    .get_offline_since(&game_ref.black)
+                    .unwrap_or(Some(now));
+
+                let timeout = if game_ref.game_type == GameType::Tournament {
+                    GAME_TOURNAMENT_DISCONNECT_TIMEOUT
+                } else {
+                    GAME_DISCONNECT_TIMEOUT
+                };
+
+                let white_min_timeout =
+                    white_last_active.map(|t| timeout.saturating_sub(t.elapsed()));
+                let black_min_timeout =
+                    black_last_active.map(|t| timeout.saturating_sub(t.elapsed()));
+
+                if white_min_timeout.is_none_or(|t| t.is_zero()) {
+                    game_ref.game.resign(&TakPlayer::White).ok();
+                    break;
+                } else if black_min_timeout.is_none_or(|t| t.is_zero()) {
+                    game_ref.game.resign(&TakPlayer::Black).ok();
+                    break;
+                }
+                drop(game_ref);
+
+                let min_duration_to_timeout = white_min_timeout
+                    .unwrap()
+                    .min(black_min_timeout.unwrap())
+                    .add(Duration::from_millis(100));
+
+                println!(
+                    "Game {}: waiting for disconnect check in {:?}",
+                    game_id, min_duration_to_timeout
+                );
+                select! {
+                    _ = cancel_token.cancelled() => {
+                        return;
+                    }
+                    _ = tokio::time::sleep(min_duration_to_timeout) => {}
+                }
+            }
             game_service.check_game_over(&game_id);
         });
     }
@@ -490,7 +554,8 @@ impl GameService for GameServiceImpl {
         println!("Game {} created", id);
 
         let cancel_token = CancellationToken::new();
-        self.game_timeout_tokens.insert(id, cancel_token.clone());
+        self.game_ended_tokens.insert(id, cancel_token.clone());
+        self.run_disconnect_waiter(id, cancel_token.clone());
         self.run_timeout_waiter(id, cancel_token);
 
         let game_new_msg = ServerMessage::GameList {
