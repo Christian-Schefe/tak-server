@@ -39,7 +39,7 @@ impl ProtocolJsonHandler {
 
     pub fn handle_server_message(&self, _id: &ClientId, msg: &ServerMessage) {
         match msg {
-            _ => todo!(),
+            _ => {}
         }
     }
 

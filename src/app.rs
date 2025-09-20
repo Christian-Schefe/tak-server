@@ -119,13 +119,6 @@ pub fn construct_app() -> AppState {
     let client_service: Arc<Box<dyn ClientService + Send + Sync>> =
         Arc::new(Box::new(ClientServiceImpl::new(protocol_service.clone())));
 
-    let game_service: Arc<Box<dyn GameService + Send + Sync>> =
-        Arc::new(Box::new(GameServiceImpl::new(client_service.clone())));
-
-    let seek_service: Arc<Box<dyn SeekService + Send + Sync>> = Arc::new(Box::new(
-        SeekServiceImpl::new(client_service.clone(), game_service.clone()),
-    ));
-
     let email_service: Arc<Box<dyn EmailService + Send + Sync>> =
         Arc::new(Box::new(EmailServiceImpl {}));
 
@@ -135,6 +128,14 @@ pub fn construct_app() -> AppState {
 
     let chat_service: Arc<Box<dyn ChatService + Send + Sync>> = Arc::new(Box::new(
         ChatServiceImpl::new(client_service.clone(), player_service.clone()),
+    ));
+
+    let game_service: Arc<Box<dyn GameService + Send + Sync>> = Arc::new(Box::new(
+        GameServiceImpl::new(client_service.clone(), player_service.clone()),
+    ));
+
+    let seek_service: Arc<Box<dyn SeekService + Send + Sync>> = Arc::new(Box::new(
+        SeekServiceImpl::new(client_service.clone(), game_service.clone()),
     ));
 
     let app = AppState {

@@ -84,7 +84,6 @@ impl ProtocolV2Handler {
         }
     }
 
-    // TODO: handle passwords with spaces
     pub fn handle_reset_password_message(&self, id: &ClientId, parts: &[&str]) {
         if parts.len() != 4 {
             self.send_to(id, "NOK");

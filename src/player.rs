@@ -40,18 +40,14 @@ struct EmailValidator {
 #[derive(Clone)]
 pub struct Player {
     pub id: i32,
+    pub username: PlayerUsername,
     pub email: String,
+    pub rating: i32,
     pub password_hash: String,
     pub is_bot: bool,
     pub is_gagged: bool,
-    pub access_level: AccessLevel,
-}
-
-#[derive(Clone, PartialEq)]
-pub enum AccessLevel {
-    User,
-    Mod,
-    Admin,
+    pub is_mod: bool,
+    pub is_admin: bool,
 }
 
 pub trait PlayerService {
@@ -88,9 +84,10 @@ pub trait PlayerService {
     ) -> ServiceResult<()>;
     fn set_banned(
         &self,
+        id: &ClientId,
         username: &PlayerUsername,
         target_username: &PlayerUsername,
-        banned: bool,
+        banned: Option<String>,
     ) -> ServiceResult<()>;
     fn set_modded(
         &self,
@@ -109,6 +106,20 @@ pub trait PlayerService {
         username: &PlayerUsername,
         target_username: &PlayerUsername,
         bot: bool,
+    ) -> ServiceResult<()>;
+    fn get_players(
+        &self,
+        ban_filter: Option<bool>,
+        gag_filter: Option<bool>,
+        mod_filter: Option<bool>,
+        admin_filter: Option<bool>,
+        bot_filter: Option<bool>,
+    ) -> ServiceResult<Vec<Player>>;
+    fn set_password(
+        &self,
+        username: &PlayerUsername,
+        target_username: &PlayerUsername,
+        new_password: &str,
     ) -> ServiceResult<()>;
 }
 
@@ -155,15 +166,11 @@ impl PlayerServiceImpl {
     }
 
     fn more_rights(this: &Player, target: &Player) -> bool {
-        match this.access_level {
-            AccessLevel::Admin => target.access_level != AccessLevel::Admin,
-            AccessLevel::Mod => target.access_level == AccessLevel::User,
-            AccessLevel::User => false,
-        }
+        (this.is_admin && !target.is_admin) || (this.is_mod && !target.is_admin && !target.is_mod)
     }
 
     fn more_rights_and_admin(this: &Player, target: &Player) -> bool {
-        this.access_level == AccessLevel::Admin && target.access_level != AccessLevel::Admin
+        this.is_admin && !target.is_admin
     }
 
     fn update_player(
@@ -285,6 +292,45 @@ impl PlayerServiceImpl {
         );
         self.email_service.send_email(to, &subject, &body)
     }
+
+    fn send_ban_email(
+        &self,
+        to: &str,
+        username: &PlayerUsername,
+        ban_msg: &str,
+    ) -> ServiceResult<()> {
+        let subject = "Playtak Account Banned";
+        let body = format!(
+            "Hello {},\n\n\
+        Your account has been banned for the following reason:\n\
+        {}\n\n\
+        If you believe this is a mistake, please contact support.\n\n\
+        Best regards,\n\
+        The Playtak Team",
+            username, ban_msg
+        );
+        self.email_service.send_email(to, &subject, &body)
+    }
+
+    fn update_password(&self, username: &PlayerUsername, new_password: &str) -> ServiceResult<()> {
+        let Some(player) = self.fetch_player(&username) else {
+            return ServiceError::not_found("Player not found");
+        };
+        let password_hash = bcrypt::hash(new_password, bcrypt::DEFAULT_COST)
+            .map_err(|e| ServiceError::Internal(format!("Failed to hash password: {}", e)))?;
+
+        let conn = PLAYER_DB_POOL
+            .get()
+            .map_err(|e| DatabaseError::ConnectionError(e))?;
+
+        conn.execute(
+            "UPDATE players SET password = ?1 WHERE id = ?2",
+            (password_hash, player.id),
+        )
+        .map_err(|e| DatabaseError::QueryError(e))?;
+        self.player_cache.invalidate(username);
+        Ok(())
+    }
 }
 
 impl PlayerService for PlayerServiceImpl {
@@ -320,17 +366,14 @@ impl PlayerService for PlayerServiceImpl {
             |row| {
                 Ok(Player {
                     password_hash: row.get("password")?,
+                    username: row.get("name")?,
+                    rating: row.get("rating")?,
                     id: row.get("id")?,
                     email: row.get("email")?,
                     is_bot: row.get::<_, i32>("isbot")? != 0,
                     is_gagged: row.get::<_, i32>("is_gagged")? != 0,
-                    access_level: if row.get::<_, i32>("is_admin")? != 0 {
-                        AccessLevel::Admin
-                    } else if row.get::<_, i32>("is_mod")? != 0 {
-                        AccessLevel::Mod
-                    } else {
-                        AccessLevel::User
-                    },
+                    is_mod: row.get::<_, i32>("is_mod")? != 0,
+                    is_admin: row.get::<_, i32>("is_admin")? != 0,
                 })
             },
         );
@@ -354,9 +397,6 @@ impl PlayerService for PlayerServiceImpl {
             target_username,
             Self::more_rights,
             |player, conn| {
-                if player.access_level != AccessLevel::User {
-                    return Err(rusqlite::Error::InvalidQuery);
-                }
                 conn.execute(
                     "UPDATE players SET is_gagged = ?1 WHERE id = ?2",
                     (gagged as i32, player.id),
@@ -367,9 +407,10 @@ impl PlayerService for PlayerServiceImpl {
 
     fn set_banned(
         &self,
+        id: &ClientId,
         username: &PlayerUsername,
         target_username: &PlayerUsername,
-        banned: bool,
+        banned: Option<String>,
     ) -> ServiceResult<()> {
         self.update_player(
             username,
@@ -378,10 +419,19 @@ impl PlayerService for PlayerServiceImpl {
             |player, conn| {
                 conn.execute(
                     "UPDATE players SET is_banned = ?1 WHERE id = ?2",
-                    (banned as i32, player.id),
+                    (banned.is_some() as i32, player.id),
                 )
             },
-        )
+        )?;
+        if let Some(ban_msg) = banned {
+            self.client_service.close_client(id);
+            if let Some(target_player) = self.fetch_player(target_username) {
+                self.send_ban_email(&target_player.email, target_username, &ban_msg)?;
+            } else {
+                return ServiceError::not_found("Target player not found");
+            }
+        }
+        Ok(())
     }
 
     fn set_modded(
@@ -582,23 +632,88 @@ impl PlayerService for PlayerServiceImpl {
         new_password: &str,
     ) -> ServiceResult<()> {
         self.validate_login(&username, current_password)?;
+        self.update_password(username, new_password)
+    }
 
+    fn set_password(
+        &self,
+        username: &PlayerUsername,
+        target_username: &PlayerUsername,
+        new_password: &str,
+    ) -> ServiceResult<()> {
         let Some(player) = self.fetch_player(&username) else {
             return ServiceError::not_found("Player not found");
         };
-        let password_hash = bcrypt::hash(new_password, bcrypt::DEFAULT_COST)
-            .map_err(|e| ServiceError::Internal(format!("Failed to hash password: {}", e)))?;
+        if !player.is_admin {
+            return ServiceError::unauthorized("Only admins can set passwords directly");
+        }
+        self.update_password(target_username, new_password)
+    }
 
+    fn get_players(
+        &self,
+        ban_filter: Option<bool>,
+        gag_filter: Option<bool>,
+        mod_filter: Option<bool>,
+        admin_filter: Option<bool>,
+        bot_filter: Option<bool>,
+    ) -> ServiceResult<Vec<Player>> {
         let conn = PLAYER_DB_POOL
             .get()
             .map_err(|e| DatabaseError::ConnectionError(e))?;
-
-        conn.execute(
-            "UPDATE players SET password = ?1 WHERE id = ?2",
-            (password_hash, player.id),
-        )
-        .map_err(|e| DatabaseError::QueryError(e))?;
-        self.player_cache.invalidate(username);
-        Ok(())
+        let mut query = "SELECT * FROM players".to_string();
+        let mut param_index = 1;
+        let filters = vec![
+            ("is_banned", ban_filter),
+            ("is_gagged", gag_filter),
+            ("is_mod", mod_filter),
+            ("is_admin", admin_filter),
+            ("isbot", bot_filter),
+        ]
+        .into_iter()
+        .filter_map(|(condition, f)| {
+            if let Some(v) = f {
+                Some((condition, v))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+        let params = rusqlite::params_from_iter(filters.iter().map(|(_, v)| *v as i32));
+        if !filters.is_empty() {
+            query.push_str(" WHERE ");
+            query.push_str(
+                &filters
+                    .iter()
+                    .map(|(filter, _)| {
+                        let cond = format!("{} = ?{}", filter, param_index);
+                        param_index += 1;
+                        cond
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" AND "),
+            );
+        }
+        let mut stmt = conn
+            .prepare(&query)
+            .map_err(|e| DatabaseError::QueryError(e))?;
+        let players = stmt.query_map(params, |row| {
+            Ok(Player {
+                password_hash: row.get("password")?,
+                username: row.get("name")?,
+                rating: row.get("rating")?,
+                id: row.get("id")?,
+                email: row.get("email")?,
+                is_bot: row.get::<_, i32>("isbot")? != 0,
+                is_gagged: row.get::<_, i32>("is_gagged")? != 0,
+                is_mod: row.get::<_, i32>("is_mod")? != 0,
+                is_admin: row.get::<_, i32>("is_admin")? != 0,
+            })
+        });
+        let result = players
+            .map_err(|e| DatabaseError::QueryError(e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| DatabaseError::QueryError(e))?;
+        Ok(result)
     }
 }

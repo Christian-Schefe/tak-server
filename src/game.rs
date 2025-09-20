@@ -10,7 +10,7 @@ use tokio::select;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    ArcClientService, DatabaseError, ServiceError, ServiceResult,
+    ArcClientService, ArcPlayerService, DatabaseError, ServiceError, ServiceResult,
     client::ClientId,
     player::PlayerUsername,
     protocol::{ServerGameMessage, ServerMessage},
@@ -69,6 +69,7 @@ pub trait GameService {
 #[derive(Clone)]
 pub struct GameServiceImpl {
     client_service: ArcClientService,
+    player_service: ArcPlayerService,
     games: Arc<DashMap<GameId, Game>>,
     game_timeout_tokens: Arc<DashMap<GameId, CancellationToken>>,
     game_spectators: Arc<DashMap<GameId, Vec<ClientId>>>,
@@ -76,9 +77,10 @@ pub struct GameServiceImpl {
 }
 
 impl GameServiceImpl {
-    pub fn new(client_service: ArcClientService) -> Self {
+    pub fn new(client_service: ArcClientService, player_service: ArcPlayerService) -> Self {
         Self {
             client_service,
+            player_service,
             games: Arc::new(DashMap::new()),
             game_timeout_tokens: Arc::new(DashMap::new()),
             game_spectators: Arc::new(DashMap::new()),
@@ -104,6 +106,7 @@ impl GameServiceImpl {
     }
 
     fn insert_empty_game(
+        &self,
         white: &PlayerUsername,
         black: &PlayerUsername,
         seek: &Seek,
@@ -111,6 +114,12 @@ impl GameServiceImpl {
         let conn = GAMES_DB_POOL
             .get()
             .map_err(|e| DatabaseError::ConnectionError(e))?;
+        let Some(white_player) = self.player_service.fetch_player(white) else {
+            return ServiceError::not_found("White player not found");
+        };
+        let Some(black_player) = self.player_service.fetch_player(black) else {
+            return ServiceError::not_found("Black player not found");
+        };
         let params = [
             chrono::Utc::now().naive_utc().to_string(),
             seek.game_settings.board_size.to_string(),
@@ -128,8 +137,8 @@ impl GameServiceImpl {
                 .to_string(),
             "".to_string(),
             "0-0".to_string(),
-            "-1000".to_string(), //TODO: player ratings (see open question in readme)
-            "-1000".to_string(),
+            white_player.rating.to_string(),
+            black_player.rating.to_string(),
             if seek.game_type == crate::seek::GameType::Unrated {
                 "1"
             } else {
@@ -466,7 +475,7 @@ impl GameService for GameServiceImpl {
                 }
             }
         };
-        let id = Self::insert_empty_game(&white, &black, seek)?;
+        let id = self.insert_empty_game(&white, &black, seek)?;
         let game = Game {
             id,
             white,

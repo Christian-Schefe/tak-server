@@ -46,6 +46,7 @@ pub trait ClientService {
     fn try_protocol_send(&self, id: &ClientId, msg: &ServerMessage);
     fn try_protocol_multicast(&self, ids: &[ClientId], msg: &ServerMessage);
     fn try_auth_protocol_broadcast(&self, msg: &ServerMessage);
+    fn close_client(&self, id: &ClientId);
     async fn launch_client_cleanup_task(&self);
     async fn handle_client_websocket(&self, ws: WebSocket);
     async fn handle_client_tcp(&self, tcp: TcpStream);
@@ -222,13 +223,6 @@ impl ClientServiceImpl {
         send_to(self, id, "Welcome!");
         send_to(self, id, "Login or Register");
     }
-
-    fn close_client(&self, id: &ClientId) {
-        let Some(cancellation_token) = self.client_senders.get(id).map(|x| x.1.clone()) else {
-            return;
-        };
-        cancellation_token.cancel();
-    }
 }
 
 #[async_trait::async_trait]
@@ -296,6 +290,13 @@ impl ClientService for ClientServiceImpl {
                     .handle_server_message(&entry, entry.key(), msg);
             }
         }
+    }
+
+    fn close_client(&self, id: &ClientId) {
+        let Some(cancellation_token) = self.client_senders.get(id).map(|x| x.1.clone()) else {
+            return;
+        };
+        cancellation_token.cancel();
     }
 
     async fn launch_client_cleanup_task(&self) {
@@ -406,6 +407,8 @@ impl ClientService for MockClientService {
         let mut sent = self.sent_broadcasts.lock().unwrap();
         sent.push(msg.clone());
     }
+
+    fn close_client(&self, _id: &ClientId) {}
 
     async fn launch_client_cleanup_task(&self) {}
     async fn handle_client_websocket(&self, _ws: WebSocket) {}

@@ -17,6 +17,7 @@ mod player;
 mod protocol;
 mod seek;
 mod tak;
+mod util;
 
 pub use app::*;
 

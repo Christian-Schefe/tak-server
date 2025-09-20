@@ -1,7 +1,7 @@
 mod json;
 mod v2;
 
-use std::{sync::OnceLock, time::Duration};
+use std::time::Duration;
 
 use crate::{
     AppState,
@@ -10,6 +10,7 @@ use crate::{
     player::PlayerUsername,
     seek::{Seek, SeekId},
     tak::{TakAction, TakGameState},
+    util::LazyInit,
 };
 
 pub enum Protocol {
@@ -90,29 +91,29 @@ pub trait ProtocolService {
 }
 
 pub struct ProtocolServiceImpl {
-    v2: OnceLock<v2::ProtocolV2Handler>,
-    json: OnceLock<json::ProtocolJsonHandler>,
+    v2: LazyInit<v2::ProtocolV2Handler>,
+    json: LazyInit<json::ProtocolJsonHandler>,
 }
 
 impl ProtocolServiceImpl {
     pub fn new() -> Self {
         Self {
-            v2: OnceLock::new(),
-            json: OnceLock::new(),
+            v2: LazyInit::new(),
+            json: LazyInit::new(),
         }
     }
 }
 
 impl ProtocolService for ProtocolServiceImpl {
     fn init(&self, app: &AppState) {
-        let _ = self.v2.set(v2::ProtocolV2Handler::new(
+        let _ = self.v2.init(v2::ProtocolV2Handler::new(
             app.client_service.clone(),
             app.seek_service.clone(),
             app.player_service.clone(),
             app.chat_service.clone(),
             app.game_service.clone(),
         ));
-        let _ = self.json.set(json::ProtocolJsonHandler::new(
+        let _ = self.json.init(json::ProtocolJsonHandler::new(
             app.client_service.clone(),
             app.player_service.clone(),
         ));
@@ -120,21 +121,21 @@ impl ProtocolService for ProtocolServiceImpl {
 
     fn handle_client_message(&self, protocol: &Protocol, id: &ClientId, msg: String) {
         match protocol {
-            Protocol::V2 => self.v2.get().unwrap().handle_client_message(id, msg),
-            Protocol::JSON => self.json.get().unwrap().handle_client_message(id, msg),
+            Protocol::V2 => self.v2.get().handle_client_message(id, msg),
+            Protocol::JSON => self.json.get().handle_client_message(id, msg),
         }
     }
 
     fn handle_server_message(&self, protocol: &Protocol, id: &ClientId, msg: &ServerMessage) {
         match protocol {
-            Protocol::V2 => self.v2.get().unwrap().handle_server_message(id, msg),
-            Protocol::JSON => self.json.get().unwrap().handle_server_message(id, msg),
+            Protocol::V2 => self.v2.get().handle_server_message(id, msg),
+            Protocol::JSON => self.json.get().handle_server_message(id, msg),
         }
     }
 
     fn on_authenticated(&self, protocol: &Protocol, id: &ClientId, username: &PlayerUsername) {
         match protocol {
-            Protocol::V2 => self.v2.get().unwrap().on_authenticated(id, username),
+            Protocol::V2 => self.v2.get().on_authenticated(id, username),
             Protocol::JSON => {}
         }
     }
