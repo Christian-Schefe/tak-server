@@ -18,6 +18,7 @@ mod protocol;
 mod seek;
 mod tak;
 mod util;
+mod persistence;
 
 pub use app::*;
 

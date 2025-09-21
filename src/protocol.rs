@@ -13,7 +13,9 @@ use crate::{
     util::LazyInit,
 };
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Protocol {
+    V0,
     V2,
     JSON,
 }
@@ -21,6 +23,7 @@ pub enum Protocol {
 impl Protocol {
     pub fn from_id(id: &str) -> Option<Self> {
         match id {
+            "0" => Some(Protocol::V0),
             "2" => Some(Protocol::V2),
             "3" => Some(Protocol::JSON),
             _ => None,
@@ -121,21 +124,21 @@ impl ProtocolService for ProtocolServiceImpl {
 
     fn handle_client_message(&self, protocol: &Protocol, id: &ClientId, msg: String) {
         match protocol {
-            Protocol::V2 => self.v2.get().handle_client_message(id, msg),
+            Protocol::V0 | Protocol::V2 => self.v2.get().handle_client_message(id, msg),
             Protocol::JSON => self.json.get().handle_client_message(id, msg),
         }
     }
 
     fn handle_server_message(&self, protocol: &Protocol, id: &ClientId, msg: &ServerMessage) {
         match protocol {
-            Protocol::V2 => self.v2.get().handle_server_message(id, msg),
+            Protocol::V0 | Protocol::V2 => self.v2.get().handle_server_message(id, msg),
             Protocol::JSON => self.json.get().handle_server_message(id, msg),
         }
     }
 
     fn on_authenticated(&self, protocol: &Protocol, id: &ClientId, username: &PlayerUsername) {
         match protocol {
-            Protocol::V2 => self.v2.get().on_authenticated(id, username),
+            Protocol::V0 | Protocol::V2 => self.v2.get().on_authenticated(id, username),
             Protocol::JSON => {}
         }
     }

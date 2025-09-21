@@ -50,6 +50,7 @@ pub trait ClientService {
     fn try_auth_protocol_broadcast(&self, msg: &ServerMessage);
     fn close_client(&self, id: &ClientId);
     fn get_offline_since(&self, player: &PlayerUsername) -> Result<Option<Instant>, ()>;
+    fn get_protocol(&self, id: &ClientId) -> Protocol;
     async fn launch_client_cleanup_task(&self);
     async fn handle_client_websocket(&self, ws: WebSocket);
     async fn handle_client_tcp(&self, tcp: TcpStream);
@@ -91,7 +92,11 @@ impl ClientServiceImpl {
         if let Some((_, username)) = player {
             self.player_to_client.remove(&username);
             self.update_online_players();
-            self.last_disconnect.insert(username, Instant::now());
+            self.last_disconnect
+                .insert(username.clone(), Instant::now());
+            println!("Player {} disconnected (client {})", username, id);
+        } else {
+            println!("Client {} disconnected", id);
         }
     }
 
@@ -142,7 +147,7 @@ impl ClientServiceImpl {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         self.client_senders
             .insert(id, (tx, cancellation_token.clone()));
-        self.client_handlers.insert(id, Protocol::V2);
+        self.client_handlers.insert(id, Protocol::V0);
 
         self.on_connect(&id);
 
@@ -190,7 +195,10 @@ impl ClientServiceImpl {
                         self.try_switch_protocol(&id, &text).unwrap_or_else(|e| {
                             println!("Client {} protocol switch error: {}", id, e);
                         });
-                    } else if let Some(handler) = self.client_handlers.get(&id) {
+                        // message is still passed to handler to allow protocol to respond.
+                    }
+
+                    if let Some(handler) = self.client_handlers.get(&id) {
                         self.protocol_service
                             .handle_client_message(&handler, &id, text);
                     } else {
@@ -254,11 +262,8 @@ impl ClientService for ClientServiceImpl {
         if self.client_to_player.contains_key(id) {
             return ServiceError::not_possible(format!("Player {} already logged in", username));
         }
-        if self.player_to_client.contains_key(username) {
-            return ServiceError::not_possible(format!(
-                "Player {} already logged in from another client",
-                username
-            ));
+        if let Some(prev_client_id) = self.player_to_client.get(username) {
+            self.close_client(&prev_client_id);
         }
         self.client_to_player.insert(*id, username.clone());
         self.player_to_client.insert(username.clone(), *id);
@@ -309,6 +314,8 @@ impl ClientService for ClientServiceImpl {
             return;
         };
         cancellation_token.cancel();
+        self.on_disconnect(id);
+        println!("Client {} closed", id);
     }
 
     fn get_offline_since(&self, player: &PlayerUsername) -> Result<Option<Instant>, ()> {
@@ -317,6 +324,13 @@ impl ClientService for ClientServiceImpl {
         } else {
             Ok(self.last_disconnect.get(player))
         }
+    }
+
+    fn get_protocol(&self, id: &ClientId) -> Protocol {
+        self.client_handlers
+            .get(id)
+            .map(|entry| entry.clone())
+            .unwrap_or(Protocol::V0)
     }
 
     async fn launch_client_cleanup_task(&self) {
@@ -432,6 +446,10 @@ impl ClientService for MockClientService {
 
     fn get_offline_since(&self, _player: &PlayerUsername) -> Result<Option<Instant>, ()> {
         Ok(None)
+    }
+
+    fn get_protocol(&self, _id: &ClientId) -> Protocol {
+        Protocol::V0
     }
 
     async fn launch_client_cleanup_task(&self) {}

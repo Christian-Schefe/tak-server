@@ -1,5 +1,9 @@
 use std::sync::OnceLock;
 
+use validator::Validate;
+
+use crate::{ServiceError, ServiceResult};
+
 /// A thread-safe, lazily initialized value.
 /// The value is initialized on the first call to `init`.
 /// Subsequent calls to `init` will return an error.
@@ -28,4 +32,20 @@ impl<T> LazyInit<T> {
             .get()
             .expect("LazyInit used before initialization")
     }
+}
+
+#[derive(Validate)]
+struct EmailValidator {
+    #[validate(email)]
+    email: String,
+}
+
+pub fn validate_email(email: &str) -> ServiceResult<String> {
+    let validator = EmailValidator {
+        email: email.trim().to_string(),
+    };
+    if let Err(e) = validator.validate() {
+        return ServiceError::bad_request(format!("Invalid email: {}", e));
+    }
+    Ok(validator.email)
 }

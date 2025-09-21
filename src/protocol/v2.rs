@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use crate::{
     ArcChatService, ArcClientService, ArcGameService, ArcPlayerService, ArcSeekService,
+    ServiceError, ServiceResult,
     client::ClientId,
     player::PlayerUsername,
     protocol::{ServerGameMessage, ServerMessage},
@@ -21,6 +22,8 @@ pub struct ProtocolV2Handler {
     chat_service: ArcChatService,
     game_service: ArcGameService,
 }
+
+pub type ProtocolV2Result = ServiceResult<Option<String>>;
 
 impl ProtocolV2Handler {
     pub fn new(
@@ -45,17 +48,29 @@ impl ProtocolV2Handler {
             println!("Received empty message");
             return;
         }
-        match parts[0] {
-            "PING" => {
-                self.send_to(id, "OK");
-            }
-            "Login" => self.handle_login_message(id, &parts),
-            "LoginToken" => self.handle_login_token_message(id, &parts),
-            "Register" => self.handle_register_message(id, &parts),
-            "SendResetToken" => self.handle_reset_token_message(id, &parts),
-            "ResetPassword" => self.handle_reset_password_message(id, &parts),
+        let res: ProtocolV2Result = match parts[0].to_ascii_lowercase().as_str() {
+            "ping" => Ok(None),
+            "protocol" => Ok(None), // Noop, ignore
+            "client" => Ok(None),   // Noop, ignore
+            "login" => self.handle_login_message(id, &parts),
+            "logintoken" => self.handle_login_token_message(id, &parts),
+            "register" => self.handle_register_message(&parts),
+            "sendresettoken" => self.handle_reset_token_message(&parts),
+            "resetpassword" => self.handle_reset_password_message(&parts),
             _ => self.handle_logged_in_client_message(id, &parts, &msg),
         };
+        match res {
+            Ok(Some(msg)) => {
+                self.send_to(id, msg);
+            }
+            Ok(None) => {
+                self.send_to(id, "OK");
+            }
+            Err(e) => {
+                println!("Error handling message {:?}: {}", parts, e);
+                self.send_to(id, "NOK");
+            }
+        }
     }
 
     pub fn handle_server_message(&self, id: &ClientId, msg: &ServerMessage) {
@@ -121,34 +136,34 @@ impl ProtocolV2Handler {
         }
     }
 
-    fn handle_logged_in_client_message(&self, id: &ClientId, parts: &[&str], msg: &str) {
+    fn handle_logged_in_client_message(
+        &self,
+        id: &ClientId,
+        parts: &[&str],
+        msg: &str,
+    ) -> ProtocolV2Result {
         let Some(username) = self.client_service.get_associated_player(id) else {
-            println!("Client {} is not logged in", id);
-            self.send_to(id, "NOK");
-            return;
+            return ServiceError::unauthorized("Client is not logged in");
         };
 
-        match parts[0] {
-            "ChangePassword" => self.handle_change_password_message(id, &username, &parts),
-            "Seek" => self.handle_seek_message(id, &username, &parts),
-            "Rematch" => self.handle_rematch_message(id, &username, &parts),
-            "List" => self.handle_seek_list_message(id),
-            "GameList" => self.handle_game_list_message(id),
-            "Accept" => self.handle_accept_message(id, &username, &parts),
-            "Observe" => self.handle_observe_message(id, &parts, true),
-            "Unobserve" => self.handle_observe_message(id, &parts, false),
-            "Shout" => self.handle_shout_message(id, &username, &msg),
-            "ShoutRoom" => self.handle_shout_room_message(id, &username, &parts, &msg),
-            "Tell" => self.handle_tell_message(id, &username, &parts, &msg),
-            "JoinRoom" => self.handle_room_membership_message(id, &parts, true),
-            "LeaveRoom" => self.handle_room_membership_message(id, &parts, false),
-            "Sudo" => self.handle_sudo_message(id, &username, &parts),
-            s if s.starts_with("Game#") => self.handle_game_message(id, &parts),
-            _ => {
-                println!("Unknown V2 message type: {}", parts[0]);
-                self.send_to(id, "NOK");
-            }
-        };
+        match parts[0].to_ascii_lowercase().as_str() {
+            "changepassword" => self.handle_change_password_message(&username, &parts),
+            "seek" => self.handle_seek_message(&username, &parts),
+            "rematch" => self.handle_rematch_message(&username, &parts),
+            "list" => self.handle_seek_list_message(id),
+            "gamelist" => self.handle_game_list_message(id),
+            "accept" => self.handle_accept_message(&username, &parts),
+            "observe" => self.handle_observe_message(id, &parts, true),
+            "unobserve" => self.handle_observe_message(id, &parts, false),
+            "shout" => self.handle_shout_message(&username, &msg),
+            "shoutroom" => self.handle_shout_room_message(&username, &msg),
+            "tell" => self.handle_tell_message(&username, &msg),
+            "joinroom" => self.handle_room_membership_message(id, &parts, true),
+            "leaveroom" => self.handle_room_membership_message(id, &parts, false),
+            "sudo" => self.handle_sudo_message(&username, msg, &parts),
+            s if s.starts_with("game#") => self.handle_game_message(&username, &parts),
+            _ => ServiceError::bad_request(format!("Unknown V2 message type: {}", parts[0])),
+        }
     }
 
     fn send_to<T>(&self, id: &ClientId, msg: T)
@@ -157,4 +172,31 @@ impl ProtocolV2Handler {
     {
         crate::client::send_to(&**self.client_service, id, msg);
     }
+}
+
+fn split_n_and_rest(input: &str, n: usize) -> (Vec<&str>, &str) {
+    let mut parts = Vec::new();
+    let mut last_pos = 0;
+
+    // Use split_whitespace to find the first n tokens
+    for (i, part) in input.split_whitespace().enumerate() {
+        if i < n {
+            // Find this token's position in the original string
+            if let Some(pos) = input[last_pos..].find(part) {
+                last_pos += pos + part.len();
+            }
+            parts.push(part);
+        } else {
+            break;
+        }
+    }
+
+    // Slice from the last consumed position to keep the remainder intact
+    let remainder = if last_pos < input.len() {
+        &input[last_pos..] // includes original spaces
+    } else {
+        ""
+    };
+
+    (parts, remainder.trim_start()) // trim leading spaces in remainder
 }

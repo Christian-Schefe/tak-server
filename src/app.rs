@@ -8,6 +8,10 @@ use crate::{
     client::{ClientService, ClientServiceImpl},
     email::{EmailService, EmailServiceImpl},
     game::{GameService, GameServiceImpl},
+    persistence::{
+        games::{GameRepository, GameRepositoryImpl},
+        players::{PlayerRepository, PlayerRepositoryImpl},
+    },
     player::{PlayerService, PlayerServiceImpl},
     protocol::{ProtocolService, ProtocolServiceImpl},
     seek::{SeekService, SeekServiceImpl},
@@ -21,6 +25,9 @@ pub type ArcEmailService = Arc<Box<dyn EmailService + Send + Sync + 'static>>;
 pub type ArcProtocolService = Arc<Box<dyn ProtocolService + Send + Sync + 'static>>;
 pub type ArcChatService = Arc<Box<dyn ChatService + Send + Sync + 'static>>;
 
+pub type ArcPlayerRepository = Arc<Box<dyn PlayerRepository + Send + Sync + 'static>>;
+pub type ArcGameRepository = Arc<Box<dyn GameRepository + Send + Sync + 'static>>;
+
 #[derive(Clone)]
 pub struct AppState {
     pub client_service: ArcClientService,
@@ -30,6 +37,9 @@ pub struct AppState {
     pub email_service: ArcEmailService,
     pub protocol_service: ArcProtocolService,
     pub chat_service: ArcChatService,
+
+    pub player_repository: ArcPlayerRepository,
+    pub game_repository: ArcGameRepository,
 }
 
 #[derive(Debug, Error)]
@@ -40,8 +50,8 @@ pub enum ServiceError {
     #[error("unauthorized: {0}")]
     Unauthorized(String),
 
-    #[error("validation failed: {0}")]
-    Validation(String),
+    #[error("bad request: {0}")]
+    BadRequest(String),
 
     #[error("database error: {0}")]
     Database(#[from] DatabaseError),
@@ -49,14 +59,14 @@ pub enum ServiceError {
     #[error("operation not possible: {0}")]
     NotPossible(String),
 
+    #[error("forbidden: {0}")]
+    Forbidden(String),
+
     #[error("unexpected error: {0}")]
     Other(String),
 
     #[error("internal error: {0}")]
     Internal(String),
-
-    #[error("bad request: {0}")]
-    BadRequest(String),
 }
 
 #[derive(Debug, Error)]
@@ -68,11 +78,11 @@ pub enum DatabaseError {
 }
 
 impl ServiceError {
-    pub fn validation_err<T, R>(msg: T) -> ServiceResult<R>
+    pub fn bad_request<T, R>(msg: T) -> ServiceResult<R>
     where
         T: Into<String>,
     {
-        Err(ServiceError::Validation(msg.into()))
+        Err(ServiceError::BadRequest(msg.into()))
     }
 
     pub fn unauthorized<T, R>(msg: T) -> ServiceResult<R>
@@ -103,11 +113,11 @@ impl ServiceError {
         Err(ServiceError::Internal(msg.into()))
     }
 
-    pub fn bad_request<T, R>(msg: T) -> ServiceResult<R>
+    pub fn forbidden<T, R>(msg: T) -> ServiceResult<R>
     where
         T: Into<String>,
     {
-        Err(ServiceError::BadRequest(msg.into()))
+        Err(ServiceError::Forbidden(msg.into()))
     }
 }
 
@@ -116,7 +126,7 @@ impl IntoResponse for ServiceError {
         let (status, msg) = match self {
             ServiceError::NotFound(msg) => (axum::http::StatusCode::NOT_FOUND, msg),
             ServiceError::Unauthorized(msg) => (axum::http::StatusCode::UNAUTHORIZED, msg),
-            ServiceError::Validation(msg) => (axum::http::StatusCode::BAD_REQUEST, msg),
+            ServiceError::BadRequest(msg) => (axum::http::StatusCode::BAD_REQUEST, msg),
             ServiceError::Database(_) => (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 "Database error".to_string(),
@@ -124,7 +134,7 @@ impl IntoResponse for ServiceError {
             ServiceError::NotPossible(msg) => (axum::http::StatusCode::BAD_REQUEST, msg),
             ServiceError::Other(msg) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, msg),
             ServiceError::Internal(msg) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, msg),
-            ServiceError::BadRequest(msg) => (axum::http::StatusCode::BAD_REQUEST, msg),
+            ServiceError::Forbidden(msg) => (axum::http::StatusCode::FORBIDDEN, msg),
         };
         let body = serde_json::json!({ "error": msg });
         (status, axum::Json(body)).into_response()
@@ -134,6 +144,9 @@ impl IntoResponse for ServiceError {
 pub type ServiceResult<T> = Result<T, ServiceError>;
 
 pub fn construct_app() -> AppState {
+    let player_repository: ArcPlayerRepository = Arc::new(Box::new(PlayerRepositoryImpl::new()));
+    let game_repository: ArcGameRepository = Arc::new(Box::new(GameRepositoryImpl::new()));
+
     let protocol_service: Arc<Box<dyn ProtocolService + Send + Sync>> =
         Arc::new(Box::new(ProtocolServiceImpl::new()));
 
@@ -143,17 +156,23 @@ pub fn construct_app() -> AppState {
     let email_service: Arc<Box<dyn EmailService + Send + Sync>> =
         Arc::new(Box::new(EmailServiceImpl {}));
 
-    let player_service: Arc<Box<dyn PlayerService + Send + Sync>> = Arc::new(Box::new(
-        PlayerServiceImpl::new(client_service.clone(), email_service.clone()),
-    ));
+    let player_service: Arc<Box<dyn PlayerService + Send + Sync>> =
+        Arc::new(Box::new(PlayerServiceImpl::new(
+            client_service.clone(),
+            email_service.clone(),
+            player_repository.clone(),
+        )));
 
     let chat_service: Arc<Box<dyn ChatService + Send + Sync>> = Arc::new(Box::new(
         ChatServiceImpl::new(client_service.clone(), player_service.clone()),
     ));
 
-    let game_service: Arc<Box<dyn GameService + Send + Sync>> = Arc::new(Box::new(
-        GameServiceImpl::new(client_service.clone(), player_service.clone()),
-    ));
+    let game_service: Arc<Box<dyn GameService + Send + Sync>> =
+        Arc::new(Box::new(GameServiceImpl::new(
+            client_service.clone(),
+            player_service.clone(),
+            game_repository.clone(),
+        )));
 
     let seek_service: Arc<Box<dyn SeekService + Send + Sync>> = Arc::new(Box::new(
         SeekServiceImpl::new(client_service.clone(), game_service.clone()),
@@ -167,6 +186,9 @@ pub fn construct_app() -> AppState {
         email_service,
         chat_service,
         protocol_service: protocol_service.clone(),
+
+        player_repository,
+        game_repository,
     };
 
     protocol_service.init(&app);

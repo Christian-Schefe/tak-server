@@ -95,7 +95,7 @@ impl SeekServiceImpl {
         from_game: Option<GameId>,
     ) -> ServiceResult<SeekId> {
         if !game_settings.is_valid() {
-            return ServiceError::validation_err("Invalid game settings");
+            return ServiceError::bad_request("Invalid game settings");
         }
         if self.seeks_by_player.contains_key(&player) {
             self.remove_seek_of_player(&player)?;
@@ -119,6 +119,7 @@ impl SeekServiceImpl {
             add: true,
             seek: seek.clone(),
         };
+        println!("New seek: {:?}", seek);
         self.client_service
             .try_auth_protocol_broadcast(&seek_new_msg);
 
@@ -211,7 +212,7 @@ impl SeekService for SeekServiceImpl {
         drop(seek_ref);
         if let Some(ref opponent) = seek.opponent {
             if opponent != player {
-                return ServiceError::validation_err("This seek is not for you");
+                return ServiceError::bad_request("This seek is not for you");
             }
         }
         self.game_service.add_game_from_seek(&seek, &player)?;

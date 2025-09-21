@@ -25,6 +25,7 @@ pub struct Claims {
 
 #[derive(Debug)]
 pub enum AuthError {
+    BadRequest,
     WrongCredentials,
     InvalidToken,
 }
@@ -34,6 +35,7 @@ impl IntoResponse for AuthError {
         let (status, error_message) = match self {
             AuthError::WrongCredentials => (StatusCode::UNAUTHORIZED, "Wrong credentials"),
             AuthError::InvalidToken => (StatusCode::BAD_REQUEST, "Invalid token"),
+            AuthError::BadRequest => (StatusCode::BAD_REQUEST, "Bad request"),
         };
         let body = Json(json!({
             "error": error_message,
@@ -90,13 +92,14 @@ fn read_or_generate_secret() -> Vec<u8> {
     }
 }
 
-pub fn generate_jwt(username: &PlayerUsername) -> String {
+pub fn generate_jwt(username: &PlayerUsername) -> Result<String, AuthError> {
     let claims = Claims {
         sub: username.clone(),
         exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp() as usize,
     };
-    let token = encode(&Header::default(), &claims, &KEYS.encoding).unwrap();
-    token
+    let token =
+        encode(&Header::default(), &claims, &KEYS.encoding).map_err(|_| AuthError::BadRequest)?;
+    Ok(token)
 }
 
 pub fn validate_jwt(token: &str) -> Option<PlayerUsername> {
@@ -125,6 +128,6 @@ pub async fn handle_login(
     app.player_service
         .validate_login(&payload.username, &payload.password)
         .map_err(|_| AuthError::WrongCredentials)?;
-    let token = generate_jwt(&payload.username);
+    let token = generate_jwt(&payload.username)?;
     Ok(Json(AuthBody { token }))
 }

@@ -4,27 +4,28 @@ use dashmap::DashMap;
 use rustrict::CensorStr;
 
 use crate::{
+    ServiceError, ServiceResult,
     client::{ClientId, ClientService},
     player::{PlayerService, PlayerUsername},
     protocol::{ChatMessageSource, ServerMessage},
 };
 
 pub trait ChatService {
-    fn join_room(&self, client_id: &ClientId, room_name: &str);
-    fn leave_room(&self, client_id: &ClientId, room_name: &str);
-    fn send_message_to_all(&self, username: &PlayerUsername, message: &str) -> Result<(), String>;
+    fn join_room(&self, client_id: &ClientId, room_name: &str) -> ServiceResult<()>;
+    fn leave_room(&self, client_id: &ClientId, room_name: &str) -> ServiceResult<()>;
+    fn send_message_to_all(&self, username: &PlayerUsername, message: &str) -> ServiceResult<()>;
     fn send_message_to_room(
         &self,
         username: &PlayerUsername,
         room_name: &str,
         message: &str,
-    ) -> Result<(), String>;
+    ) -> ServiceResult<()>;
     fn send_message_to_player(
         &self,
         from_username: &PlayerUsername,
         to_username: &PlayerUsername,
         message: &str,
-    ) -> Result<(), String>;
+    ) -> ServiceResult<String>;
 }
 
 pub struct ChatServiceImpl {
@@ -47,7 +48,7 @@ impl ChatServiceImpl {
 }
 
 impl ChatService for ChatServiceImpl {
-    fn join_room(&self, client_id: &ClientId, room_name: &str) {
+    fn join_room(&self, client_id: &ClientId, room_name: &str) -> ServiceResult<()> {
         let mut room = self.chat_rooms.entry(room_name.to_string()).or_default();
         if !room.contains(client_id) {
             room.push(*client_id);
@@ -57,9 +58,10 @@ impl ChatService for ChatServiceImpl {
             joined: true,
         };
         self.client_service.try_protocol_send(client_id, &msg);
+        Ok(())
     }
 
-    fn leave_room(&self, client_id: &ClientId, room_name: &str) {
+    fn leave_room(&self, client_id: &ClientId, room_name: &str) -> ServiceResult<()> {
         if let Some(mut room) = self.chat_rooms.get_mut(room_name) {
             room.retain(|id| id != client_id);
             if room.is_empty() {
@@ -71,15 +73,13 @@ impl ChatService for ChatServiceImpl {
             joined: false,
         };
         self.client_service.try_protocol_send(client_id, &msg);
+        Ok(())
     }
 
-    fn send_message_to_all(&self, username: &PlayerUsername, message: &str) -> Result<(), String> {
-        let player = self
-            .player_service
-            .fetch_player(username)
-            .map_err(|e| e.to_string())?;
+    fn send_message_to_all(&self, username: &PlayerUsername, message: &str) -> ServiceResult<()> {
+        let player = self.player_service.fetch_player(username)?;
         if player.is_gagged {
-            return Err("You are gagged and cannot send messages".to_string());
+            return ServiceError::forbidden("You are gagged and cannot send messages");
         }
         let msg = ServerMessage::ChatMessage {
             from: username.clone(),
@@ -95,13 +95,10 @@ impl ChatService for ChatServiceImpl {
         username: &PlayerUsername,
         room_name: &str,
         message: &str,
-    ) -> Result<(), String> {
-        let player = self
-            .player_service
-            .fetch_player(&username)
-            .map_err(|e| e.to_string())?;
+    ) -> ServiceResult<()> {
+        let player = self.player_service.fetch_player(&username)?;
         if player.is_gagged {
-            return Err("You are gagged and cannot send messages".to_string());
+            return ServiceError::forbidden("You are gagged and cannot send messages");
         }
         if let Some(room) = self.chat_rooms.get(room_name) {
             let msg = ServerMessage::ChatMessage {
@@ -119,23 +116,21 @@ impl ChatService for ChatServiceImpl {
         from_username: &PlayerUsername,
         to_username: &PlayerUsername,
         message: &str,
-    ) -> Result<(), String> {
-        let from_player = self
-            .player_service
-            .fetch_player(from_username)
-            .map_err(|e| e.to_string())?;
+    ) -> ServiceResult<String> {
+        let from_player = self.player_service.fetch_player(from_username)?;
         if from_player.is_gagged {
-            return Err("You are gagged and cannot send messages".to_string());
+            return ServiceError::forbidden("You are gagged and cannot send messages");
         }
+        let censored_message = message.censor();
         let Some(to_client_id) = self.client_service.get_associated_client(to_username) else {
-            return Ok(());
+            return Ok(censored_message);
         };
         let msg = ServerMessage::ChatMessage {
             from: from_username.clone(),
-            message: message.censor(),
+            message: censored_message.clone(),
             source: ChatMessageSource::Private,
         };
         self.client_service.try_protocol_send(&to_client_id, &msg);
-        Ok(())
+        Ok(censored_message)
     }
 }

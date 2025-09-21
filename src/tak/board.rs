@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use crate::tak::{TakDir, TakPlayer, TakPos, TakVariant};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TakStack {
     variant: TakVariant,
     composition: Vec<TakPlayer>,
@@ -106,6 +106,7 @@ impl TakBoard {
         let mut moving_pieces = if drops_sum == total_pieces {
             self.stacks[index].take().unwrap().composition
         } else {
+            stack.variant = TakVariant::Flat;
             stack
                 .composition
                 .split_off((total_pieces - drops_sum) as usize)
@@ -259,6 +260,44 @@ mod tests {
 
         let new_pos = TakPos { x: 1, y: 0 };
         assert!(board.stacks[(new_pos.y * board.size as i32 + new_pos.x) as usize].is_some());
+
+        assert!(
+            board
+                .do_place(&pos, &TakVariant::Capstone, &TakPlayer::Black)
+                .is_ok()
+        );
+        assert!(board.can_do_move(&pos, &TakDir::Right, &[1]).is_ok());
+        assert!(board.do_move(&pos, &TakDir::Right, &[1]).is_ok());
+
+        assert_eq!(
+            board.stacks[(pos.y * board.size as i32 + pos.x) as usize],
+            None
+        );
+        assert_eq!(
+            board.stacks[(new_pos.y * board.size as i32 + new_pos.x) as usize],
+            Some(TakStack {
+                variant: TakVariant::Capstone,
+                composition: vec![TakPlayer::White, TakPlayer::Black],
+            })
+        );
+
+        assert!(board.can_do_move(&new_pos, &TakDir::Left, &[1]).is_ok());
+        assert!(board.do_move(&new_pos, &TakDir::Left, &[1]).is_ok());
+
+        assert_eq!(
+            board.stacks[(pos.y * board.size as i32 + pos.x) as usize],
+            Some(TakStack {
+                variant: TakVariant::Capstone,
+                composition: vec![TakPlayer::Black],
+            })
+        );
+        assert_eq!(
+            board.stacks[(new_pos.y * board.size as i32 + new_pos.x) as usize],
+            Some(TakStack {
+                variant: TakVariant::Flat,
+                composition: vec![TakPlayer::White],
+            })
+        );
     }
 
     #[test]

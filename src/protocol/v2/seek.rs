@@ -1,26 +1,29 @@
 use std::time::Duration;
 
 use crate::{
+    ServiceError,
     client::ClientId,
     game::GameId,
     player::PlayerUsername,
-    protocol::v2::ProtocolV2Handler,
+    protocol::v2::{ProtocolV2Handler, ProtocolV2Result},
     seek::{GameType, Seek},
     tak::{TakGameSettings, TakPlayer, TakTimeControl},
 };
 
 impl ProtocolV2Handler {
-    pub fn handle_seek_message(&self, id: &ClientId, username: &PlayerUsername, parts: &[&str]) {
-        if let Err(e) = self.handle_add_seek_message(username, parts, None) {
-            println!("Error parsing Seek message: {}", e);
-            self.send_to(id, "NOK");
-        }
+    pub fn handle_seek_message(
+        &self,
+        username: &PlayerUsername,
+        parts: &[&str],
+    ) -> ProtocolV2Result {
+        self.handle_add_seek_message(username, parts, None)
     }
 
-    pub fn handle_seek_list_message(&self, id: &ClientId) {
+    pub fn handle_seek_list_message(&self, id: &ClientId) -> ProtocolV2Result {
         for seek in self.seek_service.get_seeks() {
             self.handle_server_seek_list_message(id, &seek, true);
         }
+        Ok(None)
     }
 
     pub fn handle_add_seek_message(
@@ -28,40 +31,47 @@ impl ProtocolV2Handler {
         username: &PlayerUsername,
         parts: &[&str],
         rematch: Option<GameId>,
-    ) -> Result<(), String> {
+    ) -> ProtocolV2Result {
         if parts.len() != 13 && parts.len() != 12 && parts.len() != 11 && parts.len() != 10 {
-            println!("Invalid Seek message format: {:?}", parts);
-            return Err("Invalid Seek message format".into());
+            return ServiceError::bad_request("Invalid Seek message format");
         }
-        let board_size = parts[1].parse::<u32>().map_err(|_| "Invalid board size")?;
+        let board_size = parts[1]
+            .parse::<u32>()
+            .map_err(|_| ServiceError::BadRequest("Invalid board size".into()))?;
         let time_contingent_seconds = parts[2]
             .parse::<u32>()
-            .map_err(|_| "Invalid time contingent")?;
+            .map_err(|_| ServiceError::BadRequest("Invalid time contingent".into()))?;
         let time_increment_seconds = parts[3]
             .parse::<u32>()
-            .map_err(|_| "Invalid time increment")?;
+            .map_err(|_| ServiceError::BadRequest("Invalid time increment".into()))?;
         let color = match parts[4] {
             "W" => Some(crate::tak::TakPlayer::White),
             "B" => Some(crate::tak::TakPlayer::Black),
             "A" => None,
-            _ => return Err("Invalid color".into()),
+            _ => return Err(ServiceError::BadRequest("Invalid color".into())),
         };
-        let half_komi = parts[5].parse::<u32>().map_err(|_| "Invalid half komi")?;
+        let half_komi = parts[5]
+            .parse::<u32>()
+            .map_err(|_| ServiceError::BadRequest("Invalid half komi".into()))?;
         let reserve_pieces = parts[6]
             .parse::<u32>()
-            .map_err(|_| "Invalid reserve pieces")?;
+            .map_err(|_| ServiceError::BadRequest("Invalid reserve pieces".into()))?;
         let reserve_capstones = parts[7]
             .parse::<u32>()
-            .map_err(|_| "Invalid reserve capstones")?;
+            .map_err(|_| ServiceError::BadRequest("Invalid reserve capstones".into()))?;
         let is_unrated = match parts[8] {
             "1" => true,
             "0" => false,
-            _ => return Err("Invalid rated/unrated flag".into()),
+            _ => {
+                return Err(ServiceError::BadRequest(
+                    "Invalid rated/unrated flag".into(),
+                ));
+            }
         };
         let is_tournament = match parts[9] {
             "1" => true,
             "0" => false,
-            _ => return Err("Invalid tournament flag".into()),
+            _ => return Err(ServiceError::BadRequest("Invalid tournament flag".into())),
         };
         let game_type = match (is_unrated, is_tournament) {
             (true, false) => crate::seek::GameType::Unrated,
@@ -71,14 +81,14 @@ impl ProtocolV2Handler {
         let time_extra_trigger_move = if parts.len() >= 12 {
             parts[10]
                 .parse::<u32>()
-                .map_err(|_| "Invalid time extra trigger move")?
+                .map_err(|_| ServiceError::BadRequest("Invalid time extra trigger move".into()))?
         } else {
             0
         };
         let time_extra_trigger_seconds = if parts.len() >= 12 {
-            parts[11]
-                .parse::<u32>()
-                .map_err(|_| "Invalid time extra trigger seconds")?
+            parts[11].parse::<u32>().map_err(|_| {
+                ServiceError::BadRequest("Invalid time extra trigger seconds".into())
+            })?
         } else {
             0
         };
@@ -112,51 +122,57 @@ impl ProtocolV2Handler {
         };
 
         if !game_settings.is_valid() {
-            self.seek_service
-                .remove_seek_of_player(&username)
-                .map_err(|e| e.to_string())?;
+            self.seek_service.remove_seek_of_player(&username)?;
         } else if let Some(from_game) = rematch {
-            self.seek_service
-                .add_rematch_seek(
-                    username.to_string(),
-                    opponent,
-                    color,
-                    game_settings,
-                    game_type,
-                    from_game,
-                )
-                .map_err(|e| e.to_string())?;
+            self.seek_service.add_rematch_seek(
+                username.to_string(),
+                opponent,
+                color,
+                game_settings,
+                game_type,
+                from_game,
+            )?;
         } else {
-            self.seek_service
-                .add_seek(
-                    username.to_string(),
-                    opponent,
-                    color,
-                    game_settings,
-                    game_type,
-                )
-                .map_err(|e| e.to_string())?;
+            self.seek_service.add_seek(
+                username.to_string(),
+                opponent,
+                color,
+                game_settings,
+                game_type,
+            )?;
         }
 
-        Ok(())
+        Ok(None)
     }
 
-    pub fn handle_accept_message(&self, id: &ClientId, username: &PlayerUsername, parts: &[&str]) {
+    pub fn handle_rematch_message(
+        &self,
+        username: &PlayerUsername,
+        parts: &[&str],
+    ) -> ProtocolV2Result {
+        if parts.len() < 2 {
+            return ServiceError::bad_request("Invalid Rematch message format");
+        }
+        let Ok(game_id) = parts[1].parse::<GameId>() else {
+            return ServiceError::bad_request("Invalid Game ID in Rematch message");
+        };
+        self.handle_add_seek_message(username, &parts[1..], Some(game_id))?;
+        Ok(None)
+    }
+
+    pub fn handle_accept_message(
+        &self,
+        username: &PlayerUsername,
+        parts: &[&str],
+    ) -> ProtocolV2Result {
         if parts.len() != 2 {
-            println!("Invalid Accept message format: {:?}", parts);
-            self.send_to(id, "NOK");
-            return;
+            return ServiceError::bad_request("Invalid Accept message format");
         }
         let Ok(seek_id) = parts[1].parse::<u32>() else {
-            println!("Invalid Seek ID in Accept message: {}", parts[1]);
-            self.send_to(id, "NOK");
-            return;
+            return ServiceError::bad_request("Invalid Seek ID in Accept message");
         };
-        if let Err(e) = self.seek_service.accept_seek(username, &seek_id) {
-            println!("Error accepting seek {}: {}", seek_id, e);
-            self.send_to(id, "NOK");
-            return;
-        };
+        self.seek_service.accept_seek(username, &seek_id)?;
+        Ok(None)
     }
 
     pub fn handle_server_seek_list_message(&self, id: &ClientId, seek: &Seek, add: bool) {
@@ -204,22 +220,5 @@ impl ProtocolV2Handler {
                 .map_or("0", |p| if p.is_bot { "1" } else { "0" })
         );
         self.send_to(id, message);
-    }
-
-    pub fn handle_rematch_message(&self, id: &ClientId, username: &PlayerUsername, parts: &[&str]) {
-        if parts.len() < 2 {
-            println!("Invalid Rematch message format: {:?}", parts);
-            self.send_to(id, "NOK");
-            return;
-        }
-        let Ok(game_id) = parts[1].parse::<u32>() else {
-            println!("Invalid Game ID in Rematch message: {}", parts[1]);
-            self.send_to(id, "NOK");
-            return;
-        };
-        if let Err(e) = self.handle_add_seek_message(username, &parts[1..], Some(game_id)) {
-            println!("Error parsing Seek message: {}", e);
-            self.send_to(id, "NOK");
-        }
     }
 }

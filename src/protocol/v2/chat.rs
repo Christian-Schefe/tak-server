@@ -1,9 +1,11 @@
-use rustrict::CensorStr;
-
 use crate::{
+    ServiceError,
     client::ClientId,
     player::PlayerUsername,
-    protocol::{ChatMessageSource, ServerMessage, v2::ProtocolV2Handler},
+    protocol::{
+        ChatMessageSource, ServerMessage,
+        v2::{ProtocolV2Handler, ProtocolV2Result, split_n_and_rest},
+    },
 };
 
 impl ProtocolV2Handler {
@@ -37,79 +39,69 @@ impl ProtocolV2Handler {
         }
     }
 
-    pub fn handle_room_membership_message(&self, id: &ClientId, parts: &[&str], join: bool) {
+    pub fn handle_room_membership_message(
+        &self,
+        id: &ClientId,
+        parts: &[&str],
+        join: bool,
+    ) -> ProtocolV2Result {
         if parts.len() != 2 {
-            self.send_to(id, "NOK");
-            return;
+            return ServiceError::bad_request("Invalid JoinRoom/LeaveRoom message format");
         }
         let room = parts[1];
         if join {
-            self.chat_service.join_room(id, room);
+            self.chat_service.join_room(id, room)?;
         } else {
-            self.chat_service.leave_room(id, room);
+            self.chat_service.leave_room(id, room)?;
         }
+        Ok(None)
     }
 
-    pub fn handle_shout_message(&self, id: &ClientId, username: &PlayerUsername, msg: &str) {
-        let msg = msg.replacen("Shout ", "", 1);
-        if msg.is_empty() {
-            self.send_to(id, "NOK");
-            return;
+    pub fn handle_shout_message(
+        &self,
+        username: &PlayerUsername,
+        orig_msg: &str,
+    ) -> ProtocolV2Result {
+        let (parts, msg) = split_n_and_rest(orig_msg, 1);
+        if parts.len() != 1 || msg.is_empty() {
+            return ServiceError::bad_request("Invalid Shout message format");
         }
-        if let Err(e) = self.chat_service.send_message_to_all(username, &msg) {
-            println!("Error handling Shout message: {}", e);
-            self.send_to(id, "NOK");
-        }
+        self.chat_service.send_message_to_all(username, &msg)?;
+        Ok(None)
     }
 
     pub fn handle_shout_room_message(
         &self,
-        id: &ClientId,
         username: &PlayerUsername,
-        parts: &[&str],
-        msg: &str,
-    ) {
-        if parts.len() < 3 {
-            self.send_to(id, "NOK");
-            return;
+        orig_msg: &str,
+    ) -> ProtocolV2Result {
+        let (parts, msg) = split_n_and_rest(orig_msg, 2);
+        if parts.len() != 2 || msg.is_empty() {
+            return ServiceError::bad_request("Invalid ShoutRoom message format");
         }
         let room = parts[1];
-        let msg = msg.replacen(&format!("ShoutRoom {} ", room), "", 1);
-        if msg.is_empty() {
-            self.send_to(id, "NOK");
-            return;
-        }
-        if let Err(e) = self.chat_service.send_message_to_room(username, room, &msg) {
-            println!("Error handling Shout message: {}", e);
-            self.send_to(id, "NOK");
-        }
+
+        self.chat_service
+            .send_message_to_room(username, room, &msg)?;
+        Ok(None)
     }
 
     pub fn handle_tell_message(
         &self,
-        id: &ClientId,
         username: &PlayerUsername,
-        parts: &[&str],
-        msg: &str,
-    ) {
-        if parts.len() < 3 {
-            self.send_to(id, "NOK");
-            return;
+        orig_msg: &str,
+    ) -> ProtocolV2Result {
+        let (parts, msg) = split_n_and_rest(orig_msg, 2);
+        if parts.len() != 2 || msg.is_empty() {
+            return ServiceError::bad_request("Invalid Tell message format");
         }
         let target_username = parts[1];
-        let msg = msg.replacen(&format!("Tell {} ", target_username), "", 1);
 
-        self.send_to(id, format!("Told <{}> {}", target_username, msg.censor()));
-        if msg.is_empty() {
-            self.send_to(id, "NOK");
-            return;
-        }
-        if let Err(e) =
-            self.chat_service
-                .send_message_to_player(username, &target_username.to_string(), &msg)
-        {
-            println!("Error handling Tell message: {}", e);
-            self.send_to(id, "NOK");
-        }
+        let sent_msg = self.chat_service.send_message_to_player(
+            username,
+            &target_username.to_string(),
+            &msg,
+        )?;
+        Ok(Some(format!("Told <{}> {}", target_username, sent_msg)))
     }
 }

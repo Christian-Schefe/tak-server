@@ -3,7 +3,10 @@ use crate::{
     client::ClientId,
     game::GameId,
     player::PlayerUsername,
-    protocol::{ServerGameMessage, v2::ProtocolV2Handler},
+    protocol::{
+        Protocol, ServerGameMessage,
+        v2::{ProtocolV2Handler, ProtocolV2Result},
+    },
     tak::{TakAction, TakDir, TakGameState, TakPos, TakVariant},
 };
 
@@ -46,12 +49,23 @@ impl ProtocolV2Handler {
                 self.send_to(id, message);
             }
             ServerGameMessage::TimeUpdate { remaining } => {
-                let message = format!(
-                    "Game#{} Timems {} {}",
-                    game_id,
-                    remaining.0.as_millis(),
-                    remaining.1.as_millis()
-                );
+                let protocol = self.client_service.get_protocol(id);
+
+                let message = if protocol == Protocol::V0 {
+                    format!(
+                        "Game#{} Time {} {}",
+                        game_id,
+                        remaining.0.as_secs(),
+                        remaining.1.as_secs()
+                    )
+                } else {
+                    format!(
+                        "Game#{} Timems {} {}",
+                        game_id,
+                        remaining.0.as_millis(),
+                        remaining.1.as_millis()
+                    )
+                };
                 self.send_to(id, message);
             }
         }
@@ -70,47 +84,36 @@ impl ProtocolV2Handler {
         self.send_to(id, message);
     }
 
-    pub fn handle_game_message(&self, id: &ClientId, parts: &[&str]) {
+    pub fn handle_game_message(
+        &self,
+        username: &PlayerUsername,
+        parts: &[&str],
+    ) -> ProtocolV2Result {
         if parts.len() < 2 {
-            println!("Invalid Game message format: {:?}", parts);
-            self.send_to(id, "NOK");
-            return;
+            return ServiceError::bad_request("Invalid Game message format");
         }
-        let Some(username) = self.client_service.get_associated_player(id) else {
-            println!("Client {} not associated with any player", id);
-            self.send_to(id, "NOK");
-            return;
-        };
-        let Some(Ok(game_id)) = parts[0].split("#").nth(1).map(|s| s.parse::<u32>()) else {
-            println!("Invalid Game ID in Game message: {}", parts[1]);
-            self.send_to(id, "NOK");
-            return;
+        let Some(Ok(game_id)) = parts[0].split("#").nth(1).map(|s| s.parse::<GameId>()) else {
+            return ServiceError::bad_request("Invalid Game ID in Game message");
         };
 
-        let result = match parts[1] {
-            "P" => self.handle_game_place_message(&username, game_id, &parts[2..]),
-            "M" => self.handle_game_move_message(&username, game_id, &parts[2..]),
-            "Resign" => self.game_service.resign_game(&username, &game_id),
-            "OfferDraw" => self.game_service.offer_draw(&username, &game_id, true),
-            "RemoveDraw" => self.game_service.offer_draw(&username, &game_id, false),
-            "RequestUndo" => self.game_service.request_undo(&username, &game_id, true),
-            "RemoveUndo" => self.game_service.request_undo(&username, &game_id, false),
-            _ => {
-                println!("Unknown Game action: {}", parts[2]);
-                ServiceError::not_found("Unknown Game action")
-            }
+        match parts[1] {
+            "P" => self.handle_game_place_message(&username, game_id, &parts[2..])?,
+            "M" => self.handle_game_move_message(&username, game_id, &parts[2..])?,
+            "Resign" => self.game_service.resign_game(&username, &game_id)?,
+            "OfferDraw" => self.game_service.offer_draw(&username, &game_id, true)?,
+            "RemoveDraw" => self.game_service.offer_draw(&username, &game_id, false)?,
+            "RequestUndo" => self.game_service.request_undo(&username, &game_id, true)?,
+            "RemoveUndo" => self.game_service.request_undo(&username, &game_id, false)?,
+            _ => return ServiceError::not_found("Unknown Game action"),
         };
 
-        if let Err(e) = result {
-            println!("Error handling Game message: {}", e);
-            self.send_to(id, "NOK");
-        }
+        Ok(None)
     }
 
     pub fn handle_game_place_message(
         &self,
         username: &PlayerUsername,
-        game_id: u32,
+        game_id: GameId,
         parts: &[&str],
     ) -> ServiceResult<()> {
         if parts.len() != 1 && parts.len() != 2 {
@@ -146,7 +149,7 @@ impl ProtocolV2Handler {
     pub fn handle_game_move_message(
         &self,
         username: &PlayerUsername,
-        game_id: u32,
+        game_id: GameId,
         parts: &[&str],
     ) -> ServiceResult<()> {
         if parts.len() < 3 {

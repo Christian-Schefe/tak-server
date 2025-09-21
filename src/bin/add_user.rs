@@ -31,7 +31,7 @@ fn create_user(conn: &rusqlite::Connection, name: &str, password: &str) {
             row.get(0)
         })
         .expect("Failed to get next user ID");
-    let sql = "INSERT INTO players (id, name, password, email, rating, boost, ratedgames, maxrating, ratingage, ratingbase, unrated, isbot, fatigue, is_admin, is_mod, is_gagged, is_banned) VALUES(?1, ?2, ?3,'',1000.0,750.0,0,1000.0,0,0,0,0,'{}',0,0,0,0);";
+    let sql = "INSERT INTO players (id, name, password, email, rating, boost, ratedgames, maxrating, ratingage, ratingbase, unrated, isbot, fatigue, is_admin, is_mod, is_gagged, is_banned) VALUES(?1, ?2, ?3,'',1000.0,750.0,0,1000.0,0,0,0,0,'{}',0,false,false,0);";
     let pw_hash = bcrypt::hash(password, bcrypt::DEFAULT_COST).expect("Failed to hash password");
     conn.execute(sql, [next_id.to_string(), name.to_string(), pw_hash])
         .expect("Failed to create user");

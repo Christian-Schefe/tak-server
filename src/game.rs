@@ -1,34 +1,24 @@
 use std::{
     ops::Add,
-    sync::{Arc, LazyLock},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
 use dashmap::DashMap;
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    ArcClientService, ArcPlayerService, DatabaseError, ServiceError, ServiceResult,
+    ArcClientService, ArcGameRepository, ArcPlayerService, ServiceError, ServiceResult,
     client::ClientId,
+    persistence::games::{GameEntity, GameUpdate},
     player::PlayerUsername,
     protocol::{ServerGameMessage, ServerMessage},
     seek::{GameType, Seek},
     tak::{TakAction, TakGame, TakPlayer, TakPos, TakVariant},
 };
 
-static GAMES_DB_POOL: LazyLock<Pool<SqliteConnectionManager>> = LazyLock::new(|| {
-    let db_path = std::env::var("TAK_GAMES_DB").expect("TAK_GAMES_DB env var not set");
-    let manager = SqliteConnectionManager::file(db_path);
-    Pool::builder()
-        .max_size(5)
-        .build(manager)
-        .expect("Failed to create DB pool")
-});
-
-pub type GameId = u32;
+pub type GameId = i64;
 
 const GAME_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(120);
 const GAME_TOURNAMENT_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(900);
@@ -74,6 +64,7 @@ pub trait GameService {
 pub struct GameServiceImpl {
     client_service: ArcClientService,
     player_service: ArcPlayerService,
+    game_repository: ArcGameRepository,
     games: Arc<DashMap<GameId, Game>>,
     game_ended_tokens: Arc<DashMap<GameId, CancellationToken>>,
     game_spectators: Arc<DashMap<GameId, Vec<ClientId>>>,
@@ -81,10 +72,15 @@ pub struct GameServiceImpl {
 }
 
 impl GameServiceImpl {
-    pub fn new(client_service: ArcClientService, player_service: ArcPlayerService) -> Self {
+    pub fn new(
+        client_service: ArcClientService,
+        player_service: ArcPlayerService,
+        game_repository: ArcGameRepository,
+    ) -> Self {
         Self {
             client_service,
             player_service,
+            game_repository,
             games: Arc::new(DashMap::new()),
             game_ended_tokens: Arc::new(DashMap::new()),
             game_spectators: Arc::new(DashMap::new()),
@@ -115,68 +111,45 @@ impl GameServiceImpl {
         black: &PlayerUsername,
         seek: &Seek,
     ) -> ServiceResult<GameId> {
-        let conn = GAMES_DB_POOL
-            .get()
-            .map_err(|e| DatabaseError::ConnectionError(e))?;
         let white_player = self.player_service.fetch_player(white)?;
         let black_player = self.player_service.fetch_player(black)?;
-        let params = [
-            chrono::Utc::now().naive_utc().to_string(),
-            seek.game_settings.board_size.to_string(),
-            white.to_string(),
-            black.to_string(),
-            seek.game_settings
-                .time_control
-                .contingent
-                .as_secs()
-                .to_string(),
-            seek.game_settings
-                .time_control
-                .increment
-                .as_secs()
-                .to_string(),
-            "".to_string(),
-            "0-0".to_string(),
-            white_player.rating.to_string(),
-            black_player.rating.to_string(),
-            if seek.game_type == crate::seek::GameType::Unrated {
-                "1"
-            } else {
-                "0"
-            }
-            .to_string(),
-            if seek.game_type == crate::seek::GameType::Tournament {
-                "1"
-            } else {
-                "0"
-            }
-            .to_string(),
-            seek.game_settings.half_komi.to_string(),
-            seek.game_settings.reserve_pieces.to_string(),
-            seek.game_settings.reserve_capstones.to_string(),
-            "-1000".to_string(),
-            "-1000".to_string(),
-            seek.game_settings
+        let game_entity = GameEntity {
+            id: 0, // will be set by the database
+            date: chrono::Utc::now().timestamp(),
+            size: seek.game_settings.board_size as i32,
+            player_white: white.clone(),
+            player_black: black.clone(),
+            notation: "".to_string(),
+            result: "0-0".to_string(),
+            timertime: seek.game_settings.time_control.contingent.as_secs() as i32,
+            timerinc: seek.game_settings.time_control.increment.as_secs() as i32,
+            rating_white: white_player.rating as i32,
+            rating_black: black_player.rating as i32,
+            unrated: seek.game_type == crate::seek::GameType::Unrated,
+            tournament: seek.game_type == crate::seek::GameType::Tournament,
+            komi: seek.game_settings.half_komi as i32,
+            pieces: seek.game_settings.reserve_pieces as i32,
+            capstones: seek.game_settings.reserve_capstones as i32,
+            rating_change_white: -1000,
+            rating_change_black: -1000,
+            extra_time_amount: seek
+                .game_settings
                 .time_control
                 .extra
                 .as_ref()
-                .map_or("0".to_string(), |(_, extra_time)| {
-                    extra_time.as_secs().to_string()
-                }),
-            seek.game_settings
+                .map_or(0, |(_, extra_time)| extra_time.as_secs() as i32),
+            extra_time_trigger: seek
+                .game_settings
                 .time_control
                 .extra
                 .as_ref()
-                .map_or("0".to_string(), |(trigger_move, _)| {
-                    trigger_move.to_string()
-                }),
-        ];
-        conn.execute(
-        "INSERT INTO games (date, size, player_white, player_black, timertime, timerinc, notation, result, rating_white, rating_black, unrated, tournament, komi, pieces, capstones, rating_change_white, rating_change_black, extra_time_amount, extra_time_trigger)  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
-        params
-    )
-    .map_err(|e| DatabaseError::QueryError(e))?;
-        Ok(conn.last_insert_rowid() as GameId)
+                .map_or(0, |(trigger_move, _)| *trigger_move as i32),
+        };
+        let game_id = self
+            .game_repository
+            .create_game(&game_entity)
+            .map_err(|e| ServiceError::Internal(format!("Failed to create game: {}", e)))?;
+        Ok(game_id)
     }
 
     fn move_to_database_string(action: &TakAction) -> String {
@@ -214,10 +187,7 @@ impl GameServiceImpl {
         }
     }
 
-    fn save_to_database(game: &Game) -> Result<(), String> {
-        let conn = GAMES_DB_POOL
-            .get()
-            .map_err(|_| "Failed to get DB connection")?;
+    fn save_to_database(&self, game: &Game) -> Result<(), String> {
         let notation = game
             .game
             .action_history
@@ -226,12 +196,13 @@ impl GameServiceImpl {
             .collect::<Vec<_>>()
             .join(",");
         let result = game.game.base.game_state.to_string();
-        let params = [notation, result, game.id.to_string()];
-        conn.execute(
-            "UPDATE games SET notation = ?1, result = ?2 WHERE id = ?3",
-            params,
-        )
-        .map_err(|_| "Failed to update game in database")?;
+        let update = GameUpdate {
+            notation: Some(notation),
+            result: Some(result),
+        };
+        self.game_repository
+            .update_game(game.id, &update)
+            .map_err(|e| format!("Failed to update game in database: {}", e))?;
         Ok(())
     }
 
@@ -279,7 +250,7 @@ impl GameServiceImpl {
         self.client_service
             .try_auth_protocol_broadcast(&game_remove_msg);
 
-        if let Err(e) = Self::save_to_database(&game) {
+        if let Err(e) = self.save_to_database(&game) {
             eprintln!("Failed to save game to database: {}", e);
         }
     }

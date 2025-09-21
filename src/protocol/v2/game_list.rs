@@ -1,9 +1,13 @@
 use std::time::Instant;
 
 use crate::{
+    ServiceError,
     client::ClientId,
-    game::Game,
-    protocol::{ServerGameMessage, ServerMessage, v2::ProtocolV2Handler},
+    game::{Game, GameId},
+    protocol::{
+        Protocol, ServerGameMessage, ServerMessage,
+        v2::{ProtocolV2Handler, ProtocolV2Result},
+    },
     seek::GameType,
 };
 
@@ -43,36 +47,31 @@ impl ProtocolV2Handler {
         }
     }
 
-    pub fn handle_game_list_message(&self, id: &ClientId) {
+    pub fn handle_game_list_message(&self, id: &ClientId) -> ProtocolV2Result {
         for game in self.game_service.get_games() {
             self.send_game_string_message(id, &game, "GameList Add");
         }
+        Ok(None)
     }
 
-    pub fn handle_observe_message(&self, id: &ClientId, parts: &[&str], observe: bool) {
+    pub fn handle_observe_message(
+        &self,
+        id: &ClientId,
+        parts: &[&str],
+        observe: bool,
+    ) -> ProtocolV2Result {
         if parts.len() != 2 {
-            println!("Invalid Observe message format: {:?}", parts);
-            self.send_to(id, "NOK");
-            return;
+            return ServiceError::bad_request("Invalid Observe/Unobserve message format");
         }
-        let Ok(game_id) = parts[1].parse::<u32>() else {
-            println!("Invalid Game ID in Observe message: {}", parts[1]);
-            self.send_to(id, "NOK");
-            return;
+        let Ok(game_id) = parts[1].parse::<GameId>() else {
+            return ServiceError::bad_request("Invalid Game ID in Observe message");
         };
         if observe {
-            if let Err(e) = self.game_service.observe_game(id, &game_id) {
-                println!("Error observing game {}: {}", game_id, e);
-                self.send_to(id, "NOK");
-                return;
-            };
+            self.game_service.observe_game(id, &game_id)?;
         } else {
-            if let Err(e) = self.game_service.unobserve_game(id, &game_id) {
-                println!("Error unobserving game {}: {}", game_id, e);
-                self.send_to(id, "NOK");
-                return;
-            };
+            self.game_service.unobserve_game(id, &game_id)?;
         }
+        Ok(None)
     }
 
     pub fn send_game_string_message(&self, id: &ClientId, game: &Game, operation: &str) {
@@ -130,47 +129,67 @@ impl ProtocolV2Handler {
                 .fetch_player(&game.black)
                 .map_or(false, |p| p.is_bot);
         let settings = &game.game.base.settings;
-        let message = format!(
-            "Game Start {} {} vs {} {} {} {} {} {} {} {} {} {} {} {} {}",
-            game.id,
-            game.white,
-            game.black,
-            if *player == game.white {
-                "white"
-            } else {
-                "black"
-            },
-            settings.board_size,
-            settings.time_control.contingent.as_secs(),
-            settings.time_control.increment.as_secs(),
-            settings.half_komi,
-            settings.reserve_pieces,
-            settings.reserve_capstones,
-            match game.game_type {
-                GameType::Unrated => "1",
-                GameType::Rated => "0",
-                GameType::Tournament => "0",
-            },
-            match game.game_type {
-                GameType::Unrated => "0",
-                GameType::Rated => "0",
-                GameType::Tournament => "1",
-            },
-            settings
-                .time_control
-                .extra
-                .as_ref()
-                .map_or("0".to_string(), |(trigger_move, _)| trigger_move
-                    .to_string()),
-            settings
-                .time_control
-                .extra
-                .as_ref()
-                .map_or("0".to_string(), |(_, extra_time)| extra_time
-                    .as_secs()
-                    .to_string()),
-            if is_bot_game { "1" } else { "0" }
-        );
+        let protocol = self.client_service.get_protocol(id);
+        let message = if protocol == Protocol::V0 {
+            format!(
+                "Game Start {} {} {} vs {} {} {} {} {} {}",
+                game.id,
+                settings.board_size,
+                game.white,
+                game.black,
+                if *player == game.white {
+                    "white"
+                } else {
+                    "black"
+                },
+                settings.time_control.contingent.as_secs(),
+                settings.half_komi,
+                settings.reserve_pieces,
+                settings.reserve_capstones,
+            )
+        } else {
+            format!(
+                "Game Start {} {} vs {} {} {} {} {} {} {} {} {} {} {} {} {}",
+                game.id,
+                game.white,
+                game.black,
+                if *player == game.white {
+                    "white"
+                } else {
+                    "black"
+                },
+                settings.board_size,
+                settings.time_control.contingent.as_secs(),
+                settings.time_control.increment.as_secs(),
+                settings.half_komi,
+                settings.reserve_pieces,
+                settings.reserve_capstones,
+                match game.game_type {
+                    GameType::Unrated => "1",
+                    GameType::Rated => "0",
+                    GameType::Tournament => "0",
+                },
+                match game.game_type {
+                    GameType::Unrated => "0",
+                    GameType::Rated => "0",
+                    GameType::Tournament => "1",
+                },
+                settings
+                    .time_control
+                    .extra
+                    .as_ref()
+                    .map_or("0".to_string(), |(trigger_move, _)| trigger_move
+                        .to_string()),
+                settings
+                    .time_control
+                    .extra
+                    .as_ref()
+                    .map_or("0".to_string(), |(_, extra_time)| extra_time
+                        .as_secs()
+                        .to_string()),
+                if is_bot_game { "1" } else { "0" }
+            )
+        };
         self.send_to(&id, message);
     }
 }

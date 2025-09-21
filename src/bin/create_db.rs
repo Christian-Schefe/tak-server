@@ -38,19 +38,23 @@ fn main() {
 
     println!("Created new players DB at {}", players_db_path);
 
-    create_user(&conn, "testuser", "pw");
-    create_user(&conn, "testuser2", "pw");
+    create_user(&conn, "admin", "adminpw", true);
+    create_user(&conn, "testuser", "pw", false);
+    create_user(&conn, "testuser2", "pw", false);
 }
 
-fn create_user(conn: &rusqlite::Connection, name: &str, password: &str) {
+fn create_user(conn: &rusqlite::Connection, name: &str, password: &str, is_admin: bool) {
     let next_id: i64 = conn
         .query_row("SELECT IFNULL(MAX(id), 0) + 1 FROM players", [], |row| {
             row.get(0)
         })
         .expect("Failed to get next user ID");
-    let sql = "INSERT INTO players (id, name, password, email, rating, boost, ratedgames, maxrating, ratingage, ratingbase, unrated, isbot, fatigue, is_admin, is_mod, is_gagged, is_banned) VALUES(?1, ?2, ?3,'',1000.0,750.0,0,1000.0,0,0,0,0,'{}',0,0,0,0);";
+    let sql = "INSERT INTO players (id, name, password, email, rating, boost, ratedgames, maxrating, ratingage, ratingbase, unrated, isbot, fatigue, is_admin, is_mod, is_gagged, is_banned) VALUES(?, ?, ?,'',1000.0,750.0,0,1000.0,0,0,0,0,'{}',?,0,0,0);";
     let pw_hash = bcrypt::hash(password, bcrypt::DEFAULT_COST).expect("Failed to hash password");
-    conn.execute(sql, [next_id.to_string(), name.to_string(), pw_hash])
-        .expect("Failed to create user");
+    conn.execute(
+        sql,
+        rusqlite::params![next_id.to_string(), name.to_string(), pw_hash, is_admin],
+    )
+    .expect("Failed to create user");
     println!("Created user [{}] with password [{}]", name, password);
 }
