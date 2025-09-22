@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 default-run = "tak-server"
 
+[workspace]
+resolver = "3"
+members = ["tak-client"]
+
 [dependencies]
 async-trait = "0.1.89"
 axum = { version = "0.8.4", features = ["ws", "macros"] }

@@ -307,8 +307,10 @@ impl ClientService for ClientServiceImpl {
 
     fn try_protocol_send(&self, id: &ClientId, msg: &ServerMessage) {
         if let Some(handler) = self.client_handlers.get(id) {
+            let protocol = handler.clone();
+            drop(handler);
             self.protocol_service
-                .handle_server_message(&handler, id, msg);
+                .handle_server_message(&protocol, id, msg);
         }
     }
 
@@ -320,20 +322,23 @@ impl ClientService for ClientServiceImpl {
 
     fn try_auth_protocol_broadcast(&self, msg: &ServerMessage) {
         for entry in self.client_handlers.iter() {
-            if self.client_to_player.contains_key(entry.key()) {
+            let id = entry.key().clone();
+            if self.client_to_player.contains_key(&id) {
+                let protocol = entry.clone();
+                drop(entry);
                 self.protocol_service
-                    .handle_server_message(&entry, entry.key(), msg);
+                    .handle_server_message(&protocol, &id, msg);
             }
         }
     }
 
     fn close_client(&self, id: &ClientId) {
-        let Some(cancellation_token) = self.client_senders.get(id) else {
+        let Some(entry) = self.client_senders.get(id) else {
             println!("Client {} already closed", id);
             return;
         };
-        let token = cancellation_token.1.clone();
-        drop(cancellation_token);
+        let token = entry.1.clone();
+        drop(entry);
         token.cancel();
         println!("Client {} closed", id);
     }
