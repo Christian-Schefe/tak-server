@@ -117,21 +117,30 @@ impl ClientServiceImpl {
         let (ws_sender, ws_receiver) = socket.split();
         let client_id = new_client();
         let cancellation_token = CancellationToken::new();
-        let cancellation_token_clone = cancellation_token.clone();
 
         let client_service = self.clone();
+        let cancellation_token_clone = cancellation_token.clone();
         let receive_task = tokio::spawn(async move {
             client_service
-                .handle_receive::<S, M, E>(client_id, ws_receiver, cancellation_token, msg_parser)
+                .handle_receive::<S, M, E>(
+                    client_id,
+                    ws_receiver,
+                    cancellation_token_clone,
+                    msg_parser,
+                )
                 .await;
         });
+
         let client_service = self.clone();
+        let cancellation_token_clone = cancellation_token.clone();
         let send_task = tokio::spawn(async move {
             client_service
                 .handle_send::<S, M>(client_id, ws_sender, cancellation_token_clone, msg_factory)
                 .await;
         });
+
         let _ = tokio::join!(receive_task, send_task);
+        self.on_disconnect(&client_id);
     }
 
     async fn handle_send<S, M>(
@@ -161,7 +170,6 @@ impl ClientServiceImpl {
             }
         }
         let _ = ws_sender.close().await;
-        self.on_disconnect(&id);
         println!("Client {} send ended", id);
         cancellation_token.cancel();
     }
@@ -191,7 +199,7 @@ impl ClientServiceImpl {
             };
             match msg {
                 ClientMessage::Text(text) => {
-                    if text.starts_with("Protocol") {
+                    if text.to_ascii_lowercase().starts_with("protocol") {
                         self.try_switch_protocol(&id, &text).unwrap_or_else(|e| {
                             println!("Client {} protocol switch error: {}", id, e);
                         });
@@ -199,8 +207,10 @@ impl ClientServiceImpl {
                     }
 
                     if let Some(handler) = self.client_handlers.get(&id) {
+                        let protocol = handler.clone();
+                        drop(handler);
                         self.protocol_service
-                            .handle_client_message(&handler, &id, text);
+                            .handle_client_message(&protocol, &id, text);
                     } else {
                         println!("Client {} has no protocol handler", id);
                     }
@@ -263,7 +273,15 @@ impl ClientService for ClientServiceImpl {
             return ServiceError::not_possible(format!("Player {} already logged in", username));
         }
         if let Some(prev_client_id) = self.player_to_client.get(username) {
-            self.close_client(&prev_client_id);
+            let prev_id = prev_client_id.clone();
+            drop(prev_client_id);
+            self.close_client(&prev_id);
+            // call on_disconnect directly to clean up immediately
+            self.on_disconnect(&prev_id);
+            println!(
+                "Disconnected previous session of player {} (client {})",
+                username, prev_id
+            );
         }
         self.client_to_player.insert(*id, username.clone());
         self.player_to_client.insert(username.clone(), *id);
@@ -310,11 +328,13 @@ impl ClientService for ClientServiceImpl {
     }
 
     fn close_client(&self, id: &ClientId) {
-        let Some(cancellation_token) = self.client_senders.get(id).map(|x| x.1.clone()) else {
+        let Some(cancellation_token) = self.client_senders.get(id) else {
+            println!("Client {} already closed", id);
             return;
         };
-        cancellation_token.cancel();
-        self.on_disconnect(id);
+        let token = cancellation_token.1.clone();
+        drop(cancellation_token);
+        token.cancel();
         println!("Client {} closed", id);
     }
 

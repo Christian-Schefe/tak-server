@@ -52,6 +52,10 @@ impl ProtocolV2Handler {
             "ping" => Ok(None),
             "protocol" => Ok(None), // Noop, ignore
             "client" => Ok(None),   // Noop, ignore
+            "quit" | "exit" => {
+                self.client_service.close_client(id);
+                Ok(None)
+            }
             "login" => self.handle_login_message(id, &parts),
             "logintoken" => self.handle_login_token_message(id, &parts),
             "register" => self.handle_register_message(&parts),

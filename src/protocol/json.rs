@@ -5,7 +5,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AppState, ArcClientService, ArcPlayerService, client::ClientId, protocol::ServerMessage,
+    AppState, ArcClientService, ArcPlayerService, ServiceResult, client::ClientId,
+    protocol::ServerMessage,
 };
 
 mod auth;
@@ -17,16 +18,35 @@ pub struct ProtocolJsonHandler {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum ClientMessage {
     Ping,
     Login { token: String },
     LoginGuest { token: Option<String> },
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackedClientMessage {
+    pub msg_id: Option<String>,
+    #[serde(flatten)]
+    pub msg: ClientMessage,
+}
+
 #[derive(Clone, Debug, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum ClientResponse {
     Error { message: String },
     Ok,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackedClientResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub msg_id: Option<String>,
+    #[serde(flatten)]
+    pub response: ClientResponse,
 }
 
 impl ProtocolJsonHandler {
@@ -54,7 +74,10 @@ impl ProtocolJsonHandler {
     }
 
     pub fn handle_client_message(&self, id: &ClientId, msg: String) {
-        let msg = match serde_json::from_str::<ClientMessage>(&msg) {
+        if msg.to_ascii_lowercase().starts_with("protocol") {
+            return;
+        }
+        let msg = match serde_json::from_str::<TrackedClientMessage>(&msg) {
             Ok(msg) => msg,
             Err(e) => {
                 println!("Failed to parse JSON message from client {}: {}", id, e);
@@ -67,17 +90,20 @@ impl ProtocolJsonHandler {
                 return;
             }
         };
-        match msg {
-            ClientMessage::Ping => {
-                self.send_json_to(id, &ClientResponse::Ok);
-            }
-            ClientMessage::Login { token } => {
-                self.handle_login_message(id, &token);
-            }
+        let response: ServiceResult<ClientResponse> = match msg.msg {
+            ClientMessage::Ping => Ok(ClientResponse::Ok),
+            ClientMessage::Login { token } => self.handle_login_message(id, &token),
             ClientMessage::LoginGuest { token } => {
-                self.handle_login_guest_message(id, token.as_deref());
+                self.handle_login_guest_message(id, token.as_deref())
             }
         };
+        let tracked_response = TrackedClientResponse {
+            msg_id: msg.msg_id,
+            response: response.unwrap_or_else(|e| ClientResponse::Error {
+                message: e.to_string(),
+            }),
+        };
+        self.send_json_to(id, &tracked_response);
     }
 }
 
