@@ -6,9 +6,9 @@ use std::time::Duration;
 use crate::{
     AppState,
     client::ClientId,
-    game::{Game, GameId},
+    game::GameId,
     player::PlayerUsername,
-    seek::{Seek, SeekId},
+    seek::SeekId,
     tak::{TakAction, TakGameState},
     util::LazyInit,
 };
@@ -35,14 +35,14 @@ impl Protocol {
 pub enum ServerMessage {
     SeekList {
         add: bool,
-        seek: Seek,
+        seek_id: SeekId,
     },
     GameList {
         add: bool,
-        game: Game,
+        game_id: GameId,
     },
     GameStart {
-        game: Game,
+        game_id: GameId,
     },
     GameMessage {
         game_id: GameId,
@@ -50,9 +50,6 @@ pub enum ServerMessage {
     },
     PlayersOnline {
         players: Vec<String>,
-    },
-    ObserveGame {
-        game: Game,
     },
     ChatMessage {
         from: PlayerUsername,

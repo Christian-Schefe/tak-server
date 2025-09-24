@@ -79,8 +79,8 @@ impl ProtocolV2Handler {
 
     pub fn handle_server_message(&self, id: &ClientId, msg: &ServerMessage) {
         match msg {
-            ServerMessage::SeekList { add, seek } => {
-                self.handle_server_seek_list_message(id, &seek, *add);
+            ServerMessage::SeekList { add, seek_id } => {
+                self.handle_server_seek_list_message(id, seek_id, *add);
             }
             ServerMessage::GameMessage { game_id, message } => {
                 self.handle_server_game_message(id, game_id, message);
@@ -96,9 +96,7 @@ impl ProtocolV2Handler {
                 let rematch_message = format!("Accept Rematch {}", seek_id);
                 self.send_to(id, rematch_message);
             }
-            ServerMessage::GameList { .. }
-            | ServerMessage::GameStart { .. }
-            | ServerMessage::ObserveGame { .. } => {
+            ServerMessage::GameList { .. } | ServerMessage::GameStart { .. } => {
                 self.handle_server_game_list_message(id, msg);
             }
             ServerMessage::ChatMessage { .. } | ServerMessage::RoomMembership { .. } => {
@@ -108,19 +106,19 @@ impl ProtocolV2Handler {
     }
 
     pub fn on_authenticated(&self, id: &ClientId, username: &PlayerUsername) {
-        let seeks = self.seek_service.get_seeks();
-        for seek in seeks {
-            let seek_msg = ServerMessage::SeekList { add: true, seek };
+        let seek_ids = self.seek_service.get_seek_ids();
+        for seek_id in seek_ids {
+            let seek_msg = ServerMessage::SeekList { add: true, seek_id };
             self.handle_server_message(id, &seek_msg);
         }
-        let games = self.game_service.get_games();
-        for game in games {
-            let game_msg = ServerMessage::GameList { add: true, game };
+        let game_ids = self.game_service.get_game_ids();
+        for game_id in game_ids {
+            let game_msg = ServerMessage::GameList { add: true, game_id };
             self.handle_server_message(id, &game_msg);
         }
         if let Some(active_game) = self.game_service.get_active_game_of_player(username) {
             let start_msg = ServerMessage::GameStart {
-                game: active_game.clone(),
+                game_id: active_game.id,
             };
             self.handle_server_message(id, &start_msg);
             for action in &active_game.game.action_history {

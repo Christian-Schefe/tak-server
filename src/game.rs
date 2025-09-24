@@ -33,7 +33,8 @@ pub struct Game {
 }
 
 pub trait GameService {
-    fn get_games(&self) -> Vec<Game>;
+    fn get_game_ids(&self) -> Vec<GameId>;
+    fn get_game(&self, id: &GameId) -> Option<Game>;
     fn has_active_game(&self, player: &PlayerUsername) -> bool;
     fn get_active_game_of_player(&self, player: &PlayerUsername) -> Option<Game>;
     fn add_game_from_seek(&self, seek: &Seek, opponent: &PlayerUsername) -> ServiceResult<()>;
@@ -245,7 +246,7 @@ impl GameServiceImpl {
 
         let game_remove_msg = ServerMessage::GameList {
             add: false,
-            game: game.clone(),
+            game_id: *game_id,
         };
         self.client_service
             .try_auth_protocol_broadcast(&game_remove_msg);
@@ -379,11 +380,9 @@ impl GameServiceImpl {
 
 impl GameService for GameServiceImpl {
     fn observe_game(&self, id: &ClientId, game_id: &GameId) -> ServiceResult<()> {
-        let Some(game_ref) = self.games.get(game_id) else {
+        if self.games.get(game_id).is_none() {
             return ServiceError::not_found("Game ID not found");
         };
-        let game = game_ref.value().clone();
-        drop(game_ref);
 
         let mut spectators = self
             .game_spectators
@@ -393,9 +392,6 @@ impl GameService for GameServiceImpl {
             spectators.push(id.clone());
         }
         drop(spectators);
-
-        let msg = ServerMessage::ObserveGame { game };
-        self.client_service.try_protocol_send(id, &msg);
 
         Ok(())
     }
@@ -531,12 +527,12 @@ impl GameService for GameServiceImpl {
 
         let game_new_msg = ServerMessage::GameList {
             add: true,
-            game: game.clone(),
+            game_id: id,
         };
         self.client_service
             .try_auth_protocol_broadcast(&game_new_msg);
 
-        let game_start_msg = ServerMessage::GameStart { game };
+        let game_start_msg = ServerMessage::GameStart { game_id: id };
         self.client_service
             .get_associated_client(&seek.creator)
             .map(|id| self.client_service.try_protocol_send(&id, &game_start_msg));
@@ -585,11 +581,13 @@ impl GameService for GameServiceImpl {
         Ok(())
     }
 
-    fn get_games(&self) -> Vec<Game> {
-        self.games
-            .iter()
-            .map(|entry| entry.value().clone())
-            .collect()
+    fn get_game_ids(&self) -> Vec<GameId> {
+        self.games.iter().map(|entry| *entry.key()).collect()
+    }
+
+    fn get_game(&self, id: &GameId) -> Option<Game> {
+        let game_ref = self.games.get(id);
+        game_ref.as_ref().map(|g| g.value().clone())
     }
 
     fn has_active_game(&self, player: &PlayerUsername) -> bool {
@@ -626,8 +624,11 @@ impl GameService for GameServiceImpl {
 pub struct MockGameService {}
 
 impl GameService for MockGameService {
-    fn get_games(&self) -> Vec<Game> {
+    fn get_game_ids(&self) -> Vec<GameId> {
         vec![]
+    }
+    fn get_game(&self, _id: &GameId) -> Option<Game> {
+        None
     }
     fn has_active_game(&self, _player: &PlayerUsername) -> bool {
         false

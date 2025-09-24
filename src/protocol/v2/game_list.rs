@@ -3,7 +3,7 @@ use std::time::Instant;
 use crate::{
     ServiceError,
     client::ClientId,
-    game::{Game, GameId},
+    game::GameId,
     protocol::{
         Protocol, ServerGameMessage, ServerMessage,
         v2::{ProtocolV2Handler, ProtocolV2Result},
@@ -14,10 +14,10 @@ use crate::{
 impl ProtocolV2Handler {
     pub fn handle_server_game_list_message(&self, id: &ClientId, msg: &ServerMessage) {
         match msg {
-            ServerMessage::GameList { add, game } => {
+            ServerMessage::GameList { add, game_id } => {
                 self.send_game_string_message(
                     id,
-                    game,
+                    game_id,
                     if *add {
                         "GameList Add"
                     } else {
@@ -25,21 +25,8 @@ impl ProtocolV2Handler {
                     },
                 );
             }
-            ServerMessage::GameStart { game } => {
-                self.send_game_start_message(id, game);
-            }
-            ServerMessage::ObserveGame { game } => {
-                self.send_game_string_message(id, game, "Observe");
-                for action in game.game.action_history.iter() {
-                    self.send_game_action_message(id, &game.id, action);
-                }
-                let now = Instant::now();
-                let remaining = game.game.get_time_remaining_both(now);
-                self.handle_server_game_message(
-                    id,
-                    &game.id,
-                    &ServerGameMessage::TimeUpdate { remaining },
-                );
+            ServerMessage::GameStart { game_id } => {
+                self.send_game_start_message(id, game_id);
             }
             _ => {
                 eprintln!("Unhandled server game list message: {:?}", msg);
@@ -48,8 +35,8 @@ impl ProtocolV2Handler {
     }
 
     pub fn handle_game_list_message(&self, id: &ClientId) -> ProtocolV2Result {
-        for game in self.game_service.get_games() {
-            self.send_game_string_message(id, &game, "GameList Add");
+        for game_id in self.game_service.get_game_ids() {
+            self.send_game_string_message(id, &game_id, "GameList Add");
         }
         Ok(None)
     }
@@ -68,13 +55,31 @@ impl ProtocolV2Handler {
         };
         if observe {
             self.game_service.observe_game(id, &game_id)?;
+            let Some(game) = self.game_service.get_game(&game_id) else {
+                return ServiceError::not_found("Game ID not found");
+            };
+            self.send_game_string_message(id, &game.id, "Observe");
+            for action in game.game.action_history.iter() {
+                self.send_game_action_message(id, &game.id, action);
+            }
+            let now = Instant::now();
+            let remaining = game.game.get_time_remaining_both(now);
+            self.handle_server_game_message(
+                id,
+                &game.id,
+                &ServerGameMessage::TimeUpdate { remaining },
+            );
         } else {
             self.game_service.unobserve_game(id, &game_id)?;
         }
         Ok(None)
     }
 
-    pub fn send_game_string_message(&self, id: &ClientId, game: &Game, operation: &str) {
+    pub fn send_game_string_message(&self, id: &ClientId, game_id: &GameId, operation: &str) {
+        let Some(game) = self.game_service.get_game(game_id) else {
+            eprintln!("Game not found for ID: {}", game_id);
+            return;
+        };
         let settings = &game.game.base.settings;
         let message = format!(
             "{} {} {} {} {} {} {} {} {} {} {} {} {} {}",
@@ -115,7 +120,11 @@ impl ProtocolV2Handler {
         self.send_to(id, message);
     }
 
-    pub fn send_game_start_message(&self, id: &ClientId, game: &Game) {
+    pub fn send_game_start_message(&self, id: &ClientId, game_id: &GameId) {
+        let Some(game) = self.game_service.get_game(game_id) else {
+            eprintln!("GameStart message for unknown game ID: {}", game_id);
+            return;
+        };
         let Some(player) = self.client_service.get_associated_player(&id) else {
             println!("Client {} not associated with any player", id);
             return;

@@ -6,7 +6,7 @@ use crate::{
     game::GameId,
     player::PlayerUsername,
     protocol::v2::{ProtocolV2Handler, ProtocolV2Result},
-    seek::{GameType, Seek},
+    seek::{GameType, SeekId},
     tak::{TakGameSettings, TakPlayer, TakTimeControl},
 };
 
@@ -20,8 +20,8 @@ impl ProtocolV2Handler {
     }
 
     pub fn handle_seek_list_message(&self, id: &ClientId) -> ProtocolV2Result {
-        for seek in self.seek_service.get_seeks() {
-            self.handle_server_seek_list_message(id, &seek, true);
+        for seek_id in self.seek_service.get_seek_ids() {
+            self.handle_server_seek_list_message(id, &seek_id, true);
         }
         Ok(None)
     }
@@ -175,7 +175,11 @@ impl ProtocolV2Handler {
         Ok(None)
     }
 
-    pub fn handle_server_seek_list_message(&self, id: &ClientId, seek: &Seek, add: bool) {
+    pub fn handle_server_seek_list_message(&self, id: &ClientId, seek_id: &SeekId, add: bool) {
+        let Ok(seek) = self.seek_service.get_seek(seek_id) else {
+            eprintln!("SeekList message for unknown seek ID: {}", seek_id);
+            return;
+        };
         let message = format!(
             "Seek {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
             if add { "new" } else { "remove" },

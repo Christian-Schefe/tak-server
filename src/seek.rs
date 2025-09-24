@@ -48,7 +48,9 @@ pub trait SeekService {
         game_type: GameType,
         from_game: GameId,
     ) -> ServiceResult<()>;
+    fn get_seek_ids(&self) -> Vec<SeekId>;
     fn get_seeks(&self) -> Vec<Seek>;
+    fn get_seek(&self, id: &SeekId) -> ServiceResult<Seek>;
     fn remove_seek_of_player(&self, player: &PlayerUsername) -> ServiceResult<Seek>;
     fn accept_seek(&self, player: &PlayerUsername, id: &SeekId) -> ServiceResult<()>;
 }
@@ -115,10 +117,7 @@ impl SeekServiceImpl {
         self.seeks.insert(seek_id, seek.clone());
         self.seeks_by_player.insert(player, seek_id);
 
-        let seek_new_msg = ServerMessage::SeekList {
-            add: true,
-            seek: seek.clone(),
-        };
+        let seek_new_msg = ServerMessage::SeekList { add: true, seek_id };
         println!("New seek: {:?}", seek);
         self.client_service
             .try_auth_protocol_broadcast(&seek_new_msg);
@@ -175,6 +174,17 @@ impl SeekService for SeekServiceImpl {
         Ok(())
     }
 
+    fn get_seek(&self, id: &SeekId) -> ServiceResult<Seek> {
+        let Some(seek_ref) = self.seeks.get(id) else {
+            return ServiceError::not_found("Seek ID not found");
+        };
+        Ok(seek_ref.value().clone())
+    }
+
+    fn get_seek_ids(&self) -> Vec<SeekId> {
+        self.seeks.iter().map(|entry| entry.key().clone()).collect()
+    }
+
     fn get_seeks(&self) -> Vec<Seek> {
         self.seeks
             .iter()
@@ -196,7 +206,7 @@ impl SeekService for SeekServiceImpl {
 
         let seek_remove_msg = ServerMessage::SeekList {
             add: false,
-            seek: seek.clone(),
+            seek_id,
         };
         self.client_service
             .try_auth_protocol_broadcast(&seek_remove_msg);
@@ -307,11 +317,11 @@ mod tests {
             &sent_messages[0],
             ServerMessage::SeekList {
                 add: true,
-                seek
-            } if expected_seek == *seek
+                seek_id: 1
+            }
         ));
-        assert!(seek_service.get_seeks().len() == 1);
-        assert!(seek_service.get_seeks()[0] == expected_seek);
+        assert!(seek_service.get_seek_ids().len() == 1);
+        assert_eq!(seek_service.get_seek(&1).ok(), Some(expected_seek));
     }
 
     #[test]
@@ -335,16 +345,6 @@ mod tests {
             },
         };
 
-        let expected_seek = Seek {
-            id: 1,
-            creator: "player1".to_string(),
-            opponent: None,
-            color: None,
-            game_settings: game_settings.clone(),
-            game_type: GameType::Rated,
-            rematch_from: None,
-        };
-
         seek_service
             .add_seek(
                 "player1".to_string(),
@@ -365,10 +365,10 @@ mod tests {
             &sent_messages[1],
             ServerMessage::SeekList {
                 add: false,
-                seek
-            } if expected_seek == *seek
+                seek_id: 1,
+            }
         ));
-        assert!(seek_service.get_seeks().is_empty());
+        assert!(seek_service.get_seek_ids().is_empty());
     }
 
     #[test]
@@ -429,11 +429,11 @@ mod tests {
             &sent_broadcasts[0],
             ServerMessage::SeekList {
                 add: true,
-                seek
-            } if expected_seek == *seek
+                seek_id: 1
+            }
         ));
-        assert_eq!(seek_service.get_seeks().len(), 1);
-        assert_eq!(seek_service.get_seeks()[0], expected_seek);
+        assert_eq!(seek_service.get_seek_ids().len(), 1);
+        assert_eq!(seek_service.get_seek(&1).ok(), Some(expected_seek.clone()));
 
         seek_service
             .add_rematch_seek(
@@ -452,7 +452,7 @@ mod tests {
             &sent_messages[0],
             (uuid, ServerMessage::AcceptRematch { seek_id: 1 }) if *uuid == p2
         ));
-        assert_eq!(seek_service.get_seeks().len(), 1);
-        assert_eq!(seek_service.get_seeks()[0], expected_seek);
+        assert_eq!(seek_service.get_seek_ids().len(), 1);
+        assert_eq!(seek_service.get_seek(&1).ok(), Some(expected_seek));
     }
 }

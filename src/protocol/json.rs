@@ -1,6 +1,6 @@
 use axum::{
     Router,
-    routing::{delete, post},
+    routing::{delete, get, post},
 };
 use serde::{Deserialize, Serialize};
 
@@ -10,6 +10,7 @@ use crate::{
 };
 
 mod auth;
+mod game_list;
 mod seek;
 
 pub struct ProtocolJsonHandler {
@@ -57,8 +58,10 @@ impl ProtocolJsonHandler {
         }
     }
 
-    pub fn handle_server_message(&self, _id: &ClientId, msg: &ServerMessage) {
+    pub fn handle_server_message(&self, id: &ClientId, msg: &ServerMessage) {
         match msg {
+            ServerMessage::SeekList { .. } => self.handle_server_seek_message(id, msg),
+            ServerMessage::GameList { .. } => self.handle_server_game_list_message(id, msg),
             _ => {}
         }
     }
@@ -109,6 +112,10 @@ impl ProtocolJsonHandler {
 
 pub fn register_http_endpoints() -> Router<AppState> {
     Router::new()
-        .route("/seek", post(seek::handle_add_seek_endpoint))
-        .route("/seek", delete(seek::handle_remove_seek_endpoint))
+        .route("/seeks", post(seek::handle_add_seek_endpoint))
+        .route("/seeks", delete(seek::handle_remove_seek_endpoint))
+        .route("/seeks", get(seek::get_seeks_endpoint))
+        .route("/seeks/{id}", get(seek::get_seek_endpoint))
+        .route("/games", get(game_list::get_game_ids_endpoint))
+        .route("/games/{id}", get(game_list::get_game_endpoint))
 }
