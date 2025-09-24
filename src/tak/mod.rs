@@ -1,5 +1,6 @@
 mod board;
 mod game;
+pub mod ptn;
 
 use std::time::Duration;
 

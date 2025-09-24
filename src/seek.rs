@@ -117,8 +117,8 @@ impl SeekServiceImpl {
         self.seeks.insert(seek_id, seek.clone());
         self.seeks_by_player.insert(player, seek_id);
 
-        let seek_new_msg = ServerMessage::SeekList { add: true, seek_id };
         println!("New seek: {:?}", seek);
+        let seek_new_msg = ServerMessage::SeekList { add: true, seek };
         self.client_service
             .try_auth_protocol_broadcast(&seek_new_msg);
 
@@ -206,7 +206,7 @@ impl SeekService for SeekServiceImpl {
 
         let seek_remove_msg = ServerMessage::SeekList {
             add: false,
-            seek_id,
+            seek: seek.clone(),
         };
         self.client_service
             .try_auth_protocol_broadcast(&seek_remove_msg);
@@ -315,10 +315,7 @@ mod tests {
         assert!(sent_messages.len() == 1);
         assert!(matches!(
             &sent_messages[0],
-            ServerMessage::SeekList {
-                add: true,
-                seek_id: 1
-            }
+            ServerMessage::SeekList { add: true, seek } if *seek == expected_seek
         ));
         assert!(seek_service.get_seek_ids().len() == 1);
         assert_eq!(seek_service.get_seek(&1).ok(), Some(expected_seek));
@@ -345,6 +342,16 @@ mod tests {
             },
         };
 
+        let expected_seek = Seek {
+            id: 1,
+            creator: "player1".to_string(),
+            opponent: None,
+            color: None,
+            game_settings: game_settings.clone(),
+            game_type: GameType::Rated,
+            rematch_from: None,
+        };
+
         seek_service
             .add_seek(
                 "player1".to_string(),
@@ -365,8 +372,8 @@ mod tests {
             &sent_messages[1],
             ServerMessage::SeekList {
                 add: false,
-                seek_id: 1,
-            }
+                seek,
+            } if *seek == expected_seek
         ));
         assert!(seek_service.get_seek_ids().is_empty());
     }
@@ -429,8 +436,8 @@ mod tests {
             &sent_broadcasts[0],
             ServerMessage::SeekList {
                 add: true,
-                seek_id: 1
-            }
+                seek,
+            } if *seek == expected_seek
         ));
         assert_eq!(seek_service.get_seek_ids().len(), 1);
         assert_eq!(seek_service.get_seek(&1).ok(), Some(expected_seek.clone()));

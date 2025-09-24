@@ -5,13 +5,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AppState, ServiceError,
-    client::ClientId,
-    game::GameId,
-    jwt::Claims,
-    player::PlayerUsername,
-    protocol::{ServerMessage, json::ProtocolJsonHandler},
-    seek::GameType,
+    AppState, ServiceError, game::GameId, jwt::Claims, player::PlayerUsername, seek::GameType,
 };
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -67,27 +61,4 @@ pub async fn get_game_endpoint(
             .map(|(_, time)| time.as_millis() as u64),
     };
     Ok(Json(json_game))
-}
-
-impl ProtocolJsonHandler {
-    pub fn handle_server_game_list_message(&self, id: &ClientId, msg: &ServerMessage) {
-        match msg {
-            ServerMessage::GameList { add, game_id } => {
-                let json = serde_json::json!({
-                    "type":  "game_list",
-                    "add": *add,
-                    "game_id": game_id
-                });
-                self.send_json_to(id, &json);
-            }
-            ServerMessage::GameStart { game_id } => {
-                let json = serde_json::json!({
-                    "type": "game_start",
-                    "game_id": game_id,
-                });
-                self.send_json_to(id, &json);
-            }
-            _ => {}
-        }
-    }
 }

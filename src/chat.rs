@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use dashmap::DashMap;
 use rustrict::CensorStr;
 
 use crate::{
@@ -8,16 +7,18 @@ use crate::{
     client::{ClientId, ClientService},
     player::{PlayerService, PlayerUsername},
     protocol::{ChatMessageSource, ServerMessage},
+    util::ManyManyDashMap,
 };
 
 pub trait ChatService {
-    fn join_room(&self, client_id: &ClientId, room_name: &str) -> ServiceResult<()>;
-    fn leave_room(&self, client_id: &ClientId, room_name: &str) -> ServiceResult<()>;
+    fn join_room(&self, client_id: &ClientId, room_name: &String) -> ServiceResult<()>;
+    fn leave_room(&self, client_id: &ClientId, room_name: &String) -> ServiceResult<()>;
+    fn leave_all_rooms(&self, client_id: &ClientId) -> ServiceResult<()>;
     fn send_message_to_all(&self, username: &PlayerUsername, message: &str) -> ServiceResult<()>;
     fn send_message_to_room(
         &self,
         username: &PlayerUsername,
-        room_name: &str,
+        room_name: &String,
         message: &str,
     ) -> ServiceResult<()>;
     fn send_message_to_player(
@@ -31,7 +32,7 @@ pub trait ChatService {
 pub struct ChatServiceImpl {
     client_service: Arc<Box<dyn ClientService + Send + Sync>>,
     player_service: Arc<Box<dyn PlayerService + Send + Sync>>,
-    chat_rooms: Arc<DashMap<String, Vec<ClientId>>>,
+    chat_rooms: Arc<ManyManyDashMap<String, ClientId>>,
 }
 
 impl ChatServiceImpl {
@@ -42,17 +43,14 @@ impl ChatServiceImpl {
         Self {
             client_service,
             player_service,
-            chat_rooms: Arc::new(DashMap::new()),
+            chat_rooms: Arc::new(ManyManyDashMap::new()),
         }
     }
 }
 
 impl ChatService for ChatServiceImpl {
-    fn join_room(&self, client_id: &ClientId, room_name: &str) -> ServiceResult<()> {
-        let mut room = self.chat_rooms.entry(room_name.to_string()).or_default();
-        if !room.contains(client_id) {
-            room.push(*client_id);
-        }
+    fn join_room(&self, client_id: &ClientId, room_name: &String) -> ServiceResult<()> {
+        self.chat_rooms.insert(room_name.to_string(), *client_id);
         let msg = ServerMessage::RoomMembership {
             room: room_name.to_string(),
             joined: true,
@@ -61,18 +59,18 @@ impl ChatService for ChatServiceImpl {
         Ok(())
     }
 
-    fn leave_room(&self, client_id: &ClientId, room_name: &str) -> ServiceResult<()> {
-        if let Some(mut room) = self.chat_rooms.get_mut(room_name) {
-            room.retain(|id| id != client_id);
-            if room.is_empty() {
-                self.chat_rooms.remove(room_name);
-            }
-        }
+    fn leave_room(&self, client_id: &ClientId, room_name: &String) -> ServiceResult<()> {
+        self.chat_rooms.remove(room_name, client_id);
         let msg = ServerMessage::RoomMembership {
             room: room_name.to_string(),
             joined: false,
         };
         self.client_service.try_protocol_send(client_id, &msg);
+        Ok(())
+    }
+
+    fn leave_all_rooms(&self, client_id: &ClientId) -> ServiceResult<()> {
+        self.chat_rooms.remove_value(client_id);
         Ok(())
     }
 
@@ -93,21 +91,24 @@ impl ChatService for ChatServiceImpl {
     fn send_message_to_room(
         &self,
         username: &PlayerUsername,
-        room_name: &str,
+        room_name: &String,
         message: &str,
     ) -> ServiceResult<()> {
         let player = self.player_service.fetch_player(&username)?;
         if player.is_gagged {
             return ServiceError::forbidden("You are gagged and cannot send messages");
         }
-        if let Some(room) = self.chat_rooms.get(room_name) {
-            let msg = ServerMessage::ChatMessage {
-                from: username.clone(),
-                message: message.censor(),
-                source: ChatMessageSource::Room(room_name.to_string()),
-            };
-            self.client_service.try_protocol_multicast(&room, &msg);
-        }
+        let participants = self.chat_rooms.get_by_key(room_name);
+        let msg = ServerMessage::ChatMessage {
+            from: username.clone(),
+            message: message.censor(),
+            source: ChatMessageSource::Room {
+                name: room_name.to_string(),
+            },
+        };
+        self.client_service
+            .try_protocol_multicast(&participants, &msg);
+
         Ok(())
     }
 

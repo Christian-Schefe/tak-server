@@ -18,10 +18,10 @@ impl ProtocolV2Handler {
         msg: &ServerGameMessage,
     ) {
         match msg {
-            ServerGameMessage::Action(action) => {
+            ServerGameMessage::Action { action } => {
                 self.send_game_action_message(id, game_id, action);
             }
-            ServerGameMessage::GameOver(game_state) => {
+            ServerGameMessage::GameOver { game_state } => {
                 self.send_game_over_message(id, game_id, game_state);
             }
             ServerGameMessage::DrawOffer { offer } => {
@@ -48,22 +48,25 @@ impl ProtocolV2Handler {
                 let message = format!("Game#{} Undo", game_id);
                 self.send_to(id, message);
             }
-            ServerGameMessage::TimeUpdate { remaining } => {
+            ServerGameMessage::TimeUpdate {
+                remaining_white,
+                remaining_black,
+            } => {
                 let protocol = self.client_service.get_protocol(id);
 
                 let message = if protocol == Protocol::V0 {
                     format!(
                         "Game#{} Time {} {}",
                         game_id,
-                        remaining.0.as_secs(),
-                        remaining.1.as_secs()
+                        remaining_white.as_secs(),
+                        remaining_black.as_secs()
                     )
                 } else {
                     format!(
                         "Game#{} Timems {} {}",
                         game_id,
-                        remaining.0.as_millis(),
-                        remaining.1.as_millis()
+                        remaining_white.as_millis(),
+                        remaining_black.as_millis()
                     )
                 };
                 self.send_to(id, message);

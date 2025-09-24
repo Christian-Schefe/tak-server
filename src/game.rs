@@ -16,6 +16,7 @@ use crate::{
     protocol::{ServerGameMessage, ServerMessage},
     seek::{GameType, Seek},
     tak::{TakAction, TakGame, TakPlayer, TakPos, TakVariant},
+    util::ManyManyDashMap,
 };
 
 pub type GameId = i64;
@@ -34,6 +35,7 @@ pub struct Game {
 
 pub trait GameService {
     fn get_game_ids(&self) -> Vec<GameId>;
+    fn get_games(&self) -> Vec<Game>;
     fn get_game(&self, id: &GameId) -> Option<Game>;
     fn has_active_game(&self, player: &PlayerUsername) -> bool;
     fn get_active_game_of_player(&self, player: &PlayerUsername) -> Option<Game>;
@@ -59,6 +61,7 @@ pub trait GameService {
     ) -> ServiceResult<()>;
     fn observe_game(&self, id: &ClientId, game_id: &GameId) -> ServiceResult<()>;
     fn unobserve_game(&self, id: &ClientId, game_id: &GameId) -> ServiceResult<()>;
+    fn unobserve_all(&self, id: &ClientId) -> ServiceResult<()>;
 }
 
 #[derive(Clone)]
@@ -68,7 +71,7 @@ pub struct GameServiceImpl {
     game_repository: ArcGameRepository,
     games: Arc<DashMap<GameId, Game>>,
     game_ended_tokens: Arc<DashMap<GameId, CancellationToken>>,
-    game_spectators: Arc<DashMap<GameId, Vec<ClientId>>>,
+    game_spectators: Arc<ManyManyDashMap<GameId, ClientId>>,
     game_by_player: Arc<DashMap<PlayerUsername, GameId>>,
 }
 
@@ -84,7 +87,7 @@ impl GameServiceImpl {
             game_repository,
             games: Arc::new(DashMap::new()),
             game_ended_tokens: Arc::new(DashMap::new()),
-            game_spectators: Arc::new(DashMap::new()),
+            game_spectators: Arc::new(ManyManyDashMap::new()),
             game_by_player: Arc::new(DashMap::new()),
         }
     }
@@ -230,7 +233,9 @@ impl GameServiceImpl {
 
         let game_over_msg = ServerMessage::GameMessage {
             game_id: *game_id,
-            message: ServerGameMessage::GameOver(game.game.base.game_state.clone()),
+            message: ServerGameMessage::GameOver {
+                game_state: game.game.base.game_state.clone(),
+            },
         };
         self.client_service
             .get_associated_client(&game.white)
@@ -239,14 +244,13 @@ impl GameServiceImpl {
             .get_associated_client(&game.black)
             .map(|id| self.client_service.try_protocol_send(&id, &game_over_msg));
 
-        if let Some((_, spectators)) = self.game_spectators.remove(game_id) {
-            self.client_service
-                .try_protocol_multicast(&spectators, &game_over_msg);
-        }
+        let spectators = self.game_spectators.remove_key(game_id);
+        self.client_service
+            .try_protocol_multicast(&spectators, &game_over_msg);
 
         let game_remove_msg = ServerMessage::GameList {
             add: false,
-            game_id: *game_id,
+            game: game.clone(),
         };
         self.client_service
             .try_auth_protocol_broadcast(&game_remove_msg);
@@ -270,7 +274,10 @@ impl GameServiceImpl {
 
         let time_update_msg = ServerMessage::GameMessage {
             game_id: *game_id,
-            message: ServerGameMessage::TimeUpdate { remaining },
+            message: ServerGameMessage::TimeUpdate {
+                remaining_white: remaining.0,
+                remaining_black: remaining.1,
+            },
         };
         self.client_service
             .get_associated_client(&players.0)
@@ -278,10 +285,10 @@ impl GameServiceImpl {
         self.client_service
             .get_associated_client(&players.1)
             .map(|id| self.client_service.try_protocol_send(&id, &time_update_msg));
-        if let Some(spectators) = self.game_spectators.get(game_id) {
-            self.client_service
-                .try_protocol_multicast(&spectators.value(), &time_update_msg);
-        }
+
+        let spectators = self.game_spectators.get_by_key(game_id);
+        self.client_service
+            .try_protocol_multicast(&spectators, &time_update_msg);
     }
 
     fn run_timeout_waiter(&self, game_id: GameId, cancel_token: CancellationToken) {
@@ -384,22 +391,12 @@ impl GameService for GameServiceImpl {
             return ServiceError::not_found("Game ID not found");
         };
 
-        let mut spectators = self
-            .game_spectators
-            .entry(*game_id)
-            .or_insert_with(|| Vec::new());
-        if !spectators.contains(&id) {
-            spectators.push(id.clone());
-        }
-        drop(spectators);
-
+        self.game_spectators.insert(*game_id, *id);
         Ok(())
     }
 
     fn unobserve_game(&self, id: &ClientId, game_id: &GameId) -> ServiceResult<()> {
-        if let Some(mut spectators) = self.game_spectators.get_mut(game_id) {
-            spectators.retain(|u| u != id);
-        }
+        self.game_spectators.remove(game_id, id);
         Ok(())
     }
 
@@ -476,10 +473,9 @@ impl GameService for GameServiceImpl {
                 .get_associated_client(&opponent)
                 .map(|id| self.client_service.try_protocol_send(&id, &undo_msg));
 
-            if let Some(spectators) = self.game_spectators.get(game_id) {
-                self.client_service
-                    .try_protocol_multicast(&spectators, &undo_msg);
-            }
+            let spectators = self.game_spectators.get_by_key(game_id);
+            self.client_service
+                .try_protocol_multicast(&spectators, &undo_msg);
         }
 
         Ok(())
@@ -525,10 +521,7 @@ impl GameService for GameServiceImpl {
         self.run_disconnect_waiter(id, cancel_token.clone());
         self.run_timeout_waiter(id, cancel_token);
 
-        let game_new_msg = ServerMessage::GameList {
-            add: true,
-            game_id: id,
-        };
+        let game_new_msg = ServerMessage::GameList { add: true, game };
         self.client_service
             .try_auth_protocol_broadcast(&game_new_msg);
 
@@ -566,16 +559,17 @@ impl GameService for GameServiceImpl {
 
         let action_msg = ServerMessage::GameMessage {
             game_id: *game_id,
-            message: ServerGameMessage::Action(action.clone()),
+            message: ServerGameMessage::Action {
+                action: action.clone(),
+            },
         };
 
         self.client_service
             .get_associated_client(&opponent)
             .map(|id| self.client_service.try_protocol_send(&id, &action_msg));
-        if let Some(spectators) = self.game_spectators.get(game_id) {
-            self.client_service
-                .try_protocol_multicast(&spectators.value(), &action_msg);
-        }
+        let spectators = self.game_spectators.get_by_key(game_id);
+        self.client_service
+            .try_protocol_multicast(&spectators, &action_msg);
 
         self.check_game_over(game_id);
         Ok(())
@@ -588,6 +582,13 @@ impl GameService for GameServiceImpl {
     fn get_game(&self, id: &GameId) -> Option<Game> {
         let game_ref = self.games.get(id);
         game_ref.as_ref().map(|g| g.value().clone())
+    }
+
+    fn get_games(&self) -> Vec<Game> {
+        self.games
+            .iter()
+            .map(|entry| entry.value().clone())
+            .collect()
     }
 
     fn has_active_game(&self, player: &PlayerUsername) -> bool {
@@ -618,6 +619,11 @@ impl GameService for GameServiceImpl {
         self.check_game_over(game_id);
         Ok(())
     }
+
+    fn unobserve_all(&self, id: &ClientId) -> ServiceResult<()> {
+        self.game_spectators.remove_value(id);
+        Ok(())
+    }
 }
 
 #[derive(Clone, Default)]
@@ -625,6 +631,9 @@ pub struct MockGameService {}
 
 impl GameService for MockGameService {
     fn get_game_ids(&self) -> Vec<GameId> {
+        vec![]
+    }
+    fn get_games(&self) -> Vec<Game> {
         vec![]
     }
     fn get_game(&self, _id: &GameId) -> Option<Game> {
@@ -670,6 +679,9 @@ impl GameService for MockGameService {
         Ok(())
     }
     fn unobserve_game(&self, _id: &ClientId, _game_id: &GameId) -> ServiceResult<()> {
+        Ok(())
+    }
+    fn unobserve_all(&self, _id: &ClientId) -> ServiceResult<()> {
         Ok(())
     }
 }

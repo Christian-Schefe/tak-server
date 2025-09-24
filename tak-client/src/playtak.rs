@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -14,6 +17,30 @@ pub struct PlaytakClient {
     http_client: reqwest::Client,
     credentials: Arc<Mutex<Option<(String, String)>>>,
     token: Arc<Mutex<Option<String>>>,
+    state: Arc<Mutex<PlaytakState>>,
+}
+
+pub struct PlaytakState {
+    pub players: Vec<String>,
+    pub seeks: HashMap<usize, JsonSeek>,
+}
+
+impl PlaytakState {
+    pub fn new() -> Self {
+        Self {
+            players: vec![],
+            seeks: HashMap::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum JsonServerMessage {
+    SeekList { add: bool, seek_id: usize },
+    GameList { add: bool, game_id: usize },
+    GameStart { game_id: usize },
+    PlayersOnline { players: Vec<String> },
 }
 
 #[derive(Deserialize, Debug)]
@@ -47,6 +74,7 @@ pub struct GetTokenResponse {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JsonSeek {
     pub opponent: Option<String>,
     pub color: String,
@@ -80,19 +108,74 @@ impl PlaytakClient {
             http_url,
             token,
             credentials: Arc::new(Mutex::new(Some((username.into(), password.into())))),
+            state: Arc::new(Mutex::new(PlaytakState::new())),
         };
         let client_clone = client.clone();
-        let handle = ws_client.run(rx, &ws_url, move || {
-            let client_clone = client_clone.clone();
-            Box::pin(async move {
-                match client_clone.login().await {
-                    Ok(true) => println!("Logged in successfully"),
-                    Ok(false) => println!("Login failed"),
-                    Err(e) => println!("Login error: {:?}", e),
-                }
-            })
+        let client_clone2 = client.clone();
+        let handle = ws_client.run(
+            rx,
+            &ws_url,
+            move || {
+                let client_clone = client_clone.clone();
+                Box::pin(async move {
+                    match client_clone.login().await {
+                        Ok(true) => println!("Logged in successfully"),
+                        Ok(false) => println!("Login failed"),
+                        Err(e) => println!("Login error: {:?}", e),
+                    }
+                })
+            },
+            move |msg| {
+                let client_clone = client_clone2.clone();
+                Box::pin(async move {
+                    client_clone.handle_server_message(msg).await;
+                })
+            },
+        );
+        let client_clone = client.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                let resp = client_clone.send_ping().await;
+                println!("Sent ping to server: {:?}", resp);
+            }
         });
         (client, handle)
+    }
+
+    async fn handle_server_message(&self, msg: Value) {
+        println!("Server message: {:?}", msg);
+        if let Ok(server_msg) = serde_json::from_value::<JsonServerMessage>(msg.clone()) {
+            match server_msg {
+                JsonServerMessage::PlayersOnline { players } => {
+                    let mut state = self.state.lock().unwrap();
+                    state.players = players;
+                }
+                JsonServerMessage::SeekList { add, seek_id } => {
+                    if add {
+                        let seek = self.get_seek(seek_id as u64).await;
+                        if let Ok(seek) = seek {
+                            let mut state = self.state.lock().unwrap();
+                            state.seeks.insert(seek_id, seek);
+                        }
+                    } else {
+                        let mut state = self.state.lock().unwrap();
+                        state.seeks.remove(&seek_id);
+                    }
+                }
+                _ => {}
+            }
+        } else {
+            println!("Failed to parse server message: {:?}", msg);
+        }
+    }
+
+    pub fn with_state<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(&PlaytakState) -> R,
+    {
+        let state = self.state.lock().unwrap();
+        f(&state)
     }
 
     pub async fn request_token(
@@ -153,20 +236,27 @@ impl PlaytakClient {
         }
     }
 
+    pub async fn send_ping(&self) -> Result<bool, SendError> {
+        let msg = serde_json::json!({ "type": "ping" });
+        let resp = self.ws_client.send::<Value, ServerResponse>(msg).await?;
+        match resp {
+            ServerResponse::Ok => Ok(true),
+            _ => Ok(false),
+        }
+    }
+
     pub async fn create_seek(&self, seek: JsonSeek) -> Result<(), HttpError> {
         let token = self.get_or_retrieve_token().await;
         if token.is_none() {
             return Err(HttpError::NotOkResponse);
         }
-        let body = serde_json::json! {
-            { "seek": seek }
-        };
+        let body = serde_json::to_string(&seek)?;
         let resp = self
             .http_client
-            .post(format!("{}/v3/seek", self.http_url))
+            .post(format!("{}/v3/seeks", self.http_url))
             .header("Content-Type", "application/json")
             .bearer_auth(token.as_ref().unwrap())
-            .body(body.to_string())
+            .body(body)
             .send()
             .await?;
         if !resp.status().is_success() {
@@ -183,7 +273,43 @@ impl PlaytakClient {
         }
         let resp = self
             .http_client
-            .delete(format!("{}/v3/seek", self.http_url))
+            .delete(format!("{}/v3/seeks", self.http_url))
+            .bearer_auth(token.as_ref().unwrap())
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            return Err(HttpError::NotOkResponse);
+        }
+        Ok(())
+    }
+
+    pub async fn get_seek(&self, seek_id: u64) -> Result<JsonSeek, HttpError> {
+        let token = self.get_or_retrieve_token().await;
+        if token.is_none() {
+            return Err(HttpError::NotOkResponse);
+        }
+        let resp = self
+            .http_client
+            .get(format!("{}/v3/seeks/{}", self.http_url, seek_id))
+            .bearer_auth(token.as_ref().unwrap())
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            return Err(HttpError::NotOkResponse);
+        }
+        let json = resp.text().await?;
+        let seek: JsonSeek = serde_json::from_str(&json)?;
+        Ok(seek)
+    }
+
+    pub async fn accept_seek(&self, seek_id: u64) -> Result<(), HttpError> {
+        let token = self.get_or_retrieve_token().await;
+        if token.is_none() {
+            return Err(HttpError::NotOkResponse);
+        }
+        let resp = self
+            .http_client
+            .post(format!("{}/v3/seeks/{}/accept", self.http_url, seek_id))
             .bearer_auth(token.as_ref().unwrap())
             .send()
             .await?;

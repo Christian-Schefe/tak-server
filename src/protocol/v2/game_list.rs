@@ -3,7 +3,7 @@ use std::time::Instant;
 use crate::{
     ServiceError,
     client::ClientId,
-    game::GameId,
+    game::{Game, GameId},
     protocol::{
         Protocol, ServerGameMessage, ServerMessage,
         v2::{ProtocolV2Handler, ProtocolV2Result},
@@ -14,10 +14,10 @@ use crate::{
 impl ProtocolV2Handler {
     pub fn handle_server_game_list_message(&self, id: &ClientId, msg: &ServerMessage) {
         match msg {
-            ServerMessage::GameList { add, game_id } => {
+            ServerMessage::GameList { add, game } => {
                 self.send_game_string_message(
                     id,
-                    game_id,
+                    &game,
                     if *add {
                         "GameList Add"
                     } else {
@@ -35,8 +35,8 @@ impl ProtocolV2Handler {
     }
 
     pub fn handle_game_list_message(&self, id: &ClientId) -> ProtocolV2Result {
-        for game_id in self.game_service.get_game_ids() {
-            self.send_game_string_message(id, &game_id, "GameList Add");
+        for game in self.game_service.get_games() {
+            self.send_game_string_message(id, &game, "GameList Add");
         }
         Ok(None)
     }
@@ -58,16 +58,19 @@ impl ProtocolV2Handler {
             let Some(game) = self.game_service.get_game(&game_id) else {
                 return ServiceError::not_found("Game ID not found");
             };
-            self.send_game_string_message(id, &game.id, "Observe");
+            self.send_game_string_message(id, &game, "Observe");
             for action in game.game.action_history.iter() {
                 self.send_game_action_message(id, &game.id, action);
             }
             let now = Instant::now();
-            let remaining = game.game.get_time_remaining_both(now);
+            let (remaining_white, remaining_black) = game.game.get_time_remaining_both(now);
             self.handle_server_game_message(
                 id,
                 &game.id,
-                &ServerGameMessage::TimeUpdate { remaining },
+                &ServerGameMessage::TimeUpdate {
+                    remaining_white,
+                    remaining_black,
+                },
             );
         } else {
             self.game_service.unobserve_game(id, &game_id)?;
@@ -75,11 +78,7 @@ impl ProtocolV2Handler {
         Ok(None)
     }
 
-    pub fn send_game_string_message(&self, id: &ClientId, game_id: &GameId, operation: &str) {
-        let Some(game) = self.game_service.get_game(game_id) else {
-            eprintln!("Game not found for ID: {}", game_id);
-            return;
-        };
+    pub fn send_game_string_message(&self, id: &ClientId, game: &Game, operation: &str) {
         let settings = &game.game.base.settings;
         let message = format!(
             "{} {} {} {} {} {} {} {} {} {} {} {} {} {}",

@@ -14,9 +14,11 @@ use tokio_util::{
 use uuid::Uuid;
 
 use crate::{
-    ArcProtocolService, ServiceError, ServiceResult,
+    AppState, ArcChatService, ArcGameService, ArcProtocolService, ArcSeekService, ServiceError,
+    ServiceResult,
     player::PlayerUsername,
     protocol::{Protocol, ServerMessage},
+    util::{LazyInit, OneOneDashMap},
 };
 
 pub type ClientId = Uuid;
@@ -41,6 +43,7 @@ where
 
 #[async_trait::async_trait]
 pub trait ClientService {
+    fn init(&self, app: &AppState);
     fn try_send_to(&self, id: &ClientId, msg: &str) -> Result<(), String>;
     fn associate_player(&self, id: &ClientId, username: &PlayerUsername) -> ServiceResult<()>;
     fn get_associated_player(&self, id: &ClientId) -> Option<PlayerUsername>;
@@ -59,10 +62,12 @@ pub trait ClientService {
 #[derive(Clone)]
 pub struct ClientServiceImpl {
     protocol_service: ArcProtocolService,
+    seek_service: LazyInit<ArcSeekService>,
+    game_service: LazyInit<ArcGameService>,
+    chat_service: LazyInit<ArcChatService>,
     client_senders: Arc<DashMap<ClientId, (UnboundedSender<String>, CancellationToken)>>,
     client_handlers: Arc<DashMap<ClientId, Protocol>>,
-    client_to_player: Arc<DashMap<ClientId, PlayerUsername>>,
-    player_to_client: Arc<DashMap<PlayerUsername, ClientId>>,
+    player_associations: Arc<OneOneDashMap<ClientId, PlayerUsername>>,
     last_activity: Arc<DashMap<ClientId, Instant>>,
     last_disconnect: Arc<moka::sync::Cache<PlayerUsername, Instant>>,
 }
@@ -71,10 +76,12 @@ impl ClientServiceImpl {
     pub fn new(protocol_service: ArcProtocolService) -> Self {
         Self {
             protocol_service,
+            seek_service: LazyInit::new(),
+            game_service: LazyInit::new(),
+            chat_service: LazyInit::new(),
             client_senders: Arc::new(DashMap::new()),
             client_handlers: Arc::new(DashMap::new()),
-            client_to_player: Arc::new(DashMap::new()),
-            player_to_client: Arc::new(DashMap::new()),
+            player_associations: Arc::new(OneOneDashMap::new()),
             last_activity: Arc::new(DashMap::new()),
             last_disconnect: Arc::new(
                 moka::sync::Cache::builder()
@@ -88,9 +95,11 @@ impl ClientServiceImpl {
         self.client_senders.remove(id);
         self.client_handlers.remove(id);
         self.last_activity.remove(id);
-        let player = self.client_to_player.remove(id);
-        if let Some((_, username)) = player {
-            self.player_to_client.remove(&username);
+        let player = self.player_associations.remove_by_key(id);
+        let _ = self.chat_service.get().leave_all_rooms(id);
+        let _ = self.game_service.get().unobserve_all(&id);
+        if let Some(username) = player {
+            let _ = self.seek_service.get().remove_seek_of_player(&username);
             self.update_online_players();
             self.last_disconnect
                 .insert(username.clone(), Instant::now());
@@ -239,11 +248,7 @@ impl ClientServiceImpl {
     }
 
     fn update_online_players(&self) {
-        let players: Vec<PlayerUsername> = self
-            .client_to_player
-            .iter()
-            .map(|entry| entry.value().clone())
-            .collect();
+        let players = self.player_associations.get_values();
         let msg = ServerMessage::PlayersOnline { players };
         self.try_auth_protocol_broadcast(&msg);
     }
@@ -257,6 +262,12 @@ impl ClientServiceImpl {
 
 #[async_trait::async_trait]
 impl ClientService for ClientServiceImpl {
+    fn init(&self, app: &AppState) {
+        let _ = self.seek_service.init(app.seek_service.clone());
+        let _ = self.chat_service.init(app.chat_service.clone());
+        let _ = self.game_service.init(app.game_service.clone());
+    }
+
     fn try_send_to(&self, id: &ClientId, msg: &str) -> Result<(), String> {
         if let Some(sender) = self.client_senders.get(id) {
             sender
@@ -269,22 +280,27 @@ impl ClientService for ClientServiceImpl {
     }
 
     fn associate_player(&self, id: &ClientId, username: &PlayerUsername) -> ServiceResult<()> {
-        if self.client_to_player.contains_key(id) {
+        if self.player_associations.contains_key(id) {
             return ServiceError::not_possible(format!("Player {} already logged in", username));
         }
-        if let Some(prev_client_id) = self.player_to_client.get(username) {
-            let prev_id = prev_client_id.clone();
-            drop(prev_client_id);
-            self.close_client(&prev_id);
+        if let Some(prev_client_id) = self.player_associations.get_by_value(username) {
+            self.close_client(&prev_client_id);
             // call on_disconnect directly to clean up immediately
-            self.on_disconnect(&prev_id);
+            self.on_disconnect(&prev_client_id);
             println!(
                 "Disconnected previous session of player {} (client {})",
-                username, prev_id
+                username, prev_client_id
             );
         }
-        self.client_to_player.insert(*id, username.clone());
-        self.player_to_client.insert(username.clone(), *id);
+        if !self
+            .player_associations
+            .try_insert(id.clone(), username.clone())
+        {
+            return ServiceError::internal(format!(
+                "Failed to associate player {} with client {}",
+                username, id
+            ));
+        }
         if let Some(handler) = self.client_handlers.get(id) {
             self.protocol_service
                 .on_authenticated(&handler, id, username);
@@ -294,15 +310,11 @@ impl ClientService for ClientServiceImpl {
     }
 
     fn get_associated_player(&self, id: &ClientId) -> Option<PlayerUsername> {
-        self.client_to_player
-            .get(id)
-            .map(|entry| entry.value().clone())
+        self.player_associations.get_by_key(id)
     }
 
     fn get_associated_client(&self, player: &PlayerUsername) -> Option<ClientId> {
-        self.player_to_client
-            .get(player)
-            .map(|entry| *entry.value())
+        self.player_associations.get_by_value(player)
     }
 
     fn try_protocol_send(&self, id: &ClientId, msg: &ServerMessage) {
@@ -323,7 +335,7 @@ impl ClientService for ClientServiceImpl {
     fn try_auth_protocol_broadcast(&self, msg: &ServerMessage) {
         for entry in self.client_handlers.iter() {
             let id = entry.key().clone();
-            if self.client_to_player.contains_key(&id) {
+            if self.player_associations.contains_key(&id) {
                 let protocol = entry.clone();
                 drop(entry);
                 self.protocol_service
@@ -344,7 +356,7 @@ impl ClientService for ClientServiceImpl {
     }
 
     fn get_offline_since(&self, player: &PlayerUsername) -> Result<Option<Instant>, ()> {
-        if self.player_to_client.contains_key(player) {
+        if self.player_associations.contains_value(player) {
             Err(())
         } else {
             Ok(self.last_disconnect.get(player))
@@ -422,6 +434,7 @@ impl MockClientService {
 
 #[async_trait::async_trait]
 impl ClientService for MockClientService {
+    fn init(&self, _app: &AppState) {}
     fn try_send_to(&self, _id: &ClientId, _msg: &str) -> Result<(), String> {
         Ok(())
     }

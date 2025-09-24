@@ -8,10 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     AppState, ServiceError,
-    client::ClientId,
     jwt::Claims,
     player::PlayerUsername,
-    protocol::{ServerMessage, json::ProtocolJsonHandler},
     seek::{GameType, Seek, SeekId},
     tak::{TakGameSettings, TakPlayer, TakTimeControl},
 };
@@ -158,17 +156,12 @@ pub async fn get_seek_endpoint(
     Ok(Json(json_seek))
 }
 
-impl ProtocolJsonHandler {
-    pub fn handle_server_seek_message(&self, id: &ClientId, msg: &ServerMessage) {
-        match msg {
-            ServerMessage::SeekList { add, seek_id } => {
-                let json = serde_json::json!({
-                    "type": if *add { "seek_add" } else { "seek_remove" },
-                    "seek_id": seek_id,
-                });
-                self.send_json_to(id, &json);
-            }
-            _ => {}
-        }
-    }
+pub async fn accept_seek_endpoint(
+    claims: Claims,
+    Path(seek_id): Path<SeekId>,
+    State(app): State<AppState>,
+) -> Result<(), ServiceError> {
+    app.player_service.fetch_player(&claims.sub)?;
+    app.seek_service.accept_seek(&claims.sub, &seek_id)?;
+    Ok(())
 }

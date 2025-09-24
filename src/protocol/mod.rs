@@ -6,9 +6,9 @@ use std::time::Duration;
 use crate::{
     AppState,
     client::ClientId,
-    game::GameId,
+    game::{Game, GameId},
     player::PlayerUsername,
-    seek::SeekId,
+    seek::{Seek, SeekId},
     tak::{TakAction, TakGameState},
     util::LazyInit,
 };
@@ -35,11 +35,11 @@ impl Protocol {
 pub enum ServerMessage {
     SeekList {
         add: bool,
-        seek_id: SeekId,
+        seek: Seek,
     },
     GameList {
         add: bool,
-        game_id: GameId,
+        game: Game,
     },
     GameStart {
         game_id: GameId,
@@ -67,18 +67,29 @@ pub enum ServerMessage {
 
 #[derive(Clone, Debug)]
 pub enum ServerGameMessage {
-    Action(TakAction),
-    TimeUpdate { remaining: (Duration, Duration) },
+    Action {
+        action: TakAction,
+    },
+    TimeUpdate {
+        remaining_white: Duration,
+        remaining_black: Duration,
+    },
     Undo,
-    GameOver(TakGameState),
-    UndoRequest { request: bool },
-    DrawOffer { offer: bool },
+    GameOver {
+        game_state: TakGameState,
+    },
+    UndoRequest {
+        request: bool,
+    },
+    DrawOffer {
+        offer: bool,
+    },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ChatMessageSource {
     Global,
-    Room(String),
+    Room { name: String },
     Private,
 }
 
@@ -116,6 +127,7 @@ impl ProtocolService for ProtocolServiceImpl {
         let _ = self.json.init(json::ProtocolJsonHandler::new(
             app.client_service.clone(),
             app.player_service.clone(),
+            app.game_service.clone(),
         ));
     }
 

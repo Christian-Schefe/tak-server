@@ -79,8 +79,8 @@ impl ProtocolV2Handler {
 
     pub fn handle_server_message(&self, id: &ClientId, msg: &ServerMessage) {
         match msg {
-            ServerMessage::SeekList { add, seek_id } => {
-                self.handle_server_seek_list_message(id, seek_id, *add);
+            ServerMessage::SeekList { add, seek } => {
+                self.handle_server_seek_list_message(id, seek, *add);
             }
             ServerMessage::GameMessage { game_id, message } => {
                 self.handle_server_game_message(id, game_id, message);
@@ -106,14 +106,14 @@ impl ProtocolV2Handler {
     }
 
     pub fn on_authenticated(&self, id: &ClientId, username: &PlayerUsername) {
-        let seek_ids = self.seek_service.get_seek_ids();
-        for seek_id in seek_ids {
-            let seek_msg = ServerMessage::SeekList { add: true, seek_id };
+        let seeks = self.seek_service.get_seeks();
+        for seek in seeks {
+            let seek_msg = ServerMessage::SeekList { add: true, seek };
             self.handle_server_message(id, &seek_msg);
         }
-        let game_ids = self.game_service.get_game_ids();
-        for game_id in game_ids {
-            let game_msg = ServerMessage::GameList { add: true, game_id };
+        let games = self.game_service.get_games();
+        for game in games {
+            let game_msg = ServerMessage::GameList { add: true, game };
             self.handle_server_message(id, &game_msg);
         }
         if let Some(active_game) = self.game_service.get_active_game_of_player(username) {
@@ -124,15 +124,20 @@ impl ProtocolV2Handler {
             for action in &active_game.game.action_history {
                 let action_msg = ServerMessage::GameMessage {
                     game_id: active_game.id,
-                    message: ServerGameMessage::Action(action.clone()),
+                    message: ServerGameMessage::Action {
+                        action: action.clone(),
+                    },
                 };
                 self.handle_server_message(id, &action_msg);
             }
             let now = Instant::now();
-            let remaining = active_game.game.get_time_remaining_both(now);
+            let (remaining_white, remaining_black) = active_game.game.get_time_remaining_both(now);
             let time_msg = ServerMessage::GameMessage {
                 game_id: active_game.id,
-                message: ServerGameMessage::TimeUpdate { remaining },
+                message: ServerGameMessage::TimeUpdate {
+                    remaining_white,
+                    remaining_black,
+                },
             };
             self.handle_server_message(id, &time_msg);
         }

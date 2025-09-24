@@ -25,5 +25,9 @@ async fn main() {
         })
         .await
         .unwrap();
+
+    client.with_state(|state| {
+        println!("Current players: {:?}", state.players);
+    });
     let _ = handle.await;
 }

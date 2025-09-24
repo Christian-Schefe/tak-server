@@ -64,14 +64,21 @@ impl TakClient {
         };
         (client, rx)
     }
-    pub fn run<F>(
+
+    pub fn run<F, F2>(
         &self,
         rx: UnboundedReceiver<SendListener>,
         url: impl Into<String>,
         on_connect: F,
+        on_message: F2,
     ) -> JoinHandle<()>
     where
         F: Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> + Send + 'static,
+        F2: Fn(serde_json::Value) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+            + Send
+            + Sync
+            + Clone
+            + 'static,
     {
         let url = url.into();
         let cancellation_token = self.cancellation_token.clone();
@@ -96,7 +103,12 @@ impl TakClient {
                     cur_rx,
                     token.clone(),
                 ));
-                let read_handle = tokio::spawn(handle_receive(read, open_messages, token));
+                let read_handle = tokio::spawn(handle_receive(
+                    read,
+                    open_messages,
+                    token,
+                    on_message.clone(),
+                ));
                 println!("Connected to {}", url);
                 on_connect().await;
                 let (rx, _) = tokio::join!(write_handle, read_handle);
@@ -174,6 +186,11 @@ async fn handle_receive(
     mut read: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
     open_messages: OpenMessageMap,
     cancellation_token: CancellationToken,
+    on_message: impl Fn(
+        serde_json::Value,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+    + Send
+    + 'static,
 ) {
     while let Some(msg) = tokio::select! {
         msg = read.next() => msg,
@@ -182,12 +199,18 @@ async fn handle_receive(
         match msg {
             Ok(Message::Binary(data)) => {
                 println!("Received binary message: {:?}", data);
-                if let Ok(resp) = serde_json::from_slice::<TrackedMessage>(&data) {
-                    if let Some(tx) = open_messages.remove(&resp.msg_id).map(|e| e.1) {
-                        let _ = tx.send(resp.message);
+                if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&data) {
+                    if let Ok(resp) = serde_json::from_value::<TrackedMessage>(value.clone()) {
+                        if let Some(tx) = open_messages.remove(&resp.msg_id).map(|e| e.1) {
+                            let _ = tx.send(resp.message);
+                        } else {
+                            println!("No listener for message id {}", resp.msg_id);
+                        }
                     } else {
-                        println!("No listener for message id {}", resp.msg_id);
+                        (on_message)(value).await;
                     }
+                } else {
+                    println!("Failed to parse binary message as JSON");
                 }
             }
             Ok(Message::Close(_)) => {

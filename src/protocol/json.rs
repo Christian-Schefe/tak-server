@@ -5,17 +5,24 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AppState, ArcClientService, ArcPlayerService, ServiceResult, client::ClientId,
-    protocol::ServerMessage,
+    AppState, ArcClientService, ArcGameService, ArcPlayerService, ServiceError, ServiceResult,
+    client::ClientId,
+    game::GameId,
+    player::PlayerUsername,
+    protocol::{ChatMessageSource, ServerGameMessage, ServerMessage},
+    seek::SeekId,
+    tak::ptn::action_to_ptn,
 };
 
 mod auth;
+mod game;
 mod game_list;
 mod seek;
 
 pub struct ProtocolJsonHandler {
     client_service: ArcClientService,
     player_service: ArcPlayerService,
+    game_service: ArcGameService,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -24,6 +31,10 @@ pub enum ClientMessage {
     Ping,
     Login { token: String },
     LoginGuest { token: Option<String> },
+    GameAction { game_id: GameId, action: String },
+    RequestUndo { game_id: GameId, request: bool },
+    OfferDraw { game_id: GameId, offer: bool },
+    Resign { game_id: GameId },
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -51,19 +62,21 @@ pub struct TrackedClientResponse {
 }
 
 impl ProtocolJsonHandler {
-    pub fn new(client_service: ArcClientService, player_service: ArcPlayerService) -> Self {
+    pub fn new(
+        client_service: ArcClientService,
+        player_service: ArcPlayerService,
+        game_service: ArcGameService,
+    ) -> Self {
         Self {
             client_service,
             player_service,
+            game_service,
         }
     }
 
     pub fn handle_server_message(&self, id: &ClientId, msg: &ServerMessage) {
-        match msg {
-            ServerMessage::SeekList { .. } => self.handle_server_seek_message(id, msg),
-            ServerMessage::GameList { .. } => self.handle_server_game_list_message(id, msg),
-            _ => {}
-        }
+        let msg = server_message_to_json(msg);
+        self.send_json_to(id, &msg);
     }
 
     pub fn send_json_to(&self, id: &ClientId, msg: &impl serde::Serialize) {
@@ -99,6 +112,7 @@ impl ProtocolJsonHandler {
             ClientMessage::LoginGuest { token } => {
                 self.handle_login_guest_message(id, token.as_deref())
             }
+            msg => self.handle_logged_in_client_message(id, msg),
         };
         let tracked_response = TrackedClientResponse {
             msg_id: msg.msg_id,
@@ -108,6 +122,29 @@ impl ProtocolJsonHandler {
         };
         self.send_json_to(id, &tracked_response);
     }
+
+    fn handle_logged_in_client_message(
+        &self,
+        id: &ClientId,
+        msg: ClientMessage,
+    ) -> ServiceResult<ClientResponse> {
+        let Some(username) = self.client_service.get_associated_player(id) else {
+            return ServiceError::unauthorized("Client not logged in");
+        };
+        match msg {
+            ClientMessage::GameAction { game_id, action } => {
+                self.handle_game_action(&username, &game_id, &action)
+            }
+            ClientMessage::RequestUndo { game_id, request } => {
+                self.handle_undo_request_message(&username, &game_id, request)
+            }
+            ClientMessage::OfferDraw { game_id, offer } => {
+                self.handle_draw_offer_message(&username, &game_id, offer)
+            }
+            ClientMessage::Resign { game_id } => self.handle_resign_message(&username, &game_id),
+            _ => ServiceError::internal("Unhandled message type"),
+        }
+    }
 }
 
 pub fn register_http_endpoints() -> Router<AppState> {
@@ -116,6 +153,129 @@ pub fn register_http_endpoints() -> Router<AppState> {
         .route("/seeks", delete(seek::handle_remove_seek_endpoint))
         .route("/seeks", get(seek::get_seeks_endpoint))
         .route("/seeks/{id}", get(seek::get_seek_endpoint))
+        .route("/seeks/{id}/accept", get(seek::accept_seek_endpoint))
         .route("/games", get(game_list::get_game_ids_endpoint))
         .route("/games/{id}", get(game_list::get_game_endpoint))
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum JsonServerMessage {
+    SeekList {
+        add: bool,
+        seek_id: SeekId,
+    },
+    GameList {
+        add: bool,
+        game_id: GameId,
+    },
+    GameStart {
+        game_id: GameId,
+    },
+    GameMessage {
+        game_id: GameId,
+        message: JsonServerGameMessage,
+    },
+    PlayersOnline {
+        players: Vec<String>,
+    },
+    ChatMessage {
+        from: PlayerUsername,
+        message: String,
+        source: JsonChatMessageSource,
+    },
+    RoomMembership {
+        room: String,
+        joined: bool,
+    },
+    AcceptRematch {
+        seek_id: SeekId,
+    },
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum JsonServerGameMessage {
+    Action { action: String },
+    TimeUpdate { white_ms: u64, black_ms: u64 },
+    Undo,
+    GameOver { game_state: String },
+    UndoRequest { request: bool },
+    DrawOffer { offer: bool },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum JsonChatMessageSource {
+    Global,
+    Room { room_name: String },
+    Private,
+}
+
+fn server_message_to_json(msg: &ServerMessage) -> JsonServerMessage {
+    match msg {
+        ServerMessage::SeekList { add, seek } => JsonServerMessage::SeekList {
+            add: *add,
+            seek_id: seek.id,
+        },
+        ServerMessage::GameList { add, game } => JsonServerMessage::GameList {
+            add: *add,
+            game_id: game.id,
+        },
+        ServerMessage::GameStart { game_id } => JsonServerMessage::GameStart { game_id: *game_id },
+        ServerMessage::GameMessage { game_id, message } => JsonServerMessage::GameMessage {
+            game_id: *game_id,
+            message: server_game_message_to_json(message),
+        },
+        ServerMessage::PlayersOnline { players } => JsonServerMessage::PlayersOnline {
+            players: players.clone(),
+        },
+        ServerMessage::ChatMessage {
+            from,
+            message,
+            source,
+        } => JsonServerMessage::ChatMessage {
+            from: from.clone(),
+            message: message.clone(),
+            source: match source {
+                ChatMessageSource::Global => JsonChatMessageSource::Global,
+                ChatMessageSource::Room { name } => JsonChatMessageSource::Room {
+                    room_name: name.clone(),
+                },
+                ChatMessageSource::Private => JsonChatMessageSource::Private,
+            },
+        },
+        ServerMessage::RoomMembership { room, joined } => JsonServerMessage::RoomMembership {
+            room: room.clone(),
+            joined: *joined,
+        },
+        ServerMessage::AcceptRematch { seek_id } => {
+            JsonServerMessage::AcceptRematch { seek_id: *seek_id }
+        }
+    }
+}
+
+fn server_game_message_to_json(msg: &ServerGameMessage) -> JsonServerGameMessage {
+    match msg {
+        ServerGameMessage::Action { action } => JsonServerGameMessage::Action {
+            action: action_to_ptn(action),
+        },
+        ServerGameMessage::TimeUpdate {
+            remaining_white,
+            remaining_black,
+        } => JsonServerGameMessage::TimeUpdate {
+            white_ms: remaining_white.as_millis() as u64,
+            black_ms: remaining_black.as_millis() as u64,
+        },
+        ServerGameMessage::Undo => JsonServerGameMessage::Undo,
+        ServerGameMessage::GameOver { game_state } => JsonServerGameMessage::GameOver {
+            game_state: game_state.to_string(),
+        },
+        ServerGameMessage::UndoRequest { request } => {
+            JsonServerGameMessage::UndoRequest { request: *request }
+        }
+        ServerGameMessage::DrawOffer { offer } => {
+            JsonServerGameMessage::DrawOffer { offer: *offer }
+        }
+    }
 }

@@ -179,7 +179,7 @@ pub fn construct_app() -> AppState {
     ));
 
     let app = AppState {
-        client_service,
+        client_service: client_service.clone(),
         game_service,
         seek_service,
         player_service,
@@ -192,6 +192,7 @@ pub fn construct_app() -> AppState {
     };
 
     protocol_service.init(&app);
+    client_service.init(&app);
 
     app
 }

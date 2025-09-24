@@ -18,8 +18,8 @@ impl ProtocolV2Handler {
             } => {
                 let msg = match source {
                     ChatMessageSource::Global => format!("Shout <{}> {}", from, message),
-                    ChatMessageSource::Room(room) => {
-                        format!("ShoutRoom {} <{}> {}", room, from, message)
+                    ChatMessageSource::Room { name } => {
+                        format!("ShoutRoom {} <{}> {}", name, from, message)
                     }
                     ChatMessageSource::Private => format!("Tell <{}> {}", from, message),
                 };
@@ -48,11 +48,11 @@ impl ProtocolV2Handler {
         if parts.len() != 2 {
             return ServiceError::bad_request("Invalid JoinRoom/LeaveRoom message format");
         }
-        let room = parts[1];
+        let room = parts[1].to_string();
         if join {
-            self.chat_service.join_room(id, room)?;
+            self.chat_service.join_room(id, &room)?;
         } else {
-            self.chat_service.leave_room(id, room)?;
+            self.chat_service.leave_room(id, &room)?;
         }
         Ok(None)
     }
@@ -79,10 +79,10 @@ impl ProtocolV2Handler {
         if parts.len() != 2 || msg.is_empty() {
             return ServiceError::bad_request("Invalid ShoutRoom message format");
         }
-        let room = parts[1];
+        let room = parts[1].to_string();
 
         self.chat_service
-            .send_message_to_room(username, room, &msg)?;
+            .send_message_to_room(username, &room, &msg)?;
         Ok(None)
     }
 
