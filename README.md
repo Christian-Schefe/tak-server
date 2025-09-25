@@ -22,7 +22,7 @@ To do extra features:
 
 - [x] REST endpoints
 - [x] JWT auth
-- [ ] JSON protocol alternative
+- [x] JSON protocol alternative
 
 Open questions / On hold:
 

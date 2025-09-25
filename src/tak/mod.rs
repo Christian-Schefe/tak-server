@@ -21,7 +21,7 @@ impl TakPlayer {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TakAction {
     Place {
         pos: TakPos,
@@ -107,7 +107,7 @@ impl TakPos {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TakDir {
     Up,
     Left,
@@ -123,23 +123,6 @@ pub enum TakGameState {
         reason: TakWinReason,
     },
     Draw,
-}
-
-impl TakGameState {
-    pub fn to_string(&self) -> String {
-        match self {
-            TakGameState::Ongoing => "0-0".to_string(),
-            TakGameState::Win { winner, reason } => match (winner, reason) {
-                (TakPlayer::White, TakWinReason::Road) => "R-0".to_string(),
-                (TakPlayer::White, TakWinReason::Flats) => "F-0".to_string(),
-                (TakPlayer::White, TakWinReason::Default) => "1-0".to_string(),
-                (TakPlayer::Black, TakWinReason::Road) => "0-R".to_string(),
-                (TakPlayer::Black, TakWinReason::Flats) => "0-F".to_string(),
-                (TakPlayer::Black, TakWinReason::Default) => "0-1".to_string(),
-            },
-            TakGameState::Draw => "1/2-1/2".to_string(),
-        }
-    }
 }
 
 #[derive(Clone, PartialEq, Debug)]

@@ -135,3 +135,143 @@ impl ChatService for ChatServiceImpl {
         Ok(censored_message)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use uuid::Uuid;
+
+    use crate::{client::MockClientService, player::MockPlayerService};
+
+    use super::*;
+
+    #[test]
+    fn test_private_message() {
+        let mock_client_service = MockClientService::default();
+        let mock_player_service = MockPlayerService::default();
+        let chat_service = ChatServiceImpl::new(
+            Arc::new(Box::new(mock_client_service.clone())),
+            Arc::new(Box::new(mock_player_service.clone())),
+        );
+
+        let p1 = Uuid::new_v4();
+        let p2 = Uuid::new_v4();
+        mock_client_service
+            .associate_player(&p1, &"test_admin".to_string())
+            .unwrap();
+        mock_client_service
+            .associate_player(&p2, &"test_user".to_string())
+            .unwrap();
+
+        assert_eq!(
+            chat_service
+                .send_message_to_player(
+                    &"test_admin".to_string(),
+                    &"test_user".to_string(),
+                    "Hello!",
+                )
+                .ok(),
+            Some("Hello!".to_string())
+        );
+        let messages = mock_client_service.get_messages();
+        assert_eq!(messages.len(), 1);
+        assert!(
+            matches!(&messages[0], (id, ServerMessage::ChatMessage { from, message, source }) if *id == p2 && from == "test_admin" && message == "Hello!" && *source == ChatMessageSource::Private)
+        );
+
+        assert!(matches!(
+            chat_service.send_message_to_player(
+                &"test_gagged".to_string(),
+                &"test_user".to_string(),
+                "Hello!",
+            ),
+            Err(ServiceError::Forbidden(..))
+        ));
+    }
+
+    #[test]
+    fn test_room_message() {
+        let mock_client_service = MockClientService::default();
+        let mock_player_service = MockPlayerService::default();
+        let chat_service = ChatServiceImpl::new(
+            Arc::new(Box::new(mock_client_service.clone())),
+            Arc::new(Box::new(mock_player_service.clone())),
+        );
+
+        let p1 = Uuid::new_v4();
+        let p2 = Uuid::new_v4();
+        mock_client_service
+            .associate_player(&p1, &"test_admin".to_string())
+            .unwrap();
+        mock_client_service
+            .associate_player(&p2, &"test_user".to_string())
+            .unwrap();
+
+        chat_service.join_room(&p1, &"room".to_string()).unwrap();
+        chat_service.join_room(&p2, &"room".to_string()).unwrap();
+        let messages = mock_client_service.get_messages();
+        assert_eq!(messages.len(), 2);
+
+        assert!(
+            chat_service
+                .send_message_to_room(&"test_admin".to_string(), &"room".to_string(), "Hello!")
+                .is_ok()
+        );
+        let messages = mock_client_service.get_messages();
+        assert_eq!(messages.len(), 4);
+        assert!(
+            matches!(&messages[2].1,  ServerMessage::ChatMessage { from, message, source: ChatMessageSource::Room{ name } } if from == "test_admin" && message == "Hello!" && *name ==  "room".to_string()),
+        );
+        assert!(
+            matches!(&messages[3].1,  ServerMessage::ChatMessage { from, message, source: ChatMessageSource::Room{ name } } if from == "test_admin" && message == "Hello!" && *name ==  "room".to_string())
+        );
+        assert!(
+            messages[2].0 != messages[3].0
+                && (messages[2].0 == p1 || messages[2].0 == p2)
+                && (messages[3].0 == p1 || messages[3].0 == p2)
+        );
+
+        assert!(matches!(
+            chat_service.send_message_to_player(
+                &"test_gagged".to_string(),
+                &"test_user".to_string(),
+                "Hello!",
+            ),
+            Err(ServiceError::Forbidden(..))
+        ));
+    }
+
+    #[test]
+    fn test_global_message() {
+        let mock_client_service = MockClientService::default();
+        let mock_player_service = MockPlayerService::default();
+        let chat_service = ChatServiceImpl::new(
+            Arc::new(Box::new(mock_client_service.clone())),
+            Arc::new(Box::new(mock_player_service.clone())),
+        );
+
+        let p1 = Uuid::new_v4();
+        let p2 = Uuid::new_v4();
+        mock_client_service
+            .associate_player(&p1, &"test_admin".to_string())
+            .unwrap();
+        mock_client_service
+            .associate_player(&p2, &"test_user".to_string())
+            .unwrap();
+
+        assert!(
+            chat_service
+                .send_message_to_all(&"test_admin".to_string(), "Hello!")
+                .is_ok()
+        );
+        let messages = mock_client_service.get_broadcasts();
+        assert_eq!(messages.len(), 1);
+        assert!(
+            matches!(&messages[0],  ServerMessage::ChatMessage { from, message, source: ChatMessageSource::Global } if from == "test_admin" && message == "Hello!"),
+        );
+
+        assert!(matches!(
+            chat_service.send_message_to_all(&"test_gagged".to_string(), "Hello!",),
+            Err(ServiceError::Forbidden(..))
+        ));
+    }
+}

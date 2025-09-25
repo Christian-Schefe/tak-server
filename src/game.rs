@@ -15,7 +15,7 @@ use crate::{
     player::PlayerUsername,
     protocol::{ServerGameMessage, ServerMessage},
     seek::{GameType, Seek},
-    tak::{TakAction, TakGame, TakPlayer, TakPos, TakVariant},
+    tak::{TakAction, TakGame, TakPlayer, TakPos, TakVariant, ptn::game_state_to_string},
     util::ManyManyDashMap,
 };
 
@@ -199,7 +199,7 @@ impl GameServiceImpl {
             .map(Self::move_to_database_string)
             .collect::<Vec<_>>()
             .join(",");
-        let result = game.game.base.game_state.to_string();
+        let result = game_state_to_string(&game.game.base.game_state);
         let update = GameUpdate {
             notation: Some(notation),
             result: Some(result),
@@ -221,7 +221,7 @@ impl GameServiceImpl {
         println!(
             "Game {} is over: {}",
             game.id,
-            game.game.base.game_state.to_string()
+            game_state_to_string(&game.game.base.game_state)
         );
 
         self.games.remove(game_id);

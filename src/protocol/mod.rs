@@ -128,6 +128,7 @@ impl ProtocolService for ProtocolServiceImpl {
             app.client_service.clone(),
             app.player_service.clone(),
             app.game_service.clone(),
+            app.chat_service.clone(),
         ));
     }
 

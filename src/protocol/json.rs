@@ -5,36 +5,60 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AppState, ArcClientService, ArcGameService, ArcPlayerService, ServiceError, ServiceResult,
+    AppState, ArcChatService, ArcClientService, ArcGameService, ArcPlayerService, ServiceError,
+    ServiceResult,
     client::ClientId,
     game::GameId,
     player::PlayerUsername,
     protocol::{ChatMessageSource, ServerGameMessage, ServerMessage},
     seek::SeekId,
-    tak::ptn::action_to_ptn,
+    tak::ptn::{action_to_ptn, game_state_to_string},
 };
 
 mod auth;
+mod chat;
 mod game;
 mod game_list;
 mod seek;
+mod sudo;
 
 pub struct ProtocolJsonHandler {
     client_service: ArcClientService,
     player_service: ArcPlayerService,
     game_service: ArcGameService,
+    chat_service: ArcChatService,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ClientMessage {
     Ping,
-    Login { token: String },
-    LoginGuest { token: Option<String> },
-    GameAction { game_id: GameId, action: String },
-    RequestUndo { game_id: GameId, request: bool },
-    OfferDraw { game_id: GameId, offer: bool },
-    Resign { game_id: GameId },
+    Login {
+        token: String,
+    },
+    LoginGuest {
+        token: Option<String>,
+    },
+    GameAction {
+        game_id: GameId,
+        action: String,
+    },
+    RequestUndo {
+        game_id: GameId,
+        request: bool,
+    },
+    OfferDraw {
+        game_id: GameId,
+        offer: bool,
+    },
+    Resign {
+        game_id: GameId,
+    },
+    ChatMessage {
+        message: String,
+        room: Option<String>,
+        player: Option<PlayerUsername>,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -66,11 +90,13 @@ impl ProtocolJsonHandler {
         client_service: ArcClientService,
         player_service: ArcPlayerService,
         game_service: ArcGameService,
+        chat_service: ArcChatService,
     ) -> Self {
         Self {
             client_service,
             player_service,
             game_service,
+            chat_service,
         }
     }
 
@@ -142,7 +168,15 @@ impl ProtocolJsonHandler {
                 self.handle_draw_offer_message(&username, &game_id, offer)
             }
             ClientMessage::Resign { game_id } => self.handle_resign_message(&username, &game_id),
-            _ => ServiceError::internal("Unhandled message type"),
+            ClientMessage::ChatMessage {
+                message,
+                room,
+                player,
+            } => self.handle_chat_message(&username, &message, &room, &player),
+
+            ClientMessage::Ping
+            | ClientMessage::Login { .. }
+            | ClientMessage::LoginGuest { .. } => ServiceError::internal("Unhandled message type"),
         }
     }
 }
@@ -156,6 +190,21 @@ pub fn register_http_endpoints() -> Router<AppState> {
         .route("/seeks/{id}/accept", get(seek::accept_seek_endpoint))
         .route("/games", get(game_list::get_game_ids_endpoint))
         .route("/games/{id}", get(game_list::get_game_endpoint))
+        .route(
+            "/auth/request-password-reset",
+            post(auth::request_password_reset_endpoint),
+        )
+        .route("/auth/reset-password", post(auth::reset_password_endpoint))
+        .route(
+            "/auth/change-password",
+            post(auth::change_password_endpoint),
+        )
+        .route("/sudo/ban", post(sudo::sudo_ban_endpoint))
+        .route("/sudo/unban", post(sudo::sudo_unban_endpoint))
+        .route("/sudo/set-admin", post(sudo::sudo_admin_endpoint))
+        .route("/sudo/set-mod", post(sudo::sudo_mod_endpoint))
+        .route("/sudo/set-bot", post(sudo::sudo_bot_endpoint))
+        .route("/sudo/set-gag", post(sudo::sudo_gag_endpoint))
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -269,7 +318,7 @@ fn server_game_message_to_json(msg: &ServerGameMessage) -> JsonServerGameMessage
         },
         ServerGameMessage::Undo => JsonServerGameMessage::Undo,
         ServerGameMessage::GameOver { game_state } => JsonServerGameMessage::GameOver {
-            game_state: game_state.to_string(),
+            game_state: game_state_to_string(game_state),
         },
         ServerGameMessage::UndoRequest { request } => {
             JsonServerGameMessage::UndoRequest { request: *request }

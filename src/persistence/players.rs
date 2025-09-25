@@ -98,6 +98,7 @@ impl PlayerRepository for PlayerRepositoryImpl {
         }
     }
 
+    // TODO: remove manual id handling, use AUTOINCREMENT
     fn create_player(&self, player: &Player) -> DatabaseResult<()> {
         let conn = get_connection(&self.pool)?;
         let largest_player_id: i32 = conn

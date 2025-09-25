@@ -350,6 +350,7 @@ mod tests {
 
         for x in 0..5 {
             let pos = TakPos { x, y: 0 };
+            assert!(!board.check_for_road(&player));
             assert!(board.do_place(&pos, &variant, &player).is_ok());
         }
 

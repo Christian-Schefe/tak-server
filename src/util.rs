@@ -144,6 +144,7 @@ pub struct OneOneDashMap<K, V> {
     backward: DashMap<V, K>,
 }
 
+#[allow(unused)]
 impl<K, V> OneOneDashMap<K, V>
 where
     K: std::hash::Hash + Eq + Clone,

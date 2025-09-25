@@ -7,7 +7,7 @@ use crate::{
         Protocol, ServerGameMessage,
         v2::{ProtocolV2Handler, ProtocolV2Result},
     },
-    tak::{TakAction, TakDir, TakGameState, TakPos, TakVariant},
+    tak::{TakAction, TakDir, TakGameState, TakPos, TakVariant, ptn::game_state_to_string},
 };
 
 impl ProtocolV2Handler {
@@ -83,7 +83,7 @@ impl ProtocolV2Handler {
         if *game_state == TakGameState::Ongoing {
             return;
         }
-        let message = format!("Game#{} Over {}", game_id, game_state.to_string());
+        let message = format!("Game#{} Over {}", game_id, game_state_to_string(game_state));
         self.send_to(id, message);
     }
 

@@ -484,9 +484,9 @@ impl PlayerService for PlayerServiceImpl {
 
     fn validate_login(&self, username: &PlayerUsername, password: &str) -> ServiceResult<()> {
         let player = self.fetch_player(&username)?;
+
         let valid = bcrypt::verify(password, &player.password_hash)
             .map_err(|_| ServiceError::BadRequest("Failed to hash password".into()))?;
-
         println!(
             "Login attempt for user {}: {}, {}",
             username,
@@ -634,5 +634,168 @@ impl PlayerService for PlayerServiceImpl {
             is_bot: bot_filter,
         })?;
         Ok(players)
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct MockPlayerService;
+
+impl PlayerService for MockPlayerService {
+    fn load_unique_usernames(&self) -> ServiceResult<()> {
+        Ok(())
+    }
+
+    fn fetch_player(&self, username: &str) -> ServiceResult<Player> {
+        match username {
+            "test_admin" => Ok(Player {
+                id: 1,
+                username: "test_admin".into(),
+                email: "test_admin@example.com".into(),
+                rating: 1500.0,
+                password_hash: "".to_string(),
+                is_bot: false,
+                is_gagged: false,
+                is_mod: true,
+                is_admin: true,
+                is_banned: false,
+            }),
+            "test_gagged" => Ok(Player {
+                id: 2,
+                username: "test_gagged".into(),
+                email: "test_gagged@example.com".into(),
+                rating: 1200.0,
+                password_hash: "".to_string(),
+                is_bot: false,
+                is_gagged: true,
+                is_mod: false,
+                is_admin: false,
+                is_banned: false,
+            }),
+            _ => ServiceError::not_found("Player not found"),
+        }
+    }
+
+    fn validate_login(&self, _username: &PlayerUsername, _password: &str) -> ServiceResult<()> {
+        Ok(())
+    }
+
+    fn try_login(
+        &self,
+        _id: &ClientId,
+        _username: &PlayerUsername,
+        _password: &str,
+    ) -> ServiceResult<()> {
+        Ok(())
+    }
+
+    fn try_login_jwt(&self, _id: &ClientId, _token: &str) -> ServiceResult<PlayerUsername> {
+        Ok("".to_string())
+    }
+
+    fn try_login_guest(
+        &self,
+        _id: &ClientId,
+        _token: Option<&str>,
+    ) -> ServiceResult<PlayerUsername> {
+        Ok("".to_string())
+    }
+
+    fn try_register(&self, _username: &PlayerUsername, _email: &str) -> ServiceResult<()> {
+        Ok(())
+    }
+
+    fn send_reset_token(&self, _username: &PlayerUsername, _email: &str) -> ServiceResult<()> {
+        Ok(())
+    }
+
+    fn reset_password(
+        &self,
+        _username: &PlayerUsername,
+        _reset_token: &str,
+        _new_password: &str,
+    ) -> ServiceResult<()> {
+        Ok(())
+    }
+
+    fn change_password(
+        &self,
+        _username: &PlayerUsername,
+        _current_password: &str,
+        _new_password: &str,
+    ) -> ServiceResult<()> {
+        Ok(())
+    }
+
+    fn set_gagged(
+        &self,
+        _username: &PlayerUsername,
+        _target_username: &PlayerUsername,
+        _gagged: bool,
+    ) -> ServiceResult<()> {
+        Ok(())
+    }
+
+    fn set_banned(
+        &self,
+        _username: &PlayerUsername,
+        _target_username: &PlayerUsername,
+        _banned: Option<String>,
+    ) -> ServiceResult<()> {
+        Ok(())
+    }
+
+    fn set_modded(
+        &self,
+        _username: &PlayerUsername,
+        _target_username: &PlayerUsername,
+        _modded: bool,
+    ) -> ServiceResult<()> {
+        Ok(())
+    }
+
+    fn set_admin(
+        &self,
+        _username: &PlayerUsername,
+        _target_username: &PlayerUsername,
+        _admin: bool,
+    ) -> ServiceResult<()> {
+        Ok(())
+    }
+
+    fn set_bot(
+        &self,
+        _username: &PlayerUsername,
+        _target_username: &PlayerUsername,
+        _bot: bool,
+    ) -> ServiceResult<()> {
+        Ok(())
+    }
+
+    fn try_kick(
+        &self,
+        _username: &PlayerUsername,
+        _target_username: &PlayerUsername,
+    ) -> ServiceResult<()> {
+        Ok(())
+    }
+
+    fn get_players(
+        &self,
+        _ban_filter: Option<bool>,
+        _gag_filter: Option<bool>,
+        _mod_filter: Option<bool>,
+        _admin_filter: Option<bool>,
+        _bot_filter: Option<bool>,
+    ) -> ServiceResult<Vec<Player>> {
+        Ok(vec![])
+    }
+
+    fn set_password(
+        &self,
+        _username: &PlayerUsername,
+        _target_username: &PlayerUsername,
+        _new_password: &str,
+    ) -> ServiceResult<()> {
+        Ok(())
     }
 }
