@@ -26,6 +26,7 @@ impl ProtocolV2Handler {
         Ok(None)
     }
 
+    // TODO: Support V0 seek messages
     pub fn handle_add_seek_message(
         &self,
         username: &PlayerUsername,
@@ -124,6 +125,11 @@ impl ProtocolV2Handler {
         if !game_settings.is_valid() {
             self.seek_service.remove_seek_of_player(&username)?;
         } else if let Some(from_game) = rematch {
+            let Some(opponent) = opponent else {
+                return Err(ServiceError::BadRequest(
+                    "Rematch seek must specify opponent".into(),
+                ));
+            };
             self.seek_service.add_rematch_seek(
                 username.to_string(),
                 opponent,

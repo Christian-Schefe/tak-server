@@ -42,7 +42,7 @@ pub trait SeekService {
     fn add_rematch_seek(
         &self,
         player: PlayerUsername,
-        opponent: Option<PlayerUsername>,
+        opponent: PlayerUsername,
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
         game_type: GameType,
@@ -141,7 +141,7 @@ impl SeekService for SeekServiceImpl {
     fn add_rematch_seek(
         &self,
         player: PlayerUsername,
-        opponent: Option<PlayerUsername>,
+        opponent: PlayerUsername,
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
         game_type: GameType,
@@ -149,6 +149,14 @@ impl SeekService for SeekServiceImpl {
     ) -> ServiceResult<()> {
         // rematch seek entry is removed when the rematch seek gets accepted, so no need to remove it here
         if let Some(existing_seek_id) = self.rematch_seeks.get(&from_game) {
+            let seek = self
+                .seeks
+                .get(&existing_seek_id)
+                .ok_or_else(|| ServiceError::NotFound("Seek ID not found".to_string()))?;
+            if seek.creator != opponent {
+                return ServiceError::not_possible("This rematch seek is not for you");
+            }
+            drop(seek);
             let accept_rematch_msg = ServerMessage::AcceptRematch {
                 seek_id: *existing_seek_id,
             };
@@ -163,7 +171,7 @@ impl SeekService for SeekServiceImpl {
         }
         let seek_id = self.add_seek_internal(
             player,
-            opponent,
+            Some(opponent),
             color,
             game_settings,
             game_type,
@@ -422,7 +430,7 @@ mod tests {
         seek_service
             .add_rematch_seek(
                 "player1".to_string(),
-                None,
+                "player2".to_string(),
                 None,
                 game_settings.clone(),
                 GameType::Rated,
@@ -445,7 +453,7 @@ mod tests {
         seek_service
             .add_rematch_seek(
                 "player2".to_string(),
-                None,
+                "player1".to_string(),
                 None,
                 game_settings.clone(),
                 GameType::Rated,
