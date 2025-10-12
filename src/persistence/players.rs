@@ -5,14 +5,11 @@ use rusqlite::ToSql;
 use crate::{
     DatabaseError,
     persistence::{DatabaseResult, get_connection, to_sql_option, update_entry},
-    player::{Player, PlayerUsername},
+    player::Player,
 };
 
 #[derive(Clone, Default)]
 pub struct PlayerUpdate {
-    pub username: Option<PlayerUsername>,
-    pub email: Option<String>,
-    pub rating: Option<f64>,
     pub password_hash: Option<String>,
     pub is_bot: Option<bool>,
     pub is_gagged: Option<bool>,
@@ -58,7 +55,7 @@ impl PlayerRepositoryImpl {
             password_hash: row.get("password")?,
             username: row.get("name")?,
             rating: row.get("rating")?,
-            id: row.get("id")?,
+            id: Some(row.get("id")?),
             email: row.get("email")?,
             is_bot: row.get("isbot")?,
             is_gagged: row.get("is_gagged")?,
@@ -127,9 +124,6 @@ impl PlayerRepository for PlayerRepositoryImpl {
 
     fn update_player(&self, id: i64, update: &PlayerUpdate) -> DatabaseResult<()> {
         let value_pairs: Vec<(&'static str, Option<&dyn ToSql>)> = vec![
-            ("name", to_sql_option(&update.username)),
-            ("email", to_sql_option(&update.email)),
-            ("rating", to_sql_option(&update.rating)),
             ("password", to_sql_option(&update.password_hash)),
             ("isbot", to_sql_option(&update.is_bot)),
             ("is_gagged", to_sql_option(&update.is_gagged)),

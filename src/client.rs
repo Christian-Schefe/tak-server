@@ -17,7 +17,7 @@ use crate::{
     AppState, ArcChatService, ArcGameService, ArcProtocolService, ArcSeekService, ServiceError,
     ServiceResult,
     player::PlayerUsername,
-    protocol::{Protocol, ServerMessage},
+    protocol::{DisconnectReason, Protocol, ServerMessage},
     util::{LazyInit, OneOneDashMap},
 };
 
@@ -284,6 +284,12 @@ impl ClientService for ClientServiceImpl {
             return ServiceError::not_possible(format!("Player {} already logged in", username));
         }
         if let Some(prev_client_id) = self.player_associations.get_by_value(username) {
+            let _ = self.try_protocol_send(
+                &prev_client_id,
+                &ServerMessage::ConnectionClosed {
+                    reason: DisconnectReason::NewSession,
+                },
+            );
             self.close_client(&prev_client_id);
             // call on_disconnect directly to clean up immediately
             self.on_disconnect(&prev_client_id);
@@ -389,6 +395,12 @@ impl ClientService for ClientServiceImpl {
                 .collect();
             for client_id in inactive_clients {
                 println!("Cleaning up inactive client {}", client_id);
+                let _ = self.try_protocol_send(
+                    &client_id,
+                    &ServerMessage::ConnectionClosed {
+                        reason: DisconnectReason::NewSession,
+                    },
+                );
                 self.close_client(&client_id);
             }
         }

@@ -197,8 +197,16 @@ impl TakGame {
         }
         let time_remaining = self.get_time_remaining(&self.base.current_player, now);
         if time_remaining.is_zero() {
+            let player = self.base.current_player.clone();
+            let remaining = match player {
+                TakPlayer::White => &mut self.clock.remaining_time.0,
+                TakPlayer::Black => &mut self.clock.remaining_time.1,
+            };
+            *remaining = Duration::ZERO;
+            self.clock.last_update_timestamp = Some(now);
+
             self.base.game_state = TakGameState::Win {
-                winner: self.base.current_player.opponent(),
+                winner: player.opponent(),
                 reason: TakWinReason::Default,
             };
             true
@@ -215,7 +223,10 @@ impl TakGame {
         .saturating_sub(
             self.clock
                 .last_update_timestamp
-                .filter(|_| &self.base.current_player == player)
+                .filter(|_| {
+                    &self.base.current_player == player
+                        && self.is_ongoing()
+                })
                 .map_or(Duration::ZERO, |last_update| {
                     now.saturating_duration_since(last_update)
                 }),

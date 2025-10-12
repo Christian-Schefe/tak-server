@@ -136,18 +136,18 @@ impl GameServiceImpl {
             capstones: seek.game_settings.reserve_capstones as i32,
             rating_change_white: -1000,
             rating_change_black: -1000,
-            extra_time_amount: seek
-                .game_settings
-                .time_control
-                .extra
-                .as_ref()
-                .map_or(0, |(_, extra_time)| extra_time.as_secs() as i32),
             extra_time_trigger: seek
                 .game_settings
                 .time_control
                 .extra
                 .as_ref()
                 .map_or(0, |(trigger_move, _)| *trigger_move as i32),
+            extra_time_amount: seek
+                .game_settings
+                .time_control
+                .extra
+                .as_ref()
+                .map_or(0, |(_, extra_time)| extra_time.as_secs() as i32),
         };
         let game_id = self
             .game_repository
@@ -224,6 +224,8 @@ impl GameServiceImpl {
             game_state_to_string(&game.game.base.game_state)
         );
 
+        self.send_time_update(game_id);
+
         self.games.remove(game_id);
         if let Some((_, token)) = self.game_ended_tokens.remove(game_id) {
             token.cancel();
@@ -264,11 +266,11 @@ impl GameServiceImpl {
         let game_ref = self.games.get(game_id);
         let now = Instant::now();
         let (players, remaining) = match game_ref.as_ref() {
-            Some(g) if g.game.is_ongoing() => (
+            Some(g) => (
                 (g.white.clone(), g.black.clone()),
                 g.game.get_time_remaining_both(now),
             ),
-            _ => return,
+            None => return,
         };
         drop(game_ref);
 

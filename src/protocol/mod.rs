@@ -63,6 +63,15 @@ pub enum ServerMessage {
     AcceptRematch {
         seek_id: SeekId,
     },
+    ConnectionClosed {
+        reason: DisconnectReason,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub enum DisconnectReason {
+    NewSession,
+    Inactivity,
 }
 
 #[derive(Clone, Debug)]

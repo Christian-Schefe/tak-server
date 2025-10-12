@@ -5,7 +5,7 @@ use crate::{
     ServiceError, ServiceResult,
     client::ClientId,
     player::PlayerUsername,
-    protocol::{ServerGameMessage, ServerMessage},
+    protocol::{DisconnectReason, ServerGameMessage, ServerMessage},
 };
 
 mod auth;
@@ -58,8 +58,8 @@ impl ProtocolV2Handler {
             }
             "login" => self.handle_login_message(id, &parts),
             "logintoken" => self.handle_login_token_message(id, &parts),
-            "register" => self.handle_register_message(&parts),
-            "sendresettoken" => self.handle_reset_token_message(&parts),
+            "register" => self.handle_register_message(id, &parts),
+            "sendresettoken" => self.handle_reset_token_message(id, &parts),
             "resetpassword" => self.handle_reset_password_message(&parts),
             _ => self.handle_logged_in_client_message(id, &parts, &msg),
         };
@@ -101,6 +101,16 @@ impl ProtocolV2Handler {
             }
             ServerMessage::ChatMessage { .. } | ServerMessage::RoomMembership { .. } => {
                 self.handle_server_chat_message(id, msg);
+            }
+            ServerMessage::ConnectionClosed { reason } => {
+                let reason_str = match reason {
+                    DisconnectReason::NewSession => {
+                        "You've logged in from another window. Disconnecting"
+                    }
+                    DisconnectReason::Inactivity => "Disconnected due to inactivity",
+                };
+                let disconnect_message = format!("Message {}", reason_str);
+                self.send_to(id, disconnect_message);
             }
         }
     }
@@ -154,7 +164,7 @@ impl ProtocolV2Handler {
         };
 
         match parts[0].to_ascii_lowercase().as_str() {
-            "changepassword" => self.handle_change_password_message(&username, &parts),
+            "changepassword" => self.handle_change_password_message(id, &username, &parts),
             "seek" => self.handle_seek_message(&username, &parts),
             "rematch" => self.handle_rematch_message(&username, &parts),
             "list" => self.handle_seek_list_message(id),

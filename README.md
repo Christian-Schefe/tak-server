@@ -5,6 +5,7 @@ This is a rewrite of the java server at https://github.com/USTakAssociation/play
 In progress:
 
 - Tests
+- JSON protocol alternative
 
 To do:
 
@@ -17,12 +18,13 @@ To do:
 - [x] Password reset
 - [x] Game abandon after timeout on disconnect
 - [ ] Tests
+- [ ] Some V0 api endpoints
 
 To do extra features:
 
 - [x] REST endpoints
 - [x] JWT auth
-- [x] JSON protocol alternative
+- [ ] JSON protocol alternative
 
 Open questions / On hold:
 

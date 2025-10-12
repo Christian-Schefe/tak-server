@@ -5,7 +5,13 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AppState, ServiceError, game::GameId, jwt::Claims, player::PlayerUsername, seek::GameType,
+    AppState, ServiceError, ServiceResult,
+    client::ClientId,
+    game::GameId,
+    jwt::Claims,
+    player::PlayerUsername,
+    protocol::json::{ClientResponse, ProtocolJsonHandler},
+    seek::GameType,
 };
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -61,4 +67,21 @@ pub async fn get_game_endpoint(
             .map(|(_, time)| time.as_millis() as u64),
     };
     Ok(Json(json_game))
+}
+
+impl ProtocolJsonHandler {
+    pub fn handle_observe_game_message(
+        &self,
+        id: &ClientId,
+        game_id: &GameId,
+        observe: bool,
+    ) -> ServiceResult<ClientResponse> {
+        if observe {
+            self.game_service.observe_game(id, game_id)?;
+            Ok(ClientResponse::Ok)
+        } else {
+            self.game_service.unobserve_game(id, game_id)?;
+            Ok(ClientResponse::Ok)
+        }
+    }
 }

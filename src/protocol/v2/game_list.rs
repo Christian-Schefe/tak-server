@@ -106,14 +106,14 @@ impl ProtocolV2Handler {
                 .time_control
                 .extra
                 .as_ref()
-                .map_or("0".to_string(), |(_, extra_time)| extra_time
-                    .as_secs()
+                .map_or("0".to_string(), |(trigger_move, _)| trigger_move
                     .to_string()),
             settings
                 .time_control
                 .extra
                 .as_ref()
-                .map_or("0".to_string(), |(trigger_move, _)| trigger_move
+                .map_or("0".to_string(), |(_, extra_time)| extra_time
+                    .as_secs()
                     .to_string()),
         );
         self.send_to(id, message);

@@ -22,7 +22,7 @@ const PASSWORD_RESET_TOKEN_TTL: Duration = Duration::from_secs(60 * 60 * 24);
 
 #[derive(Clone)]
 pub struct Player {
-    pub id: i64,
+    pub id: Option<i64>,
     pub username: PlayerUsername,
     pub email: String,
     pub rating: f64,
@@ -116,6 +116,7 @@ pub struct PlayerServiceImpl {
     email_service: ArcEmailService,
     player_repository: ArcPlayerRepository,
     player_cache: Arc<moka::sync::Cache<PlayerUsername, Player>>,
+    guests: Arc<DashMap<PlayerUsername, Player>>,
     guest_player_tokens: Arc<moka::sync::Cache<String, PlayerUsername>>,
     next_guest_id: Arc<std::sync::Mutex<u32>>,
     taken_unique_usernames: Arc<DashMap<PlayerUsername, ()>>,
@@ -133,6 +134,7 @@ impl PlayerServiceImpl {
             email_service,
             player_repository,
             player_cache: Arc::new(moka::sync::Cache::builder().max_capacity(1000).build()),
+            guests: Arc::new(DashMap::new()),
             guest_player_tokens: Arc::new(
                 moka::sync::Cache::builder().time_to_idle(GUEST_TTL).build(),
             ),
@@ -258,6 +260,9 @@ impl PlayerServiceImpl {
 
     fn update_password(&self, username: &PlayerUsername, new_password: &str) -> ServiceResult<()> {
         let player = self.fetch_player(&username)?;
+        let Some(id) = player.id else {
+            return ServiceError::not_possible("Player is a guest");
+        };
         let password_hash = bcrypt::hash(new_password, bcrypt::DEFAULT_COST)
             .map_err(|e| ServiceError::Internal(format!("Failed to hash password: {}", e)))?;
 
@@ -266,7 +271,7 @@ impl PlayerServiceImpl {
             ..Default::default()
         };
 
-        self.player_repository.update_player(player.id, &update)?;
+        self.player_repository.update_player(id, &update)?;
         self.player_cache.invalidate(username);
         Ok(())
     }
@@ -280,12 +285,37 @@ impl PlayerServiceImpl {
     ) -> ServiceResult<()> {
         let current_player = self.fetch_player(&username)?;
         let player = self.fetch_player(target_username)?;
-        if !access_predicate(&current_player, &player) {
-            return ServiceError::unauthorized("Insufficient rights");
+        if let Some(id) = player.id {
+            if !access_predicate(&current_player, &player) {
+                return ServiceError::unauthorized("Insufficient rights");
+            }
+            self.player_repository.update_player(id, update)?;
+            self.player_cache.invalidate(target_username);
+            Ok(())
+        } else {
+            let Some(mut player) = self.guests.get_mut(target_username) else {
+                return ServiceError::not_found("Player not found");
+            };
+            if !access_predicate(&current_player, &player) {
+                return ServiceError::unauthorized("Insufficient rights");
+            }
+            if let Some(is_bot) = update.is_bot {
+                player.is_bot = is_bot;
+            }
+            if let Some(is_gagged) = update.is_gagged {
+                player.is_gagged = is_gagged;
+            }
+            if let Some(is_mod) = update.is_mod {
+                player.is_mod = is_mod;
+            }
+            if let Some(is_admin) = update.is_admin {
+                player.is_admin = is_admin;
+            }
+            if let Some(is_banned) = update.is_banned {
+                player.is_banned = is_banned;
+            }
+            Ok(())
         }
-        self.player_repository.update_player(player.id, update)?;
-        self.player_cache.invalidate(target_username);
-        Ok(())
     }
 
     fn validate_username(username: &PlayerUsername) -> ServiceResult<()> {
@@ -327,7 +357,10 @@ impl PlayerService for PlayerServiceImpl {
 
     fn fetch_player(&self, username: &str) -> ServiceResult<Player> {
         if username.starts_with("Guest") {
-            return ServiceError::not_found("Player not found");
+            let Some(guest) = self.guests.get(username).map(|entry| entry.value().clone()) else {
+                return ServiceError::not_found("Player not found");
+            };
+            return Ok(guest);
         }
         let username = username.to_string();
         if let Some(player) = self.player_cache.get(&username) {
@@ -536,6 +569,20 @@ impl PlayerService for PlayerServiceImpl {
             self.guest_player_tokens
                 .insert(guest_name.clone(), token.to_string());
         }
+        self.guests
+            .entry(guest_name.clone())
+            .or_insert_with(|| Player {
+                id: None,
+                username: guest_name.clone(),
+                email: "".into(),
+                rating: 1000.0,
+                password_hash: "".into(),
+                is_bot: false,
+                is_gagged: false,
+                is_mod: false,
+                is_admin: false,
+                is_banned: false,
+            });
         Ok(guest_name)
     }
 
@@ -547,7 +594,7 @@ impl PlayerService for PlayerServiceImpl {
         let temp_password = Self::generate_temporary_password();
         let password_hash = bcrypt::hash(&temp_password, bcrypt::DEFAULT_COST).unwrap();
         self.player_repository.create_player(&Player {
-            id: 0, // Will be set by the database
+            id: None, // Will be set by the database
             username: username.clone(),
             email: email.to_string(),
             rating: 1000.0,
@@ -648,7 +695,7 @@ impl PlayerService for MockPlayerService {
     fn fetch_player(&self, username: &str) -> ServiceResult<Player> {
         match username {
             "test_admin" => Ok(Player {
-                id: 1,
+                id: Some(1),
                 username: "test_admin".into(),
                 email: "test_admin@example.com".into(),
                 rating: 1500.0,
@@ -660,7 +707,7 @@ impl PlayerService for MockPlayerService {
                 is_banned: false,
             }),
             "test_gagged" => Ok(Player {
-                id: 2,
+                id: Some(2),
                 username: "test_gagged".into(),
                 email: "test_gagged@example.com".into(),
                 rating: 1200.0,

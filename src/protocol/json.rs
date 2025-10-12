@@ -10,7 +10,7 @@ use crate::{
     client::ClientId,
     game::GameId,
     player::PlayerUsername,
-    protocol::{ChatMessageSource, ServerGameMessage, ServerMessage},
+    protocol::{ChatMessageSource, DisconnectReason, ServerGameMessage, ServerMessage},
     seek::SeekId,
     tak::ptn::{action_to_ptn, game_state_to_string},
 };
@@ -58,6 +58,10 @@ pub enum ClientMessage {
         message: String,
         room: Option<String>,
         player: Option<PlayerUsername>,
+    },
+    ObserveGame {
+        game_id: GameId,
+        observe: bool,
     },
 }
 
@@ -177,6 +181,9 @@ impl ProtocolJsonHandler {
             ClientMessage::Ping
             | ClientMessage::Login { .. }
             | ClientMessage::LoginGuest { .. } => ServiceError::internal("Unhandled message type"),
+            ClientMessage::ObserveGame { game_id, observe } => {
+                self.handle_observe_game_message(id, &game_id, observe)
+            }
         }
     }
 }
@@ -240,6 +247,9 @@ pub enum JsonServerMessage {
     AcceptRematch {
         seek_id: SeekId,
     },
+    ConnectionClosed {
+        reason: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -301,6 +311,12 @@ fn server_message_to_json(msg: &ServerMessage) -> JsonServerMessage {
         ServerMessage::AcceptRematch { seek_id } => {
             JsonServerMessage::AcceptRematch { seek_id: *seek_id }
         }
+        ServerMessage::ConnectionClosed { reason } => JsonServerMessage::ConnectionClosed {
+            reason: match reason {
+                DisconnectReason::NewSession => "New session from another client".to_string(),
+                DisconnectReason::Inactivity => "Disconnected due to inactivity".to_string(),
+            },
+        },
     }
 }
 

@@ -18,7 +18,10 @@ impl ProtocolV2Handler {
         let username = parts[1].to_string();
         let password = parts[2].to_string();
 
-        self.player_service.try_login(id, &username, &password)?;
+        if let Err(e) = self.player_service.try_login(id, &username, &password) {
+            let _ = self.send_to(id, format!("Authentication failure: {}", e));
+            return Err(e);
+        }
         Ok(Some(format!("Welcome {}!", username)))
     }
 
@@ -27,29 +30,45 @@ impl ProtocolV2Handler {
             return ServiceError::bad_request("Invalid LoginToken message format");
         }
         let token = parts[1];
-        let username = self.player_service.try_login_jwt(id, token)?;
+        let username = match self.player_service.try_login_jwt(id, token) {
+            Ok(name) => name,
+            Err(e) => {
+                let _ = self.send_to(id, format!("Authentication failure: {}", e));
+                return Err(e);
+            }
+        };
         Ok(Some(format!("Welcome {}!", username)))
     }
 
-    pub fn handle_register_message(&self, parts: &[&str]) -> ProtocolV2Result {
+    pub fn handle_register_message(&self, id: &ClientId, parts: &[&str]) -> ProtocolV2Result {
         if parts.len() != 3 {
             return ServiceError::bad_request("Invalid Register message format");
         }
         let username = parts[1].to_string();
         let email = parts[2].to_string();
 
-        self.player_service.try_register(&username, &email)?;
-        Ok(None)
+        if let Err(e) = self.player_service.try_register(&username, &email) {
+            let _ = self.send_to(id, format!("Registration Error: {}", e));
+            return Err(e);
+        }
+
+        Ok(Some(format!(
+            "Registered {}. Check your email for the password.",
+            username
+        )))
     }
 
-    pub fn handle_reset_token_message(&self, parts: &[&str]) -> ProtocolV2Result {
+    pub fn handle_reset_token_message(&self, id: &ClientId, parts: &[&str]) -> ProtocolV2Result {
         if parts.len() != 3 {
             return ServiceError::bad_request("Invalid SendResetToken message format");
         }
         let username = parts[1].to_string();
         let email = parts[2].to_string();
 
-        self.player_service.send_reset_token(&username, &email)?;
+        if let Err(e) = self.player_service.send_reset_token(&username, &email) {
+            let _ = self.send_to(id, format!("Reset Token Error: {}", e));
+            return Err(e);
+        }
         Ok(None)
     }
 
@@ -68,6 +87,7 @@ impl ProtocolV2Handler {
 
     pub fn handle_change_password_message(
         &self,
+        id: &ClientId,
         username: &PlayerUsername,
         parts: &[&str],
     ) -> ProtocolV2Result {
@@ -77,8 +97,15 @@ impl ProtocolV2Handler {
         let old_password = parts[1].to_string();
         let new_password = parts[2].to_string();
 
-        self.player_service
-            .change_password(username, &old_password, &new_password)?;
-        Ok(None)
+        match self
+            .player_service
+            .change_password(username, &old_password, &new_password)
+        {
+            Ok(_) => Ok(Some("Password changed".to_string())),
+            Err(e) => {
+                let _ = self.send_to(id, format!("Error: {}", e));
+                Err(e)
+            }
+        }
     }
 }

@@ -233,6 +233,14 @@ impl SeekService for SeekServiceImpl {
                 return ServiceError::bad_request("This seek is not for you");
             }
         }
+        // TODO: maybe remove once client has been refactored
+        self.client_service
+            .get_associated_client(&seek.creator)
+            .map(|id| self.game_service.unobserve_all(&id));
+        self.client_service
+            .get_associated_client(&player)
+            .map(|id| self.game_service.unobserve_all(&id));
+
         self.game_service.add_game_from_seek(&seek, &player)?;
         let _ = self.remove_seek_of_player(&seek.creator);
         let _ = self.remove_seek_of_player(&player);
