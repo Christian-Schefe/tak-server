@@ -52,11 +52,11 @@ impl PlayerRepositoryImpl {
 
     fn player_from_row(row: &rusqlite::Row) -> rusqlite::Result<Player> {
         Ok(Player {
-            password_hash: row.get("password")?,
+            password_hash: map_string_to_option(row.get("password")?),
             username: row.get("name")?,
             rating: row.get("rating")?,
             id: Some(row.get("id")?),
-            email: row.get("email")?,
+            email: map_string_to_option(row.get("email")?),
             is_bot: row.get("isbot")?,
             is_gagged: row.get("is_gagged")?,
             is_mod: row.get("is_mod")?,
@@ -64,6 +64,10 @@ impl PlayerRepositoryImpl {
             is_banned: row.get("is_banned")?,
         })
     }
+}
+
+fn map_string_to_option(s: String) -> Option<String> {
+    if s.is_empty() { None } else { Some(s) }
 }
 
 impl PlayerRepository for PlayerRepositoryImpl {
@@ -108,8 +112,8 @@ impl PlayerRepository for PlayerRepositoryImpl {
             rusqlite::params![
                 largest_player_id + 1,
                 player.username,
-                player.email,
-                player.password_hash,
+                player.email.as_ref().unwrap_or(&String::new()),
+                player.password_hash.as_ref().unwrap_or(&String::new()),
                 player.rating,
                 player.is_bot,
                 player.is_gagged,

@@ -24,9 +24,9 @@ const PASSWORD_RESET_TOKEN_TTL: Duration = Duration::from_secs(60 * 60 * 24);
 pub struct Player {
     pub id: Option<i64>,
     pub username: PlayerUsername,
-    pub email: String,
+    pub email: Option<String>,
     pub rating: f64,
-    pub password_hash: String,
+    pub password_hash: Option<String>,
     pub is_bot: bool,
     pub is_gagged: bool,
     pub is_mod: bool,
@@ -418,7 +418,9 @@ impl PlayerService for PlayerServiceImpl {
                 self.client_service.close_client(&target_id);
             }
             let target_player = self.fetch_player(target_username)?;
-            if let Ok(email) = validate_email(&target_player.email) {
+            if let Some(player_email) = &target_player.email
+                && let Ok(email) = validate_email(player_email)
+            {
                 self.send_ban_email(&email, target_username, ban_msg)?;
             }
         }
@@ -517,8 +519,10 @@ impl PlayerService for PlayerServiceImpl {
 
     fn validate_login(&self, username: &PlayerUsername, password: &str) -> ServiceResult<()> {
         let player = self.fetch_player(&username)?;
-
-        let valid = bcrypt::verify(password, &player.password_hash)
+        let Some(password_hash) = &player.password_hash else {
+            return ServiceError::unauthorized("Invalid username or password");
+        };
+        let valid = bcrypt::verify(password, password_hash)
             .map_err(|_| ServiceError::BadRequest("Failed to hash password".into()))?;
         println!(
             "Login attempt for user {}: {}, {}",
@@ -560,6 +564,7 @@ impl PlayerService for PlayerServiceImpl {
     }
 
     fn try_login_guest(&self, id: &ClientId, token: Option<&str>) -> ServiceResult<PlayerUsername> {
+        let valid_token = token.map(|t| self.guest_player_tokens.contains_key(t));
         let guest_name = token
             .and_then(|x| self.guest_player_tokens.get(x))
             .unwrap_or_else(|| format!("Guest{}", self.increment_guest_id()));
@@ -569,14 +574,18 @@ impl PlayerService for PlayerServiceImpl {
             self.guest_player_tokens
                 .insert(guest_name.clone(), token.to_string());
         }
+        //reset guest player if no or new token
+        if !matches!(valid_token, Some(true)) {
+            self.guests.remove(&guest_name);
+        }
         self.guests
             .entry(guest_name.clone())
             .or_insert_with(|| Player {
                 id: None,
                 username: guest_name.clone(),
-                email: "".into(),
+                email: None,
                 rating: 1000.0,
-                password_hash: "".into(),
+                password_hash: None,
                 is_bot: false,
                 is_gagged: false,
                 is_mod: false,
@@ -596,9 +605,9 @@ impl PlayerService for PlayerServiceImpl {
         self.player_repository.create_player(&Player {
             id: None, // Will be set by the database
             username: username.clone(),
-            email: email.to_string(),
+            email: Some(email.to_string()),
             rating: 1000.0,
-            password_hash,
+            password_hash: Some(password_hash),
             is_bot: false,
             is_gagged: false,
             is_mod: false,
@@ -611,7 +620,7 @@ impl PlayerService for PlayerServiceImpl {
 
     fn send_reset_token(&self, username: &PlayerUsername, email: &str) -> ServiceResult<()> {
         let player = self.fetch_player(username)?;
-        if player.email != email {
+        if player.email.is_none_or(|e| e != email) {
             return ServiceError::bad_request("Email does not match");
         }
         let email = validate_email(email)?;
@@ -697,9 +706,9 @@ impl PlayerService for MockPlayerService {
             "test_admin" => Ok(Player {
                 id: Some(1),
                 username: "test_admin".into(),
-                email: "test_admin@example.com".into(),
+                email: Some("test_admin@example.com".into()),
                 rating: 1500.0,
-                password_hash: "".to_string(),
+                password_hash: Some("".to_string()),
                 is_bot: false,
                 is_gagged: false,
                 is_mod: true,
@@ -709,9 +718,9 @@ impl PlayerService for MockPlayerService {
             "test_gagged" => Ok(Player {
                 id: Some(2),
                 username: "test_gagged".into(),
-                email: "test_gagged@example.com".into(),
+                email: Some("test_gagged@example.com".into()),
                 rating: 1200.0,
-                password_hash: "".to_string(),
+                password_hash: Some("".to_string()),
                 is_bot: false,
                 is_gagged: true,
                 is_mod: false,
