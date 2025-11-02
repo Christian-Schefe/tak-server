@@ -4,18 +4,20 @@ use std::{
     time::{Duration, Instant},
 };
 
+use chrono::{DateTime, Utc};
 use dashmap::DashMap;
+use tak_core::{
+    TakAction, TakGame, TakGameSettings, TakGameState, TakPlayer, ptn::game_state_to_string,
+};
 use tokio::select;
 use tokio_util::sync::CancellationToken;
+use uuid::Uuid;
 
 use crate::{
-    ArcClientService, ArcGameRepository, ArcPlayerService, ServiceError, ServiceResult,
-    client::ClientId,
-    persistence::games::{GameEntity, GameUpdate},
-    player::PlayerUsername,
-    protocol::{ServerGameMessage, ServerMessage},
-    seek::{GameType, Seek},
-    tak::{TakAction, TakGame, TakPlayer, TakPos, TakVariant, ptn::game_state_to_string},
+    ServiceError, ServiceResult,
+    player::{ArcPlayerService, PlayerUsername},
+    seek::Seek,
+    transport::{ActivityStatus, ArcTransportService, ServerGameMessage, ServerMessage},
     util::ManyManyDashMap,
 };
 
@@ -33,6 +35,39 @@ pub struct Game {
     pub game_type: GameType,
 }
 
+pub struct GameRecord {
+    pub date: DateTime<Utc>,
+    pub white: PlayerUsername,
+    pub black: PlayerUsername,
+    pub white_rating: f64,
+    pub black_rating: f64,
+    pub settings: TakGameSettings,
+    pub game_type: GameType,
+    pub result: TakGameState,
+    pub moves: Vec<TakAction>,
+}
+
+pub struct GameRecordUpdate {
+    pub result: TakGameState,
+    pub moves: Vec<TakAction>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum GameType {
+    Unrated,
+    Rated,
+    Tournament,
+}
+
+pub type SpectatorId = Uuid;
+
+pub type ArcGameRepository = Arc<Box<dyn GameRepository + Send + Sync + 'static>>;
+pub trait GameRepository {
+    fn create_game(&self, game: &GameRecord) -> ServiceResult<GameId>;
+    fn update_game(&self, id: GameId, update: &GameRecordUpdate) -> ServiceResult<()>;
+}
+
+pub type ArcGameService = Arc<Box<dyn GameService + Send + Sync + 'static>>;
 pub trait GameService {
     fn get_game_ids(&self) -> Vec<GameId>;
     fn get_games(&self) -> Vec<Game>;
@@ -59,30 +94,30 @@ pub trait GameService {
         game_id: &GameId,
         request: bool,
     ) -> ServiceResult<()>;
-    fn observe_game(&self, id: &ClientId, game_id: &GameId) -> ServiceResult<()>;
-    fn unobserve_game(&self, id: &ClientId, game_id: &GameId) -> ServiceResult<()>;
-    fn unobserve_all(&self, id: &ClientId) -> ServiceResult<()>;
+    fn observe_game(&self, id: &SpectatorId, game_id: &GameId) -> ServiceResult<()>;
+    fn unobserve_game(&self, id: &SpectatorId, game_id: &GameId) -> ServiceResult<()>;
+    fn unobserve_all(&self, id: &SpectatorId) -> ServiceResult<()>;
 }
 
 #[derive(Clone)]
 pub struct GameServiceImpl {
-    client_service: ArcClientService,
+    transport_service: ArcTransportService,
     player_service: ArcPlayerService,
     game_repository: ArcGameRepository,
     games: Arc<DashMap<GameId, Game>>,
     game_ended_tokens: Arc<DashMap<GameId, CancellationToken>>,
-    game_spectators: Arc<ManyManyDashMap<GameId, ClientId>>,
+    game_spectators: Arc<ManyManyDashMap<GameId, SpectatorId>>,
     game_by_player: Arc<DashMap<PlayerUsername, GameId>>,
 }
 
 impl GameServiceImpl {
     pub fn new(
-        client_service: ArcClientService,
+        transport_service: ArcTransportService,
         player_service: ArcPlayerService,
         game_repository: ArcGameRepository,
     ) -> Self {
         Self {
-            client_service,
+            transport_service,
             player_service,
             game_repository,
             games: Arc::new(DashMap::new()),
@@ -115,98 +150,29 @@ impl GameServiceImpl {
         black: &PlayerUsername,
         seek: &Seek,
     ) -> ServiceResult<GameId> {
-        let white_player = self.player_service.fetch_player(white)?;
-        let black_player = self.player_service.fetch_player(black)?;
-        let game_entity = GameEntity {
-            id: 0, // will be set by the database
-            date: chrono::Utc::now().timestamp(),
-            size: seek.game_settings.board_size as i32,
-            player_white: white.clone(),
-            player_black: black.clone(),
-            notation: "".to_string(),
-            result: "0-0".to_string(),
-            timertime: seek.game_settings.time_control.contingent.as_secs() as i32,
-            timerinc: seek.game_settings.time_control.increment.as_secs() as i32,
-            rating_white: white_player.rating as i32,
-            rating_black: black_player.rating as i32,
-            unrated: seek.game_type == crate::seek::GameType::Unrated,
-            tournament: seek.game_type == crate::seek::GameType::Tournament,
-            komi: seek.game_settings.half_komi as i32,
-            pieces: seek.game_settings.reserve_pieces as i32,
-            capstones: seek.game_settings.reserve_capstones as i32,
-            rating_change_white: -1000,
-            rating_change_black: -1000,
-            extra_time_trigger: seek
-                .game_settings
-                .time_control
-                .extra
-                .as_ref()
-                .map_or(0, |(trigger_move, _)| *trigger_move as i32),
-            extra_time_amount: seek
-                .game_settings
-                .time_control
-                .extra
-                .as_ref()
-                .map_or(0, |(_, extra_time)| extra_time.as_secs() as i32),
+        let white_player = self.player_service.fetch_player_data(white)?;
+        let black_player = self.player_service.fetch_player_data(black)?;
+        let game_record = GameRecord {
+            date: chrono::Utc::now(),
+            white: white.clone(),
+            black: black.clone(),
+            white_rating: white_player.rating,
+            black_rating: black_player.rating,
+            settings: seek.game_settings.clone(),
+            game_type: seek.game_type.clone(),
+            result: TakGameState::Ongoing,
+            moves: vec![],
         };
-        let game_id = self
-            .game_repository
-            .create_game(&game_entity)
-            .map_err(|e| ServiceError::Internal(format!("Failed to create game: {}", e)))?;
+        let game_id = self.game_repository.create_game(&game_record)?;
         Ok(game_id)
     }
 
-    fn move_to_database_string(action: &TakAction) -> String {
-        fn square_to_string(pos: &TakPos) -> String {
-            format!(
-                "{}{}",
-                (b'A' + pos.x as u8) as char,
-                (b'1' + pos.y as u8) as char,
-            )
-        }
-        match action {
-            TakAction::Place { pos, variant } => format!(
-                "P {} {}",
-                square_to_string(pos),
-                match variant {
-                    TakVariant::Flat => "",
-                    TakVariant::Standing => "S",
-                    TakVariant::Capstone => "C",
-                },
-            ),
-            TakAction::Move { pos, dir, drops } => {
-                let to_pos = pos.offset(dir, drops.len() as i32);
-                let drops_str = drops
-                    .iter()
-                    .map(|d| d.to_string())
-                    .collect::<Vec<_>>()
-                    .join("");
-                format!(
-                    "M {} {} {}",
-                    square_to_string(pos),
-                    square_to_string(&to_pos),
-                    drops_str
-                )
-            }
-        }
-    }
-
-    fn save_to_database(&self, game: &Game) -> Result<(), String> {
-        let notation = game
-            .game
-            .action_history
-            .iter()
-            .map(Self::move_to_database_string)
-            .collect::<Vec<_>>()
-            .join(",");
-        let result = game_state_to_string(&game.game.base.game_state);
-        let update = GameUpdate {
-            notation: Some(notation),
-            result: Some(result),
+    fn save_to_database(&self, game: &Game) -> ServiceResult<()> {
+        let update = GameRecordUpdate {
+            moves: game.game.action_history.clone(),
+            result: game.game.base.game_state.clone(),
         };
-        self.game_repository
-            .update_game(game.id, &update)
-            .map_err(|e| format!("Failed to update game in database: {}", e))?;
+        self.game_repository.update_game(game.id, &update)?;
         Ok(())
     }
 
@@ -239,23 +205,21 @@ impl GameServiceImpl {
                 game_state: game.game.base.game_state.clone(),
             },
         };
-        self.client_service
-            .get_associated_client(&game.white)
-            .map(|id| self.client_service.try_protocol_send(&id, &game_over_msg));
-        self.client_service
-            .get_associated_client(&game.black)
-            .map(|id| self.client_service.try_protocol_send(&id, &game_over_msg));
+        self.transport_service
+            .try_player_send(&game.white, &game_over_msg);
+        self.transport_service
+            .try_player_send(&game.black, &game_over_msg);
 
         let spectators = self.game_spectators.remove_key(game_id);
-        self.client_service
-            .try_protocol_multicast(&spectators, &game_over_msg);
+        self.transport_service
+            .try_spectator_multicast(&spectators, &game_over_msg);
 
         let game_remove_msg = ServerMessage::GameList {
             add: false,
             game: game.clone(),
         };
-        self.client_service
-            .try_auth_protocol_broadcast(&game_remove_msg);
+        self.transport_service
+            .try_player_broadcast(&game_remove_msg);
 
         if let Err(e) = self.save_to_database(&game) {
             eprintln!("Failed to save game to database: {}", e);
@@ -281,16 +245,14 @@ impl GameServiceImpl {
                 remaining_black: remaining.1,
             },
         };
-        self.client_service
-            .get_associated_client(&players.0)
-            .map(|id| self.client_service.try_protocol_send(&id, &time_update_msg));
-        self.client_service
-            .get_associated_client(&players.1)
-            .map(|id| self.client_service.try_protocol_send(&id, &time_update_msg));
+        self.transport_service
+            .try_player_send(&players.0, &time_update_msg);
+        self.transport_service
+            .try_player_send(&players.1, &time_update_msg);
 
         let spectators = self.game_spectators.get_by_key(game_id);
-        self.client_service
-            .try_protocol_multicast(&spectators, &time_update_msg);
+        self.transport_service
+            .try_spectator_multicast(&spectators, &time_update_msg);
     }
 
     fn run_timeout_waiter(&self, game_id: GameId, cancel_token: CancellationToken) {
@@ -337,14 +299,22 @@ impl GameServiceImpl {
                     break;
                 }
 
-                let white_last_active = game_service
-                    .client_service
-                    .get_offline_since(&game_ref.white)
-                    .unwrap_or(Some(now));
-                let black_last_active = game_service
-                    .client_service
-                    .get_offline_since(&game_ref.black)
-                    .unwrap_or(Some(now));
+                let white_last_active = match game_service
+                    .transport_service
+                    .get_last_active(&game_ref.white)
+                {
+                    Some(ActivityStatus::Active) => Some(now),
+                    Some(ActivityStatus::InactiveSince(t)) => Some(t),
+                    None => None,
+                };
+                let black_last_active = match game_service
+                    .transport_service
+                    .get_last_active(&game_ref.black)
+                {
+                    Some(ActivityStatus::Active) => Some(now),
+                    Some(ActivityStatus::InactiveSince(t)) => Some(t),
+                    None => None,
+                };
 
                 let timeout = if game_ref.game_type == GameType::Tournament {
                     GAME_TOURNAMENT_DISCONNECT_TIMEOUT
@@ -388,7 +358,7 @@ impl GameServiceImpl {
 }
 
 impl GameService for GameServiceImpl {
-    fn observe_game(&self, id: &ClientId, game_id: &GameId) -> ServiceResult<()> {
+    fn observe_game(&self, id: &SpectatorId, game_id: &GameId) -> ServiceResult<()> {
         if self.games.get(game_id).is_none() {
             return ServiceError::not_found("Game ID not found");
         };
@@ -397,7 +367,7 @@ impl GameService for GameServiceImpl {
         Ok(())
     }
 
-    fn unobserve_game(&self, id: &ClientId, game_id: &GameId) -> ServiceResult<()> {
+    fn unobserve_game(&self, id: &SpectatorId, game_id: &GameId) -> ServiceResult<()> {
         self.game_spectators.remove(game_id, id);
         Ok(())
     }
@@ -424,9 +394,8 @@ impl GameService for GameServiceImpl {
                 game_id: *game_id,
                 message: ServerGameMessage::DrawOffer { offer },
             };
-            self.client_service
-                .get_associated_client(&opponent)
-                .map(|id| self.client_service.try_protocol_send(&id, &draw_offer_msg));
+            self.transport_service
+                .try_player_send(&opponent, &draw_offer_msg);
         }
 
         self.check_game_over(game_id);
@@ -455,12 +424,8 @@ impl GameService for GameServiceImpl {
                 game_id: *game_id,
                 message: ServerGameMessage::UndoRequest { request },
             };
-            self.client_service
-                .get_associated_client(&opponent)
-                .map(|id| {
-                    self.client_service
-                        .try_protocol_send(&id, &undo_request_msg)
-                });
+            self.transport_service
+                .try_player_send(&opponent, &undo_request_msg);
         } else {
             self.send_time_update(game_id);
 
@@ -468,16 +433,12 @@ impl GameService for GameServiceImpl {
                 game_id: *game_id,
                 message: ServerGameMessage::Undo,
             };
-            self.client_service
-                .get_associated_client(&username)
-                .map(|id| self.client_service.try_protocol_send(&id, &undo_msg));
-            self.client_service
-                .get_associated_client(&opponent)
-                .map(|id| self.client_service.try_protocol_send(&id, &undo_msg));
+            self.transport_service.try_player_send(&username, &undo_msg);
+            self.transport_service.try_player_send(&opponent, &undo_msg);
 
             let spectators = self.game_spectators.get_by_key(game_id);
-            self.client_service
-                .try_protocol_multicast(&spectators, &undo_msg);
+            self.transport_service
+                .try_spectator_multicast(&spectators, &undo_msg);
         }
 
         Ok(())
@@ -524,16 +485,17 @@ impl GameService for GameServiceImpl {
         self.run_timeout_waiter(id, cancel_token);
 
         let game_new_msg = ServerMessage::GameList { add: true, game };
-        self.client_service
-            .try_auth_protocol_broadcast(&game_new_msg);
+        self.transport_service
+            .try_player_broadcast(&game_new_msg);
 
         let game_start_msg = ServerMessage::GameStart { game_id: id };
-        self.client_service
-            .get_associated_client(&seek.creator)
-            .map(|id| self.client_service.try_protocol_send(&id, &game_start_msg));
-        self.client_service
-            .get_associated_client(&opponent)
-            .map(|id| self.client_service.try_protocol_send(&id, &game_start_msg));
+
+        self.transport_service
+            .try_player_send(&seek.creator, &game_start_msg);
+
+        self.transport_service
+            .try_player_send(&opponent, &game_start_msg);
+
         Ok(())
     }
 
@@ -566,12 +528,11 @@ impl GameService for GameServiceImpl {
             },
         };
 
-        self.client_service
-            .get_associated_client(&opponent)
-            .map(|id| self.client_service.try_protocol_send(&id, &action_msg));
+        self.transport_service
+            .try_player_send(&opponent, &action_msg);
         let spectators = self.game_spectators.get_by_key(game_id);
-        self.client_service
-            .try_protocol_multicast(&spectators, &action_msg);
+        self.transport_service
+            .try_spectator_multicast(&spectators, &action_msg);
 
         self.check_game_over(game_id);
         Ok(())
@@ -622,7 +583,7 @@ impl GameService for GameServiceImpl {
         Ok(())
     }
 
-    fn unobserve_all(&self, id: &ClientId) -> ServiceResult<()> {
+    fn unobserve_all(&self, id: &SpectatorId) -> ServiceResult<()> {
         self.game_spectators.remove_value(id);
         Ok(())
     }
@@ -677,13 +638,13 @@ impl GameService for MockGameService {
     ) -> ServiceResult<()> {
         Ok(())
     }
-    fn observe_game(&self, _id: &ClientId, _game_id: &GameId) -> ServiceResult<()> {
+    fn observe_game(&self, _id: &SpectatorId, _game_id: &GameId) -> ServiceResult<()> {
         Ok(())
     }
-    fn unobserve_game(&self, _id: &ClientId, _game_id: &GameId) -> ServiceResult<()> {
+    fn unobserve_game(&self, _id: &SpectatorId, _game_id: &GameId) -> ServiceResult<()> {
         Ok(())
     }
-    fn unobserve_all(&self, _id: &ClientId) -> ServiceResult<()> {
+    fn unobserve_all(&self, _id: &SpectatorId) -> ServiceResult<()> {
         Ok(())
     }
 }

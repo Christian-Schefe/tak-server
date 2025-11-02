@@ -12,8 +12,8 @@ use crate::{
     player::PlayerUsername,
     protocol::{ChatMessageSource, DisconnectReason, ServerGameMessage, ServerMessage},
     seek::SeekId,
-    tak::ptn::{action_to_ptn, game_state_to_string},
 };
+use tak_core::ptn::{action_to_ptn, game_state_to_string};
 
 mod auth;
 mod chat;

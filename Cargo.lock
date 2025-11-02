@@ -2177,6 +2177,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "tak-core"
+version = "0.1.0"
+
+[[package]]
 name = "tak-server"
 version = "0.1.0"
 dependencies = [
@@ -2199,11 +2203,33 @@ dependencies = [
  "rustrict",
  "serde",
  "serde_json",
+ "tak-core",
+ "tak-server-domain",
  "thiserror 2.0.16",
  "tokio",
  "tokio-tungstenite 0.27.0",
  "tokio-util",
  "tower-http",
+ "uuid",
+ "validator",
+]
+
+[[package]]
+name = "tak-server-domain"
+version = "0.1.0"
+dependencies = [
+ "bcrypt",
+ "chrono",
+ "dashmap",
+ "lettre",
+ "moka",
+ "passwords",
+ "rand 0.9.2",
+ "rustrict",
+ "tak-core",
+ "thiserror 2.0.16",
+ "tokio",
+ "tokio-util",
  "uuid",
  "validator",
 ]

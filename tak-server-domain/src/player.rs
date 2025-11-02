@@ -1,16 +1,17 @@
-use dashmap::DashMap;
-use passwords::PasswordGenerator;
-use rustrict::CensorStr;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
 
+use dashmap::DashMap;
+use passwords::PasswordGenerator;
+use rustrict::CensorStr;
+
 use crate::{
-    ArcClientService, ArcEmailService, ArcPlayerRepository, ServiceError, ServiceResult,
-    client::ClientId,
-    jwt::validate_jwt,
-    persistence::players::{PlayerFilter, PlayerUpdate},
+    ServiceError, ServiceResult,
+    email::ArcEmailService,
+    jwt::ArcJwtService,
+    transport::{ArcTransportService, DisconnectReason, ServerMessage},
     util::validate_email,
 };
 
@@ -22,7 +23,6 @@ const PASSWORD_RESET_TOKEN_TTL: Duration = Duration::from_secs(60 * 60 * 24);
 
 #[derive(Clone)]
 pub struct Player {
-    pub id: Option<i64>,
     pub username: PlayerUsername,
     pub email: Option<String>,
     pub rating: f64,
@@ -34,18 +34,47 @@ pub struct Player {
     pub is_banned: bool,
 }
 
+#[derive(Clone, Default)]
+pub struct PlayerUpdate {
+    pub password_hash: Option<String>,
+    pub is_bot: Option<bool>,
+    pub is_gagged: Option<bool>,
+    pub is_mod: Option<bool>,
+    pub is_admin: Option<bool>,
+    pub is_banned: Option<bool>,
+}
+
+pub struct PlayerFilter {
+    pub is_bot: Option<bool>,
+    pub is_gagged: Option<bool>,
+    pub is_mod: Option<bool>,
+    pub is_admin: Option<bool>,
+    pub is_banned: Option<bool>,
+}
+
+pub type ArcPlayerRepository = Arc<Box<dyn PlayerRepository + Send + Sync + 'static>>;
+pub trait PlayerRepository {
+    fn get_player_by_id(&self, id: i64) -> ServiceResult<Option<Player>>;
+    fn get_player_by_name(&self, name: &str) -> ServiceResult<Option<(PlayerId, Player)>>;
+    fn create_player(&self, player: &Player) -> ServiceResult<()>;
+    fn update_player(&self, id: i64, update: &PlayerUpdate) -> ServiceResult<()>;
+    fn get_players(&self, filter: PlayerFilter) -> ServiceResult<Vec<Player>>;
+    fn get_player_names(&self) -> ServiceResult<Vec<String>>;
+}
+
+pub type ArcPlayerService = Arc<Box<dyn PlayerService + Send + Sync + 'static>>;
 pub trait PlayerService {
     fn load_unique_usernames(&self) -> ServiceResult<()>;
-    fn fetch_player(&self, username: &str) -> ServiceResult<Player>;
+    fn fetch_player(&self, username: &str) -> ServiceResult<(Option<PlayerId>, Player)>;
+    fn fetch_player_data(&self, username: &str) -> ServiceResult<Player> {
+        let (_, player) = self.fetch_player(username)?;
+        Ok(player)
+    }
     fn validate_login(&self, username: &PlayerUsername, password: &str) -> ServiceResult<()>;
-    fn try_login(
-        &self,
-        id: &ClientId,
-        username: &PlayerUsername,
-        password: &str,
-    ) -> ServiceResult<()>;
-    fn try_login_jwt(&self, id: &ClientId, token: &str) -> ServiceResult<PlayerUsername>;
-    fn try_login_guest(&self, id: &ClientId, token: Option<&str>) -> ServiceResult<PlayerUsername>;
+    fn try_login(&self, username: &PlayerUsername, password: &str)
+    -> ServiceResult<PlayerUsername>;
+    fn try_login_jwt(&self, token: &str) -> ServiceResult<PlayerUsername>;
+    fn try_login_guest(&self, token: Option<&str>) -> ServiceResult<PlayerUsername>;
     fn try_register(&self, username: &PlayerUsername, email: &str) -> ServiceResult<()>;
     fn send_reset_token(&self, username: &PlayerUsername, email: &str) -> ServiceResult<()>;
     fn reset_password(
@@ -111,11 +140,14 @@ pub trait PlayerService {
     ) -> ServiceResult<()>;
 }
 
+type PlayerId = i64;
+
 pub struct PlayerServiceImpl {
-    client_service: ArcClientService,
+    transport_service: ArcTransportService,
     email_service: ArcEmailService,
+    jwt_service: ArcJwtService,
     player_repository: ArcPlayerRepository,
-    player_cache: Arc<moka::sync::Cache<PlayerUsername, Player>>,
+    player_cache: Arc<moka::sync::Cache<PlayerUsername, (Option<PlayerId>, Player)>>,
     guests: Arc<DashMap<PlayerUsername, Player>>,
     guest_player_tokens: Arc<moka::sync::Cache<String, PlayerUsername>>,
     next_guest_id: Arc<std::sync::Mutex<u32>>,
@@ -125,13 +157,15 @@ pub struct PlayerServiceImpl {
 
 impl PlayerServiceImpl {
     pub fn new(
-        client_service: ArcClientService,
+        transport_service: ArcTransportService,
         email_service: ArcEmailService,
+        jwt_service: ArcJwtService,
         player_repository: ArcPlayerRepository,
     ) -> Self {
         Self {
-            client_service,
+            transport_service,
             email_service,
+            jwt_service,
             player_repository,
             player_cache: Arc::new(moka::sync::Cache::builder().max_capacity(1000).build()),
             guests: Arc::new(DashMap::new()),
@@ -259,8 +293,8 @@ impl PlayerServiceImpl {
     }
 
     fn update_password(&self, username: &PlayerUsername, new_password: &str) -> ServiceResult<()> {
-        let player = self.fetch_player(&username)?;
-        let Some(id) = player.id else {
+        let (id, _) = self.fetch_player(&username)?;
+        let Some(id) = id else {
             return ServiceError::not_possible("Player is a guest");
         };
         let password_hash = bcrypt::hash(new_password, bcrypt::DEFAULT_COST)
@@ -283,9 +317,9 @@ impl PlayerServiceImpl {
         access_predicate: impl Fn(&Player, &Player) -> bool,
         update: &PlayerUpdate,
     ) -> ServiceResult<()> {
-        let current_player = self.fetch_player(&username)?;
-        let player = self.fetch_player(target_username)?;
-        if let Some(id) = player.id {
+        let current_player = self.fetch_player_data(&username)?;
+        let (id, player) = self.fetch_player(target_username)?;
+        if let Some(id) = id {
             if !access_predicate(&current_player, &player) {
                 return ServiceError::unauthorized("Insufficient rights");
             }
@@ -355,12 +389,12 @@ impl PlayerService for PlayerServiceImpl {
         Ok(())
     }
 
-    fn fetch_player(&self, username: &str) -> ServiceResult<Player> {
+    fn fetch_player(&self, username: &str) -> ServiceResult<(Option<PlayerId>, Player)> {
         if username.starts_with("Guest") {
             let Some(guest) = self.guests.get(username).map(|entry| entry.value().clone()) else {
                 return ServiceError::not_found("Player not found");
             };
-            return Ok(guest);
+            return Ok((None, guest));
         }
         let username = username.to_string();
         if let Some(player) = self.player_cache.get(&username) {
@@ -368,9 +402,10 @@ impl PlayerService for PlayerServiceImpl {
         }
         let player = self.player_repository.get_player_by_name(&username)?;
         match player {
-            Some(p) => {
-                self.player_cache.insert(username.clone(), p.clone());
-                Ok(p)
+            Some((id, p)) => {
+                let val = (Some(id), p);
+                self.player_cache.insert(username.clone(), val.clone());
+                Ok(val)
             }
             None => ServiceError::not_found("Player not found"),
         }
@@ -414,10 +449,14 @@ impl PlayerService for PlayerServiceImpl {
             },
         )?;
         if let Some(ban_msg) = &banned {
-            if let Some(target_id) = self.client_service.get_associated_client(target_username) {
-                self.client_service.close_client(&target_id);
-            }
-            let target_player = self.fetch_player(target_username)?;
+            self.transport_service.try_player_send(
+                &target_username,
+                &ServerMessage::ConnectionClosed {
+                    reason: DisconnectReason::Ban(ban_msg.clone()),
+                },
+            );
+
+            let target_player = self.fetch_player_data(target_username)?;
             if let Some(player_email) = &target_player.email
                 && let Ok(email) = validate_email(player_email)
             {
@@ -505,20 +544,25 @@ impl PlayerService for PlayerServiceImpl {
         username: &PlayerUsername,
         target_username: &PlayerUsername,
     ) -> ServiceResult<()> {
-        let current_player = self.fetch_player(&username)?;
-        let target_player = self.fetch_player(&target_username)?;
+        let current_player = self.fetch_player_data(&username)?;
+        let target_player = self.fetch_player_data(&target_username)?;
         if !Self::more_rights(&current_player, &target_player) {
             return ServiceError::unauthorized("Insufficient rights to kick this player");
         }
-        if let Some(target_id) = self.client_service.get_associated_client(target_username) {
-            self.client_service.close_client(&target_id);
-            println!("User {} kicked user {}", username, target_username);
-        }
+
+        self.transport_service.try_player_send(
+            &target_username,
+            &ServerMessage::ConnectionClosed {
+                reason: DisconnectReason::Kick,
+            },
+        );
+        println!("User {} kicked user {}", username, target_username);
+
         Ok(())
     }
 
     fn validate_login(&self, username: &PlayerUsername, password: &str) -> ServiceResult<()> {
-        let player = self.fetch_player(&username)?;
+        let player = self.fetch_player_data(&username)?;
         let Some(password_hash) = &player.password_hash else {
             return ServiceError::unauthorized("Invalid username or password");
         };
@@ -540,36 +584,32 @@ impl PlayerService for PlayerServiceImpl {
 
     fn try_login(
         &self,
-        id: &ClientId,
         username: &PlayerUsername,
         password: &str,
-    ) -> ServiceResult<()> {
+    ) -> ServiceResult<PlayerUsername> {
         self.validate_login(username, password)?;
-        let player = self.fetch_player(username)?;
+        let player = self.fetch_player_data(username)?;
         if player.is_banned {
             return ServiceError::unauthorized("User is banned");
         }
-        self.client_service.associate_player(id, username)
+        Ok(username.clone())
     }
 
-    fn try_login_jwt(&self, id: &ClientId, token: &str) -> ServiceResult<PlayerUsername> {
-        let username =
-            validate_jwt(token).ok_or(ServiceError::Unauthorized("Invalid token".into()))?;
-        let player = self.fetch_player(&username)?;
+    fn try_login_jwt(&self, token: &str) -> ServiceResult<PlayerUsername> {
+        let username = self.jwt_service.validate_jwt(token)?;
+        let player = self.fetch_player_data(&username)?;
         if player.is_banned {
             return ServiceError::unauthorized("User is banned");
         }
-        self.client_service.associate_player(id, &username)?;
         Ok(username)
     }
 
-    fn try_login_guest(&self, id: &ClientId, token: Option<&str>) -> ServiceResult<PlayerUsername> {
+    fn try_login_guest(&self, token: Option<&str>) -> ServiceResult<PlayerUsername> {
         let valid_token = token.map(|t| self.guest_player_tokens.contains_key(t));
         let guest_name = token
             .and_then(|x| self.guest_player_tokens.get(x))
             .unwrap_or_else(|| format!("Guest{}", self.increment_guest_id()));
 
-        self.client_service.associate_player(id, &guest_name)?;
         if let Some(token) = token {
             self.guest_player_tokens
                 .insert(guest_name.clone(), token.to_string());
@@ -581,7 +621,6 @@ impl PlayerService for PlayerServiceImpl {
         self.guests
             .entry(guest_name.clone())
             .or_insert_with(|| Player {
-                id: None,
                 username: guest_name.clone(),
                 email: None,
                 rating: 1000.0,
@@ -603,7 +642,6 @@ impl PlayerService for PlayerServiceImpl {
         let temp_password = Self::generate_temporary_password();
         let password_hash = bcrypt::hash(&temp_password, bcrypt::DEFAULT_COST).unwrap();
         self.player_repository.create_player(&Player {
-            id: None, // Will be set by the database
             username: username.clone(),
             email: Some(email.to_string()),
             rating: 1000.0,
@@ -619,7 +657,7 @@ impl PlayerService for PlayerServiceImpl {
     }
 
     fn send_reset_token(&self, username: &PlayerUsername, email: &str) -> ServiceResult<()> {
-        let player = self.fetch_player(username)?;
+        let player = self.fetch_player_data(username)?;
         if player.email.is_none_or(|e| e != email) {
             return ServiceError::bad_request("Email does not match");
         }
@@ -667,7 +705,7 @@ impl PlayerService for PlayerServiceImpl {
         target_username: &PlayerUsername,
         new_password: &str,
     ) -> ServiceResult<()> {
-        let player = self.fetch_player(&username)?;
+        let player = self.fetch_player_data(&username)?;
         if !player.is_admin {
             return ServiceError::unauthorized("Only admins can set passwords directly");
         }
@@ -701,32 +739,36 @@ impl PlayerService for MockPlayerService {
         Ok(())
     }
 
-    fn fetch_player(&self, username: &str) -> ServiceResult<Player> {
+    fn fetch_player(&self, username: &str) -> ServiceResult<(Option<PlayerId>, Player)> {
         match username {
-            "test_admin" => Ok(Player {
-                id: Some(1),
-                username: "test_admin".into(),
-                email: Some("test_admin@example.com".into()),
-                rating: 1500.0,
-                password_hash: Some("".to_string()),
-                is_bot: false,
-                is_gagged: false,
-                is_mod: true,
-                is_admin: true,
-                is_banned: false,
-            }),
-            "test_gagged" => Ok(Player {
-                id: Some(2),
-                username: "test_gagged".into(),
-                email: Some("test_gagged@example.com".into()),
-                rating: 1200.0,
-                password_hash: Some("".to_string()),
-                is_bot: false,
-                is_gagged: true,
-                is_mod: false,
-                is_admin: false,
-                is_banned: false,
-            }),
+            "test_admin" => Ok((
+                Some(1),
+                Player {
+                    username: "test_admin".into(),
+                    email: Some("test_admin@example.com".into()),
+                    rating: 1500.0,
+                    password_hash: Some("".to_string()),
+                    is_bot: false,
+                    is_gagged: false,
+                    is_mod: true,
+                    is_admin: true,
+                    is_banned: false,
+                },
+            )),
+            "test_gagged" => Ok((
+                Some(2),
+                Player {
+                    username: "test_gagged".into(),
+                    email: Some("test_gagged@example.com".into()),
+                    rating: 1200.0,
+                    password_hash: Some("".to_string()),
+                    is_bot: false,
+                    is_gagged: true,
+                    is_mod: false,
+                    is_admin: false,
+                    is_banned: false,
+                },
+            )),
             _ => ServiceError::not_found("Player not found"),
         }
     }
@@ -737,22 +779,17 @@ impl PlayerService for MockPlayerService {
 
     fn try_login(
         &self,
-        _id: &ClientId,
         _username: &PlayerUsername,
         _password: &str,
-    ) -> ServiceResult<()> {
-        Ok(())
-    }
-
-    fn try_login_jwt(&self, _id: &ClientId, _token: &str) -> ServiceResult<PlayerUsername> {
+    ) -> ServiceResult<PlayerUsername> {
         Ok("".to_string())
     }
 
-    fn try_login_guest(
-        &self,
-        _id: &ClientId,
-        _token: Option<&str>,
-    ) -> ServiceResult<PlayerUsername> {
+    fn try_login_jwt(&self, _token: &str) -> ServiceResult<PlayerUsername> {
+        Ok("".to_string())
+    }
+
+    fn try_login_guest(&self, _token: Option<&str>) -> ServiceResult<PlayerUsername> {
         Ok("".to_string())
     }
 

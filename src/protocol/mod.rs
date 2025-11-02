@@ -1,17 +1,9 @@
 mod json;
 mod v2;
 
-use std::time::Duration;
+use tak_server_domain::{player::PlayerUsername, transport::ServerMessage};
 
-use crate::{
-    AppState,
-    client::ClientId,
-    game::{Game, GameId},
-    player::PlayerUsername,
-    seek::{Seek, SeekId},
-    tak::{TakAction, TakGameState},
-    util::LazyInit,
-};
+use crate::{AppState, client::ClientId};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Protocol {
@@ -31,82 +23,13 @@ impl Protocol {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum ServerMessage {
-    SeekList {
-        add: bool,
-        seek: Seek,
-    },
-    GameList {
-        add: bool,
-        game: Game,
-    },
-    GameStart {
-        game_id: GameId,
-    },
-    GameMessage {
-        game_id: GameId,
-        message: ServerGameMessage,
-    },
-    PlayersOnline {
-        players: Vec<String>,
-    },
-    ChatMessage {
-        from: PlayerUsername,
-        message: String,
-        source: ChatMessageSource,
-    },
-    RoomMembership {
-        room: String,
-        joined: bool,
-    },
-    AcceptRematch {
-        seek_id: SeekId,
-    },
-    ConnectionClosed {
-        reason: DisconnectReason,
-    },
-}
-
-#[derive(Clone, Debug)]
-pub enum DisconnectReason {
-    NewSession,
-    Inactivity,
-}
-
-#[derive(Clone, Debug)]
-pub enum ServerGameMessage {
-    Action {
-        action: TakAction,
-    },
-    TimeUpdate {
-        remaining_white: Duration,
-        remaining_black: Duration,
-    },
-    Undo,
-    GameOver {
-        game_state: TakGameState,
-    },
-    UndoRequest {
-        request: bool,
-    },
-    DrawOffer {
-        offer: bool,
-    },
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum ChatMessageSource {
-    Global,
-    Room { name: String },
-    Private,
-}
-
+pub type ArcProtocolService = std::sync::Arc<dyn ProtocolService + Send + Sync>;
 pub trait ProtocolService {
     fn init(&self, client_service: &AppState);
     fn handle_client_message(&self, protocol: &Protocol, id: &ClientId, msg: String);
     fn handle_server_message(&self, protocol: &Protocol, id: &ClientId, msg: &ServerMessage);
     fn on_authenticated(&self, protocol: &Protocol, id: &ClientId, username: &PlayerUsername);
+    fn on_connected(&self, protocol: &Protocol, id: &ClientId);
     fn register_http_endpoints(&self, router: axum::Router<AppState>) -> axum::Router<AppState>;
 }
 
@@ -158,6 +81,13 @@ impl ProtocolService for ProtocolServiceImpl {
     fn on_authenticated(&self, protocol: &Protocol, id: &ClientId, username: &PlayerUsername) {
         match protocol {
             Protocol::V0 | Protocol::V2 => self.v2.get().on_authenticated(id, username),
+            Protocol::JSON => {}
+        }
+    }
+
+    fn on_connected(&self, protocol: &Protocol, id: &ClientId) {
+        match protocol {
+            Protocol::V0 | Protocol::V2 => self.v2.get().on_connected(id),
             Protocol::JSON => {}
         }
     }

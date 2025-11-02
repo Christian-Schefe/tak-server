@@ -153,6 +153,11 @@ impl ProtocolV2Handler {
         }
     }
 
+    pub fn on_connected(&self, id: &ClientId, username: &PlayerUsername) {
+        send_to(id, "Welcome!");
+        send_to(id, "Login or Register");
+    }
+
     fn handle_logged_in_client_message(
         &self,
         id: &ClientId,

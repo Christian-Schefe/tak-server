@@ -7,8 +7,9 @@ use crate::{
     player::PlayerUsername,
     protocol::v2::{ProtocolV2Handler, ProtocolV2Result},
     seek::{GameType, Seek},
-    tak::{TakGameSettings, TakPlayer, TakTimeControl},
 };
+
+use tak_core::{TakGameSettings, TakPlayer, TakTimeControl};
 
 impl ProtocolV2Handler {
     pub fn handle_seek_message(
@@ -46,8 +47,8 @@ impl ProtocolV2Handler {
             .parse::<u32>()
             .map_err(|_| ServiceError::BadRequest("Invalid time increment".into()))?;
         let color = match parts[4] {
-            "W" => Some(crate::tak::TakPlayer::White),
-            "B" => Some(crate::tak::TakPlayer::Black),
+            "W" => Some(TakPlayer::White),
+            "B" => Some(TakPlayer::Black),
             "A" => None,
             _ => return Err(ServiceError::BadRequest("Invalid color".into())),
         };

@@ -6,7 +6,7 @@ default-run = "tak-server"
 
 [workspace]
 resolver = "3"
-members = ["tak-client"]
+members = ["tak-client", "tak-core", "tak-server-domain"]
 
 [dependencies]
 async-trait = "0.1.89"
@@ -35,3 +35,5 @@ tokio-util = { version = "0.7.16", features = ["full"] }
 tower-http = "0.6.6"
 uuid = { version = "1.18.1", features = ["v4"] }
 validator = { version = "0.20.0", features = ["derive"] }
+tak-core = { path = "./tak-core" }
+tak-server-domain = { path = "./tak-server-domain" }

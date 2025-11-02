@@ -8,19 +8,15 @@ use axum::{
 };
 
 mod app;
-mod chat;
 mod client;
-mod email;
-mod game;
 mod jwt;
-mod player;
-mod protocol;
-mod seek;
-mod tak;
-mod util;
 mod persistence;
+mod protocol;
+mod util;
 
-pub use app::*;
+use tak_server_domain::app::AppState;
+
+use crate::app::construct_app;
 
 static APP: LazyLock<AppState> = LazyLock::new(construct_app);
 

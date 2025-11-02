@@ -9,9 +9,10 @@ use axum::{
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tak_server_domain::{ServiceError, jwt::JwtService, player::PlayerUsername};
 use uuid::Uuid;
 
-use crate::{AppState, player::PlayerUsername};
+use crate::AppState;
 use axum_extra::{
     TypedHeader,
     headers::{Authorization, authorization::Bearer},
@@ -102,13 +103,6 @@ pub fn generate_jwt(username: &PlayerUsername) -> Result<String, AuthError> {
     Ok(token)
 }
 
-pub fn validate_jwt(token: &str) -> Option<PlayerUsername> {
-    match decode::<Claims>(token, &KEYS.decoding, &Validation::default()) {
-        Ok(data) => Some(data.claims.sub),
-        Err(_) => None,
-    }
-}
-
 #[derive(Deserialize)]
 pub struct AuthPayload {
     pub username: PlayerUsername,
@@ -130,4 +124,15 @@ pub async fn handle_login(
         .map_err(|_| AuthError::WrongCredentials)?;
     let token = generate_jwt(&payload.username)?;
     Ok(Json(AuthBody { token }))
+}
+
+pub struct JwtServiceImpl {}
+
+impl JwtService for JwtServiceImpl {
+    fn validate_jwt(&self, token: &str) -> tak_server_domain::ServiceResult<PlayerUsername> {
+        match decode::<Claims>(token, &KEYS.decoding, &Validation::default()) {
+            Ok(data) => Ok(data.claims.sub),
+            Err(_) => ServiceError::unauthorized("Invalid token"),
+        }
+    }
 }

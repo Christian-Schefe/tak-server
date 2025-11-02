@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::tak::{TakDir, TakPlayer, TakPos, TakVariant};
+use crate::{TakDir, TakPlayer, TakPos, TakVariant};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TakStack {

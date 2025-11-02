@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 
 use lettre::{
     Message, SmtpTransport, Transport, message::Mailbox,
@@ -7,6 +7,7 @@ use lettre::{
 
 use crate::{ServiceError, ServiceResult};
 
+pub type ArcEmailService = Arc<Box<dyn EmailService + Send + Sync>>;
 pub trait EmailService {
     fn send_email(&self, to: &str, subject: &str, body: &str) -> ServiceResult<()>;
 }

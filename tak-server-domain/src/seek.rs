@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use tak_core::{TakGameSettings, TakPlayer};
 
 use crate::{
-    ArcClientService, ArcGameService, ServiceError, ServiceResult,
-    game::GameId,
+    ServiceError, ServiceResult,
+    game::{ArcGameService, GameId, GameType},
     player::PlayerUsername,
-    protocol::ServerMessage,
-    tak::{TakGameSettings, TakPlayer},
+    transport::{ArcTransportService, ServerMessage},
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -23,13 +23,7 @@ pub struct Seek {
 
 pub type SeekId = u32;
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum GameType {
-    Unrated,
-    Rated,
-    Tournament,
-}
-
+pub type ArcSeekService = Arc<Box<dyn SeekService + Send + Sync + 'static>>;
 pub trait SeekService {
     fn add_seek(
         &self,
@@ -57,7 +51,7 @@ pub trait SeekService {
 
 #[derive(Clone)]
 pub struct SeekServiceImpl {
-    client_service: ArcClientService,
+    transport_service: ArcTransportService,
     game_service: ArcGameService,
     seeks: Arc<DashMap<SeekId, Seek>>,
     seeks_by_player: Arc<DashMap<PlayerUsername, SeekId>>,
@@ -66,9 +60,9 @@ pub struct SeekServiceImpl {
 }
 
 impl SeekServiceImpl {
-    pub fn new(client_service: ArcClientService, game_service: ArcGameService) -> Self {
+    pub fn new(transport_service: ArcTransportService, game_service: ArcGameService) -> Self {
         Self {
-            client_service,
+            transport_service,
             game_service,
             seeks: Arc::new(DashMap::new()),
             seeks_by_player: Arc::new(DashMap::new()),
@@ -119,8 +113,8 @@ impl SeekServiceImpl {
 
         println!("New seek: {:?}", seek);
         let seek_new_msg = ServerMessage::SeekList { add: true, seek };
-        self.client_service
-            .try_auth_protocol_broadcast(&seek_new_msg);
+        self.transport_service
+            .try_player_broadcast(&seek_new_msg);
 
         Ok(seek_id)
     }
@@ -161,12 +155,9 @@ impl SeekService for SeekServiceImpl {
                 seek_id: *existing_seek_id,
             };
             drop(existing_seek_id);
-            self.client_service
-                .get_associated_client(&player)
-                .map(|id| {
-                    self.client_service
-                        .try_protocol_send(&id, &accept_rematch_msg);
-                });
+            self.transport_service
+                .try_player_send(&player, &accept_rematch_msg);
+
             return Ok(());
         }
         let seek_id = self.add_seek_internal(
@@ -216,8 +207,8 @@ impl SeekService for SeekServiceImpl {
             add: false,
             seek: seek.clone(),
         };
-        self.client_service
-            .try_auth_protocol_broadcast(&seek_remove_msg);
+        self.transport_service
+            .try_player_broadcast(&seek_remove_msg);
 
         Ok(seek)
     }
@@ -233,13 +224,6 @@ impl SeekService for SeekServiceImpl {
                 return ServiceError::bad_request("This seek is not for you");
             }
         }
-        // TODO: maybe remove once client has been refactored
-        self.client_service
-            .get_associated_client(&seek.creator)
-            .map(|id| self.game_service.unobserve_all(&id));
-        self.client_service
-            .get_associated_client(&player)
-            .map(|id| self.game_service.unobserve_all(&id));
 
         self.game_service.add_game_from_seek(&seek, &player)?;
         let _ = self.remove_seek_of_player(&seek.creator);
@@ -252,22 +236,18 @@ impl SeekService for SeekServiceImpl {
 mod tests {
     use std::time::Duration;
 
-    use uuid::Uuid;
+    use tak_core::{TakGameSettings, TakTimeControl};
 
-    use crate::{
-        client::{ClientService, MockClientService},
-        game::MockGameService,
-        tak::TakTimeControl,
-    };
+    use crate::{game::MockGameService, transport::MockTransportService};
 
     use super::*;
 
     #[test]
     fn test_add_seek() {
-        let mock_client_service = MockClientService::default();
+        let mock_transport_service = MockTransportService::default();
         let mock_game_service = MockGameService::default();
         let seek_service = SeekServiceImpl::new(
-            Arc::new(Box::new(mock_client_service.clone())),
+            Arc::new(Box::new(mock_transport_service.clone())),
             Arc::new(Box::new(mock_game_service.clone())),
         );
 
@@ -327,7 +307,7 @@ mod tests {
             )
             .expect("Failed to add seek");
 
-        let sent_messages = mock_client_service.get_broadcasts();
+        let sent_messages = mock_transport_service.get_broadcasts();
         assert!(sent_messages.len() == 1);
         assert!(matches!(
             &sent_messages[0],
@@ -339,10 +319,10 @@ mod tests {
 
     #[test]
     fn test_remove_seek() {
-        let mock_client_service = MockClientService::default();
+        let mock_transport_service = MockTransportService::default();
         let mock_game_service = MockGameService::default();
         let seek_service = SeekServiceImpl::new(
-            Arc::new(Box::new(mock_client_service.clone())),
+            Arc::new(Box::new(mock_transport_service.clone())),
             Arc::new(Box::new(mock_game_service.clone())),
         );
 
@@ -382,7 +362,7 @@ mod tests {
             .remove_seek_of_player(&"player1".to_string())
             .expect("Failed to remove seek");
 
-        let sent_messages = mock_client_service.get_broadcasts();
+        let sent_messages = mock_transport_service.get_broadcasts();
         assert!(sent_messages.len() == 2);
         assert!(matches!(
             &sent_messages[1],
@@ -396,22 +376,12 @@ mod tests {
 
     #[test]
     fn test_rematch_seek() {
-        let mock_client_service = MockClientService::default();
+        let mock_transport_service = MockTransportService::default();
         let mock_game_service = MockGameService::default();
         let seek_service = SeekServiceImpl::new(
-            Arc::new(Box::new(mock_client_service.clone())),
+            Arc::new(Box::new(mock_transport_service.clone())),
             Arc::new(Box::new(mock_game_service.clone())),
         );
-
-        let p1 = Uuid::new_v4();
-        let p2 = Uuid::new_v4();
-
-        mock_client_service
-            .associate_player(&p1, &"player1".to_string())
-            .unwrap();
-        mock_client_service
-            .associate_player(&p2, &"player2".to_string())
-            .unwrap();
 
         let game_settings = TakGameSettings {
             board_size: 5,
@@ -446,7 +416,7 @@ mod tests {
             )
             .expect("Failed to add seek");
 
-        let sent_broadcasts = mock_client_service.get_broadcasts();
+        let sent_broadcasts = mock_transport_service.get_broadcasts();
         assert_eq!(sent_broadcasts.len(), 1);
         assert!(matches!(
             &sent_broadcasts[0],
@@ -469,11 +439,11 @@ mod tests {
             )
             .expect("Failed to add seek");
 
-        let sent_messages = mock_client_service.get_messages();
+        let sent_messages = mock_transport_service.get_messages();
         assert_eq!(sent_messages.len(), 1);
         assert!(matches!(
             &sent_messages[0],
-            (uuid, ServerMessage::AcceptRematch { seek_id: 1 }) if *uuid == p2
+            (player, ServerMessage::AcceptRematch { seek_id: 1 }) if *player == "player2"
         ));
         assert_eq!(seek_service.get_seek_ids().len(), 1);
         assert_eq!(seek_service.get_seek(&1).ok(), Some(expected_seek));

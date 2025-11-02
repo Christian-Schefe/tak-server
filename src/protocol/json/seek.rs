@@ -11,8 +11,8 @@ use crate::{
     jwt::Claims,
     player::PlayerUsername,
     seek::{GameType, Seek, SeekId},
-    tak::{TakGameSettings, TakPlayer, TakTimeControl},
 };
+use tak_core::{TakGameSettings, TakPlayer, TakTimeControl};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]

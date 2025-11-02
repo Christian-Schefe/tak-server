@@ -1,4 +1,4 @@
-use crate::tak::{TakAction, TakDir, TakGameState, TakPlayer, TakPos, TakVariant, TakWinReason};
+use crate::{TakAction, TakDir, TakGameState, TakPlayer, TakPos, TakVariant, TakWinReason};
 
 pub fn action_to_ptn(action: &TakAction) -> String {
     match action {

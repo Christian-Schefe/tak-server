@@ -7,8 +7,8 @@ use crate::{
         Protocol, ServerGameMessage,
         v2::{ProtocolV2Handler, ProtocolV2Result},
     },
-    tak::{TakAction, TakDir, TakGameState, TakPos, TakVariant, ptn::game_state_to_string},
 };
+use tak_core::{TakAction, TakDir, TakGameState, TakPos, TakVariant, ptn::game_state_to_string};
 
 impl ProtocolV2Handler {
     pub fn handle_server_game_message(

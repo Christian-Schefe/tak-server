@@ -2,11 +2,7 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::ToSql;
 
-use crate::{
-    DatabaseError,
-    persistence::{DatabaseResult, get_connection, to_sql_option, update_entry},
-    player::Player,
-};
+use crate::persistence::{DatabaseResult, get_connection, to_sql_option, update_entry};
 
 #[derive(Clone, Default)]
 pub struct PlayerUpdate {
