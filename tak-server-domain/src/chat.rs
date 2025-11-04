@@ -11,18 +11,24 @@ use crate::{
 };
 
 pub type ArcChatService = Arc<Box<dyn ChatService + Send + Sync>>;
+
+#[async_trait::async_trait]
 pub trait ChatService {
     fn join_room(&self, spectator: &SpectatorId, room_name: &String) -> ServiceResult<()>;
     fn leave_room(&self, spectator: &SpectatorId, room_name: &String) -> ServiceResult<()>;
     fn leave_all_rooms(&self, spectator: &SpectatorId) -> ServiceResult<()>;
-    fn send_message_to_all(&self, username: &PlayerUsername, message: &str) -> ServiceResult<()>;
-    fn send_message_to_room(
+    async fn send_message_to_all(
+        &self,
+        username: &PlayerUsername,
+        message: &str,
+    ) -> ServiceResult<()>;
+    async fn send_message_to_room(
         &self,
         username: &PlayerUsername,
         room_name: &String,
         message: &str,
     ) -> ServiceResult<()>;
-    fn send_message_to_player(
+    async fn send_message_to_player(
         &self,
         from_username: &PlayerUsername,
         to_username: &PlayerUsername,
@@ -49,6 +55,7 @@ impl ChatServiceImpl {
     }
 }
 
+#[async_trait::async_trait]
 impl ChatService for ChatServiceImpl {
     fn join_room(&self, spectator: &SpectatorId, room_name: &String) -> ServiceResult<()> {
         self.chat_rooms.insert(room_name.to_string(), *spectator);
@@ -75,9 +82,13 @@ impl ChatService for ChatServiceImpl {
         Ok(())
     }
 
-    fn send_message_to_all(&self, username: &PlayerUsername, message: &str) -> ServiceResult<()> {
-        let player = self.player_service.fetch_player_data(username)?;
-        if player.is_gagged {
+    async fn send_message_to_all(
+        &self,
+        username: &PlayerUsername,
+        message: &str,
+    ) -> ServiceResult<()> {
+        let player = self.player_service.fetch_player_data(username).await?;
+        if player.flags.is_gagged {
             return ServiceError::forbidden("You are gagged and cannot send messages");
         }
         let msg = ServerMessage::ChatMessage {
@@ -89,14 +100,14 @@ impl ChatService for ChatServiceImpl {
         Ok(())
     }
 
-    fn send_message_to_room(
+    async fn send_message_to_room(
         &self,
         username: &PlayerUsername,
         room_name: &String,
         message: &str,
     ) -> ServiceResult<()> {
-        let player = self.player_service.fetch_player_data(&username)?;
-        if player.is_gagged {
+        let player = self.player_service.fetch_player_data(&username).await?;
+        if player.flags.is_gagged {
             return ServiceError::forbidden("You are gagged and cannot send messages");
         }
         let participants = self.chat_rooms.get_by_key(room_name);
@@ -113,14 +124,14 @@ impl ChatService for ChatServiceImpl {
         Ok(())
     }
 
-    fn send_message_to_player(
+    async fn send_message_to_player(
         &self,
         from_username: &PlayerUsername,
         to_username: &PlayerUsername,
         message: &str,
     ) -> ServiceResult<String> {
-        let from_player = self.player_service.fetch_player_data(from_username)?;
-        if from_player.is_gagged {
+        let from_player = self.player_service.fetch_player_data(from_username).await?;
+        if from_player.flags.is_gagged {
             return ServiceError::forbidden("You are gagged and cannot send messages");
         }
         let censored_message = message.censor();
@@ -143,8 +154,8 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_private_message() {
+    #[tokio::test]
+    async fn test_private_message() {
         let mock_client_service = MockTransportService::default();
         let mock_player_service = MockPlayerService::default();
         let chat_service = ChatServiceImpl::new(
@@ -159,6 +170,7 @@ mod tests {
                     &"test_user".to_string(),
                     "Hello!",
                 )
+                .await
                 .ok(),
             Some("Hello!".to_string())
         );
@@ -169,17 +181,19 @@ mod tests {
         );
 
         assert!(matches!(
-            chat_service.send_message_to_player(
-                &"test_gagged".to_string(),
-                &"test_user".to_string(),
-                "Hello!",
-            ),
+            chat_service
+                .send_message_to_player(
+                    &"test_gagged".to_string(),
+                    &"test_user".to_string(),
+                    "Hello!",
+                )
+                .await,
             Err(ServiceError::Forbidden(..))
         ));
     }
 
-    #[test]
-    fn test_room_message() {
+    #[tokio::test]
+    async fn test_room_message() {
         let mock_client_service = MockTransportService::default();
         let mock_player_service = MockPlayerService::default();
         let chat_service = ChatServiceImpl::new(
@@ -198,6 +212,7 @@ mod tests {
         assert!(
             chat_service
                 .send_message_to_room(&"test_admin".to_string(), &"room".to_string(), "Hello!")
+                .await
                 .is_ok()
         );
         let messages = mock_client_service.get_spectator_messages();
@@ -215,17 +230,19 @@ mod tests {
         );
 
         assert!(matches!(
-            chat_service.send_message_to_player(
-                &"test_gagged".to_string(),
-                &"test_user".to_string(),
-                "Hello!",
-            ),
+            chat_service
+                .send_message_to_player(
+                    &"test_gagged".to_string(),
+                    &"test_user".to_string(),
+                    "Hello!",
+                )
+                .await,
             Err(ServiceError::Forbidden(..))
         ));
     }
 
-    #[test]
-    fn test_global_message() {
+    #[tokio::test]
+    async fn test_global_message() {
         let mock_client_service = MockTransportService::default();
         let mock_player_service = MockPlayerService::default();
         let chat_service = ChatServiceImpl::new(
@@ -236,6 +253,7 @@ mod tests {
         assert!(
             chat_service
                 .send_message_to_all(&"test_admin".to_string(), "Hello!")
+                .await
                 .is_ok()
         );
         let messages = mock_client_service.get_broadcasts();
@@ -245,7 +263,9 @@ mod tests {
         );
 
         assert!(matches!(
-            chat_service.send_message_to_all(&"test_gagged".to_string(), "Hello!",),
+            chat_service
+                .send_message_to_all(&"test_gagged".to_string(), "Hello!",)
+                .await,
             Err(ServiceError::Forbidden(..))
         ));
     }

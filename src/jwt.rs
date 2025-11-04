@@ -120,6 +120,7 @@ pub async fn handle_login(
 ) -> Result<Json<AuthBody>, AuthError> {
     app.player_service
         .validate_login(&payload.username, &payload.password)
+        .await
         .map_err(|_| AuthError::WrongCredentials)?;
     let token = generate_jwt(&payload.username)?;
     Ok(Json(AuthBody { token }))

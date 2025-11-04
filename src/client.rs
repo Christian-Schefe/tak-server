@@ -93,7 +93,7 @@ impl TransportServiceImpl {
             + Send
             + 'static,
         M: Send + 'static,
-        E: 'static,
+        E: Send + 'static,
     {
         let (ws_sender, ws_receiver) = socket.split();
         let client_id = new_client();
@@ -164,6 +164,7 @@ impl TransportServiceImpl {
     ) where
         S: futures_util::Stream<Item = Result<M, E>> + Unpin + Send + 'static,
         M: Send + 'static,
+        E: Send + 'static,
     {
         while let Some(Ok(msg)) = select! {
             msg = ws_receiver.next() => msg,
@@ -196,7 +197,8 @@ impl TransportServiceImpl {
                             &protocol,
                             &id,
                             text,
-                        );
+                        )
+                        .await;
                     } else {
                         println!("Client {} has no protocol handler", id);
                     }
@@ -247,7 +249,11 @@ impl TransportServiceImpl {
         }
     }
 
-    pub fn associate_player(&self, id: &ClientId, username: &PlayerUsername) -> ServiceResult<()> {
+    pub async fn associate_player(
+        &self,
+        id: &ClientId,
+        username: &PlayerUsername,
+    ) -> ServiceResult<()> {
         if self.player_associations.contains_key(id) {
             return ServiceError::not_possible(format!("Player {} already logged in", username));
         }
@@ -282,7 +288,8 @@ impl TransportServiceImpl {
                 &handler,
                 id,
                 username,
-            );
+            )
+            .await;
         }
         self.app_state
             .player_connection_service()
@@ -401,17 +408,7 @@ impl TransportServiceImpl {
 impl TransportService for TransportServiceImpl {
     fn try_player_send(&self, player: &PlayerUsername, msg: &ServerMessage) {
         if let Some(id) = self.get_associated_client(player) {
-            if let Some(handler) = self.client_handlers.get(&id) {
-                let protocol = handler.clone();
-                drop(handler);
-                crate::protocol::handle_server_message(
-                    self.app_state.unwrap(),
-                    self,
-                    &protocol,
-                    &id,
-                    msg,
-                );
-            }
+            self.try_spectator_send(&id, msg);
         }
     }
 
@@ -419,13 +416,16 @@ impl TransportService for TransportServiceImpl {
         if let Some(handler) = self.client_handlers.get(id) {
             let protocol = handler.clone();
             drop(handler);
-            crate::protocol::handle_server_message(
-                self.app_state.unwrap(),
-                self,
-                &protocol,
-                id,
-                msg,
-            );
+            let app_state = self.app_state.unwrap().clone();
+            let transport = self.clone();
+            let msg = msg.clone();
+            let id = id.clone();
+            tokio::spawn(async move {
+                crate::protocol::handle_server_message(
+                    &app_state, &transport, &protocol, &id, &msg,
+                )
+                .await;
+            });
         }
     }
 
@@ -435,13 +435,15 @@ impl TransportService for TransportServiceImpl {
             if self.player_associations.contains_key(&id) {
                 let protocol = entry.clone();
                 drop(entry);
-                crate::protocol::handle_server_message(
-                    self.app_state.unwrap(),
-                    self,
-                    &protocol,
-                    &id,
-                    msg,
-                );
+                let app_state = self.app_state.unwrap().clone();
+                let transport = self.clone();
+                let msg = msg.clone();
+                tokio::spawn(async move {
+                    crate::protocol::handle_server_message(
+                        &app_state, &transport, &protocol, &id, &msg,
+                    )
+                    .await;
+                });
             }
         }
     }

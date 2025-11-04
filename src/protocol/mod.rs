@@ -26,7 +26,7 @@ impl Protocol {
     }
 }
 
-pub fn handle_client_message(
+pub async fn handle_client_message(
     app_state: &AppState,
     transport: &TransportServiceImpl,
     protocol: &Protocol,
@@ -35,15 +35,19 @@ pub fn handle_client_message(
 ) {
     match protocol {
         Protocol::V0 | Protocol::V2 => {
-            ProtocolV2Handler::new(app_state, transport).handle_client_message(id, msg)
+            ProtocolV2Handler::new(app_state, transport)
+                .handle_client_message(id, msg)
+                .await
         }
         Protocol::JSON => {
-            ProtocolJsonHandler::new(app_state, transport).handle_client_message(id, msg)
+            ProtocolJsonHandler::new(app_state, transport)
+                .handle_client_message(id, msg)
+                .await
         }
     }
 }
 
-pub fn handle_server_message(
+pub async fn handle_server_message(
     app_state: &AppState,
     transport: &TransportServiceImpl,
     protocol: &Protocol,
@@ -52,7 +56,9 @@ pub fn handle_server_message(
 ) {
     match protocol {
         Protocol::V0 | Protocol::V2 => {
-            ProtocolV2Handler::new(app_state, transport).handle_server_message(id, msg)
+            ProtocolV2Handler::new(app_state, transport)
+                .handle_server_message(id, msg)
+                .await
         }
         Protocol::JSON => {
             ProtocolJsonHandler::new(app_state, transport).handle_server_message(id, msg)
@@ -60,7 +66,7 @@ pub fn handle_server_message(
     }
 }
 
-pub fn on_authenticated(
+pub async fn on_authenticated(
     app_state: &AppState,
     transport: &TransportServiceImpl,
     protocol: &Protocol,
@@ -69,7 +75,9 @@ pub fn on_authenticated(
 ) {
     match protocol {
         Protocol::V0 | Protocol::V2 => {
-            ProtocolV2Handler::new(app_state, transport).on_authenticated(id, username)
+            ProtocolV2Handler::new(app_state, transport)
+                .on_authenticated(id, username)
+                .await
         }
         Protocol::JSON => {}
     }

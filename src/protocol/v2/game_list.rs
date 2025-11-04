@@ -15,7 +15,7 @@ use crate::{
 };
 
 impl ProtocolV2Handler {
-    pub fn handle_server_game_list_message(&self, id: &ClientId, msg: &ServerMessage) {
+    pub async fn handle_server_game_list_message(&self, id: &ClientId, msg: &ServerMessage) {
         match msg {
             ServerMessage::GameList { add, game } => {
                 self.send_game_string_message(
@@ -29,7 +29,7 @@ impl ProtocolV2Handler {
                 );
             }
             ServerMessage::GameStart { game_id } => {
-                self.send_game_start_message(id, game_id);
+                self.send_game_start_message(id, game_id).await;
             }
             _ => {
                 eprintln!("Unhandled server game list message: {:?}", msg);
@@ -122,7 +122,7 @@ impl ProtocolV2Handler {
         self.send_to(id, message);
     }
 
-    pub fn send_game_start_message(&self, id: &ClientId, game_id: &GameId) {
+    pub async fn send_game_start_message(&self, id: &ClientId, game_id: &GameId) {
         let Some(game) = self.app_state.game_service.get_game(game_id) else {
             eprintln!("GameStart message for unknown game ID: {}", game_id);
             return;
@@ -135,12 +135,14 @@ impl ProtocolV2Handler {
             .app_state
             .player_service
             .fetch_player_data(&game.white)
-            .map_or(false, |p| p.is_bot)
+            .await
+            .map_or(false, |p| p.flags.is_bot)
             || self
                 .app_state
                 .player_service
                 .fetch_player_data(&game.black)
-                .map_or(false, |p| p.is_bot);
+                .await
+                .map_or(false, |p| p.flags.is_bot);
         let settings = &game.game.base.settings;
         let protocol = self.transport.get_protocol(id);
         let message = if protocol == Protocol::V0 {

@@ -64,19 +64,24 @@ pub enum GameType {
 pub type SpectatorId = Uuid;
 
 pub type ArcGameRepository = Arc<Box<dyn GameRepository + Send + Sync + 'static>>;
+
+#[async_trait::async_trait]
 pub trait GameRepository {
-    fn create_game(&self, game: &GameRecord) -> ServiceResult<GameId>;
-    fn update_game(&self, id: GameId, update: &GameRecordUpdate) -> ServiceResult<()>;
+    async fn create_game(&self, game: &GameRecord) -> ServiceResult<GameId>;
+    async fn update_game(&self, id: GameId, update: &GameRecordUpdate) -> ServiceResult<()>;
 }
 
 pub type ArcGameService = Arc<Box<dyn GameService + Send + Sync + 'static>>;
+
+#[async_trait::async_trait]
 pub trait GameService {
     fn get_game_ids(&self) -> Vec<GameId>;
     fn get_games(&self) -> Vec<Game>;
     fn get_game(&self, id: &GameId) -> Option<Game>;
     fn has_active_game(&self, player: &PlayerUsername) -> bool;
     fn get_active_game_of_player(&self, player: &PlayerUsername) -> Option<Game>;
-    fn add_game_from_seek(&self, seek: &Seek, opponent: &PlayerUsername) -> ServiceResult<()>;
+    async fn add_game_from_seek(&self, seek: &Seek, opponent: &PlayerUsername)
+    -> ServiceResult<()>;
     fn try_do_action(
         &self,
         username: &PlayerUsername,
@@ -149,14 +154,14 @@ impl GameServiceImpl {
         }
     }
 
-    fn insert_empty_game(
+    async fn insert_empty_game(
         &self,
         white: &PlayerUsername,
         black: &PlayerUsername,
         seek: &Seek,
     ) -> ServiceResult<GameId> {
-        let white_player = self.player_service.fetch_player_data(white)?;
-        let black_player = self.player_service.fetch_player_data(black)?;
+        let white_player = self.player_service.fetch_player_data(white).await?;
+        let black_player = self.player_service.fetch_player_data(black).await?;
         let game_record = GameRecord {
             date: chrono::Utc::now(),
             white: white.clone(),
@@ -168,16 +173,16 @@ impl GameServiceImpl {
             result: TakGameState::Ongoing,
             moves: vec![],
         };
-        let game_id = self.game_repository.create_game(&game_record)?;
+        let game_id = self.game_repository.create_game(&game_record).await?;
         Ok(game_id)
     }
 
-    fn save_to_database(&self, game: &Game) -> ServiceResult<()> {
+    async fn save_to_database(&self, game: &Game) -> ServiceResult<()> {
         let update = GameRecordUpdate {
             moves: game.game.action_history.clone(),
             result: game.game.base.game_state.clone(),
         };
-        self.game_repository.update_game(game.id, &update)?;
+        self.game_repository.update_game(game.id, &update).await?;
         Ok(())
     }
 
@@ -226,9 +231,12 @@ impl GameServiceImpl {
         self.transport_service
             .try_player_broadcast(&game_remove_msg);
 
-        if let Err(e) = self.save_to_database(&game) {
-            eprintln!("Failed to save game to database: {}", e);
-        }
+        let game_service = self.clone();
+        tokio::spawn(async move {
+            if let Err(e) = game_service.save_to_database(&game).await {
+                eprintln!("Failed to save game to database: {}", e);
+            }
+        });
     }
 
     fn send_time_update(&self, game_id: &GameId) {
@@ -351,6 +359,7 @@ impl GameServiceImpl {
     }
 }
 
+#[async_trait::async_trait]
 impl GameService for GameServiceImpl {
     fn observe_game(&self, id: &SpectatorId, game_id: &GameId) -> ServiceResult<()> {
         if self.games.get(game_id).is_none() {
@@ -438,7 +447,11 @@ impl GameService for GameServiceImpl {
         Ok(())
     }
 
-    fn add_game_from_seek(&self, seek: &Seek, opponent: &PlayerUsername) -> ServiceResult<()> {
+    async fn add_game_from_seek(
+        &self,
+        seek: &Seek,
+        opponent: &PlayerUsername,
+    ) -> ServiceResult<()> {
         if &seek.creator == opponent {
             return ServiceError::not_possible("You cannot accept your own seek");
         }
@@ -459,7 +472,8 @@ impl GameService for GameServiceImpl {
                 }
             }
         };
-        let id = self.insert_empty_game(&white, &black, seek)?;
+
+        let id = self.insert_empty_game(&white, &black, seek).await?;
         let game = Game {
             id,
             white,
@@ -585,6 +599,7 @@ impl GameService for GameServiceImpl {
 #[derive(Clone, Default)]
 pub struct MockGameService {}
 
+#[async_trait::async_trait]
 impl GameService for MockGameService {
     fn get_game_ids(&self) -> Vec<GameId> {
         vec![]
@@ -601,7 +616,11 @@ impl GameService for MockGameService {
     fn get_active_game_of_player(&self, _player: &PlayerUsername) -> Option<Game> {
         None
     }
-    fn add_game_from_seek(&self, _seek: &Seek, _opponent: &PlayerUsername) -> ServiceResult<()> {
+    async fn add_game_from_seek(
+        &self,
+        _seek: &Seek,
+        _opponent: &PlayerUsername,
+    ) -> ServiceResult<()> {
         Ok(())
     }
     fn try_do_action(

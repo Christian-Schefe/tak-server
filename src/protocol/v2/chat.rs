@@ -57,7 +57,7 @@ impl ProtocolV2Handler {
         Ok(None)
     }
 
-    pub fn handle_shout_message(
+    pub async fn handle_shout_message(
         &self,
         username: &PlayerUsername,
         orig_msg: &str,
@@ -68,11 +68,12 @@ impl ProtocolV2Handler {
         }
         self.app_state
             .chat_service
-            .send_message_to_all(username, &msg)?;
+            .send_message_to_all(username, &msg)
+            .await?;
         Ok(None)
     }
 
-    pub fn handle_shout_room_message(
+    pub async fn handle_shout_room_message(
         &self,
         username: &PlayerUsername,
         orig_msg: &str,
@@ -85,11 +86,12 @@ impl ProtocolV2Handler {
 
         self.app_state
             .chat_service
-            .send_message_to_room(username, &room, &msg)?;
+            .send_message_to_room(username, &room, &msg)
+            .await?;
         Ok(None)
     }
 
-    pub fn handle_tell_message(
+    pub async fn handle_tell_message(
         &self,
         username: &PlayerUsername,
         orig_msg: &str,
@@ -100,11 +102,11 @@ impl ProtocolV2Handler {
         }
         let target_username = parts[1];
 
-        let sent_msg = self.app_state.chat_service.send_message_to_player(
-            username,
-            &target_username.to_string(),
-            &msg,
-        )?;
+        let sent_msg = self
+            .app_state
+            .chat_service
+            .send_message_to_player(username, &target_username.to_string(), &msg)
+            .await?;
         Ok(Some(format!("Told <{}> {}", target_username, sent_msg)))
     }
 }

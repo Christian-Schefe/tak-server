@@ -31,7 +31,7 @@ impl ProtocolV2Handler {
         }
     }
 
-    pub fn handle_client_message(&self, id: &ClientId, msg: String) {
+    pub async fn handle_client_message(&self, id: &ClientId, msg: String) {
         let parts = msg.split_whitespace().collect::<Vec<_>>();
         if parts.is_empty() {
             println!("Received empty message");
@@ -45,12 +45,12 @@ impl ProtocolV2Handler {
                 self.transport.close_client(id);
                 Ok(None)
             }
-            "login" => self.handle_login_message(id, &parts),
-            "logintoken" => self.handle_login_token_message(id, &parts),
-            "register" => self.handle_register_message(id, &parts),
-            "sendresettoken" => self.handle_reset_token_message(id, &parts),
-            "resetpassword" => self.handle_reset_password_message(&parts),
-            _ => self.handle_logged_in_client_message(id, &parts, &msg),
+            "login" => self.handle_login_message(id, &parts).await,
+            "logintoken" => self.handle_login_token_message(id, &parts).await,
+            "register" => self.handle_register_message(id, &parts).await,
+            "sendresettoken" => self.handle_reset_token_message(id, &parts).await,
+            "resetpassword" => self.handle_reset_password_message(&parts).await,
+            _ => self.handle_logged_in_client_message(id, &parts, &msg).await,
         };
         match res {
             Ok(Some(msg)) => {
@@ -66,10 +66,10 @@ impl ProtocolV2Handler {
         }
     }
 
-    pub fn handle_server_message(&self, id: &ClientId, msg: &ServerMessage) {
+    pub async fn handle_server_message(&self, id: &ClientId, msg: &ServerMessage) {
         match msg {
             ServerMessage::SeekList { add, seek } => {
-                self.handle_server_seek_list_message(id, seek, *add);
+                self.handle_server_seek_list_message(id, seek, *add).await;
             }
             ServerMessage::GameMessage { game_id, message } => {
                 self.handle_server_game_message(id, game_id, message);
@@ -86,7 +86,7 @@ impl ProtocolV2Handler {
                 self.send_to(id, rematch_message);
             }
             ServerMessage::GameList { .. } | ServerMessage::GameStart { .. } => {
-                self.handle_server_game_list_message(id, msg);
+                self.handle_server_game_list_message(id, msg).await;
             }
             ServerMessage::ChatMessage { .. } | ServerMessage::RoomMembership { .. } => {
                 self.handle_server_chat_message(id, msg);
@@ -106,16 +106,16 @@ impl ProtocolV2Handler {
         }
     }
 
-    pub fn on_authenticated(&self, id: &ClientId, username: &PlayerUsername) {
+    pub async fn on_authenticated(&self, id: &ClientId, username: &PlayerUsername) {
         let seeks = self.app_state.seek_service.get_seeks();
         for seek in seeks {
             let seek_msg = ServerMessage::SeekList { add: true, seek };
-            self.handle_server_message(id, &seek_msg);
+            self.handle_server_message(id, &seek_msg).await;
         }
         let games = self.app_state.game_service.get_games();
         for game in games {
             let game_msg = ServerMessage::GameList { add: true, game };
-            self.handle_server_message(id, &game_msg);
+            self.handle_server_message(id, &game_msg).await;
         }
         if let Some(active_game) = self
             .app_state
@@ -125,7 +125,7 @@ impl ProtocolV2Handler {
             let start_msg = ServerMessage::GameStart {
                 game_id: active_game.id,
             };
-            self.handle_server_message(id, &start_msg);
+            self.handle_server_message(id, &start_msg).await;
             for action in &active_game.game.action_history {
                 let action_msg = ServerMessage::GameMessage {
                     game_id: active_game.id,
@@ -133,7 +133,7 @@ impl ProtocolV2Handler {
                         action: action.clone(),
                     },
                 };
-                self.handle_server_message(id, &action_msg);
+                self.handle_server_message(id, &action_msg).await;
             }
             let now = Instant::now();
             let (remaining_white, remaining_black) = active_game.game.get_time_remaining_both(now);
@@ -144,7 +144,7 @@ impl ProtocolV2Handler {
                     remaining_black,
                 },
             };
-            self.handle_server_message(id, &time_msg);
+            self.handle_server_message(id, &time_msg).await;
         }
     }
 
@@ -153,7 +153,7 @@ impl ProtocolV2Handler {
         self.send_to(id, "Login or Register");
     }
 
-    fn handle_logged_in_client_message(
+    async fn handle_logged_in_client_message(
         &self,
         id: &ClientId,
         parts: &[&str],
@@ -164,20 +164,23 @@ impl ProtocolV2Handler {
         };
 
         match parts[0].to_ascii_lowercase().as_str() {
-            "changepassword" => self.handle_change_password_message(id, &username, &parts),
+            "changepassword" => {
+                self.handle_change_password_message(id, &username, &parts)
+                    .await
+            }
             "seek" => self.handle_seek_message(&username, &parts),
             "rematch" => self.handle_rematch_message(&username, &parts),
-            "list" => self.handle_seek_list_message(id),
+            "list" => self.handle_seek_list_message(id).await,
             "gamelist" => self.handle_game_list_message(id),
-            "accept" => self.handle_accept_message(&username, &parts),
+            "accept" => self.handle_accept_message(&username, &parts).await,
             "observe" => self.handle_observe_message(id, &parts, true),
             "unobserve" => self.handle_observe_message(id, &parts, false),
-            "shout" => self.handle_shout_message(&username, &msg),
-            "shoutroom" => self.handle_shout_room_message(&username, &msg),
-            "tell" => self.handle_tell_message(&username, &msg),
+            "shout" => self.handle_shout_message(&username, &msg).await,
+            "shoutroom" => self.handle_shout_room_message(&username, &msg).await,
+            "tell" => self.handle_tell_message(&username, &msg).await,
             "joinroom" => self.handle_room_membership_message(id, &parts, true),
             "leaveroom" => self.handle_room_membership_message(id, &parts, false),
-            "sudo" => self.handle_sudo_message(&username, msg, &parts),
+            "sudo" => self.handle_sudo_message(&username, msg, &parts).await,
             s if s.starts_with("game#") => self.handle_game_message(&username, &parts),
             _ => ServiceError::bad_request(format!("Unknown V2 message type: {}", parts[0])),
         }

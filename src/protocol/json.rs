@@ -120,7 +120,7 @@ impl ProtocolJsonHandler {
         }
     }
 
-    pub fn handle_client_message(&self, id: &ClientId, msg: String) {
+    pub async fn handle_client_message(&self, id: &ClientId, msg: String) {
         if msg.to_ascii_lowercase().starts_with("protocol") {
             return;
         }
@@ -139,11 +139,11 @@ impl ProtocolJsonHandler {
         };
         let response: ServiceResult<ClientResponse> = match msg.msg {
             ClientMessage::Ping => Ok(ClientResponse::Ok),
-            ClientMessage::Login { token } => self.handle_login_message(id, &token),
+            ClientMessage::Login { token } => self.handle_login_message(id, &token).await,
             ClientMessage::LoginGuest { token } => {
-                self.handle_login_guest_message(id, token.as_deref())
+                self.handle_login_guest_message(id, token.as_deref()).await
             }
-            msg => self.handle_logged_in_client_message(id, msg),
+            msg => self.handle_logged_in_client_message(id, msg).await,
         };
         let tracked_response = TrackedClientResponse {
             msg_id: msg.msg_id,
@@ -154,7 +154,7 @@ impl ProtocolJsonHandler {
         self.send_json_to(id, &tracked_response);
     }
 
-    fn handle_logged_in_client_message(
+    async fn handle_logged_in_client_message(
         &self,
         id: &ClientId,
         msg: ClientMessage,
@@ -177,7 +177,10 @@ impl ProtocolJsonHandler {
                 message,
                 room,
                 player,
-            } => self.handle_chat_message(&username, &message, &room, &player),
+            } => {
+                self.handle_chat_message(&username, &message, &room, &player)
+                    .await
+            }
 
             ClientMessage::Ping
             | ClientMessage::Login { .. }

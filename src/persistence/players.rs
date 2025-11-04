@@ -1,42 +1,42 @@
-use r2d2::Pool;
-use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::ToSql;
+use sqlx::{
+    Pool, Row, Sqlite,
+    sqlite::{SqlitePoolOptions, SqliteRow},
+};
 use tak_server_domain::{
     ServiceError, ServiceResult,
-    player::{Player, PlayerFilter, PlayerId, PlayerRepository, PlayerUpdate},
+    player::{Player, PlayerFilter, PlayerFlags, PlayerFlagsUpdate, PlayerId, PlayerRepository},
 };
 
-use crate::persistence::{get_connection, to_sql_option, update_entry};
-
 pub struct PlayerRepositoryImpl {
-    pool: Pool<SqliteConnectionManager>,
+    pool: Pool<Sqlite>,
 }
 
 impl PlayerRepositoryImpl {
     pub fn new() -> Self {
         let db_path = std::env::var("TAK_PLAYER_DB").expect("TAK_PLAYER_DB env var not set");
-        let manager = SqliteConnectionManager::file(db_path);
-        let pool = Pool::builder()
-            .max_size(5)
-            .build(manager)
-            .expect("Failed to create DB pool");
+        let pool = SqlitePoolOptions::new()
+            .max_connections(5)
+            .connect_lazy(&db_path)
+            .expect("Failed to create pool");
         Self { pool }
     }
 
-    fn player_from_row(row: &rusqlite::Row) -> rusqlite::Result<(PlayerId, Player)> {
-        let id = row.get("id")?;
+    fn player_from_row(row: &SqliteRow) -> sqlx::Result<(PlayerId, Player)> {
+        let id = row.try_get("id")?;
         Ok((
             id,
             Player {
-                password_hash: map_string_to_option(row.get("password")?),
-                username: row.get("name")?,
-                rating: row.get("rating")?,
-                email: map_string_to_option(row.get("email")?),
-                is_bot: row.get("isbot")?,
-                is_gagged: row.get("is_gagged")?,
-                is_mod: row.get("is_mod")?,
-                is_admin: row.get("is_admin")?,
-                is_banned: row.get("is_banned")?,
+                password_hash: map_string_to_option(row.try_get("password")?),
+                username: row.try_get("name")?,
+                rating: row.try_get("rating")?,
+                email: map_string_to_option(row.try_get("email")?),
+                flags: PlayerFlags {
+                    is_bot: row.try_get("isbot")?,
+                    is_gagged: row.try_get("is_gagged")?,
+                    is_mod: row.try_get("is_mod")?,
+                    is_admin: row.try_get("is_admin")?,
+                    is_banned: row.try_get("is_banned")?,
+                },
             },
         ))
     }
@@ -46,85 +46,144 @@ fn map_string_to_option(s: String) -> Option<String> {
     if s.is_empty() { None } else { Some(s) }
 }
 
+#[async_trait::async_trait]
 impl PlayerRepository for PlayerRepositoryImpl {
-    fn get_player_by_id(&self, id: i64) -> ServiceResult<Option<Player>> {
-        let conn = get_connection(&self.pool)?;
-        let player = conn.query_one(
-            "SELECT * FROM players WHERE id = ?1",
-            [id],
-            Self::player_from_row,
-        );
+    async fn get_player_by_id(&self, id: i64) -> ServiceResult<Option<Player>> {
+        let player = sqlx::query("SELECT * FROM players WHERE id = ?")
+            .bind(id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| ServiceError::Internal(e.to_string()))?;
+        let player = Self::player_from_row(&player);
         match player {
             Ok((_, player)) => Ok(Some(player)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(sqlx::Error::RowNotFound) => Ok(None),
             Err(e) => Err(ServiceError::Internal(e.to_string())),
         }
     }
 
-    fn get_player_by_name(&self, name: &str) -> ServiceResult<Option<(PlayerId, Player)>> {
-        let conn = get_connection(&self.pool)?;
-        let player = conn.query_one(
-            "SELECT * FROM players WHERE name = ?1",
-            [name],
-            Self::player_from_row,
-        );
+    async fn get_player_by_name(&self, name: &str) -> ServiceResult<Option<(PlayerId, Player)>> {
+        let player = sqlx::query("SELECT * FROM players WHERE name = ?")
+            .bind(name)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| ServiceError::Internal(e.to_string()))?;
+        let player = Self::player_from_row(&player);
         match player {
             Ok(player) => Ok(Some(player)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(sqlx::Error::RowNotFound) => Ok(None),
             Err(e) => Err(ServiceError::Internal(e.to_string())),
         }
     }
 
     // TODO: remove manual id handling, use AUTOINCREMENT
-    fn create_player(&self, player: &Player) -> ServiceResult<()> {
-        let conn = get_connection(&self.pool)?;
-        let largest_player_id: i32 = conn
-            .query_row("SELECT MAX(id) FROM players", [], |row| {
-                row.get::<_, i32>(0)
-            })
-            .map_err(|e| ServiceError::Internal(e.to_string()))?;
-        conn.execute(
-            "INSERT INTO players (id, name, email, password, rating, isbot, is_gagged, is_mod, is_admin, is_banned) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            rusqlite::params![
-                largest_player_id + 1,
-                player.username,
-                player.email.as_ref().unwrap_or(&String::new()),
-                player.password_hash.as_ref().unwrap_or(&String::new()),
-                player.rating,
-                player.is_bot,
-                player.is_gagged,
-                player.is_mod,
-                player.is_admin,
-                player.is_banned,
-            ],
-        )
+    async fn create_player(&self, player: &Player) -> ServiceResult<()> {
+        let largest_player_id = match sqlx::query_scalar::<_, i32>("SELECT MAX(id) FROM players")
+            .fetch_one(&self.pool)
+            .await
+        {
+            Ok(id) => id,
+            Err(sqlx::Error::RowNotFound) => 0,
+            Err(e) => return Err(ServiceError::Internal(e.to_string())),
+        };
+
+        let fields = vec![
+            "id",
+            "name",
+            "email",
+            "password",
+            "rating",
+            "isbot",
+            "is_gagged",
+            "is_mod",
+            "is_admin",
+            "is_banned",
+        ];
+
+        sqlx::query(&format!(
+            "INSERT INTO players ({}) VALUES ({})",
+            fields.join(", "),
+            fields.iter().map(|_| "?").collect::<Vec<_>>().join(", ")
+        ))
+        .bind(largest_player_id + 1)
+        .bind(&player.username)
+        .bind(player.email.as_ref().unwrap_or(&String::new()))
+        .bind(player.password_hash.as_ref().unwrap_or(&String::new()))
+        .bind(player.rating)
+        .bind(player.flags.is_bot)
+        .bind(player.flags.is_gagged)
+        .bind(player.flags.is_mod)
+        .bind(player.flags.is_admin)
+        .bind(player.flags.is_banned)
+        .execute(&self.pool)
+        .await
         .map_err(|e| ServiceError::Internal(e.to_string()))?;
+
         Ok(())
     }
 
-    fn update_player(&self, id: i64, update: &PlayerUpdate) -> ServiceResult<()> {
-        let value_pairs: Vec<(&'static str, Option<&dyn ToSql>)> = vec![
-            ("password", to_sql_option(&update.password_hash)),
-            ("isbot", to_sql_option(&update.is_bot)),
-            ("is_gagged", to_sql_option(&update.is_gagged)),
-            ("is_mod", to_sql_option(&update.is_mod)),
-            ("is_admin", to_sql_option(&update.is_admin)),
-            ("is_banned", to_sql_option(&update.is_banned)),
-        ];
-        update_entry(&self.pool, "players", ("id", &id), value_pairs)
+    async fn update_password(&self, id: i64, new_password_hash: String) -> ServiceResult<()> {
+        sqlx::query("UPDATE players SET password = ? WHERE id = ?")
+            .bind(new_password_hash)
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| ServiceError::Internal(e.to_string()))?;
+        Ok(())
     }
 
-    fn get_players(&self, filter: PlayerFilter) -> ServiceResult<Vec<Player>> {
+    async fn update_flags(&self, id: i64, update: &PlayerFlagsUpdate) -> ServiceResult<()> {
+        let query_str = format!("UPDATE players SET {} WHERE id = ?", {
+            let mut sets = Vec::new();
+
+            if update.is_bot.is_some() {
+                sets.push("isbot = ?");
+            }
+            if update.is_gagged.is_some() {
+                sets.push("is_gagged = ?");
+            }
+            if update.is_mod.is_some() {
+                sets.push("is_mod = ?");
+            }
+            if update.is_admin.is_some() {
+                sets.push("is_admin = ?");
+            }
+            if update.is_banned.is_some() {
+                sets.push("is_banned = ?");
+            }
+            sets.join(", ")
+        });
+        let mut query = sqlx::query(&query_str);
+        for field in [
+            update.is_bot,
+            update.is_gagged,
+            update.is_mod,
+            update.is_admin,
+            update.is_banned,
+        ] {
+            if let Some(value) = field {
+                query = query.bind(value);
+            }
+        }
+        query = query.bind(id);
+        query
+            .execute(&self.pool)
+            .await
+            .map_err(|e| ServiceError::Internal(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn get_players(&self, filter: PlayerFilter) -> ServiceResult<Vec<Player>> {
         let mut query = "SELECT * FROM players".to_string();
         let mut conditions = Vec::new();
-        let mut params: Vec<&dyn ToSql> = Vec::new();
+        let mut params = Vec::new();
 
-        let pairs: Vec<(&'static str, Option<&dyn ToSql>)> = vec![
-            ("isbot", to_sql_option(&filter.is_bot)),
-            ("is_gagged", to_sql_option(&filter.is_gagged)),
-            ("is_mod", to_sql_option(&filter.is_mod)),
-            ("is_admin", to_sql_option(&filter.is_admin)),
-            ("is_banned", to_sql_option(&filter.is_banned)),
+        let pairs = [
+            ("isbot", filter.is_bot),
+            ("is_gagged", filter.is_gagged),
+            ("is_mod", filter.is_mod),
+            ("is_admin", filter.is_admin),
+            ("is_banned", filter.is_banned),
         ];
 
         for (field, value) in pairs {
@@ -139,38 +198,28 @@ impl PlayerRepository for PlayerRepositoryImpl {
             query.push_str(&conditions.join(" AND "));
         }
 
-        let conn = get_connection(&self.pool)?;
-        let mut stmt = conn
-            .prepare(&query)
-            .map_err(|e| ServiceError::Internal(e.to_string()))?;
-        let player_iter = stmt
-            .query_map(
-                rusqlite::params_from_iter(params.iter()),
-                Self::player_from_row,
-            )
-            .map_err(|e| ServiceError::Internal(e.to_string()))?;
-
-        let mut players = Vec::new();
-        for player in player_iter {
-            let (_, player) = player.map_err(|e| ServiceError::Internal(e.to_string()))?;
-            players.push(player);
+        let mut query = sqlx::query(&query);
+        for param in params {
+            query = query.bind(param);
         }
-        Ok(players)
+        let player_iter = query
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| ServiceError::Internal(e.to_string()))?;
+        player_iter
+            .into_iter()
+            .map(|row| {
+                Self::player_from_row(&row)
+                    .map(|(_, player)| player)
+                    .map_err(|e| ServiceError::Internal(e.to_string()))
+            })
+            .collect::<ServiceResult<Vec<Player>>>()
     }
 
-    fn get_player_names(&self) -> ServiceResult<Vec<String>> {
-        let conn = get_connection(&self.pool)?;
-        let mut stmt = conn
-            .prepare("SELECT name FROM players")
-            .map_err(|e| ServiceError::Internal(e.to_string()))?;
-        let name_iter = stmt
-            .query_map([], |row| row.get(0))
-            .map_err(|e| ServiceError::Internal(e.to_string()))?;
-
-        let mut names = Vec::new();
-        for name in name_iter {
-            names.push(name.map_err(|e| ServiceError::Internal(e.to_string()))?);
-        }
-        Ok(names)
+    async fn get_player_names(&self) -> ServiceResult<Vec<String>> {
+        sqlx::query_scalar::<_, String>("SELECT name FROM players")
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| ServiceError::Internal(e.to_string()))
     }
 }

@@ -62,9 +62,10 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn start(&self) {
+    pub async fn start(&self) {
         self.player_service
             .load_unique_usernames()
+            .await
             .expect("Failed to load unique usernames");
     }
 }

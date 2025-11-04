@@ -24,6 +24,8 @@ pub struct Seek {
 pub type SeekId = u32;
 
 pub type ArcSeekService = Arc<Box<dyn SeekService + Send + Sync + 'static>>;
+
+#[async_trait::async_trait]
 pub trait SeekService {
     fn add_seek(
         &self,
@@ -46,7 +48,7 @@ pub trait SeekService {
     fn get_seeks(&self) -> Vec<Seek>;
     fn get_seek(&self, id: &SeekId) -> ServiceResult<Seek>;
     fn remove_seek_of_player(&self, player: &PlayerUsername) -> ServiceResult<Seek>;
-    fn accept_seek(&self, player: &PlayerUsername, id: &SeekId) -> ServiceResult<()>;
+    async fn accept_seek(&self, player: &PlayerUsername, id: &SeekId) -> ServiceResult<()>;
 }
 
 #[derive(Clone)]
@@ -119,6 +121,7 @@ impl SeekServiceImpl {
     }
 }
 
+#[async_trait::async_trait]
 impl SeekService for SeekServiceImpl {
     fn add_seek(
         &self,
@@ -212,7 +215,7 @@ impl SeekService for SeekServiceImpl {
         Ok(seek)
     }
 
-    fn accept_seek(&self, player: &PlayerUsername, id: &SeekId) -> ServiceResult<()> {
+    async fn accept_seek(&self, player: &PlayerUsername, id: &SeekId) -> ServiceResult<()> {
         let Some(seek_ref) = self.seeks.get(id) else {
             return ServiceError::not_found("Seek ID not found");
         };
@@ -224,7 +227,7 @@ impl SeekService for SeekServiceImpl {
             }
         }
 
-        self.game_service.add_game_from_seek(&seek, &player)?;
+        self.game_service.add_game_from_seek(&seek, &player).await?;
         let _ = self.remove_seek_of_player(&seek.creator);
         let _ = self.remove_seek_of_player(&player);
         Ok(())

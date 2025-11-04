@@ -22,9 +22,9 @@ impl ProtocolV2Handler {
         self.handle_add_seek_message(username, parts, None)
     }
 
-    pub fn handle_seek_list_message(&self, id: &ClientId) -> ProtocolV2Result {
+    pub async fn handle_seek_list_message(&self, id: &ClientId) -> ProtocolV2Result {
         for seek in self.app_state.seek_service.get_seeks() {
-            self.handle_server_seek_list_message(id, &seek, true);
+            self.handle_server_seek_list_message(id, &seek, true).await;
         }
         Ok(None)
     }
@@ -171,7 +171,7 @@ impl ProtocolV2Handler {
         Ok(None)
     }
 
-    pub fn handle_accept_message(
+    pub async fn handle_accept_message(
         &self,
         username: &PlayerUsername,
         parts: &[&str],
@@ -184,11 +184,12 @@ impl ProtocolV2Handler {
         };
         self.app_state
             .seek_service
-            .accept_seek(username, &seek_id)?;
+            .accept_seek(username, &seek_id)
+            .await?;
         Ok(None)
     }
 
-    pub fn handle_server_seek_list_message(&self, id: &ClientId, seek: &Seek, add: bool) {
+    pub async fn handle_server_seek_list_message(&self, id: &ClientId, seek: &Seek, add: bool) {
         let message = format!(
             "Seek {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
             if add { "new" } else { "remove" },
@@ -231,7 +232,8 @@ impl ProtocolV2Handler {
             self.app_state
                 .player_service
                 .fetch_player_data(&seek.creator)
-                .map_or("0", |p| if p.is_bot { "1" } else { "0" })
+                .await
+                .map_or("0", |p| if p.flags.is_bot { "1" } else { "0" })
         );
         self.send_to(id, message);
     }

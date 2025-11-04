@@ -15,9 +15,10 @@ pub async fn sudo_ban_endpoint(
     State(app): State<AppState>,
     Json(req): Json<SudoBanRequest>,
 ) -> Result<(), MyServiceError> {
-    app.player_service.fetch_player(&claims.sub)?;
+    app.player_service.fetch_player(&claims.sub).await?;
     app.player_service
-        .set_banned(&claims.sub, &req.username, Some(req.message.clone()))?;
+        .set_banned(&claims.sub, &req.username, Some(req.message.clone()))
+        .await?;
     Ok(())
 }
 
@@ -31,9 +32,10 @@ pub async fn sudo_unban_endpoint(
     State(app): State<AppState>,
     Json(req): Json<SudoUnbanRequest>,
 ) -> Result<(), MyServiceError> {
-    app.player_service.fetch_player(&claims.sub)?;
+    app.player_service.fetch_player(&claims.sub).await?;
     app.player_service
-        .set_banned(&claims.sub, &req.username, None)?;
+        .set_banned(&claims.sub, &req.username, None)
+        .await?;
     Ok(())
 }
 
@@ -48,9 +50,10 @@ pub async fn sudo_admin_endpoint(
     State(app): State<AppState>,
     Json(req): Json<SudoSetRequest>,
 ) -> Result<(), MyServiceError> {
-    app.player_service.fetch_player(&claims.sub)?;
+    app.player_service.fetch_player(&claims.sub).await?;
     app.player_service
-        .set_admin(&claims.sub, &req.username, req.set)?;
+        .set_admin(&claims.sub, &req.username, req.set)
+        .await?;
     Ok(())
 }
 
@@ -59,9 +62,10 @@ pub async fn sudo_mod_endpoint(
     State(app): State<AppState>,
     Json(req): Json<SudoSetRequest>,
 ) -> Result<(), MyServiceError> {
-    app.player_service.fetch_player(&claims.sub)?;
+    app.player_service.fetch_player(&claims.sub).await?;
     app.player_service
-        .set_modded(&claims.sub, &req.username, req.set)?;
+        .set_modded(&claims.sub, &req.username, req.set)
+        .await?;
     Ok(())
 }
 
@@ -70,9 +74,10 @@ pub async fn sudo_bot_endpoint(
     State(app): State<AppState>,
     Json(req): Json<SudoSetRequest>,
 ) -> Result<(), MyServiceError> {
-    app.player_service.fetch_player(&claims.sub)?;
+    app.player_service.fetch_player(&claims.sub).await?;
     app.player_service
-        .set_bot(&claims.sub, &req.username, req.set)?;
+        .set_bot(&claims.sub, &req.username, req.set)
+        .await?;
     Ok(())
 }
 
@@ -81,8 +86,9 @@ pub async fn sudo_gag_endpoint(
     State(app): State<AppState>,
     Json(req): Json<SudoSetRequest>,
 ) -> Result<(), MyServiceError> {
-    app.player_service.fetch_player(&claims.sub)?;
+    app.player_service.fetch_player(&claims.sub).await?;
     app.player_service
-        .set_gagged(&claims.sub, &req.username, req.set)?;
+        .set_gagged(&claims.sub, &req.username, req.set)
+        .await?;
     Ok(())
 }

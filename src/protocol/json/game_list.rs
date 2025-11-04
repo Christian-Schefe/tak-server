@@ -37,7 +37,7 @@ pub async fn get_game_ids_endpoint(
     claims: Claims,
     State(app): State<AppState>,
 ) -> Result<Json<Vec<GameId>>, MyServiceError> {
-    app.player_service.fetch_player(&claims.sub)?;
+    app.player_service.fetch_player(&claims.sub).await?;
     let game_ids = app.game_service.get_game_ids();
     Ok(Json(game_ids))
 }
@@ -47,7 +47,7 @@ pub async fn get_game_endpoint(
     Path(game_id): Path<GameId>,
     State(app): State<AppState>,
 ) -> Result<Json<JsonGame>, MyServiceError> {
-    app.player_service.fetch_player(&claims.sub)?;
+    app.player_service.fetch_player(&claims.sub).await?;
     let Some(game) = app.game_service.get_game(&game_id) else {
         return ServiceError::not_found("Game ID not found")?;
     };

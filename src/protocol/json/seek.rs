@@ -82,7 +82,7 @@ pub async fn handle_add_seek_endpoint(
     State(app): State<AppState>,
     Json(seek): Json<JsonSeek>,
 ) -> Result<(), MyServiceError> {
-    app.player_service.fetch_player(&claims.sub)?;
+    app.player_service.fetch_player(&claims.sub).await?;
     let game_settings = TakGameSettings {
         board_size: seek.board_size,
         half_komi: seek.half_komi,
@@ -125,7 +125,7 @@ pub async fn handle_remove_seek_endpoint(
     claims: Claims,
     State(app): State<AppState>,
 ) -> Result<(), MyServiceError> {
-    app.player_service.fetch_player(&claims.sub)?;
+    app.player_service.fetch_player(&claims.sub).await?;
     app.seek_service.remove_seek_of_player(&claims.sub)?;
     Ok(())
 }
@@ -134,7 +134,7 @@ pub async fn get_seeks_endpoint(
     claims: Claims,
     State(app): State<AppState>,
 ) -> Result<Json<Vec<JsonSeekWithId>>, MyServiceError> {
-    app.player_service.fetch_player(&claims.sub)?;
+    app.player_service.fetch_player(&claims.sub).await?;
     let seeks = app.seek_service.get_seeks();
     let json_seeks = seeks
         .into_iter()
@@ -151,7 +151,7 @@ pub async fn get_seek_endpoint(
     Path(seek_id): Path<SeekId>,
     State(app): State<AppState>,
 ) -> Result<Json<JsonSeek>, MyServiceError> {
-    app.player_service.fetch_player(&claims.sub)?;
+    app.player_service.fetch_player(&claims.sub).await?;
     let seek = app.seek_service.get_seek(&seek_id)?;
     let json_seek = json_seek_from_seek(&seek);
     Ok(Json(json_seek))
@@ -162,7 +162,7 @@ pub async fn accept_seek_endpoint(
     Path(seek_id): Path<SeekId>,
     State(app): State<AppState>,
 ) -> Result<(), MyServiceError> {
-    app.player_service.fetch_player(&claims.sub)?;
-    app.seek_service.accept_seek(&claims.sub, &seek_id)?;
+    app.player_service.fetch_player(&claims.sub).await?;
+    app.seek_service.accept_seek(&claims.sub, &seek_id).await?;
     Ok(())
 }

@@ -9,23 +9,23 @@ use crate::{
 };
 
 impl ProtocolJsonHandler {
-    pub fn handle_login_message(
+    pub async fn handle_login_message(
         &self,
         id: &ClientId,
         token: &str,
     ) -> ServiceResult<ClientResponse> {
-        let username = self.player_service.try_login_jwt(&token)?;
-        self.transport.associate_player(id, &username)?;
+        let username = self.player_service.try_login_jwt(&token).await?;
+        self.transport.associate_player(id, &username).await?;
         Ok(ClientResponse::Ok)
     }
 
-    pub fn handle_login_guest_message(
+    pub async fn handle_login_guest_message(
         &self,
         id: &ClientId,
         token: Option<&str>,
     ) -> ServiceResult<ClientResponse> {
         let username = self.player_service.try_login_guest(token)?;
-        self.transport.associate_player(id, &username)?;
+        self.transport.associate_player(id, &username).await?;
         Ok(ClientResponse::Ok)
     }
 }
@@ -43,7 +43,9 @@ pub async fn request_password_reset_endpoint(
     let username = req.username;
     let email = req.email;
 
-    app.player_service.send_reset_token(&username, &email)?;
+    app.player_service
+        .send_reset_token(&username, &email)
+        .await?;
 
     Ok(())
 }
@@ -64,7 +66,8 @@ pub async fn reset_password_endpoint(
     let new_password = req.new_password;
 
     app.player_service
-        .reset_password(&username, &token, &new_password)?;
+        .reset_password(&username, &token, &new_password)
+        .await?;
 
     Ok(())
 }
@@ -85,7 +88,8 @@ pub async fn change_password_endpoint(
     let new_password = req.new_password;
 
     app.player_service
-        .change_password(&username, &old_password, &new_password)?;
+        .change_password(&username, &old_password, &new_password)
+        .await?;
 
     Ok(())
 }
