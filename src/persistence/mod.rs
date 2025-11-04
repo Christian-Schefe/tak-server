@@ -1,13 +1,10 @@
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::ToSql;
-
-use crate::DatabaseError;
+use tak_server_domain::{ServiceError, ServiceResult};
 
 pub mod games;
 pub mod players;
-
-pub type DatabaseResult<T> = Result<T, DatabaseError>;
 
 pub fn to_sql_option<T>(value: &Option<T>) -> Option<&dyn ToSql>
 where
@@ -18,8 +15,9 @@ where
 
 pub fn get_connection(
     pool: &Pool<SqliteConnectionManager>,
-) -> DatabaseResult<PooledConnection<SqliteConnectionManager>> {
-    pool.get().map_err(|e| DatabaseError::ConnectionError(e))
+) -> ServiceResult<PooledConnection<SqliteConnectionManager>> {
+    pool.get()
+        .map_err(|e| ServiceError::Internal(e.to_string()))
 }
 
 fn update_entry(
@@ -27,7 +25,7 @@ fn update_entry(
     table: &str,
     id: (&str, &dyn ToSql),
     value_pairs: Vec<(&str, Option<&dyn ToSql>)>,
-) -> DatabaseResult<()> {
+) -> ServiceResult<()> {
     let mut query = format!("UPDATE {} SET ", table);
     let mut conditions = Vec::new();
     let mut params: Vec<&dyn ToSql> = Vec::new();
@@ -46,6 +44,6 @@ fn update_entry(
     params.push(id.1);
     let conn = get_connection(pool)?;
     conn.execute(&query, rusqlite::params_from_iter(params.iter()))
-        .map_err(|e| DatabaseError::QueryError(e))?;
+        .map_err(|e| ServiceError::Internal(e.to_string()))?;
     Ok(())
 }

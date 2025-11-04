@@ -17,7 +17,9 @@ use crate::{
     ServiceError, ServiceResult,
     player::{ArcPlayerService, PlayerUsername},
     seek::Seek,
-    transport::{ActivityStatus, ArcTransportService, ServerGameMessage, ServerMessage},
+    transport::{
+        ArcPlayerConnectionService, ArcTransportService, ServerGameMessage, ServerMessage,
+    },
     util::ManyManyDashMap,
 };
 
@@ -102,6 +104,7 @@ pub trait GameService {
 #[derive(Clone)]
 pub struct GameServiceImpl {
     transport_service: ArcTransportService,
+    player_connection_service: ArcPlayerConnectionService,
     player_service: ArcPlayerService,
     game_repository: ArcGameRepository,
     games: Arc<DashMap<GameId, Game>>,
@@ -113,11 +116,13 @@ pub struct GameServiceImpl {
 impl GameServiceImpl {
     pub fn new(
         transport_service: ArcTransportService,
+        player_connection_service: ArcPlayerConnectionService,
         player_service: ArcPlayerService,
         game_repository: ArcGameRepository,
     ) -> Self {
         Self {
             transport_service,
+            player_connection_service,
             player_service,
             game_repository,
             games: Arc::new(DashMap::new()),
@@ -294,27 +299,16 @@ impl GameServiceImpl {
                 let Some(mut game_ref) = game_service.games.get_mut(&game_id) else {
                     return;
                 };
-                let now = Instant::now();
                 if !game_ref.game.is_ongoing() {
                     break;
                 }
 
-                let white_last_active = match game_service
-                    .transport_service
-                    .get_last_active(&game_ref.white)
-                {
-                    Some(ActivityStatus::Active) => Some(now),
-                    Some(ActivityStatus::InactiveSince(t)) => Some(t),
-                    None => None,
-                };
-                let black_last_active = match game_service
-                    .transport_service
-                    .get_last_active(&game_ref.black)
-                {
-                    Some(ActivityStatus::Active) => Some(now),
-                    Some(ActivityStatus::InactiveSince(t)) => Some(t),
-                    None => None,
-                };
+                let white_last_active = game_service
+                    .player_connection_service
+                    .get_last_connected(&game_ref.white);
+                let black_last_active = game_service
+                    .player_connection_service
+                    .get_last_connected(&game_ref.black);
 
                 let timeout = if game_ref.game_type == GameType::Tournament {
                     GAME_TOURNAMENT_DISCONNECT_TIMEOUT
@@ -485,8 +479,7 @@ impl GameService for GameServiceImpl {
         self.run_timeout_waiter(id, cancel_token);
 
         let game_new_msg = ServerMessage::GameList { add: true, game };
-        self.transport_service
-            .try_player_broadcast(&game_new_msg);
+        self.transport_service.try_player_broadcast(&game_new_msg);
 
         let game_start_msg = ServerMessage::GameStart { game_id: id };
 

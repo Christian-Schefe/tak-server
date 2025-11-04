@@ -1,12 +1,12 @@
 use thiserror::Error;
 
 pub mod app;
-mod chat;
+pub mod chat;
 mod email;
 pub mod game;
 pub mod jwt;
 pub mod player;
-mod seek;
+pub mod seek;
 pub mod transport;
 pub mod util;
 

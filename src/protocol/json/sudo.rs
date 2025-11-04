@@ -1,7 +1,8 @@
 use axum::{Json, extract::State};
 use serde::Deserialize;
+use tak_server_domain::{app::AppState, player::PlayerUsername};
 
-use crate::{AppState, ServiceError, jwt::Claims, player::PlayerUsername};
+use crate::{app::MyServiceError, jwt::Claims};
 
 #[derive(Debug, Deserialize)]
 pub struct SudoBanRequest {
@@ -13,7 +14,7 @@ pub async fn sudo_ban_endpoint(
     claims: Claims,
     State(app): State<AppState>,
     Json(req): Json<SudoBanRequest>,
-) -> Result<(), ServiceError> {
+) -> Result<(), MyServiceError> {
     app.player_service.fetch_player(&claims.sub)?;
     app.player_service
         .set_banned(&claims.sub, &req.username, Some(req.message.clone()))?;
@@ -29,7 +30,7 @@ pub async fn sudo_unban_endpoint(
     claims: Claims,
     State(app): State<AppState>,
     Json(req): Json<SudoUnbanRequest>,
-) -> Result<(), ServiceError> {
+) -> Result<(), MyServiceError> {
     app.player_service.fetch_player(&claims.sub)?;
     app.player_service
         .set_banned(&claims.sub, &req.username, None)?;
@@ -46,7 +47,7 @@ pub async fn sudo_admin_endpoint(
     claims: Claims,
     State(app): State<AppState>,
     Json(req): Json<SudoSetRequest>,
-) -> Result<(), ServiceError> {
+) -> Result<(), MyServiceError> {
     app.player_service.fetch_player(&claims.sub)?;
     app.player_service
         .set_admin(&claims.sub, &req.username, req.set)?;
@@ -57,7 +58,7 @@ pub async fn sudo_mod_endpoint(
     claims: Claims,
     State(app): State<AppState>,
     Json(req): Json<SudoSetRequest>,
-) -> Result<(), ServiceError> {
+) -> Result<(), MyServiceError> {
     app.player_service.fetch_player(&claims.sub)?;
     app.player_service
         .set_modded(&claims.sub, &req.username, req.set)?;
@@ -68,7 +69,7 @@ pub async fn sudo_bot_endpoint(
     claims: Claims,
     State(app): State<AppState>,
     Json(req): Json<SudoSetRequest>,
-) -> Result<(), ServiceError> {
+) -> Result<(), MyServiceError> {
     app.player_service.fetch_player(&claims.sub)?;
     app.player_service
         .set_bot(&claims.sub, &req.username, req.set)?;
@@ -79,7 +80,7 @@ pub async fn sudo_gag_endpoint(
     claims: Claims,
     State(app): State<AppState>,
     Json(req): Json<SudoSetRequest>,
-) -> Result<(), ServiceError> {
+) -> Result<(), MyServiceError> {
     app.player_service.fetch_player(&claims.sub)?;
     app.player_service
         .set_gagged(&claims.sub, &req.username, req.set)?;

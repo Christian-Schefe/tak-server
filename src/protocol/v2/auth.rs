@@ -1,7 +1,7 @@
+use tak_server_domain::{ServiceError, player::PlayerUsername};
+
 use crate::{
-    ServiceError,
     client::ClientId,
-    player::PlayerUsername,
     protocol::v2::{ProtocolV2Handler, ProtocolV2Result},
 };
 
@@ -9,7 +9,8 @@ impl ProtocolV2Handler {
     pub fn handle_login_message(&self, id: &ClientId, parts: &[&str]) -> ProtocolV2Result {
         if parts.len() >= 2 && parts[1] == "Guest" {
             let token = parts.get(2).copied();
-            let username = self.player_service.try_login_guest(id, token)?;
+            let username = self.app_state.player_service.try_login_guest(token)?;
+            self.transport.associate_player(id, &username)?;
             return Ok(Some(format!("Welcome {}!", username)));
         }
         if parts.len() != 3 {
@@ -18,10 +19,15 @@ impl ProtocolV2Handler {
         let username = parts[1].to_string();
         let password = parts[2].to_string();
 
-        if let Err(e) = self.player_service.try_login(id, &username, &password) {
+        if let Err(e) = self
+            .app_state
+            .player_service
+            .try_login(&username, &password)
+        {
             let _ = self.send_to(id, format!("Authentication failure: {}", e));
             return Err(e);
         }
+        self.transport.associate_player(id, &username)?;
         Ok(Some(format!("Welcome {}!", username)))
     }
 
@@ -30,13 +36,14 @@ impl ProtocolV2Handler {
             return ServiceError::bad_request("Invalid LoginToken message format");
         }
         let token = parts[1];
-        let username = match self.player_service.try_login_jwt(id, token) {
+        let username = match self.app_state.player_service.try_login_jwt(token) {
             Ok(name) => name,
             Err(e) => {
                 let _ = self.send_to(id, format!("Authentication failure: {}", e));
                 return Err(e);
             }
         };
+        self.transport.associate_player(id, &username)?;
         Ok(Some(format!("Welcome {}!", username)))
     }
 
@@ -47,7 +54,11 @@ impl ProtocolV2Handler {
         let username = parts[1].to_string();
         let email = parts[2].to_string();
 
-        if let Err(e) = self.player_service.try_register(&username, &email) {
+        if let Err(e) = self
+            .app_state
+            .player_service
+            .try_register(&username, &email)
+        {
             let _ = self.send_to(id, format!("Registration Error: {}", e));
             return Err(e);
         }
@@ -65,7 +76,11 @@ impl ProtocolV2Handler {
         let username = parts[1].to_string();
         let email = parts[2].to_string();
 
-        if let Err(e) = self.player_service.send_reset_token(&username, &email) {
+        if let Err(e) = self
+            .app_state
+            .player_service
+            .send_reset_token(&username, &email)
+        {
             let _ = self.send_to(id, format!("Reset Token Error: {}", e));
             return Err(e);
         }
@@ -80,7 +95,8 @@ impl ProtocolV2Handler {
         let token = parts[2].to_string();
         let new_password = parts[3].to_string();
 
-        self.player_service
+        self.app_state
+            .player_service
             .reset_password(&username, &token, &new_password)?;
         Ok(None)
     }
@@ -98,6 +114,7 @@ impl ProtocolV2Handler {
         let new_password = parts[2].to_string();
 
         match self
+            .app_state
             .player_service
             .change_password(username, &old_password, &new_password)
         {

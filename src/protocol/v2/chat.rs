@@ -1,9 +1,9 @@
+use tak_server_domain::{ServiceError, player::PlayerUsername, transport::ChatMessageSource};
+
 use crate::{
-    ServiceError,
     client::ClientId,
-    player::PlayerUsername,
     protocol::{
-        ChatMessageSource, ServerMessage,
+        ServerMessage,
         v2::{ProtocolV2Handler, ProtocolV2Result, split_n_and_rest},
     },
 };
@@ -50,9 +50,9 @@ impl ProtocolV2Handler {
         }
         let room = parts[1].to_string();
         if join {
-            self.chat_service.join_room(id, &room)?;
+            self.app_state.chat_service.join_room(id, &room)?;
         } else {
-            self.chat_service.leave_room(id, &room)?;
+            self.app_state.chat_service.leave_room(id, &room)?;
         }
         Ok(None)
     }
@@ -66,7 +66,9 @@ impl ProtocolV2Handler {
         if parts.len() != 1 || msg.is_empty() {
             return ServiceError::bad_request("Invalid Shout message format");
         }
-        self.chat_service.send_message_to_all(username, &msg)?;
+        self.app_state
+            .chat_service
+            .send_message_to_all(username, &msg)?;
         Ok(None)
     }
 
@@ -81,7 +83,8 @@ impl ProtocolV2Handler {
         }
         let room = parts[1].to_string();
 
-        self.chat_service
+        self.app_state
+            .chat_service
             .send_message_to_room(username, &room, &msg)?;
         Ok(None)
     }
@@ -97,7 +100,7 @@ impl ProtocolV2Handler {
         }
         let target_username = parts[1];
 
-        let sent_msg = self.chat_service.send_message_to_player(
+        let sent_msg = self.app_state.chat_service.send_message_to_player(
             username,
             &target_username.to_string(),
             &msg,

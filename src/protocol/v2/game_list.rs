@@ -1,14 +1,17 @@
 use std::time::Instant;
 
-use crate::{
+use tak_server_domain::{
     ServiceError,
+    game::{Game, GameId, GameType},
+    transport::ServerGameMessage,
+};
+
+use crate::{
     client::ClientId,
-    game::{Game, GameId},
     protocol::{
-        Protocol, ServerGameMessage, ServerMessage,
+        Protocol, ServerMessage,
         v2::{ProtocolV2Handler, ProtocolV2Result},
     },
-    seek::GameType,
 };
 
 impl ProtocolV2Handler {
@@ -35,7 +38,7 @@ impl ProtocolV2Handler {
     }
 
     pub fn handle_game_list_message(&self, id: &ClientId) -> ProtocolV2Result {
-        for game in self.game_service.get_games() {
+        for game in self.app_state.game_service.get_games() {
             self.send_game_string_message(id, &game, "GameList Add");
         }
         Ok(None)
@@ -54,8 +57,8 @@ impl ProtocolV2Handler {
             return ServiceError::bad_request("Invalid Game ID in Observe message");
         };
         if observe {
-            self.game_service.observe_game(id, &game_id)?;
-            let Some(game) = self.game_service.get_game(&game_id) else {
+            self.app_state.game_service.observe_game(id, &game_id)?;
+            let Some(game) = self.app_state.game_service.get_game(&game_id) else {
                 return ServiceError::not_found("Game ID not found");
             };
             self.send_game_string_message(id, &game, "Observe");
@@ -73,7 +76,7 @@ impl ProtocolV2Handler {
                 },
             );
         } else {
-            self.game_service.unobserve_game(id, &game_id)?;
+            self.app_state.game_service.unobserve_game(id, &game_id)?;
         }
         Ok(None)
     }
@@ -120,24 +123,26 @@ impl ProtocolV2Handler {
     }
 
     pub fn send_game_start_message(&self, id: &ClientId, game_id: &GameId) {
-        let Some(game) = self.game_service.get_game(game_id) else {
+        let Some(game) = self.app_state.game_service.get_game(game_id) else {
             eprintln!("GameStart message for unknown game ID: {}", game_id);
             return;
         };
-        let Some(player) = self.client_service.get_associated_player(&id) else {
+        let Some(player) = self.transport.get_associated_player(&id) else {
             println!("Client {} not associated with any player", id);
             return;
         };
         let is_bot_game = self
+            .app_state
             .player_service
-            .fetch_player(&game.white)
+            .fetch_player_data(&game.white)
             .map_or(false, |p| p.is_bot)
             || self
+                .app_state
                 .player_service
-                .fetch_player(&game.black)
+                .fetch_player_data(&game.black)
                 .map_or(false, |p| p.is_bot);
         let settings = &game.game.base.settings;
-        let protocol = self.client_service.get_protocol(id);
+        let protocol = self.transport.get_protocol(id);
         let message = if protocol == Protocol::V0 {
             format!(
                 "Game Start {} {} {} vs {} {} {} {} {} {}",

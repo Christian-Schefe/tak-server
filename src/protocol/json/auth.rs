@@ -1,10 +1,10 @@
 use axum::{Json, extract::State};
 use serde::Deserialize;
+use tak_server_domain::{ServiceResult, app::AppState, player::PlayerUsername};
 
 use crate::{
-    AppState, ServiceError, ServiceResult,
+    app::MyServiceError,
     client::ClientId,
-    player::PlayerUsername,
     protocol::json::{ClientResponse, ProtocolJsonHandler},
 };
 
@@ -14,7 +14,8 @@ impl ProtocolJsonHandler {
         id: &ClientId,
         token: &str,
     ) -> ServiceResult<ClientResponse> {
-        self.player_service.try_login_jwt(id, &token)?;
+        let username = self.player_service.try_login_jwt(&token)?;
+        self.transport.associate_player(id, &username)?;
         Ok(ClientResponse::Ok)
     }
 
@@ -23,7 +24,8 @@ impl ProtocolJsonHandler {
         id: &ClientId,
         token: Option<&str>,
     ) -> ServiceResult<ClientResponse> {
-        self.player_service.try_login_guest(id, token)?;
+        let username = self.player_service.try_login_guest(token)?;
+        self.transport.associate_player(id, &username)?;
         Ok(ClientResponse::Ok)
     }
 }
@@ -37,7 +39,7 @@ pub struct RequestPasswordResetRequest {
 pub async fn request_password_reset_endpoint(
     State(app): State<AppState>,
     Json(req): Json<RequestPasswordResetRequest>,
-) -> Result<(), ServiceError> {
+) -> Result<(), MyServiceError> {
     let username = req.username;
     let email = req.email;
 
@@ -56,7 +58,7 @@ pub struct ResetPasswordRequest {
 pub async fn reset_password_endpoint(
     State(app): State<AppState>,
     Json(req): Json<ResetPasswordRequest>,
-) -> Result<(), ServiceError> {
+) -> Result<(), MyServiceError> {
     let username = req.username;
     let token = req.token;
     let new_password = req.new_password;
@@ -77,7 +79,7 @@ pub struct ChangePasswordRequest {
 pub async fn change_password_endpoint(
     State(app): State<AppState>,
     Json(req): Json<ChangePasswordRequest>,
-) -> Result<(), ServiceError> {
+) -> Result<(), MyServiceError> {
     let username = req.username;
     let old_password = req.old_password;
     let new_password = req.new_password;

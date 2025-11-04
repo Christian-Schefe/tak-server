@@ -3,15 +3,18 @@ use axum::{
     extract::{Path, State},
 };
 use serde::{Deserialize, Serialize};
+use tak_server_domain::{
+    ServiceError, ServiceResult,
+    app::AppState,
+    game::{GameId, GameType},
+    player::PlayerUsername,
+};
 
 use crate::{
-    AppState, ServiceError, ServiceResult,
+    app::MyServiceError,
     client::ClientId,
-    game::GameId,
     jwt::Claims,
-    player::PlayerUsername,
     protocol::json::{ClientResponse, ProtocolJsonHandler},
-    seek::GameType,
 };
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -33,7 +36,7 @@ pub struct JsonGame {
 pub async fn get_game_ids_endpoint(
     claims: Claims,
     State(app): State<AppState>,
-) -> Result<Json<Vec<GameId>>, ServiceError> {
+) -> Result<Json<Vec<GameId>>, MyServiceError> {
     app.player_service.fetch_player(&claims.sub)?;
     let game_ids = app.game_service.get_game_ids();
     Ok(Json(game_ids))
@@ -43,10 +46,10 @@ pub async fn get_game_endpoint(
     claims: Claims,
     Path(game_id): Path<GameId>,
     State(app): State<AppState>,
-) -> Result<Json<JsonGame>, ServiceError> {
+) -> Result<Json<JsonGame>, MyServiceError> {
     app.player_service.fetch_player(&claims.sub)?;
     let Some(game) = app.game_service.get_game(&game_id) else {
-        return ServiceError::not_found("Game ID not found");
+        return ServiceError::not_found("Game ID not found")?;
     };
     let settings = &game.game.base.settings;
     let json_game = JsonGame {

@@ -5,13 +5,14 @@ use axum::{
     extract::{Path, State},
 };
 use serde::{Deserialize, Serialize};
-
-use crate::{
-    AppState, ServiceError,
-    jwt::Claims,
+use tak_server_domain::{
+    app::AppState,
+    game::GameType,
     player::PlayerUsername,
-    seek::{GameType, Seek, SeekId},
+    seek::{Seek, SeekId},
 };
+
+use crate::{app::MyServiceError, jwt::Claims};
 use tak_core::{TakGameSettings, TakPlayer, TakTimeControl};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -80,7 +81,7 @@ pub async fn handle_add_seek_endpoint(
     claims: Claims,
     State(app): State<AppState>,
     Json(seek): Json<JsonSeek>,
-) -> Result<(), ServiceError> {
+) -> Result<(), MyServiceError> {
     app.player_service.fetch_player(&claims.sub)?;
     let game_settings = TakGameSettings {
         board_size: seek.board_size,
@@ -123,7 +124,7 @@ pub async fn handle_add_seek_endpoint(
 pub async fn handle_remove_seek_endpoint(
     claims: Claims,
     State(app): State<AppState>,
-) -> Result<(), ServiceError> {
+) -> Result<(), MyServiceError> {
     app.player_service.fetch_player(&claims.sub)?;
     app.seek_service.remove_seek_of_player(&claims.sub)?;
     Ok(())
@@ -132,7 +133,7 @@ pub async fn handle_remove_seek_endpoint(
 pub async fn get_seeks_endpoint(
     claims: Claims,
     State(app): State<AppState>,
-) -> Result<Json<Vec<JsonSeekWithId>>, ServiceError> {
+) -> Result<Json<Vec<JsonSeekWithId>>, MyServiceError> {
     app.player_service.fetch_player(&claims.sub)?;
     let seeks = app.seek_service.get_seeks();
     let json_seeks = seeks
@@ -149,7 +150,7 @@ pub async fn get_seek_endpoint(
     claims: Claims,
     Path(seek_id): Path<SeekId>,
     State(app): State<AppState>,
-) -> Result<Json<JsonSeek>, ServiceError> {
+) -> Result<Json<JsonSeek>, MyServiceError> {
     app.player_service.fetch_player(&claims.sub)?;
     let seek = app.seek_service.get_seek(&seek_id)?;
     let json_seek = json_seek_from_seek(&seek);
@@ -160,7 +161,7 @@ pub async fn accept_seek_endpoint(
     claims: Claims,
     Path(seek_id): Path<SeekId>,
     State(app): State<AppState>,
-) -> Result<(), ServiceError> {
+) -> Result<(), MyServiceError> {
     app.player_service.fetch_player(&claims.sub)?;
     app.seek_service.accept_seek(&claims.sub, &seek_id)?;
     Ok(())

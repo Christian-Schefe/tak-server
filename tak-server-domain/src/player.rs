@@ -140,7 +140,7 @@ pub trait PlayerService {
     ) -> ServiceResult<()>;
 }
 
-type PlayerId = i64;
+pub type PlayerId = i64;
 
 pub struct PlayerServiceImpl {
     transport_service: ArcTransportService,

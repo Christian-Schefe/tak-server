@@ -1,35 +1,12 @@
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::ToSql;
+use tak_server_domain::{
+    ServiceError, ServiceResult,
+    player::{Player, PlayerFilter, PlayerId, PlayerRepository, PlayerUpdate},
+};
 
-use crate::persistence::{DatabaseResult, get_connection, to_sql_option, update_entry};
-
-#[derive(Clone, Default)]
-pub struct PlayerUpdate {
-    pub password_hash: Option<String>,
-    pub is_bot: Option<bool>,
-    pub is_gagged: Option<bool>,
-    pub is_mod: Option<bool>,
-    pub is_admin: Option<bool>,
-    pub is_banned: Option<bool>,
-}
-
-pub struct PlayerFilter {
-    pub is_bot: Option<bool>,
-    pub is_gagged: Option<bool>,
-    pub is_mod: Option<bool>,
-    pub is_admin: Option<bool>,
-    pub is_banned: Option<bool>,
-}
-
-pub trait PlayerRepository {
-    fn get_player_by_id(&self, id: i64) -> DatabaseResult<Option<Player>>;
-    fn get_player_by_name(&self, name: &str) -> DatabaseResult<Option<Player>>;
-    fn create_player(&self, player: &Player) -> DatabaseResult<()>;
-    fn update_player(&self, id: i64, update: &PlayerUpdate) -> DatabaseResult<()>;
-    fn get_players(&self, filter: PlayerFilter) -> DatabaseResult<Vec<Player>>;
-    fn get_player_names(&self) -> DatabaseResult<Vec<String>>;
-}
+use crate::persistence::{get_connection, to_sql_option, update_entry};
 
 pub struct PlayerRepositoryImpl {
     pool: Pool<SqliteConnectionManager>,
@@ -46,19 +23,22 @@ impl PlayerRepositoryImpl {
         Self { pool }
     }
 
-    fn player_from_row(row: &rusqlite::Row) -> rusqlite::Result<Player> {
-        Ok(Player {
-            password_hash: map_string_to_option(row.get("password")?),
-            username: row.get("name")?,
-            rating: row.get("rating")?,
-            id: Some(row.get("id")?),
-            email: map_string_to_option(row.get("email")?),
-            is_bot: row.get("isbot")?,
-            is_gagged: row.get("is_gagged")?,
-            is_mod: row.get("is_mod")?,
-            is_admin: row.get("is_admin")?,
-            is_banned: row.get("is_banned")?,
-        })
+    fn player_from_row(row: &rusqlite::Row) -> rusqlite::Result<(PlayerId, Player)> {
+        let id = row.get("id")?;
+        Ok((
+            id,
+            Player {
+                password_hash: map_string_to_option(row.get("password")?),
+                username: row.get("name")?,
+                rating: row.get("rating")?,
+                email: map_string_to_option(row.get("email")?),
+                is_bot: row.get("isbot")?,
+                is_gagged: row.get("is_gagged")?,
+                is_mod: row.get("is_mod")?,
+                is_admin: row.get("is_admin")?,
+                is_banned: row.get("is_banned")?,
+            },
+        ))
     }
 }
 
@@ -67,7 +47,7 @@ fn map_string_to_option(s: String) -> Option<String> {
 }
 
 impl PlayerRepository for PlayerRepositoryImpl {
-    fn get_player_by_id(&self, id: i64) -> DatabaseResult<Option<Player>> {
+    fn get_player_by_id(&self, id: i64) -> ServiceResult<Option<Player>> {
         let conn = get_connection(&self.pool)?;
         let player = conn.query_one(
             "SELECT * FROM players WHERE id = ?1",
@@ -75,13 +55,13 @@ impl PlayerRepository for PlayerRepositoryImpl {
             Self::player_from_row,
         );
         match player {
-            Ok(player) => Ok(Some(player)),
+            Ok((_, player)) => Ok(Some(player)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(DatabaseError::QueryError(e)),
+            Err(e) => Err(ServiceError::Internal(e.to_string())),
         }
     }
 
-    fn get_player_by_name(&self, name: &str) -> DatabaseResult<Option<Player>> {
+    fn get_player_by_name(&self, name: &str) -> ServiceResult<Option<(PlayerId, Player)>> {
         let conn = get_connection(&self.pool)?;
         let player = conn.query_one(
             "SELECT * FROM players WHERE name = ?1",
@@ -91,18 +71,18 @@ impl PlayerRepository for PlayerRepositoryImpl {
         match player {
             Ok(player) => Ok(Some(player)),
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(DatabaseError::QueryError(e)),
+            Err(e) => Err(ServiceError::Internal(e.to_string())),
         }
     }
 
     // TODO: remove manual id handling, use AUTOINCREMENT
-    fn create_player(&self, player: &Player) -> DatabaseResult<()> {
+    fn create_player(&self, player: &Player) -> ServiceResult<()> {
         let conn = get_connection(&self.pool)?;
         let largest_player_id: i32 = conn
             .query_row("SELECT MAX(id) FROM players", [], |row| {
                 row.get::<_, i32>(0)
             })
-            .map_err(|e| DatabaseError::QueryError(e))?;
+            .map_err(|e| ServiceError::Internal(e.to_string()))?;
         conn.execute(
             "INSERT INTO players (id, name, email, password, rating, isbot, is_gagged, is_mod, is_admin, is_banned) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             rusqlite::params![
@@ -118,11 +98,11 @@ impl PlayerRepository for PlayerRepositoryImpl {
                 player.is_banned,
             ],
         )
-        .map_err(|e| DatabaseError::QueryError(e))?;
+        .map_err(|e| ServiceError::Internal(e.to_string()))?;
         Ok(())
     }
 
-    fn update_player(&self, id: i64, update: &PlayerUpdate) -> DatabaseResult<()> {
+    fn update_player(&self, id: i64, update: &PlayerUpdate) -> ServiceResult<()> {
         let value_pairs: Vec<(&'static str, Option<&dyn ToSql>)> = vec![
             ("password", to_sql_option(&update.password_hash)),
             ("isbot", to_sql_option(&update.is_bot)),
@@ -134,7 +114,7 @@ impl PlayerRepository for PlayerRepositoryImpl {
         update_entry(&self.pool, "players", ("id", &id), value_pairs)
     }
 
-    fn get_players(&self, filter: PlayerFilter) -> DatabaseResult<Vec<Player>> {
+    fn get_players(&self, filter: PlayerFilter) -> ServiceResult<Vec<Player>> {
         let mut query = "SELECT * FROM players".to_string();
         let mut conditions = Vec::new();
         let mut params: Vec<&dyn ToSql> = Vec::new();
@@ -162,33 +142,34 @@ impl PlayerRepository for PlayerRepositoryImpl {
         let conn = get_connection(&self.pool)?;
         let mut stmt = conn
             .prepare(&query)
-            .map_err(|e| DatabaseError::QueryError(e))?;
+            .map_err(|e| ServiceError::Internal(e.to_string()))?;
         let player_iter = stmt
             .query_map(
                 rusqlite::params_from_iter(params.iter()),
                 Self::player_from_row,
             )
-            .map_err(|e| DatabaseError::QueryError(e))?;
+            .map_err(|e| ServiceError::Internal(e.to_string()))?;
 
         let mut players = Vec::new();
         for player in player_iter {
-            players.push(player.map_err(|e| DatabaseError::QueryError(e))?);
+            let (_, player) = player.map_err(|e| ServiceError::Internal(e.to_string()))?;
+            players.push(player);
         }
         Ok(players)
     }
 
-    fn get_player_names(&self) -> DatabaseResult<Vec<String>> {
+    fn get_player_names(&self) -> ServiceResult<Vec<String>> {
         let conn = get_connection(&self.pool)?;
         let mut stmt = conn
             .prepare("SELECT name FROM players")
-            .map_err(|e| DatabaseError::QueryError(e))?;
+            .map_err(|e| ServiceError::Internal(e.to_string()))?;
         let name_iter = stmt
             .query_map([], |row| row.get(0))
-            .map_err(|e| DatabaseError::QueryError(e))?;
+            .map_err(|e| ServiceError::Internal(e.to_string()))?;
 
         let mut names = Vec::new();
         for name in name_iter {
-            names.push(name.map_err(|e| DatabaseError::QueryError(e))?);
+            names.push(name.map_err(|e| ServiceError::Internal(e.to_string()))?);
         }
         Ok(names)
     }

@@ -3,15 +3,19 @@ use axum::{
     routing::{delete, get, post},
 };
 use serde::{Deserialize, Serialize};
+use tak_server_domain::{
+    ServiceError, ServiceResult,
+    app::AppState,
+    chat::ArcChatService,
+    game::{ArcGameService, GameId},
+    player::{ArcPlayerService, PlayerUsername},
+    seek::SeekId,
+    transport::{ChatMessageSource, DisconnectReason, ServerGameMessage},
+};
 
 use crate::{
-    AppState, ArcChatService, ArcClientService, ArcGameService, ArcPlayerService, ServiceError,
-    ServiceResult,
-    client::ClientId,
-    game::GameId,
-    player::PlayerUsername,
-    protocol::{ChatMessageSource, DisconnectReason, ServerGameMessage, ServerMessage},
-    seek::SeekId,
+    client::{ClientId, TransportServiceImpl},
+    protocol::ServerMessage,
 };
 use tak_core::ptn::{action_to_ptn, game_state_to_string};
 
@@ -23,7 +27,7 @@ mod seek;
 mod sudo;
 
 pub struct ProtocolJsonHandler {
-    client_service: ArcClientService,
+    transport: TransportServiceImpl,
     player_service: ArcPlayerService,
     game_service: ArcGameService,
     chat_service: ArcChatService,
@@ -90,17 +94,12 @@ pub struct TrackedClientResponse {
 }
 
 impl ProtocolJsonHandler {
-    pub fn new(
-        client_service: ArcClientService,
-        player_service: ArcPlayerService,
-        game_service: ArcGameService,
-        chat_service: ArcChatService,
-    ) -> Self {
+    pub fn new(app: &AppState, transport_service: &TransportServiceImpl) -> Self {
         Self {
-            client_service,
-            player_service,
-            game_service,
-            chat_service,
+            transport: transport_service.clone(),
+            player_service: app.player_service.clone(),
+            game_service: app.game_service.clone(),
+            chat_service: app.chat_service.clone(),
         }
     }
 
@@ -111,7 +110,9 @@ impl ProtocolJsonHandler {
 
     pub fn send_json_to(&self, id: &ClientId, msg: &impl serde::Serialize) {
         match serde_json::to_string(msg) {
-            Ok(json) => crate::client::send_to(&**self.client_service, id, &json),
+            Ok(json) => {
+                let _ = self.transport.try_send_to(id, &json);
+            }
             Err(e) => eprintln!(
                 "Failed to serialize message to JSON for client {}: {}",
                 id, e
@@ -158,7 +159,7 @@ impl ProtocolJsonHandler {
         id: &ClientId,
         msg: ClientMessage,
     ) -> ServiceResult<ClientResponse> {
-        let Some(username) = self.client_service.get_associated_player(id) else {
+        let Some(username) = self.transport.get_associated_player(id) else {
             return ServiceError::unauthorized("Client not logged in");
         };
         match msg {
@@ -315,6 +316,8 @@ fn server_message_to_json(msg: &ServerMessage) -> JsonServerMessage {
             reason: match reason {
                 DisconnectReason::NewSession => "New session from another client".to_string(),
                 DisconnectReason::Inactivity => "Disconnected due to inactivity".to_string(),
+                DisconnectReason::Ban(msg) => format!("Banned: {}", msg),
+                DisconnectReason::Kick => "You have been kicked from the server".to_string(),
             },
         },
     }

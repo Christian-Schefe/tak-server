@@ -1,15 +1,17 @@
 use std::time::Duration;
 
 use crate::{
-    ServiceError,
     client::ClientId,
-    game::GameId,
-    player::PlayerUsername,
     protocol::v2::{ProtocolV2Handler, ProtocolV2Result},
-    seek::{GameType, Seek},
 };
 
 use tak_core::{TakGameSettings, TakPlayer, TakTimeControl};
+use tak_server_domain::{
+    ServiceError,
+    game::{GameId, GameType},
+    player::PlayerUsername,
+    seek::Seek,
+};
 
 impl ProtocolV2Handler {
     pub fn handle_seek_message(
@@ -21,7 +23,7 @@ impl ProtocolV2Handler {
     }
 
     pub fn handle_seek_list_message(&self, id: &ClientId) -> ProtocolV2Result {
-        for seek in self.seek_service.get_seeks() {
+        for seek in self.app_state.seek_service.get_seeks() {
             self.handle_server_seek_list_message(id, &seek, true);
         }
         Ok(None)
@@ -76,9 +78,9 @@ impl ProtocolV2Handler {
             _ => return Err(ServiceError::BadRequest("Invalid tournament flag".into())),
         };
         let game_type = match (is_unrated, is_tournament) {
-            (true, false) => crate::seek::GameType::Unrated,
-            (false, false) => crate::seek::GameType::Rated,
-            (_, true) => crate::seek::GameType::Tournament,
+            (true, false) => GameType::Unrated,
+            (false, false) => GameType::Rated,
+            (_, true) => GameType::Tournament,
         };
         let time_extra_trigger_move = if parts.len() >= 12 {
             parts[10]
@@ -124,14 +126,16 @@ impl ProtocolV2Handler {
         };
 
         if !game_settings.is_valid() {
-            self.seek_service.remove_seek_of_player(&username)?;
+            self.app_state
+                .seek_service
+                .remove_seek_of_player(&username)?;
         } else if let Some(from_game) = rematch {
             let Some(opponent) = opponent else {
                 return Err(ServiceError::BadRequest(
                     "Rematch seek must specify opponent".into(),
                 ));
             };
-            self.seek_service.add_rematch_seek(
+            self.app_state.seek_service.add_rematch_seek(
                 username.to_string(),
                 opponent,
                 color,
@@ -140,7 +144,7 @@ impl ProtocolV2Handler {
                 from_game,
             )?;
         } else {
-            self.seek_service.add_seek(
+            self.app_state.seek_service.add_seek(
                 username.to_string(),
                 opponent,
                 color,
@@ -178,7 +182,9 @@ impl ProtocolV2Handler {
         let Ok(seek_id) = parts[1].parse::<u32>() else {
             return ServiceError::bad_request("Invalid Seek ID in Accept message");
         };
-        self.seek_service.accept_seek(username, &seek_id)?;
+        self.app_state
+            .seek_service
+            .accept_seek(username, &seek_id)?;
         Ok(None)
     }
 
@@ -222,8 +228,9 @@ impl ProtocolV2Handler {
                     .as_secs()
                     .to_string()),
             seek.opponent.as_deref().unwrap_or(""),
-            self.player_service
-                .fetch_player(&seek.creator)
+            self.app_state
+                .player_service
+                .fetch_player_data(&seek.creator)
                 .map_or("0", |p| if p.is_bot { "1" } else { "0" })
         );
         self.send_to(id, message);

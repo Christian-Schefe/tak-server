@@ -2,19 +2,25 @@ use std::sync::Arc;
 
 use axum::response::IntoResponse;
 use tak_server_domain::{
-    ServiceError, app::AppState, game::ArcGameRepository, jwt::ArcJwtService,
-    player::ArcPlayerRepository, transport::ArcTransportService,
+    ServiceError,
+    app::{LazyAppState, construct_app},
+    game::ArcGameRepository,
+    jwt::ArcJwtService,
+    player::ArcPlayerRepository,
+    transport::ArcTransportService,
 };
 
-use crate::{jwt::JwtServiceImpl, persistence::games::GameRepositoryImpl};
+use crate::{
+    client::TransportServiceImpl,
+    jwt::JwtServiceImpl,
+    persistence::{games::GameRepositoryImpl, players::PlayerRepositoryImpl},
+};
 
-trait MyIntoResponse {
-    fn my_into_response(self) -> axum::http::Response<axum::body::Body>;
-}
+pub struct MyServiceError(ServiceError);
 
-impl MyIntoResponse for ServiceError {
-    fn my_into_response(self) -> axum::http::Response<axum::body::Body> {
-        let (status, msg) = match self {
+impl IntoResponse for MyServiceError {
+    fn into_response(self) -> axum::http::Response<axum::body::Body> {
+        let (status, msg) = match self.0 {
             ServiceError::NotFound(msg) => (axum::http::StatusCode::NOT_FOUND, msg),
             ServiceError::Unauthorized(msg) => (axum::http::StatusCode::UNAUTHORIZED, msg),
             ServiceError::BadRequest(msg) => (axum::http::StatusCode::BAD_REQUEST, msg),
@@ -28,11 +34,28 @@ impl MyIntoResponse for ServiceError {
     }
 }
 
-pub fn construct_app() -> AppState {
+impl From<ServiceError> for MyServiceError {
+    fn from(value: ServiceError) -> Self {
+        MyServiceError(value)
+    }
+}
+
+pub async fn run() {
+    let app = LazyAppState::new();
+    let transport_service_impl = TransportServiceImpl::new(app.clone());
+
     let game_repo: ArcGameRepository = Arc::new(Box::new(GameRepositoryImpl::new()));
     let player_repo: ArcPlayerRepository = Arc::new(Box::new(PlayerRepositoryImpl::new()));
-    let transport_service: ArcTransportService = Arc::new(Box::new(TransportServiceImpl::new()));
+    let transport_service: ArcTransportService = Arc::new(Box::new(transport_service_impl.clone()));
 
     let jwt_service: ArcJwtService = Arc::new(Box::new(JwtServiceImpl {}));
-    tak_server_domain::app::construct_app(game_repo, player_repo, jwt_service, transport_service)
+    construct_app(
+        app.clone(),
+        game_repo,
+        player_repo,
+        jwt_service,
+        transport_service,
+    );
+
+    transport_service_impl.run(app.clone()).await;
 }

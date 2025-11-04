@@ -1,16 +1,16 @@
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::ToSql;
-
-use crate::{
-    DatabaseError,
-    game::GameId,
-    persistence::{DatabaseResult, get_connection, to_sql_option, update_entry},
+use tak_core::{TakAction, TakPos, TakVariant, ptn::game_state_to_string};
+use tak_server_domain::{
+    ServiceError, ServiceResult,
+    game::{GameId, GameRecord, GameRecordUpdate, GameRepository, GameType},
 };
+
+use crate::persistence::{get_connection, to_sql_option, update_entry};
 
 #[derive(Debug)]
 pub struct GameEntity {
-    pub id: i64,
     pub date: i64,
     pub size: i32,
     pub player_white: String,
@@ -32,16 +32,6 @@ pub struct GameEntity {
     pub extra_time_trigger: i32,
 }
 
-pub struct GameUpdate {
-    pub notation: Option<String>,
-    pub result: Option<String>,
-}
-
-pub trait GameRepository {
-    fn create_game(&self, game: &GameEntity) -> DatabaseResult<GameId>;
-    fn update_game(&self, id: GameId, update: &GameUpdate) -> DatabaseResult<()>;
-}
-
 pub struct GameRepositoryImpl {
     pool: Pool<SqliteConnectionManager>,
 }
@@ -56,10 +46,8 @@ impl GameRepositoryImpl {
             .expect("Failed to create DB pool");
         Self { pool }
     }
-}
 
-impl GameRepository for GameRepositoryImpl {
-    fn create_game(&self, game: &GameEntity) -> DatabaseResult<GameId> {
+    fn create_game(&self, game: &GameEntity) -> ServiceResult<GameId> {
         let conn = get_connection(&self.pool)?;
         // Id is auto-incremented
         conn.execute(
@@ -86,14 +74,95 @@ impl GameRepository for GameRepositoryImpl {
                 game.extra_time_trigger,
             ],
         )
-        .map_err(|e| DatabaseError::QueryError(e))?;
+        .map_err(|e| ServiceError::Internal(e.to_string()))?;
         Ok(conn.last_insert_rowid())
     }
 
-    fn update_game(&self, id: GameId, update: &GameUpdate) -> DatabaseResult<()> {
+    fn move_to_database_string(action: &TakAction) -> String {
+        fn square_to_string(pos: &TakPos) -> String {
+            format!(
+                "{}{}",
+                (b'A' + pos.x as u8) as char,
+                (b'1' + pos.y as u8) as char,
+            )
+        }
+        match action {
+            TakAction::Place { pos, variant } => format!(
+                "P {} {}",
+                square_to_string(pos),
+                match variant {
+                    TakVariant::Flat => "",
+                    TakVariant::Standing => "S",
+                    TakVariant::Capstone => "C",
+                },
+            ),
+            TakAction::Move { pos, dir, drops } => {
+                let to_pos = pos.offset(dir, drops.len() as i32);
+                let drops_str = drops
+                    .iter()
+                    .map(|d| d.to_string())
+                    .collect::<Vec<_>>()
+                    .join("");
+                format!(
+                    "M {} {} {}",
+                    square_to_string(pos),
+                    square_to_string(&to_pos),
+                    drops_str
+                )
+            }
+        }
+    }
+}
+
+impl GameRepository for GameRepositoryImpl {
+    fn create_game(&self, game: &GameRecord) -> ServiceResult<GameId> {
+        let game_entity = GameEntity {
+            date: game.date.timestamp(),
+            size: game.settings.board_size as i32,
+            player_white: game.white.clone(),
+            player_black: game.black.clone(),
+            notation: "".to_string(),
+            result: "0-0".to_string(),
+            timertime: game.settings.time_control.contingent.as_secs() as i32,
+            timerinc: game.settings.time_control.increment.as_secs() as i32,
+            rating_white: game.white_rating as i32,
+            rating_black: game.black_rating as i32,
+            unrated: game.game_type == GameType::Unrated,
+            tournament: game.game_type == GameType::Tournament,
+            komi: game.settings.half_komi as i32,
+            pieces: game.settings.reserve_pieces as i32,
+            capstones: game.settings.reserve_capstones as i32,
+            rating_change_white: -1000,
+            rating_change_black: -1000,
+            extra_time_amount: game
+                .settings
+                .time_control
+                .extra
+                .as_ref()
+                .map_or(0, |(trigger_move, _)| *trigger_move as i32),
+            extra_time_trigger: game
+                .settings
+                .time_control
+                .extra
+                .as_ref()
+                .map_or(0, |(_, extra_time)| extra_time.as_secs() as i32),
+        };
+        self.create_game(&game_entity)
+    }
+
+    fn update_game(&self, id: GameId, update: &GameRecordUpdate) -> ServiceResult<()> {
+        let notation_val = Some(
+            update
+                .moves
+                .iter()
+                .map(|action| Self::move_to_database_string(action))
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
+        let result_val = Some(game_state_to_string(&update.result));
         let value_pairs: Vec<(&'static str, Option<&dyn ToSql>)> = vec![
-            ("notation", to_sql_option(&update.notation)),
-            ("result", to_sql_option(&update.result)),
+            ("notation", to_sql_option(&notation_val)),
+            ("result", to_sql_option(&result_val)),
         ];
         update_entry(&self.pool, "games", ("id", &id), value_pairs)
     }

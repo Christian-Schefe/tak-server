@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use crate::{
     chat::{ArcChatService, ChatServiceImpl},
@@ -9,6 +9,42 @@ use crate::{
     seek::{ArcSeekService, SeekServiceImpl},
     transport::{ArcPlayerConnectionService, ArcTransportService, PlayerConnectionServiceImpl},
 };
+
+#[derive(Clone)]
+pub struct LazyAppState(Arc<OnceLock<AppState>>);
+
+impl LazyAppState {
+    pub fn new() -> Self {
+        Self(Arc::new(OnceLock::new()))
+    }
+    pub fn unwrap(&self) -> &AppState {
+        self.0.get().expect("AppState not initialized")
+    }
+    pub fn transport_service(&self) -> ArcTransportService {
+        self.unwrap().transport_service.clone()
+    }
+    pub fn game_service(&self) -> ArcGameService {
+        self.unwrap().game_service.clone()
+    }
+    pub fn chat_service(&self) -> ArcChatService {
+        self.unwrap().chat_service.clone()
+    }
+    pub fn seek_service(&self) -> ArcSeekService {
+        self.unwrap().seek_service.clone()
+    }
+    pub fn player_service(&self) -> ArcPlayerService {
+        self.unwrap().player_service.clone()
+    }
+    pub fn email_service(&self) -> ArcEmailService {
+        self.unwrap().email_service.clone()
+    }
+    pub fn jwt_service(&self) -> ArcJwtService {
+        self.unwrap().jwt_service.clone()
+    }
+    pub fn player_connection_service(&self) -> ArcPlayerConnectionService {
+        self.unwrap().player_connection_service.clone()
+    }
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -25,12 +61,25 @@ pub struct AppState {
     pub player_repository: ArcPlayerRepository,
 }
 
+impl AppState {
+    pub fn start(&self) {
+        self.player_service
+            .load_unique_usernames()
+            .expect("Failed to load unique usernames");
+    }
+}
+
 pub fn construct_app(
+    lazy_app_state: LazyAppState,
     game_repository: ArcGameRepository,
     player_repository: ArcPlayerRepository,
     jwt_service: ArcJwtService,
     transport_service: ArcTransportService,
-) -> AppState {
+) {
+    let player_connection_service: ArcPlayerConnectionService = Arc::new(Box::new(
+        PlayerConnectionServiceImpl::new(lazy_app_state.clone()),
+    ));
+
     let email_service: ArcEmailService = Arc::new(Box::new(EmailServiceImpl {}));
 
     let player_service: ArcPlayerService = Arc::new(Box::new(PlayerServiceImpl::new(
@@ -42,6 +91,7 @@ pub fn construct_app(
 
     let game_service: ArcGameService = Arc::new(Box::new(GameServiceImpl::new(
         transport_service.clone(),
+        player_connection_service.clone(),
         player_service.clone(),
         game_repository.clone(),
     )));
@@ -55,14 +105,6 @@ pub fn construct_app(
         transport_service.clone(),
         player_service.clone(),
     )));
-
-    let player_connection_service: ArcPlayerConnectionService =
-        Arc::new(Box::new(PlayerConnectionServiceImpl::new(
-            seek_service.clone(),
-            game_service.clone(),
-            chat_service.clone(),
-            transport_service.clone(),
-        )));
 
     let app = AppState {
         transport_service,
@@ -78,5 +120,5 @@ pub fn construct_app(
         player_repository,
     };
 
-    app
+    lazy_app_state.0.set(app.clone()).ok().unwrap();
 }

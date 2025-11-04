@@ -1,12 +1,13 @@
 use std::time::Instant;
 
-use crate::{
-    ArcChatService, ArcClientService, ArcGameService, ArcPlayerService, ArcSeekService,
+use tak_server_domain::{
     ServiceError, ServiceResult,
-    client::ClientId,
+    app::AppState,
     player::PlayerUsername,
-    protocol::{DisconnectReason, ServerGameMessage, ServerMessage},
+    transport::{DisconnectReason, ServerGameMessage, ServerMessage},
 };
+
+use crate::client::{ClientId, TransportServiceImpl};
 
 mod auth;
 mod chat;
@@ -16,29 +17,17 @@ mod seek;
 mod sudo;
 
 pub struct ProtocolV2Handler {
-    client_service: ArcClientService,
-    seek_service: ArcSeekService,
-    player_service: ArcPlayerService,
-    chat_service: ArcChatService,
-    game_service: ArcGameService,
+    app_state: AppState,
+    transport: TransportServiceImpl,
 }
 
 pub type ProtocolV2Result = ServiceResult<Option<String>>;
 
 impl ProtocolV2Handler {
-    pub fn new(
-        client_service: ArcClientService,
-        seek_service: ArcSeekService,
-        player_service: ArcPlayerService,
-        chat_service: ArcChatService,
-        game_service: ArcGameService,
-    ) -> Self {
+    pub fn new(app: &AppState, transport: &TransportServiceImpl) -> Self {
         Self {
-            client_service,
-            seek_service,
-            player_service,
-            chat_service,
-            game_service,
+            app_state: app.clone(),
+            transport: transport.clone(),
         }
     }
 
@@ -53,7 +42,7 @@ impl ProtocolV2Handler {
             "protocol" => Ok(None), // Noop, ignore
             "client" => Ok(None),   // Noop, ignore
             "quit" | "exit" => {
-                self.client_service.close_client(id);
+                self.transport.close_client(id);
                 Ok(None)
             }
             "login" => self.handle_login_message(id, &parts),
@@ -108,6 +97,8 @@ impl ProtocolV2Handler {
                         "You've logged in from another window. Disconnecting"
                     }
                     DisconnectReason::Inactivity => "Disconnected due to inactivity",
+                    DisconnectReason::Ban(msg) => &msg,
+                    DisconnectReason::Kick => "You have been kicked from the server",
                 };
                 let disconnect_message = format!("Message {}", reason_str);
                 self.send_to(id, disconnect_message);
@@ -116,17 +107,21 @@ impl ProtocolV2Handler {
     }
 
     pub fn on_authenticated(&self, id: &ClientId, username: &PlayerUsername) {
-        let seeks = self.seek_service.get_seeks();
+        let seeks = self.app_state.seek_service.get_seeks();
         for seek in seeks {
             let seek_msg = ServerMessage::SeekList { add: true, seek };
             self.handle_server_message(id, &seek_msg);
         }
-        let games = self.game_service.get_games();
+        let games = self.app_state.game_service.get_games();
         for game in games {
             let game_msg = ServerMessage::GameList { add: true, game };
             self.handle_server_message(id, &game_msg);
         }
-        if let Some(active_game) = self.game_service.get_active_game_of_player(username) {
+        if let Some(active_game) = self
+            .app_state
+            .game_service
+            .get_active_game_of_player(username)
+        {
             let start_msg = ServerMessage::GameStart {
                 game_id: active_game.id,
             };
@@ -153,9 +148,9 @@ impl ProtocolV2Handler {
         }
     }
 
-    pub fn on_connected(&self, id: &ClientId, username: &PlayerUsername) {
-        send_to(id, "Welcome!");
-        send_to(id, "Login or Register");
+    pub fn on_connected(&self, id: &ClientId) {
+        self.send_to(id, "Welcome!");
+        self.send_to(id, "Login or Register");
     }
 
     fn handle_logged_in_client_message(
@@ -164,7 +159,7 @@ impl ProtocolV2Handler {
         parts: &[&str],
         msg: &str,
     ) -> ProtocolV2Result {
-        let Some(username) = self.client_service.get_associated_player(id) else {
+        let Some(username) = self.transport.get_associated_player(id) else {
             return ServiceError::unauthorized("Client is not logged in");
         };
 
@@ -192,7 +187,7 @@ impl ProtocolV2Handler {
     where
         T: AsRef<str>,
     {
-        crate::client::send_to(&**self.client_service, id, msg);
+        let _ = self.transport.try_send_to(id, msg.as_ref());
     }
 }
 

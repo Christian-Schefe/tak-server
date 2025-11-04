@@ -1,8 +1,6 @@
-use crate::{
-    ServiceError,
-    player::PlayerUsername,
-    protocol::v2::{ProtocolV2Handler, ProtocolV2Result, split_n_and_rest},
-};
+use tak_server_domain::{ServiceError, player::PlayerUsername};
+
+use crate::protocol::v2::{ProtocolV2Handler, ProtocolV2Result, split_n_and_rest};
 
 impl ProtocolV2Handler {
     pub fn handle_sudo_message(
@@ -49,19 +47,23 @@ impl ProtocolV2Handler {
         }
         let target_username = parts[2].to_string();
         if let Some(gagged) = gagged {
-            self.player_service
+            self.app_state
+                .player_service
                 .set_gagged(username, &target_username, gagged)?;
         }
         if let Some(modded) = modded {
-            self.player_service
+            self.app_state
+                .player_service
                 .set_modded(username, &target_username, modded)?;
         }
         if let Some(admin) = admin {
-            self.player_service
+            self.app_state
+                .player_service
                 .set_admin(username, &target_username, admin)?;
         }
         if let Some(bot) = bot {
-            self.player_service
+            self.app_state
+                .player_service
                 .set_bot(username, &target_username, bot)?;
         }
         Ok(None)
@@ -72,7 +74,9 @@ impl ProtocolV2Handler {
             return ServiceError::bad_request("Invalid Sudo kick command format");
         }
         let target_username = parts[2].to_string();
-        self.player_service.try_kick(username, &target_username)?;
+        self.app_state
+            .player_service
+            .try_kick(username, &target_username)?;
         Ok(None)
     }
 
@@ -89,7 +93,8 @@ impl ProtocolV2Handler {
         let target_username = parts[2].to_string();
         let ban_msg = if ban { Some(msg.to_string()) } else { None };
 
-        self.player_service
+        self.app_state
+            .player_service
             .set_banned(username, &target_username, ban_msg)?;
         Ok(None)
     }
@@ -100,22 +105,14 @@ impl ProtocolV2Handler {
         }
         let list_type = parts[2];
 
+        let player_service = &self.app_state.player_service;
+
         let players = match list_type {
-            "ban" => self
-                .player_service
-                .get_players(Some(true), None, None, None, None)?,
-            "gag" => self
-                .player_service
-                .get_players(None, Some(true), None, None, None)?,
-            "mod" => self
-                .player_service
-                .get_players(None, None, Some(true), None, None)?,
-            "admin" => self
-                .player_service
-                .get_players(None, None, None, Some(true), None)?,
-            "bot" => self
-                .player_service
-                .get_players(None, None, None, None, Some(true))?,
+            "ban" => player_service.get_players(Some(true), None, None, None, None)?,
+            "gag" => player_service.get_players(None, Some(true), None, None, None)?,
+            "mod" => player_service.get_players(None, None, Some(true), None, None)?,
+            "admin" => player_service.get_players(None, None, None, Some(true), None)?,
+            "bot" => player_service.get_players(None, None, None, None, Some(true))?,
             _ => {
                 return ServiceError::bad_request("Unknown Sudo list type");
             }
@@ -141,7 +138,8 @@ impl ProtocolV2Handler {
 
         match setting {
             "password" => {
-                self.player_service
+                self.app_state
+                    .player_service
                     .set_password(username, &target_username, value)?;
             }
             _ => {

@@ -113,8 +113,7 @@ impl SeekServiceImpl {
 
         println!("New seek: {:?}", seek);
         let seek_new_msg = ServerMessage::SeekList { add: true, seek };
-        self.transport_service
-            .try_player_broadcast(&seek_new_msg);
+        self.transport_service.try_player_broadcast(&seek_new_msg);
 
         Ok(seek_id)
     }
@@ -398,7 +397,7 @@ mod tests {
         let expected_seek = Seek {
             id: 1,
             creator: "player1".to_string(),
-            opponent: None,
+            opponent: Some("player2".to_string()),
             color: None,
             game_settings: game_settings.clone(),
             game_type: GameType::Rated,
@@ -418,13 +417,13 @@ mod tests {
 
         let sent_broadcasts = mock_transport_service.get_broadcasts();
         assert_eq!(sent_broadcasts.len(), 1);
-        assert!(matches!(
-            &sent_broadcasts[0],
-            ServerMessage::SeekList {
-                add: true,
-                seek,
-            } if *seek == expected_seek
-        ));
+        if let ServerMessage::SeekList { add, seek } = &sent_broadcasts[0] {
+            assert!(*add);
+            assert_eq!(seek, &expected_seek);
+        } else {
+            panic!("Expected SeekList message");
+        }
+
         assert_eq!(seek_service.get_seek_ids().len(), 1);
         assert_eq!(seek_service.get_seek(&1).ok(), Some(expected_seek.clone()));
 

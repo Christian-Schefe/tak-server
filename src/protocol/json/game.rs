@@ -1,11 +1,7 @@
 use tak_core::ptn::ptn_to_action;
+use tak_server_domain::{ServiceError, ServiceResult, game::GameId, player::PlayerUsername};
 
-use crate::{
-    ServiceError, ServiceResult,
-    game::GameId,
-    player::PlayerUsername,
-    protocol::json::{ClientResponse, ProtocolJsonHandler},
-};
+use crate::protocol::json::{ClientResponse, ProtocolJsonHandler};
 
 impl ProtocolJsonHandler {
     pub fn handle_game_action(

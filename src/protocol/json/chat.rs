@@ -1,8 +1,6 @@
-use crate::{
-    ServiceResult,
-    player::PlayerUsername,
-    protocol::json::{ClientResponse, ProtocolJsonHandler},
-};
+use tak_server_domain::{ServiceResult, player::PlayerUsername};
+
+use crate::protocol::json::{ClientResponse, ProtocolJsonHandler};
 
 impl ProtocolJsonHandler {
     pub fn handle_chat_message(

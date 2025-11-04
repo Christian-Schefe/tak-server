@@ -9,10 +9,9 @@ use axum::{
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tak_server_domain::{ServiceError, jwt::JwtService, player::PlayerUsername};
+use tak_server_domain::{ServiceError, app::AppState, jwt::JwtService, player::PlayerUsername};
 use uuid::Uuid;
 
-use crate::AppState;
 use axum_extra::{
     TypedHeader,
     headers::{Authorization, authorization::Bearer},

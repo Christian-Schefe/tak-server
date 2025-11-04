@@ -1,14 +1,14 @@
 use crate::{
-    ServiceError, ServiceResult,
     client::ClientId,
-    game::GameId,
-    player::PlayerUsername,
     protocol::{
-        Protocol, ServerGameMessage,
+        Protocol,
         v2::{ProtocolV2Handler, ProtocolV2Result},
     },
 };
 use tak_core::{TakAction, TakDir, TakGameState, TakPos, TakVariant, ptn::game_state_to_string};
+use tak_server_domain::{
+    ServiceError, ServiceResult, game::GameId, player::PlayerUsername, transport::ServerGameMessage,
+};
 
 impl ProtocolV2Handler {
     pub fn handle_server_game_message(
@@ -52,7 +52,7 @@ impl ProtocolV2Handler {
                 remaining_white,
                 remaining_black,
             } => {
-                let protocol = self.client_service.get_protocol(id);
+                let protocol = self.transport.get_protocol(id);
 
                 let message = if protocol == Protocol::V0 {
                     format!(
@@ -99,14 +99,16 @@ impl ProtocolV2Handler {
             return ServiceError::bad_request("Invalid Game ID in Game message");
         };
 
+        let game_service = &self.app_state.game_service;
+
         match parts[1] {
             "P" => self.handle_game_place_message(&username, game_id, &parts[2..])?,
             "M" => self.handle_game_move_message(&username, game_id, &parts[2..])?,
-            "Resign" => self.game_service.resign_game(&username, &game_id)?,
-            "OfferDraw" => self.game_service.offer_draw(&username, &game_id, true)?,
-            "RemoveDraw" => self.game_service.offer_draw(&username, &game_id, false)?,
-            "RequestUndo" => self.game_service.request_undo(&username, &game_id, true)?,
-            "RemoveUndo" => self.game_service.request_undo(&username, &game_id, false)?,
+            "Resign" => game_service.resign_game(&username, &game_id)?,
+            "OfferDraw" => game_service.offer_draw(&username, &game_id, true)?,
+            "RemoveDraw" => game_service.offer_draw(&username, &game_id, false)?,
+            "RequestUndo" => game_service.request_undo(&username, &game_id, true)?,
+            "RemoveUndo" => game_service.request_undo(&username, &game_id, false)?,
             _ => return ServiceError::not_found("Unknown Game action"),
         };
 
@@ -143,7 +145,8 @@ impl ProtocolV2Handler {
             variant,
         };
 
-        self.game_service
+        self.app_state
+            .game_service
             .try_do_action(username, &game_id, action)?;
 
         Ok(())
@@ -197,7 +200,8 @@ impl ProtocolV2Handler {
             dir,
             drops,
         };
-        self.game_service
+        self.app_state
+            .game_service
             .try_do_action(username, &game_id, action)?;
 
         Ok(())
