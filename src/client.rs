@@ -214,12 +214,13 @@ impl TransportServiceImpl {
         let parts: Vec<&str> = protocol_msg.split_whitespace().collect();
         if parts.len() == 2 {
             let protocol = Protocol::from_id(parts[1]).ok_or("Unknown protocol")?;
-            if let Some(mut handler) = self.client_handlers.get_mut(id) {
+            if let Some(mut handler) = self.client_handlers.get_mut(id)
+                && protocol != *handler
+            {
                 *handler = protocol.clone();
                 drop(handler);
                 println!("Client {} set protocol to {:?}", id, parts[1]);
 
-                crate::protocol::on_connected(self.app_state.unwrap(), self, &protocol, &id);
                 Ok(())
             } else {
                 Err("Client handler not found".into())

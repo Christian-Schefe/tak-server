@@ -2651,6 +2651,16 @@ name = "tak-core"
 version = "0.1.0"
 
 [[package]]
+name = "tak-persistence"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "sqlx",
+ "tak-core",
+ "tak-server-domain",
+]
+
+[[package]]
 name = "tak-server"
 version = "0.1.0"
 dependencies = [
@@ -2672,6 +2682,7 @@ dependencies = [
  "serde_json",
  "sqlx",
  "tak-core",
+ "tak-persistence",
  "tak-server-domain",
  "thiserror 2.0.16",
  "tokio",

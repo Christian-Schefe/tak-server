@@ -1,13 +1,31 @@
 services:
-  playtak-bot:
-    image: mortenlohne/tiltak-playtak:0.1.0
-    container_name: playtak-bot
+#  playtak-bot:
+#    image: mortenlohne/tiltak-playtak:0.1.0
+#    container_name: playtak-bot
+#    restart: unless-stopped
+#    environment:
+#      PLAYTAK_USERNAME: "testuser2"
+#      PLAYTAK_PASSWORD: "pw"
+#      SIZE: "5"
+#      TC: "300+10"
+#      PLAYTAK_BASE_URL: "host.docker.internal"
+#      PLAYTAK_PORT: "10000"
+#      KOMI: "0.0"
+  mariadb:
+    image: mariadb:11
+    container_name: mariadb_dev
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      PLAYTAK_USERNAME: "testuser2"
-      PLAYTAK_PASSWORD: "pw"
-      SIZE: "5"
-      TC: "300+10"
-      PLAYTAK_BASE_URL: "host.docker.internal"
-      PLAYTAK_PORT: "10000"
-      KOMI: "0.0"
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${MARIADB_DATABASE}
+      MARIADB_USER: ${MARIADB_USER}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+    ports:
+      - "${MARIADB_PORT}:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+
+volumes:
+  mariadb_data:

@@ -6,7 +6,7 @@ default-run = "tak-server"
 
 [workspace]
 resolver = "3"
-members = ["tak-client", "tak-core", "tak-server-domain"]
+members = ["tak-client", "tak-core", "tak-persistence", "tak-server-domain"]
 
 [dependencies]
 async-trait = "0.1.89"
@@ -34,6 +34,7 @@ uuid = { version = "1.18.1", features = ["v4"] }
 validator = { version = "0.20.0", features = ["derive"] }
 tak-core = { path = "./tak-core" }
 tak-server-domain = { path = "./tak-server-domain" }
+tak-persistence = { path = "./tak-persistence" }
 sqlx = { version = "0.8.6", features = [
     "runtime-tokio",
     "tls-native-tls",

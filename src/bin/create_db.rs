@@ -1,3 +1,5 @@
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -7,16 +9,6 @@ async fn main() {
 
     let games_db_path = std::env::var("TAK_GAMES_DB").expect("TAK_GAMES_DB env var not set");
     let players_db_path = std::env::var("TAK_PLAYER_DB").expect("TAK_PLAYER_DB env var not set");
-    let parent = std::path::Path::new(&games_db_path)
-        .parent()
-        .expect("Failed to get parent directory of games DB path");
-    if !parent.exists() {
-        std::fs::create_dir_all(parent).expect("Failed to create parent directory for games DB");
-        println!(
-            "Created parent directory for games DB at {}",
-            parent.display()
-        );
-    }
 
     if std::path::Path::new(&games_db_path).exists() {
         std::fs::remove_file(&games_db_path).expect("Failed to remove existing games DB");
@@ -27,9 +19,13 @@ async fn main() {
         println!("Removed existing players DB at {}", players_db_path);
     }
 
-    let games_conn = sqlx::sqlite::SqlitePoolOptions::new()
+    let games_connect_options = SqliteConnectOptions::new()
+        .filename(&games_db_path)
+        .create_if_missing(true);
+
+    let games_conn = SqlitePoolOptions::new()
         .max_connections(1)
-        .connect(&games_db_path)
+        .connect_with(games_connect_options)
         .await
         .expect("Failed to create pool");
 
@@ -40,9 +36,13 @@ async fn main() {
 
     println!("Created new games DB at {}", games_db_path);
 
-    let players_conn = sqlx::sqlite::SqlitePoolOptions::new()
+    let players_connect_options = SqliteConnectOptions::new()
+        .filename(&players_db_path)
+        .create_if_missing(true);
+
+    let players_conn = SqlitePoolOptions::new()
         .max_connections(1)
-        .connect(&players_db_path)
+        .connect_with(players_connect_options)
         .await
         .expect("Failed to create pool");
 
@@ -50,4 +50,6 @@ async fn main() {
         .execute(&players_conn)
         .await
         .expect("Failed to create players table");
+
+    println!("Created new players DB at {}", players_db_path);
 }

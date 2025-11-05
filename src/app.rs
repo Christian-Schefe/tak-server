@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use axum::response::IntoResponse;
+use tak_persistence::sqlite::{games::SqliteGameRepository, players::SqlitePlayerRepository};
 use tak_server_domain::{
     ServiceError,
     app::{LazyAppState, construct_app},
@@ -10,11 +11,7 @@ use tak_server_domain::{
     transport::ArcTransportService,
 };
 
-use crate::{
-    client::TransportServiceImpl,
-    jwt::JwtServiceImpl,
-    persistence::{games::GameRepositoryImpl, players::PlayerRepositoryImpl},
-};
+use crate::{client::TransportServiceImpl, jwt::JwtServiceImpl};
 
 pub struct MyServiceError(ServiceError);
 
@@ -44,8 +41,8 @@ pub async fn run() {
     let app = LazyAppState::new();
     let transport_service_impl = TransportServiceImpl::new(app.clone());
 
-    let game_repo: ArcGameRepository = Arc::new(Box::new(GameRepositoryImpl::new()));
-    let player_repo: ArcPlayerRepository = Arc::new(Box::new(PlayerRepositoryImpl::new()));
+    let game_repo: ArcGameRepository = Arc::new(Box::new(SqliteGameRepository::new()));
+    let player_repo: ArcPlayerRepository = Arc::new(Box::new(SqlitePlayerRepository::new()));
     let transport_service: ArcTransportService = Arc::new(Box::new(transport_service_impl.clone()));
 
     let jwt_service: ArcJwtService = Arc::new(Box::new(JwtServiceImpl {}));

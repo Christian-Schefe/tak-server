@@ -1,9 +1,11 @@
-use sqlx::{Pool, Sqlite, sqlite::SqlitePoolOptions};
+use sqlx::{Pool, Sqlite};
 use tak_core::{TakAction, TakPos, TakVariant, ptn::game_state_to_string};
 use tak_server_domain::{
     ServiceError, ServiceResult,
     game::{GameId, GameRecord, GameRecordUpdate, GameRepository, GameType},
 };
+
+use crate::sqlite::create_games_db_pool;
 
 #[derive(Debug)]
 pub struct GameEntity {
@@ -28,17 +30,13 @@ pub struct GameEntity {
     pub extra_time_trigger: i32,
 }
 
-pub struct GameRepositoryImpl {
+pub struct SqliteGameRepository {
     pool: Pool<Sqlite>,
 }
 
-impl GameRepositoryImpl {
+impl SqliteGameRepository {
     pub fn new() -> Self {
-        let db_path = std::env::var("TAK_GAMES_DB").expect("TAK_GAMES_DB env var not set");
-        let pool = SqlitePoolOptions::new()
-            .max_connections(5)
-            .connect_lazy(&db_path)
-            .expect("Failed to create pool");
+        let pool = create_games_db_pool();
         Self { pool }
     }
 
@@ -109,7 +107,7 @@ impl GameRepositoryImpl {
 }
 
 #[async_trait::async_trait]
-impl GameRepository for GameRepositoryImpl {
+impl GameRepository for SqliteGameRepository {
     async fn create_game(&self, game: &GameRecord) -> ServiceResult<GameId> {
         let game_entity = GameEntity {
             date: game.date.timestamp(),

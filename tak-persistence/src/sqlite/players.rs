@@ -1,23 +1,18 @@
-use sqlx::{
-    Pool, Row, Sqlite,
-    sqlite::{SqlitePoolOptions, SqliteRow},
-};
+use sqlx::{Pool, Row, Sqlite, sqlite::SqliteRow};
 use tak_server_domain::{
     ServiceError, ServiceResult,
     player::{Player, PlayerFilter, PlayerFlags, PlayerFlagsUpdate, PlayerId, PlayerRepository},
 };
 
-pub struct PlayerRepositoryImpl {
+use crate::sqlite::create_player_db_pool;
+
+pub struct SqlitePlayerRepository {
     pool: Pool<Sqlite>,
 }
 
-impl PlayerRepositoryImpl {
+impl SqlitePlayerRepository {
     pub fn new() -> Self {
-        let db_path = std::env::var("TAK_PLAYER_DB").expect("TAK_PLAYER_DB env var not set");
-        let pool = SqlitePoolOptions::new()
-            .max_connections(5)
-            .connect_lazy(&db_path)
-            .expect("Failed to create pool");
+        let pool = create_player_db_pool();
         Self { pool }
     }
 
@@ -47,7 +42,7 @@ fn map_string_to_option(s: String) -> Option<String> {
 }
 
 #[async_trait::async_trait]
-impl PlayerRepository for PlayerRepositoryImpl {
+impl PlayerRepository for SqlitePlayerRepository {
     async fn get_player_by_id(&self, id: i64) -> ServiceResult<Option<Player>> {
         let player = sqlx::query("SELECT * FROM players WHERE id = ?")
             .bind(id)
