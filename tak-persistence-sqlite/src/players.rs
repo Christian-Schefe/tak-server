@@ -4,7 +4,7 @@ use tak_server_domain::{
     player::{Player, PlayerFilter, PlayerFlags, PlayerFlagsUpdate, PlayerId, PlayerRepository},
 };
 
-use crate::sqlite::create_player_db_pool;
+use crate::create_player_db_pool;
 
 pub struct SqlitePlayerRepository {
     pool: Pool<Sqlite>,

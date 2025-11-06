@@ -5,7 +5,7 @@ use tak_server_domain::{
     game::{GameId, GameRecord, GameRecordUpdate, GameRepository, GameType},
 };
 
-use crate::sqlite::create_games_db_pool;
+use crate::create_games_db_pool;
 
 #[derive(Debug)]
 pub struct GameEntity {

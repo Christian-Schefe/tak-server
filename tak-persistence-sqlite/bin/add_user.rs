@@ -32,10 +32,20 @@ async fn main() {
 }
 
 async fn create_user(conn: &Pool<Sqlite>, name: &str, password: &str) {
-    let sql = "INSERT INTO players (name, password, email, rating, boost, ratedgames, maxrating, ratingage, ratingbase, unrated, isbot, fatigue, is_admin, is_mod, is_gagged, is_banned) VALUES(?, ?,'',1000.0,750.0,0,1000.0,0,0,0,0,'{}',0,false,false,0);";
+    let largest_id = match sqlx::query_scalar::<_, i64>("SELECT MAX(id) FROM players")
+        .fetch_one(conn)
+        .await
+    {
+        Ok(id) => id,
+        Err(sqlx::Error::RowNotFound) => 0,
+        Err(e) => panic!("Failed to get largest player id: {}", e),
+    };
+
+    let sql = "INSERT INTO players (id, name, password, email, rating, boost, ratedgames, maxrating, ratingage, ratingbase, unrated, isbot, fatigue, is_admin, is_mod, is_gagged, is_banned) VALUES(?, ?, ?,'',1000.0,750.0,0,1000.0,0,0,0,0,'{}',0,false,false,0);";
     let pw_hash = bcrypt::hash(password, bcrypt::DEFAULT_COST).expect("Failed to hash password");
 
     sqlx::query(sql)
+        .bind(largest_id + 1)
         .bind(name)
         .bind(pw_hash)
         .execute(conn)

@@ -1,19 +1,7 @@
 [package]
-name = "tak-server"
+name = "tak-server-api"
 version = "0.1.0"
 edition = "2024"
-default-run = "tak-server"
-
-[workspace]
-resolver = "3"
-members = [
-    "tak-client",
-    "tak-core",
-    "tak-persistence-sqlite",
-    "tak-persistence-mariadb",
-    "tak-server-domain",
-    "tak-server-api",
-]
 
 [dependencies]
 async-trait = "0.1.89"
@@ -39,7 +27,5 @@ tokio-util = { version = "0.7.16", features = ["full"] }
 tower-http = "0.6.6"
 uuid = { version = "1.18.1", features = ["v4"] }
 validator = { version = "0.20.0", features = ["derive"] }
-tak-core = { path = "./tak-core" }
-tak-server-domain = { path = "./tak-server-domain" }
-tak-persistence-sqlite = { path = "./tak-persistence-sqlite" }
-tak-server-api = { path = "./tak-server-api" }
+tak-core = { path = "../tak-core" }
+tak-server-domain = { path = "../tak-server-domain" }
