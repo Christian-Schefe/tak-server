@@ -1,5 +1,5 @@
 use sqlx::{Pool, Sqlite};
-use tak_core::{TakAction, TakPos, TakVariant, ptn::game_state_to_string};
+use tak_core::{TakAction, TakActionRecord, TakPos, TakVariant, ptn::game_state_to_string};
 use tak_server_domain::{
     ServiceError, ServiceResult,
     game::{GameId, GameRecord, GameRecordUpdate, GameRepository, GameType},
@@ -70,7 +70,7 @@ impl SqliteGameRepository {
         Ok(res.last_insert_rowid())
     }
 
-    fn move_to_database_string(action: &TakAction) -> String {
+    fn action_record_to_database_string(record: &TakActionRecord) -> String {
         fn square_to_string(pos: &TakPos) -> String {
             format!(
                 "{}{}",
@@ -78,7 +78,7 @@ impl SqliteGameRepository {
                 (b'1' + pos.y as u8) as char,
             )
         }
-        match action {
+        match &record.action {
             TakAction::Place { pos, variant } => format!(
                 "P {} {}",
                 square_to_string(pos),
@@ -147,7 +147,7 @@ impl GameRepository for SqliteGameRepository {
         let notation_val = update
             .moves
             .iter()
-            .map(|action| Self::move_to_database_string(action))
+            .map(|action| Self::action_record_to_database_string(action))
             .collect::<Vec<_>>()
             .join(" ");
         let result_val = game_state_to_string(&update.result);

@@ -27,7 +27,7 @@ pub type ArcSeekService = Arc<Box<dyn SeekService + Send + Sync + 'static>>;
 
 #[async_trait::async_trait]
 pub trait SeekService {
-    fn add_seek(
+    async fn add_seek(
         &self,
         player: PlayerUsername,
         opponent: Option<PlayerUsername>,
@@ -35,7 +35,7 @@ pub trait SeekService {
         game_settings: TakGameSettings,
         game_type: GameType,
     ) -> ServiceResult<SeekId>;
-    fn add_rematch_seek(
+    async fn add_rematch_seek(
         &self,
         player: PlayerUsername,
         opponent: PlayerUsername,
@@ -47,7 +47,7 @@ pub trait SeekService {
     fn get_seek_ids(&self) -> Vec<SeekId>;
     fn get_seeks(&self) -> Vec<Seek>;
     fn get_seek(&self, id: &SeekId) -> ServiceResult<Seek>;
-    fn remove_seek_of_player(&self, player: &PlayerUsername) -> ServiceResult<Seek>;
+    async fn remove_seek_of_player(&self, player: &PlayerUsername) -> ServiceResult<Seek>;
     async fn accept_seek(&self, player: &PlayerUsername, id: &SeekId) -> ServiceResult<()>;
 }
 
@@ -83,7 +83,7 @@ impl SeekServiceImpl {
         seek_id
     }
 
-    fn add_seek_internal(
+    async fn add_seek_internal(
         &self,
         player: PlayerUsername,
         opponent: Option<PlayerUsername>,
@@ -96,7 +96,7 @@ impl SeekServiceImpl {
             return ServiceError::bad_request("Invalid game settings");
         }
         if self.seeks_by_player.contains_key(&player) {
-            self.remove_seek_of_player(&player)?;
+            self.remove_seek_of_player(&player).await?;
         }
         let seek_id = self.increment_seek_id();
         let seek = Seek {
@@ -115,7 +115,9 @@ impl SeekServiceImpl {
 
         println!("New seek: {:?}", seek);
         let seek_new_msg = ServerMessage::SeekList { add: true, seek };
-        self.transport_service.try_player_broadcast(&seek_new_msg);
+        self.transport_service
+            .try_player_broadcast(&seek_new_msg)
+            .await;
 
         Ok(seek_id)
     }
@@ -123,7 +125,7 @@ impl SeekServiceImpl {
 
 #[async_trait::async_trait]
 impl SeekService for SeekServiceImpl {
-    fn add_seek(
+    async fn add_seek(
         &self,
         player: PlayerUsername,
         opponent: Option<PlayerUsername>,
@@ -132,9 +134,10 @@ impl SeekService for SeekServiceImpl {
         game_type: GameType,
     ) -> ServiceResult<SeekId> {
         self.add_seek_internal(player, opponent, color, game_settings, game_type, None)
+            .await
     }
 
-    fn add_rematch_seek(
+    async fn add_rematch_seek(
         &self,
         player: PlayerUsername,
         opponent: PlayerUsername,
@@ -158,18 +161,21 @@ impl SeekService for SeekServiceImpl {
             };
             drop(existing_seek_id);
             self.transport_service
-                .try_player_send(&player, &accept_rematch_msg);
+                .try_player_send(&player, &accept_rematch_msg)
+                .await;
 
             return Ok(());
         }
-        let seek_id = self.add_seek_internal(
-            player,
-            Some(opponent),
-            color,
-            game_settings,
-            game_type,
-            Some(from_game),
-        )?;
+        let seek_id = self
+            .add_seek_internal(
+                player,
+                Some(opponent),
+                color,
+                game_settings,
+                game_type,
+                Some(from_game),
+            )
+            .await?;
         self.rematch_seeks.insert(from_game, seek_id);
 
         Ok(())
@@ -193,7 +199,7 @@ impl SeekService for SeekServiceImpl {
             .collect()
     }
 
-    fn remove_seek_of_player(&self, player: &PlayerUsername) -> ServiceResult<Seek> {
+    async fn remove_seek_of_player(&self, player: &PlayerUsername) -> ServiceResult<Seek> {
         let Some((_, seek_id)) = self.seeks_by_player.remove(player) else {
             return ServiceError::not_found("No seek found for player");
         };
@@ -210,7 +216,8 @@ impl SeekService for SeekServiceImpl {
             seek: seek.clone(),
         };
         self.transport_service
-            .try_player_broadcast(&seek_remove_msg);
+            .try_player_broadcast(&seek_remove_msg)
+            .await;
 
         Ok(seek)
     }
@@ -244,8 +251,8 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn test_add_seek() {
+    #[tokio::test]
+    async fn test_add_seek() {
         let mock_transport_service = MockTransportService::default();
         let mock_game_service = MockGameService::default();
         let seek_service = SeekServiceImpl::new(
@@ -296,6 +303,7 @@ mod tests {
                     invalid_game_settings,
                     GameType::Rated,
                 )
+                .await
                 .is_err()
         );
 
@@ -307,6 +315,7 @@ mod tests {
                 game_settings.clone(),
                 GameType::Rated,
             )
+            .await
             .expect("Failed to add seek");
 
         let sent_messages = mock_transport_service.get_broadcasts();
@@ -319,8 +328,8 @@ mod tests {
         assert_eq!(seek_service.get_seek(&1).ok(), Some(expected_seek));
     }
 
-    #[test]
-    fn test_remove_seek() {
+    #[tokio::test]
+    async fn test_remove_seek() {
         let mock_transport_service = MockTransportService::default();
         let mock_game_service = MockGameService::default();
         let seek_service = SeekServiceImpl::new(
@@ -358,10 +367,12 @@ mod tests {
                 game_settings.clone(),
                 GameType::Rated,
             )
+            .await
             .expect("Failed to add seek");
 
         seek_service
             .remove_seek_of_player(&"player1".to_string())
+            .await
             .expect("Failed to remove seek");
 
         let sent_messages = mock_transport_service.get_broadcasts();
@@ -376,8 +387,8 @@ mod tests {
         assert!(seek_service.get_seek_ids().is_empty());
     }
 
-    #[test]
-    fn test_rematch_seek() {
+    #[tokio::test]
+    async fn test_rematch_seek() {
         let mock_transport_service = MockTransportService::default();
         let mock_game_service = MockGameService::default();
         let seek_service = SeekServiceImpl::new(
@@ -416,6 +427,7 @@ mod tests {
                 GameType::Rated,
                 1,
             )
+            .await
             .expect("Failed to add seek");
 
         let sent_broadcasts = mock_transport_service.get_broadcasts();
@@ -439,6 +451,7 @@ mod tests {
                 GameType::Rated,
                 1,
             )
+            .await
             .expect("Failed to add seek");
 
         let sent_messages = mock_transport_service.get_messages();

@@ -7,7 +7,8 @@ use std::{
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use tak_core::{
-    TakAction, TakGame, TakGameSettings, TakGameState, TakPlayer, ptn::game_state_to_string,
+    TakAction, TakActionRecord, TakGame, TakGameSettings, TakGameState, TakPlayer,
+    ptn::game_state_to_string,
 };
 use tokio::select;
 use tokio_util::sync::CancellationToken;
@@ -51,7 +52,7 @@ pub struct GameRecord {
 
 pub struct GameRecordUpdate {
     pub result: TakGameState,
-    pub moves: Vec<TakAction>,
+    pub moves: Vec<TakActionRecord>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -82,20 +83,20 @@ pub trait GameService {
     fn get_active_game_of_player(&self, player: &PlayerUsername) -> Option<Game>;
     async fn add_game_from_seek(&self, seek: &Seek, opponent: &PlayerUsername)
     -> ServiceResult<()>;
-    fn try_do_action(
+    async fn try_do_action(
         &self,
         username: &PlayerUsername,
         game_id: &GameId,
         action: TakAction,
     ) -> ServiceResult<()>;
-    fn resign_game(&self, username: &PlayerUsername, game_id: &GameId) -> ServiceResult<()>;
-    fn offer_draw(
+    async fn resign_game(&self, username: &PlayerUsername, game_id: &GameId) -> ServiceResult<()>;
+    async fn offer_draw(
         &self,
         username: &PlayerUsername,
         game_id: &GameId,
         offer: bool,
     ) -> ServiceResult<()>;
-    fn request_undo(
+    async fn request_undo(
         &self,
         username: &PlayerUsername,
         game_id: &GameId,
@@ -186,7 +187,7 @@ impl GameServiceImpl {
         Ok(())
     }
 
-    fn check_game_over(&self, game_id: &GameId) {
+    async fn check_game_over(&self, game_id: &GameId) {
         let game_ref = self.games.get(game_id);
         let game = match game_ref.as_ref() {
             Some(g) if !g.game.is_ongoing() => g.value().clone(),
@@ -200,7 +201,7 @@ impl GameServiceImpl {
             game_state_to_string(&game.game.base.game_state)
         );
 
-        self.send_time_update(game_id);
+        self.send_time_update(game_id).await;
 
         self.games.remove(game_id);
         if let Some((_, token)) = self.game_ended_tokens.remove(game_id) {
@@ -216,30 +217,31 @@ impl GameServiceImpl {
             },
         };
         self.transport_service
-            .try_player_send(&game.white, &game_over_msg);
+            .try_player_send(&game.white, &game_over_msg)
+            .await;
         self.transport_service
-            .try_player_send(&game.black, &game_over_msg);
+            .try_player_send(&game.black, &game_over_msg)
+            .await;
 
         let spectators = self.game_spectators.remove_key(game_id);
         self.transport_service
-            .try_spectator_multicast(&spectators, &game_over_msg);
+            .try_spectator_multicast(&spectators, &game_over_msg)
+            .await;
 
         let game_remove_msg = ServerMessage::GameList {
             add: false,
             game: game.clone(),
         };
         self.transport_service
-            .try_player_broadcast(&game_remove_msg);
+            .try_player_broadcast(&game_remove_msg)
+            .await;
 
-        let game_service = self.clone();
-        tokio::spawn(async move {
-            if let Err(e) = game_service.save_to_database(&game).await {
-                eprintln!("Failed to save game to database: {}", e);
-            }
-        });
+        if let Err(e) = self.save_to_database(&game).await {
+            eprintln!("Failed to save game to database: {}", e);
+        }
     }
 
-    fn send_time_update(&self, game_id: &GameId) {
+    async fn send_time_update(&self, game_id: &GameId) {
         let game_ref = self.games.get(game_id);
         let now = Instant::now();
         let (players, remaining) = match game_ref.as_ref() {
@@ -259,13 +261,16 @@ impl GameServiceImpl {
             },
         };
         self.transport_service
-            .try_player_send(&players.0, &time_update_msg);
+            .try_player_send(&players.0, &time_update_msg)
+            .await;
         self.transport_service
-            .try_player_send(&players.1, &time_update_msg);
+            .try_player_send(&players.1, &time_update_msg)
+            .await;
 
         let spectators = self.game_spectators.get_by_key(game_id);
         self.transport_service
-            .try_spectator_multicast(&spectators, &time_update_msg);
+            .try_spectator_multicast(&spectators, &time_update_msg)
+            .await;
     }
 
     fn run_timeout_waiter(&self, game_id: GameId, cancel_token: CancellationToken) {
@@ -296,7 +301,7 @@ impl GameServiceImpl {
                     _ = tokio::time::sleep(min_duration_to_timeout) => {}
                 }
             }
-            game_service.check_game_over(&game_id);
+            game_service.check_game_over(&game_id).await;
         });
     }
 
@@ -354,7 +359,7 @@ impl GameServiceImpl {
                     _ = tokio::time::sleep(min_duration_to_timeout) => {}
                 }
             }
-            game_service.check_game_over(&game_id);
+            game_service.check_game_over(&game_id).await;
         });
     }
 }
@@ -375,7 +380,7 @@ impl GameService for GameServiceImpl {
         Ok(())
     }
 
-    fn offer_draw(
+    async fn offer_draw(
         &self,
         username: &PlayerUsername,
         game_id: &GameId,
@@ -398,14 +403,15 @@ impl GameService for GameServiceImpl {
                 message: ServerGameMessage::DrawOffer { offer },
             };
             self.transport_service
-                .try_player_send(&opponent, &draw_offer_msg);
+                .try_player_send(&opponent, &draw_offer_msg)
+                .await;
         }
 
-        self.check_game_over(game_id);
+        self.check_game_over(game_id).await;
         Ok(())
     }
 
-    fn request_undo(
+    async fn request_undo(
         &self,
         username: &PlayerUsername,
         game_id: &GameId,
@@ -428,20 +434,26 @@ impl GameService for GameServiceImpl {
                 message: ServerGameMessage::UndoRequest { request },
             };
             self.transport_service
-                .try_player_send(&opponent, &undo_request_msg);
+                .try_player_send(&opponent, &undo_request_msg)
+                .await;
         } else {
-            self.send_time_update(game_id);
+            self.send_time_update(game_id).await;
 
             let undo_msg = ServerMessage::GameMessage {
                 game_id: *game_id,
                 message: ServerGameMessage::Undo,
             };
-            self.transport_service.try_player_send(&username, &undo_msg);
-            self.transport_service.try_player_send(&opponent, &undo_msg);
+            self.transport_service
+                .try_player_send(&username, &undo_msg)
+                .await;
+            self.transport_service
+                .try_player_send(&opponent, &undo_msg)
+                .await;
 
             let spectators = self.game_spectators.get_by_key(game_id);
             self.transport_service
-                .try_spectator_multicast(&spectators, &undo_msg);
+                .try_spectator_multicast(&spectators, &undo_msg)
+                .await;
         }
 
         Ok(())
@@ -493,20 +505,24 @@ impl GameService for GameServiceImpl {
         self.run_timeout_waiter(id, cancel_token);
 
         let game_new_msg = ServerMessage::GameList { add: true, game };
-        self.transport_service.try_player_broadcast(&game_new_msg);
+        self.transport_service
+            .try_player_broadcast(&game_new_msg)
+            .await;
 
         let game_start_msg = ServerMessage::GameStart { game_id: id };
 
         self.transport_service
-            .try_player_send(&seek.creator, &game_start_msg);
+            .try_player_send(&seek.creator, &game_start_msg)
+            .await;
 
         self.transport_service
-            .try_player_send(&opponent, &game_start_msg);
+            .try_player_send(&opponent, &game_start_msg)
+            .await;
 
         Ok(())
     }
 
-    fn try_do_action(
+    async fn try_do_action(
         &self,
         username: &PlayerUsername,
         game_id: &GameId,
@@ -519,29 +535,31 @@ impl GameService for GameServiceImpl {
         if game_ref.game.base.current_player != player {
             return ServiceError::not_possible("It's not your turn");
         }
-        game_ref
+        let action_record = game_ref
             .game
             .do_action(&action)
             .map_err(|e| ServiceError::NotPossible(e))?;
         let opponent = Self::get_opponent_username(&game_ref, &player);
         drop(game_ref);
 
-        self.send_time_update(game_id);
+        self.send_time_update(game_id).await;
 
         let action_msg = ServerMessage::GameMessage {
             game_id: *game_id,
             message: ServerGameMessage::Action {
-                action: action.clone(),
+                action: action_record,
             },
         };
 
         self.transport_service
-            .try_player_send(&opponent, &action_msg);
+            .try_player_send(&opponent, &action_msg)
+            .await;
         let spectators = self.game_spectators.get_by_key(game_id);
         self.transport_service
-            .try_spectator_multicast(&spectators, &action_msg);
+            .try_spectator_multicast(&spectators, &action_msg)
+            .await;
 
-        self.check_game_over(game_id);
+        self.check_game_over(game_id).await;
         Ok(())
     }
 
@@ -575,7 +593,7 @@ impl GameService for GameServiceImpl {
         None
     }
 
-    fn resign_game(&self, username: &PlayerUsername, game_id: &GameId) -> ServiceResult<()> {
+    async fn resign_game(&self, username: &PlayerUsername, game_id: &GameId) -> ServiceResult<()> {
         let Some(mut game_ref) = self.games.get_mut(game_id) else {
             return ServiceError::not_found("Game ID not found");
         };
@@ -586,7 +604,7 @@ impl GameService for GameServiceImpl {
             .map_err(|e| ServiceError::NotPossible(e))?;
         drop(game_ref);
 
-        self.check_game_over(game_id);
+        self.check_game_over(game_id).await;
         Ok(())
     }
 
@@ -623,7 +641,7 @@ impl GameService for MockGameService {
     ) -> ServiceResult<()> {
         Ok(())
     }
-    fn try_do_action(
+    async fn try_do_action(
         &self,
         _username: &PlayerUsername,
         _game_id: &GameId,
@@ -631,10 +649,14 @@ impl GameService for MockGameService {
     ) -> ServiceResult<()> {
         Ok(())
     }
-    fn resign_game(&self, _username: &PlayerUsername, _game_id: &GameId) -> ServiceResult<()> {
+    async fn resign_game(
+        &self,
+        _username: &PlayerUsername,
+        _game_id: &GameId,
+    ) -> ServiceResult<()> {
         Ok(())
     }
-    fn offer_draw(
+    async fn offer_draw(
         &self,
         _username: &PlayerUsername,
         _game_id: &GameId,
@@ -642,7 +664,7 @@ impl GameService for MockGameService {
     ) -> ServiceResult<()> {
         Ok(())
     }
-    fn request_undo(
+    async fn request_undo(
         &self,
         _username: &PlayerUsername,
         _game_id: &GameId,

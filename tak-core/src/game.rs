@@ -4,7 +4,8 @@ use std::{
 };
 
 use crate::{
-    TakAction, TakGameSettings, TakGameState, TakPlayer, TakVariant, TakWinReason, board::TakBoard,
+    TakAction, TakActionRecord, TakGameSettings, TakGameState, TakPlayer, TakVariant, TakWinReason,
+    board::TakBoard,
 };
 
 #[derive(Clone, Debug)]
@@ -149,7 +150,7 @@ impl TakBaseGame {
 #[derive(Clone, Debug)]
 pub struct TakGame {
     pub base: TakBaseGame,
-    pub action_history: Vec<TakAction>,
+    pub action_history: Vec<TakActionRecord>,
     pub draw_offered: (bool, bool),
     pub undo_requested: (bool, bool),
     pub clock: TakClock,
@@ -301,7 +302,7 @@ impl TakGame {
         Ok(())
     }
 
-    pub fn do_action(&mut self, action: &TakAction) -> Result<(), String> {
+    pub fn do_action(&mut self, action: &TakAction) -> Result<TakActionRecord, String> {
         let now = Instant::now();
         self.check_is_ongoing(now)?;
 
@@ -310,9 +311,14 @@ impl TakGame {
         self.base.do_action(action)?;
         self.start_or_update_clock(now, &player);
 
-        self.action_history.push(action.clone());
+        let record = TakActionRecord {
+            action: action.clone(),
+            time_remaining: self.get_time_remaining_both(now),
+        };
 
-        Ok(())
+        self.action_history.push(record.clone());
+
+        Ok(record)
     }
 
     pub fn undo_action(&mut self) -> Result<(), String> {
@@ -324,8 +330,8 @@ impl TakGame {
         };
         let player = self.base.current_player.clone();
         let mut game_clone = TakBaseGame::new(self.base.settings.clone());
-        for action in &self.action_history {
-            game_clone.do_action(action)?;
+        for record in &self.action_history {
+            game_clone.do_action(&record.action)?;
         }
         self.base = game_clone;
         self.maybe_apply_elapsed(now, &player);

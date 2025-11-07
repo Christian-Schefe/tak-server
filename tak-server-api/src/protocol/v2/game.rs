@@ -5,7 +5,9 @@ use crate::{
         v2::{ProtocolV2Handler, ProtocolV2Result},
     },
 };
-use tak_core::{TakAction, TakDir, TakGameState, TakPos, TakVariant, ptn::game_state_to_string};
+use tak_core::{
+    TakAction, TakActionRecord, TakDir, TakGameState, TakPos, TakVariant, ptn::game_state_to_string,
+};
 use tak_server_domain::{
     ServiceError, ServiceResult, game::GameId, player::PlayerUsername, transport::ServerGameMessage,
 };
@@ -87,7 +89,7 @@ impl ProtocolV2Handler {
         self.send_to(id, message);
     }
 
-    pub fn handle_game_message(
+    pub async fn handle_game_message(
         &self,
         username: &PlayerUsername,
         parts: &[&str],
@@ -102,20 +104,30 @@ impl ProtocolV2Handler {
         let game_service = &self.app_state.game_service;
 
         match parts[1] {
-            "P" => self.handle_game_place_message(&username, game_id, &parts[2..])?,
-            "M" => self.handle_game_move_message(&username, game_id, &parts[2..])?,
-            "Resign" => game_service.resign_game(&username, &game_id)?,
-            "OfferDraw" => game_service.offer_draw(&username, &game_id, true)?,
-            "RemoveDraw" => game_service.offer_draw(&username, &game_id, false)?,
-            "RequestUndo" => game_service.request_undo(&username, &game_id, true)?,
-            "RemoveUndo" => game_service.request_undo(&username, &game_id, false)?,
+            "P" => {
+                self.handle_game_place_message(&username, game_id, &parts[2..])
+                    .await?
+            }
+            "M" => {
+                self.handle_game_move_message(&username, game_id, &parts[2..])
+                    .await?
+            }
+            "Resign" => game_service.resign_game(&username, &game_id).await?,
+            "OfferDraw" => game_service.offer_draw(&username, &game_id, true).await?,
+            "RemoveDraw" => game_service.offer_draw(&username, &game_id, false).await?,
+            "RequestUndo" => game_service.request_undo(&username, &game_id, true).await?,
+            "RemoveUndo" => {
+                game_service
+                    .request_undo(&username, &game_id, false)
+                    .await?
+            }
             _ => return ServiceError::not_found("Unknown Game action"),
         };
 
         Ok(None)
     }
 
-    pub fn handle_game_place_message(
+    pub async fn handle_game_place_message(
         &self,
         username: &PlayerUsername,
         game_id: GameId,
@@ -147,12 +159,13 @@ impl ProtocolV2Handler {
 
         self.app_state
             .game_service
-            .try_do_action(username, &game_id, action)?;
+            .try_do_action(username, &game_id, action)
+            .await?;
 
         Ok(())
     }
 
-    pub fn handle_game_move_message(
+    pub async fn handle_game_move_message(
         &self,
         username: &PlayerUsername,
         game_id: GameId,
@@ -202,13 +215,19 @@ impl ProtocolV2Handler {
         };
         self.app_state
             .game_service
-            .try_do_action(username, &game_id, action)?;
+            .try_do_action(username, &game_id, action)
+            .await?;
 
         Ok(())
     }
 
-    pub fn send_game_action_message(&self, id: &ClientId, game_id: &GameId, action: &TakAction) {
-        let message = match action {
+    pub fn send_game_action_message(
+        &self,
+        id: &ClientId,
+        game_id: &GameId,
+        action: &TakActionRecord,
+    ) {
+        let message = match &action.action {
             TakAction::Place { pos, variant } => format!(
                 "Game#{} P {}{} {}",
                 game_id,

@@ -111,13 +111,15 @@ pub async fn handle_add_seek_endpoint(
     } else {
         GameType::Rated
     };
-    app.seek_service.add_seek(
-        claims.sub.to_string(),
-        seek.opponent,
-        color,
-        game_settings,
-        game_type,
-    )?;
+    app.seek_service
+        .add_seek(
+            claims.sub.to_string(),
+            seek.opponent,
+            color,
+            game_settings,
+            game_type,
+        )
+        .await?;
     Ok(())
 }
 
@@ -126,7 +128,7 @@ pub async fn handle_remove_seek_endpoint(
     State(app): State<AppState>,
 ) -> Result<(), MyServiceError> {
     app.player_service.fetch_player(&claims.sub).await?;
-    app.seek_service.remove_seek_of_player(&claims.sub)?;
+    app.seek_service.remove_seek_of_player(&claims.sub).await?;
     Ok(())
 }
 

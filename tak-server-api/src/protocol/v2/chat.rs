@@ -39,7 +39,7 @@ impl ProtocolV2Handler {
         }
     }
 
-    pub fn handle_room_membership_message(
+    pub async fn handle_room_membership_message(
         &self,
         id: &ClientId,
         parts: &[&str],
@@ -50,9 +50,9 @@ impl ProtocolV2Handler {
         }
         let room = parts[1].to_string();
         if join {
-            self.app_state.chat_service.join_room(id, &room)?;
+            self.app_state.chat_service.join_room(id, &room).await?;
         } else {
-            self.app_state.chat_service.leave_room(id, &room)?;
+            self.app_state.chat_service.leave_room(id, &room).await?;
         }
         Ok(None)
     }

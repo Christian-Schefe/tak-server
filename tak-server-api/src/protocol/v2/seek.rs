@@ -14,12 +14,12 @@ use tak_server_domain::{
 };
 
 impl ProtocolV2Handler {
-    pub fn handle_seek_message(
+    pub async fn handle_seek_message(
         &self,
         username: &PlayerUsername,
         parts: &[&str],
     ) -> ProtocolV2Result {
-        self.handle_add_seek_message(username, parts, None)
+        self.handle_add_seek_message(username, parts, None).await
     }
 
     pub async fn handle_seek_list_message(&self, id: &ClientId) -> ProtocolV2Result {
@@ -30,7 +30,7 @@ impl ProtocolV2Handler {
     }
 
     // TODO: Support V0 seek messages
-    pub fn handle_add_seek_message(
+    pub async fn handle_add_seek_message(
         &self,
         username: &PlayerUsername,
         parts: &[&str],
@@ -128,35 +128,42 @@ impl ProtocolV2Handler {
         if !game_settings.is_valid() {
             self.app_state
                 .seek_service
-                .remove_seek_of_player(&username)?;
+                .remove_seek_of_player(&username)
+                .await?;
         } else if let Some(from_game) = rematch {
             let Some(opponent) = opponent else {
                 return Err(ServiceError::BadRequest(
                     "Rematch seek must specify opponent".into(),
                 ));
             };
-            self.app_state.seek_service.add_rematch_seek(
-                username.to_string(),
-                opponent,
-                color,
-                game_settings,
-                game_type,
-                from_game,
-            )?;
+            self.app_state
+                .seek_service
+                .add_rematch_seek(
+                    username.to_string(),
+                    opponent,
+                    color,
+                    game_settings,
+                    game_type,
+                    from_game,
+                )
+                .await?;
         } else {
-            self.app_state.seek_service.add_seek(
-                username.to_string(),
-                opponent,
-                color,
-                game_settings,
-                game_type,
-            )?;
+            self.app_state
+                .seek_service
+                .add_seek(
+                    username.to_string(),
+                    opponent,
+                    color,
+                    game_settings,
+                    game_type,
+                )
+                .await?;
         }
 
         Ok(None)
     }
 
-    pub fn handle_rematch_message(
+    pub async fn handle_rematch_message(
         &self,
         username: &PlayerUsername,
         parts: &[&str],
@@ -167,7 +174,8 @@ impl ProtocolV2Handler {
         let Ok(game_id) = parts[1].parse::<GameId>() else {
             return ServiceError::bad_request("Invalid Game ID in Rematch message");
         };
-        self.handle_add_seek_message(username, &parts[1..], Some(game_id))?;
+        self.handle_add_seek_message(username, &parts[1..], Some(game_id))
+            .await?;
         Ok(None)
     }
 

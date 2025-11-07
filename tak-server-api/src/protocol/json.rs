@@ -164,15 +164,19 @@ impl ProtocolJsonHandler {
         };
         match msg {
             ClientMessage::GameAction { game_id, action } => {
-                self.handle_game_action(&username, &game_id, &action)
+                self.handle_game_action(&username, &game_id, &action).await
             }
             ClientMessage::RequestUndo { game_id, request } => {
                 self.handle_undo_request_message(&username, &game_id, request)
+                    .await
             }
             ClientMessage::OfferDraw { game_id, offer } => {
                 self.handle_draw_offer_message(&username, &game_id, offer)
+                    .await
             }
-            ClientMessage::Resign { game_id } => self.handle_resign_message(&username, &game_id),
+            ClientMessage::Resign { game_id } => {
+                self.handle_resign_message(&username, &game_id).await
+            }
             ClientMessage::ChatMessage {
                 message,
                 room,
@@ -329,7 +333,7 @@ fn server_message_to_json(msg: &ServerMessage) -> JsonServerMessage {
 fn server_game_message_to_json(msg: &ServerGameMessage) -> JsonServerGameMessage {
     match msg {
         ServerGameMessage::Action { action } => JsonServerGameMessage::Action {
-            action: action_to_ptn(action),
+            action: action_to_ptn(&action.action),
         },
         ServerGameMessage::TimeUpdate {
             remaining_white,

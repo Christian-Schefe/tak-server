@@ -472,12 +472,14 @@ impl PlayerService for PlayerServiceImpl {
         self.update_player(username, target_username, Self::more_rights, &flags)
             .await?;
         if let Some(ban_msg) = &banned {
-            self.transport_service.try_player_send(
-                &target_username,
-                &ServerMessage::ConnectionClosed {
-                    reason: DisconnectReason::Ban(ban_msg.clone()),
-                },
-            );
+            self.transport_service
+                .try_player_send(
+                    &target_username,
+                    &ServerMessage::ConnectionClosed {
+                        reason: DisconnectReason::Ban(ban_msg.clone()),
+                    },
+                )
+                .await;
 
             let target_player = self.fetch_player_data(target_username).await?;
             if let Some(player_email) = &target_player.email
@@ -573,12 +575,14 @@ impl PlayerService for PlayerServiceImpl {
             return ServiceError::unauthorized("Insufficient rights to kick this player");
         }
 
-        self.transport_service.try_player_send(
-            &target_username,
-            &ServerMessage::ConnectionClosed {
-                reason: DisconnectReason::Kick,
-            },
-        );
+        self.transport_service
+            .try_player_send(
+                &target_username,
+                &ServerMessage::ConnectionClosed {
+                    reason: DisconnectReason::Kick,
+                },
+            )
+            .await;
         println!("User {} kicked user {}", username, target_username);
 
         Ok(())

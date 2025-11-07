@@ -4,7 +4,7 @@ use std::{
 };
 
 use dashmap::DashMap;
-use tak_core::{TakAction, TakGameState};
+use tak_core::{TakActionRecord, TakGameState};
 
 use crate::{
     app::LazyAppState,
@@ -14,20 +14,20 @@ use crate::{
 };
 
 pub type ArcTransportService = Arc<Box<dyn TransportService + Send + Sync + 'static>>;
+
+#[async_trait::async_trait]
 pub trait TransportService {
-    fn try_player_send(&self, id: &PlayerUsername, msg: &ServerMessage);
-    fn try_spectator_send(&self, id: &SpectatorId, msg: &ServerMessage);
-    fn try_player_multicast(&self, ids: &[PlayerUsername], msg: &ServerMessage) {
-        for id in ids {
-            self.try_player_send(id, msg);
-        }
+    async fn try_player_send(&self, id: &PlayerUsername, msg: &ServerMessage);
+    async fn try_spectator_send(&self, id: &SpectatorId, msg: &ServerMessage);
+    async fn try_player_multicast(&self, ids: &[PlayerUsername], msg: &ServerMessage) {
+        let futures = ids.iter().map(|id| self.try_player_send(id, msg));
+        futures::future::join_all(futures).await;
     }
-    fn try_spectator_multicast(&self, ids: &[SpectatorId], msg: &ServerMessage) {
-        for id in ids {
-            self.try_spectator_send(id, msg);
-        }
+    async fn try_spectator_multicast(&self, ids: &[SpectatorId], msg: &ServerMessage) {
+        let futures = ids.iter().map(|id| self.try_spectator_send(id, msg));
+        futures::future::join_all(futures).await;
     }
-    fn try_player_broadcast(&self, msg: &ServerMessage);
+    async fn try_player_broadcast(&self, msg: &ServerMessage);
 }
 
 #[derive(Clone, Debug)]
@@ -78,7 +78,7 @@ pub enum DisconnectReason {
 #[derive(Clone, Debug)]
 pub enum ServerGameMessage {
     Action {
-        action: TakAction,
+        action: TakActionRecord,
     },
     TimeUpdate {
         remaining_white: Duration,
@@ -125,30 +125,33 @@ impl MockTransportService {
     }
 }
 
+#[async_trait::async_trait]
 impl TransportService for MockTransportService {
-    fn try_player_send(&self, id: &PlayerUsername, msg: &ServerMessage) {
+    async fn try_player_send(&self, id: &PlayerUsername, msg: &ServerMessage) {
         self.sent_messages
             .lock()
             .unwrap()
             .push((id.clone(), msg.clone()));
     }
 
-    fn try_spectator_send(&self, id: &SpectatorId, msg: &ServerMessage) {
+    async fn try_spectator_send(&self, id: &SpectatorId, msg: &ServerMessage) {
         self.sent_spectator_messages
             .lock()
             .unwrap()
             .push((id.clone(), msg.clone()));
     }
 
-    fn try_player_broadcast(&self, msg: &ServerMessage) {
+    async fn try_player_broadcast(&self, msg: &ServerMessage) {
         self.sent_broadcasts.lock().unwrap().push(msg.clone());
     }
 }
 
 pub type ArcPlayerConnectionService = Arc<Box<dyn PlayerConnectionService + Send + Sync>>;
+
+#[async_trait::async_trait]
 pub trait PlayerConnectionService {
-    fn on_player_connected(&self, username: &PlayerUsername);
-    fn on_player_disconnected(&self, username: &PlayerUsername);
+    async fn on_player_connected(&self, username: &PlayerUsername);
+    async fn on_player_disconnected(&self, username: &PlayerUsername);
     fn on_spectator_connected(&self, spectator_id: &SpectatorId);
     fn on_spectator_disconnected(&self, spectator_id: &SpectatorId);
     //Implementations are required to hold activity status information for longer than the game disconnect timeout
@@ -173,10 +176,8 @@ impl PlayerConnectionServiceImpl {
             app_state,
         }
     }
-}
 
-impl PlayerConnectionServiceImpl {
-    fn update_online_players(&self) {
+    async fn update_online_players(&self) {
         let players: Vec<String> = self
             .online_players
             .iter()
@@ -187,17 +188,19 @@ impl PlayerConnectionServiceImpl {
 
         self.app_state
             .transport_service()
-            .try_player_broadcast(&msg);
+            .try_player_broadcast(&msg)
+            .await;
     }
 }
 
+#[async_trait::async_trait]
 impl PlayerConnectionService for PlayerConnectionServiceImpl {
-    fn on_player_connected(&self, username: &PlayerUsername) {
+    async fn on_player_connected(&self, username: &PlayerUsername) {
         self.online_players.insert(username.clone(), ());
-        self.update_online_players();
+        self.update_online_players().await;
     }
 
-    fn on_player_disconnected(&self, username: &PlayerUsername) {
+    async fn on_player_disconnected(&self, username: &PlayerUsername) {
         let _ = self
             .app_state
             .seek_service()
@@ -206,7 +209,7 @@ impl PlayerConnectionService for PlayerConnectionServiceImpl {
         self.online_players.remove(username);
         let now = Instant::now();
         let _ = self.last_connected_cache.insert(username.clone(), now);
-        self.update_online_players();
+        self.update_online_players().await;
     }
 
     fn on_spectator_connected(&self, _spectator_id: &SpectatorId) {

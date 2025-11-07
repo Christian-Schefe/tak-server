@@ -14,8 +14,8 @@ pub type ArcChatService = Arc<Box<dyn ChatService + Send + Sync>>;
 
 #[async_trait::async_trait]
 pub trait ChatService {
-    fn join_room(&self, spectator: &SpectatorId, room_name: &String) -> ServiceResult<()>;
-    fn leave_room(&self, spectator: &SpectatorId, room_name: &String) -> ServiceResult<()>;
+    async fn join_room(&self, spectator: &SpectatorId, room_name: &String) -> ServiceResult<()>;
+    async fn leave_room(&self, spectator: &SpectatorId, room_name: &String) -> ServiceResult<()>;
     fn leave_all_rooms(&self, spectator: &SpectatorId) -> ServiceResult<()>;
     async fn send_message_to_all(
         &self,
@@ -57,23 +57,27 @@ impl ChatServiceImpl {
 
 #[async_trait::async_trait]
 impl ChatService for ChatServiceImpl {
-    fn join_room(&self, spectator: &SpectatorId, room_name: &String) -> ServiceResult<()> {
+    async fn join_room(&self, spectator: &SpectatorId, room_name: &String) -> ServiceResult<()> {
         self.chat_rooms.insert(room_name.to_string(), *spectator);
         let msg = ServerMessage::RoomMembership {
             room: room_name.to_string(),
             joined: true,
         };
-        self.client_service.try_spectator_send(spectator, &msg);
+        self.client_service
+            .try_spectator_send(spectator, &msg)
+            .await;
         Ok(())
     }
 
-    fn leave_room(&self, spectator: &SpectatorId, room_name: &String) -> ServiceResult<()> {
+    async fn leave_room(&self, spectator: &SpectatorId, room_name: &String) -> ServiceResult<()> {
         self.chat_rooms.remove(room_name, spectator);
         let msg = ServerMessage::RoomMembership {
             room: room_name.to_string(),
             joined: false,
         };
-        self.client_service.try_spectator_send(spectator, &msg);
+        self.client_service
+            .try_spectator_send(spectator, &msg)
+            .await;
         Ok(())
     }
 
@@ -96,7 +100,7 @@ impl ChatService for ChatServiceImpl {
             message: message.censor(),
             source: ChatMessageSource::Global,
         };
-        self.client_service.try_player_broadcast(&msg);
+        self.client_service.try_player_broadcast(&msg).await;
         Ok(())
     }
 
@@ -119,7 +123,8 @@ impl ChatService for ChatServiceImpl {
             },
         };
         self.client_service
-            .try_spectator_multicast(&participants, &msg);
+            .try_spectator_multicast(&participants, &msg)
+            .await;
 
         Ok(())
     }
@@ -141,7 +146,9 @@ impl ChatService for ChatServiceImpl {
             message: censored_message.clone(),
             source: ChatMessageSource::Private,
         };
-        self.client_service.try_player_send(&to_username, &msg);
+        self.client_service
+            .try_player_send(&to_username, &msg)
+            .await;
         Ok(censored_message)
     }
 }
@@ -204,8 +211,14 @@ mod tests {
         let p1 = Uuid::new_v4();
         let p2 = Uuid::new_v4();
 
-        chat_service.join_room(&p1, &"room".to_string()).unwrap();
-        chat_service.join_room(&p2, &"room".to_string()).unwrap();
+        chat_service
+            .join_room(&p1, &"room".to_string())
+            .await
+            .unwrap();
+        chat_service
+            .join_room(&p2, &"room".to_string())
+            .await
+            .unwrap();
         let messages = mock_client_service.get_spectator_messages();
         assert_eq!(messages.len(), 2);
 

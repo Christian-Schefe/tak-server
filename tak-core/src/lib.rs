@@ -34,6 +34,12 @@ pub enum TakAction {
     },
 }
 
+#[derive(Clone, Debug)]
+pub struct TakActionRecord {
+    pub action: TakAction,
+    pub time_remaining: (Duration, Duration),
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct TakGameSettings {
     pub board_size: u32,

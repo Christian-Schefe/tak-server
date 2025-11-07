@@ -58,17 +58,18 @@ impl PlayerRepository for SqlitePlayerRepository {
     }
 
     async fn get_player_by_name(&self, name: &str) -> ServiceResult<Option<(PlayerId, Player)>> {
-        let player = sqlx::query("SELECT * FROM players WHERE name = ?")
+        let player = match sqlx::query("SELECT * FROM players WHERE name = ?")
             .bind(name)
             .fetch_one(&self.pool)
             .await
-            .map_err(|e| ServiceError::Internal(e.to_string()))?;
-        let player = Self::player_from_row(&player);
-        match player {
-            Ok(player) => Ok(Some(player)),
-            Err(sqlx::Error::RowNotFound) => Ok(None),
-            Err(e) => Err(ServiceError::Internal(e.to_string())),
-        }
+        {
+            Ok(player) => player,
+            Err(sqlx::Error::RowNotFound) => return Ok(None),
+            Err(e) => return Err(ServiceError::Internal(e.to_string())),
+        };
+        Self::player_from_row(&player)
+            .map(Some)
+            .map_err(|e| ServiceError::Internal(e.to_string()))
     }
 
     // TODO: remove manual id handling, use AUTOINCREMENT

@@ -63,7 +63,7 @@ impl TransportServiceImpl {
         }
     }
 
-    fn on_disconnect(&self, id: &ClientId) {
+    async fn on_disconnect(&self, id: &ClientId) {
         self.client_senders.remove(id);
         self.client_handlers.remove(id);
         self.last_activity.remove(id);
@@ -74,7 +74,8 @@ impl TransportServiceImpl {
         if let Some(username) = player {
             self.app_state
                 .player_connection_service()
-                .on_player_disconnected(&username);
+                .on_player_disconnected(&username)
+                .await;
             println!("Player {} disconnected (client {})", username, id);
         } else {
             println!("Client {} disconnected", id);
@@ -101,6 +102,7 @@ impl TransportServiceImpl {
 
         let client_service = self.clone();
         let cancellation_token_clone = cancellation_token.clone();
+        self.client_handlers.insert(client_id, Protocol::V0);
         let receive_task = tokio::spawn(async move {
             client_service
                 .handle_receive::<S, M, E>(
@@ -121,7 +123,7 @@ impl TransportServiceImpl {
         });
 
         let _ = tokio::join!(receive_task, send_task);
-        self.on_disconnect(&client_id);
+        self.on_disconnect(&client_id).await;
     }
 
     async fn handle_send<S, M>(
@@ -137,7 +139,6 @@ impl TransportServiceImpl {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         self.client_senders
             .insert(id, (tx, cancellation_token.clone()));
-        self.client_handlers.insert(id, Protocol::V0);
 
         self.on_connect(&id);
 
@@ -183,7 +184,7 @@ impl TransportServiceImpl {
                 ClientMessage::Text(text) => {
                     if text.to_ascii_lowercase().starts_with("protocol") {
                         self.try_switch_protocol(&id, &text).unwrap_or_else(|e| {
-                            println!("Client {} protocol switch error: {}", id, e);
+                            println!("Client {} failed to switch to protocol {}: {}", id, text, e);
                         });
                         // message is still passed to handler to allow protocol to respond.
                     }
@@ -267,7 +268,7 @@ impl TransportServiceImpl {
             );
             self.close_client(&prev_client_id);
             // call on_disconnect directly to clean up immediately
-            self.on_disconnect(&prev_client_id);
+            self.on_disconnect(&prev_client_id).await;
             println!(
                 "Disconnected previous session of player {} (client {})",
                 username, prev_client_id
@@ -294,7 +295,8 @@ impl TransportServiceImpl {
         }
         self.app_state
             .player_connection_service()
-            .on_player_connected(username);
+            .on_player_connected(username)
+            .await;
         Ok(())
     }
 
@@ -406,47 +408,48 @@ impl TransportServiceImpl {
     }
 }
 
+#[async_trait::async_trait]
 impl TransportService for TransportServiceImpl {
-    fn try_player_send(&self, player: &PlayerUsername, msg: &ServerMessage) {
+    async fn try_player_send(&self, player: &PlayerUsername, msg: &ServerMessage) {
         if let Some(id) = self.get_associated_client(player) {
-            self.try_spectator_send(&id, msg);
+            self.try_spectator_send(&id, msg).await;
         }
     }
 
-    fn try_spectator_send(&self, id: &SpectatorId, msg: &ServerMessage) {
+    async fn try_spectator_send(&self, id: &SpectatorId, msg: &ServerMessage) {
         if let Some(handler) = self.client_handlers.get(id) {
             let protocol = handler.clone();
             drop(handler);
-            let app_state = self.app_state.unwrap().clone();
-            let transport = self.clone();
-            let msg = msg.clone();
-            let id = id.clone();
-            tokio::spawn(async move {
-                crate::protocol::handle_server_message(
-                    &app_state, &transport, &protocol, &id, &msg,
-                )
-                .await;
-            });
+
+            crate::protocol::handle_server_message(
+                self.app_state.unwrap(),
+                self,
+                &protocol,
+                id,
+                msg,
+            )
+            .await;
         }
     }
 
-    fn try_player_broadcast(&self, msg: &ServerMessage) {
-        for entry in self.client_handlers.iter() {
+    async fn try_player_broadcast(&self, msg: &ServerMessage) {
+        let futures = self.client_handlers.iter().map(|entry| async move {
             let id = entry.key().clone();
             if self.player_associations.contains_key(&id) {
                 let protocol = entry.clone();
                 drop(entry);
-                let app_state = self.app_state.unwrap().clone();
-                let transport = self.clone();
-                let msg = msg.clone();
-                tokio::spawn(async move {
-                    crate::protocol::handle_server_message(
-                        &app_state, &transport, &protocol, &id, &msg,
-                    )
-                    .await;
-                });
+
+                crate::protocol::handle_server_message(
+                    self.app_state.unwrap(),
+                    self,
+                    &protocol,
+                    &id,
+                    msg,
+                )
+                .await;
             }
-        }
+        });
+        futures::future::join_all(futures).await;
     }
 }
 

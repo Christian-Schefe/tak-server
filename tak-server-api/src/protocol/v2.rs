@@ -168,8 +168,8 @@ impl ProtocolV2Handler {
                 self.handle_change_password_message(id, &username, &parts)
                     .await
             }
-            "seek" => self.handle_seek_message(&username, &parts),
-            "rematch" => self.handle_rematch_message(&username, &parts),
+            "seek" => self.handle_seek_message(&username, &parts).await,
+            "rematch" => self.handle_rematch_message(&username, &parts).await,
             "list" => self.handle_seek_list_message(id).await,
             "gamelist" => self.handle_game_list_message(id),
             "accept" => self.handle_accept_message(&username, &parts).await,
@@ -178,10 +178,10 @@ impl ProtocolV2Handler {
             "shout" => self.handle_shout_message(&username, &msg).await,
             "shoutroom" => self.handle_shout_room_message(&username, &msg).await,
             "tell" => self.handle_tell_message(&username, &msg).await,
-            "joinroom" => self.handle_room_membership_message(id, &parts, true),
-            "leaveroom" => self.handle_room_membership_message(id, &parts, false),
+            "joinroom" => self.handle_room_membership_message(id, &parts, true).await,
+            "leaveroom" => self.handle_room_membership_message(id, &parts, false).await,
             "sudo" => self.handle_sudo_message(&username, msg, &parts).await,
-            s if s.starts_with("game#") => self.handle_game_message(&username, &parts),
+            s if s.starts_with("game#") => self.handle_game_message(&username, &parts).await,
             _ => ServiceError::bad_request(format!("Unknown V2 message type: {}", parts[0])),
         }
     }
