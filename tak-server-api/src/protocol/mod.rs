@@ -1,10 +1,14 @@
 mod json;
 mod v2;
 
-use tak_server_domain::{app::AppState, player::PlayerUsername, transport::ServerMessage};
+use tak_server_domain::{
+    app::AppState,
+    player::PlayerUsername,
+    transport::{ListenerId, ServerMessage},
+};
 
 use crate::{
-    client::{ClientId, TransportServiceImpl},
+    client::TransportServiceImpl,
     protocol::{json::ProtocolJsonHandler, v2::ProtocolV2Handler},
 };
 
@@ -30,7 +34,7 @@ pub async fn handle_client_message(
     app_state: &AppState,
     transport: &TransportServiceImpl,
     protocol: &Protocol,
-    id: &ClientId,
+    id: ListenerId,
     msg: String,
 ) {
     match protocol {
@@ -51,7 +55,7 @@ pub async fn handle_server_message(
     app_state: &AppState,
     transport: &TransportServiceImpl,
     protocol: &Protocol,
-    id: &ClientId,
+    id: ListenerId,
     msg: &ServerMessage,
 ) {
     match protocol {
@@ -70,7 +74,7 @@ pub async fn on_authenticated(
     app_state: &AppState,
     transport: &TransportServiceImpl,
     protocol: &Protocol,
-    id: &ClientId,
+    id: ListenerId,
     username: &PlayerUsername,
 ) {
     match protocol {
@@ -87,7 +91,7 @@ pub fn on_connected(
     app_state: &AppState,
     transport: &TransportServiceImpl,
     protocol: &Protocol,
-    id: &ClientId,
+    id: ListenerId,
 ) {
     match protocol {
         Protocol::V0 | Protocol::V2 => {

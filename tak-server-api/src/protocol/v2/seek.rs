@@ -1,9 +1,6 @@
 use std::time::Duration;
 
-use crate::{
-    client::ClientId,
-    protocol::v2::{ProtocolV2Handler, ProtocolV2Result},
-};
+use crate::protocol::v2::{ProtocolV2Handler, ProtocolV2Result};
 
 use tak_core::{TakGameSettings, TakPlayer, TakTimeControl};
 use tak_server_domain::{
@@ -11,6 +8,7 @@ use tak_server_domain::{
     game::{GameId, GameType},
     player::PlayerUsername,
     seek::Seek,
+    transport::ListenerId,
 };
 
 impl ProtocolV2Handler {
@@ -22,7 +20,7 @@ impl ProtocolV2Handler {
         self.handle_add_seek_message(username, parts, None).await
     }
 
-    pub async fn handle_seek_list_message(&self, id: &ClientId) -> ProtocolV2Result {
+    pub async fn handle_seek_list_message(&self, id: ListenerId) -> ProtocolV2Result {
         for seek in self.app_state.seek_service.get_seeks() {
             self.handle_server_seek_list_message(id, &seek, true).await;
         }
@@ -197,7 +195,7 @@ impl ProtocolV2Handler {
         Ok(None)
     }
 
-    pub async fn handle_server_seek_list_message(&self, id: &ClientId, seek: &Seek, add: bool) {
+    pub async fn handle_server_seek_list_message(&self, id: ListenerId, seek: &Seek, add: bool) {
         let message = format!(
             "Seek {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
             if add { "new" } else { "remove" },

@@ -4,9 +4,11 @@ use rustrict::CensorStr;
 
 use crate::{
     ServiceError, ServiceResult,
-    game::SpectatorId,
-    player::{PlayerService, PlayerUsername},
-    transport::{ChatMessageSource, ServerMessage, TransportService},
+    player::{ArcPlayerService, PlayerUsername},
+    transport::{
+        ArcPlayerConnectionService, ArcTransportService, ChatMessageSource, ListenerId,
+        ServerMessage, do_player_broadcast, do_player_send,
+    },
     util::ManyManyDashMap,
 };
 
@@ -14,9 +16,9 @@ pub type ArcChatService = Arc<Box<dyn ChatService + Send + Sync>>;
 
 #[async_trait::async_trait]
 pub trait ChatService {
-    async fn join_room(&self, spectator: &SpectatorId, room_name: &String) -> ServiceResult<()>;
-    async fn leave_room(&self, spectator: &SpectatorId, room_name: &String) -> ServiceResult<()>;
-    fn leave_all_rooms(&self, spectator: &SpectatorId) -> ServiceResult<()>;
+    async fn join_room(&self, id: ListenerId, room_name: &String) -> ServiceResult<()>;
+    async fn leave_room(&self, id: ListenerId, room_name: &String) -> ServiceResult<()>;
+    fn leave_all_rooms(&self, id: ListenerId) -> ServiceResult<()>;
     async fn send_message_to_all(
         &self,
         username: &PlayerUsername,
@@ -37,18 +39,21 @@ pub trait ChatService {
 }
 
 pub struct ChatServiceImpl {
-    client_service: Arc<Box<dyn TransportService + Send + Sync>>,
-    player_service: Arc<Box<dyn PlayerService + Send + Sync>>,
-    chat_rooms: Arc<ManyManyDashMap<String, SpectatorId>>,
+    transport_service: ArcTransportService,
+    player_connection_service: ArcPlayerConnectionService,
+    player_service: ArcPlayerService,
+    chat_rooms: Arc<ManyManyDashMap<String, ListenerId>>,
 }
 
 impl ChatServiceImpl {
     pub fn new(
-        client_service: Arc<Box<dyn TransportService + Send + Sync>>,
-        player_service: Arc<Box<dyn PlayerService + Send + Sync>>,
+        transport_service: ArcTransportService,
+        player_connection_service: ArcPlayerConnectionService,
+        player_service: ArcPlayerService,
     ) -> Self {
         Self {
-            client_service,
+            transport_service,
+            player_connection_service,
             player_service,
             chat_rooms: Arc::new(ManyManyDashMap::new()),
         }
@@ -57,32 +62,28 @@ impl ChatServiceImpl {
 
 #[async_trait::async_trait]
 impl ChatService for ChatServiceImpl {
-    async fn join_room(&self, spectator: &SpectatorId, room_name: &String) -> ServiceResult<()> {
-        self.chat_rooms.insert(room_name.to_string(), *spectator);
+    async fn join_room(&self, id: ListenerId, room_name: &String) -> ServiceResult<()> {
+        self.chat_rooms.insert(room_name.to_string(), id);
         let msg = ServerMessage::RoomMembership {
             room: room_name.to_string(),
             joined: true,
         };
-        self.client_service
-            .try_spectator_send(spectator, &msg)
-            .await;
+        self.transport_service.try_listener_send(id, &msg).await;
         Ok(())
     }
 
-    async fn leave_room(&self, spectator: &SpectatorId, room_name: &String) -> ServiceResult<()> {
-        self.chat_rooms.remove(room_name, spectator);
+    async fn leave_room(&self, id: ListenerId, room_name: &String) -> ServiceResult<()> {
+        self.chat_rooms.remove(room_name, &id);
         let msg = ServerMessage::RoomMembership {
             room: room_name.to_string(),
             joined: false,
         };
-        self.client_service
-            .try_spectator_send(spectator, &msg)
-            .await;
+        self.transport_service.try_listener_send(id, &msg).await;
         Ok(())
     }
 
-    fn leave_all_rooms(&self, spectator: &SpectatorId) -> ServiceResult<()> {
-        self.chat_rooms.remove_value(spectator);
+    fn leave_all_rooms(&self, id: ListenerId) -> ServiceResult<()> {
+        self.chat_rooms.remove_value(&id);
         Ok(())
     }
 
@@ -100,7 +101,12 @@ impl ChatService for ChatServiceImpl {
             message: message.censor(),
             source: ChatMessageSource::Global,
         };
-        self.client_service.try_player_broadcast(&msg).await;
+        do_player_broadcast(
+            &self.player_connection_service,
+            &self.transport_service,
+            &msg,
+        )
+        .await;
         Ok(())
     }
 
@@ -122,8 +128,8 @@ impl ChatService for ChatServiceImpl {
                 name: room_name.to_string(),
             },
         };
-        self.client_service
-            .try_spectator_multicast(&participants, &msg)
+        self.transport_service
+            .try_listener_multicast(&participants, &msg)
             .await;
 
         Ok(())
@@ -146,29 +152,43 @@ impl ChatService for ChatServiceImpl {
             message: censored_message.clone(),
             source: ChatMessageSource::Private,
         };
-        self.client_service
-            .try_player_send(&to_username, &msg)
-            .await;
+        do_player_send(
+            &self.player_connection_service,
+            &self.transport_service,
+            to_username,
+            &msg,
+        )
+        .await;
         Ok(censored_message)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use uuid::Uuid;
 
-    use crate::{player::MockPlayerService, transport::MockTransportService};
+    use crate::{
+        player::MockPlayerService,
+        transport::{MockPlayerConnectionService, MockTransportService, PlayerConnectionService},
+    };
 
     use super::*;
 
     #[tokio::test]
     async fn test_private_message() {
         let mock_client_service = MockTransportService::default();
+        let mock_player_connection_service = MockPlayerConnectionService::new();
         let mock_player_service = MockPlayerService::default();
         let chat_service = ChatServiceImpl::new(
             Arc::new(Box::new(mock_client_service.clone())),
+            Arc::new(Box::new(mock_player_connection_service.clone())),
             Arc::new(Box::new(mock_player_service.clone())),
         );
+
+        let test_user_id = ListenerId::new();
+        let test_admin_id = ListenerId::new();
+
+        mock_player_connection_service.on_listener_connected(test_user_id);
+        mock_player_connection_service.on_listener_connected(test_admin_id);
 
         assert_eq!(
             chat_service
@@ -184,7 +204,7 @@ mod tests {
         let messages = mock_client_service.get_messages();
         assert_eq!(messages.len(), 1);
         assert!(
-            matches!(&messages[0], (id, ServerMessage::ChatMessage { from, message, source }) if *id == "test_user" && from == "test_admin" && message == "Hello!" && *source == ChatMessageSource::Private)
+            matches!(&messages[0], (id, ServerMessage::ChatMessage { from, message, source }) if *id == test_user_id && from == "test_admin" && message == "Hello!" && *source == ChatMessageSource::Private)
         );
 
         assert!(matches!(
@@ -202,24 +222,29 @@ mod tests {
     #[tokio::test]
     async fn test_room_message() {
         let mock_client_service = MockTransportService::default();
+        let mock_player_connection_service = MockPlayerConnectionService::new();
         let mock_player_service = MockPlayerService::default();
         let chat_service = ChatServiceImpl::new(
             Arc::new(Box::new(mock_client_service.clone())),
+            Arc::new(Box::new(mock_player_connection_service.clone())),
             Arc::new(Box::new(mock_player_service.clone())),
         );
 
-        let p1 = Uuid::new_v4();
-        let p2 = Uuid::new_v4();
+        let test_user = ListenerId::new();
+        let test_admin = ListenerId::new();
+
+        mock_player_connection_service.on_listener_connected(test_user);
+        mock_player_connection_service.on_listener_connected(test_admin);
 
         chat_service
-            .join_room(&p1, &"room".to_string())
+            .join_room(test_user, &"room".to_string())
             .await
             .unwrap();
         chat_service
-            .join_room(&p2, &"room".to_string())
+            .join_room(test_admin, &"room".to_string())
             .await
             .unwrap();
-        let messages = mock_client_service.get_spectator_messages();
+        let messages = mock_client_service.get_messages();
         assert_eq!(messages.len(), 2);
 
         assert!(
@@ -228,7 +253,7 @@ mod tests {
                 .await
                 .is_ok()
         );
-        let messages = mock_client_service.get_spectator_messages();
+        let messages = mock_client_service.get_messages();
         assert_eq!(messages.len(), 4);
         assert!(
             matches!(&messages[2].1,  ServerMessage::ChatMessage { from, message, source: ChatMessageSource::Room{ name } } if from == "test_admin" && message == "Hello!" && *name ==  "room".to_string()),
@@ -238,8 +263,8 @@ mod tests {
         );
         assert!(
             messages[2].0 != messages[3].0
-                && (messages[2].0 == p1 || messages[2].0 == p2)
-                && (messages[3].0 == p1 || messages[3].0 == p2)
+                && (messages[2].0 == test_user || messages[2].0 == test_admin)
+                && (messages[3].0 == test_user || messages[3].0 == test_admin)
         );
 
         assert!(matches!(
@@ -257,11 +282,19 @@ mod tests {
     #[tokio::test]
     async fn test_global_message() {
         let mock_client_service = MockTransportService::default();
+        let mock_player_connection_service = MockPlayerConnectionService::new();
         let mock_player_service = MockPlayerService::default();
         let chat_service = ChatServiceImpl::new(
             Arc::new(Box::new(mock_client_service.clone())),
+            Arc::new(Box::new(mock_player_connection_service.clone())),
             Arc::new(Box::new(mock_player_service.clone())),
         );
+
+        let test_admin = ListenerId::new();
+        let test_gagged = ListenerId::new();
+
+        mock_player_connection_service.on_listener_connected(test_admin);
+        mock_player_connection_service.on_listener_connected(test_gagged);
 
         assert!(
             chat_service
@@ -269,10 +302,10 @@ mod tests {
                 .await
                 .is_ok()
         );
-        let messages = mock_client_service.get_broadcasts();
+        let messages = mock_client_service.get_messages();
         assert_eq!(messages.len(), 1);
         assert!(
-            matches!(&messages[0],  ServerMessage::ChatMessage { from, message, source: ChatMessageSource::Global } if from == "test_admin" && message == "Hello!"),
+            matches!(&messages[0].1,  ServerMessage::ChatMessage { from, message, source: ChatMessageSource::Global } if from == "test_admin" && message == "Hello!"),
         );
 
         assert!(matches!(

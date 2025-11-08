@@ -43,3 +43,5 @@ tak-core = { path = "./tak-core" }
 tak-server-domain = { path = "./tak-server-domain" }
 tak-persistence-sqlite = { path = "./tak-persistence-sqlite" }
 tak-server-api = { path = "./tak-server-api" }
+log = "0.4.28"
+log4rs = { version = "1.4.0", features = ["gzip"] }

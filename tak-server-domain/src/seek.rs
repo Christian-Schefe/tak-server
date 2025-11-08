@@ -1,13 +1,17 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use log::info;
 use tak_core::{TakGameSettings, TakPlayer};
 
 use crate::{
     ServiceError, ServiceResult,
     game::{ArcGameService, GameId, GameType},
     player::PlayerUsername,
-    transport::{ArcTransportService, ServerMessage},
+    transport::{
+        ArcPlayerConnectionService, ArcTransportService, ServerMessage, do_player_broadcast,
+        do_player_send,
+    },
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -54,6 +58,7 @@ pub trait SeekService {
 #[derive(Clone)]
 pub struct SeekServiceImpl {
     transport_service: ArcTransportService,
+    player_connection_service: ArcPlayerConnectionService,
     game_service: ArcGameService,
     seeks: Arc<DashMap<SeekId, Seek>>,
     seeks_by_player: Arc<DashMap<PlayerUsername, SeekId>>,
@@ -62,9 +67,14 @@ pub struct SeekServiceImpl {
 }
 
 impl SeekServiceImpl {
-    pub fn new(transport_service: ArcTransportService, game_service: ArcGameService) -> Self {
+    pub fn new(
+        transport_service: ArcTransportService,
+        player_connection_service: ArcPlayerConnectionService,
+        game_service: ArcGameService,
+    ) -> Self {
         Self {
             transport_service,
+            player_connection_service,
             game_service,
             seeks: Arc::new(DashMap::new()),
             seeks_by_player: Arc::new(DashMap::new()),
@@ -113,11 +123,15 @@ impl SeekServiceImpl {
         self.seeks.insert(seek_id, seek.clone());
         self.seeks_by_player.insert(player, seek_id);
 
-        println!("New seek: {:?}", seek);
+        info!("New seek: {:?}", seek);
         let seek_new_msg = ServerMessage::SeekList { add: true, seek };
-        self.transport_service
-            .try_player_broadcast(&seek_new_msg)
-            .await;
+
+        do_player_broadcast(
+            &self.player_connection_service,
+            &self.transport_service,
+            &seek_new_msg,
+        )
+        .await;
 
         Ok(seek_id)
     }
@@ -160,9 +174,13 @@ impl SeekService for SeekServiceImpl {
                 seek_id: *existing_seek_id,
             };
             drop(existing_seek_id);
-            self.transport_service
-                .try_player_send(&player, &accept_rematch_msg)
-                .await;
+            do_player_send(
+                &self.player_connection_service,
+                &self.transport_service,
+                &player,
+                &accept_rematch_msg,
+            )
+            .await;
 
             return Ok(());
         }
@@ -215,9 +233,12 @@ impl SeekService for SeekServiceImpl {
             add: false,
             seek: seek.clone(),
         };
-        self.transport_service
-            .try_player_broadcast(&seek_remove_msg)
-            .await;
+        do_player_broadcast(
+            &self.player_connection_service,
+            &self.transport_service,
+            &seek_remove_msg,
+        )
+        .await;
 
         Ok(seek)
     }
@@ -247,7 +268,12 @@ mod tests {
 
     use tak_core::{TakGameSettings, TakTimeControl};
 
-    use crate::{game::MockGameService, transport::MockTransportService};
+    use crate::{
+        game::MockGameService,
+        transport::{
+            ListenerId, MockPlayerConnectionService, MockTransportService, PlayerConnectionService,
+        },
+    };
 
     use super::*;
 
@@ -255,10 +281,22 @@ mod tests {
     async fn test_add_seek() {
         let mock_transport_service = MockTransportService::default();
         let mock_game_service = MockGameService::default();
+        let mock_player_connection_service = MockPlayerConnectionService::new();
         let seek_service = SeekServiceImpl::new(
             Arc::new(Box::new(mock_transport_service.clone())),
+            Arc::new(Box::new(mock_player_connection_service.clone())),
             Arc::new(Box::new(mock_game_service.clone())),
         );
+
+        let player1_id = ListenerId::new();
+        let player2_id = ListenerId::new();
+
+        mock_player_connection_service
+            .on_player_connected(player1_id, &"player1".to_string())
+            .await;
+        mock_player_connection_service
+            .on_player_connected(player2_id, &"player2".to_string())
+            .await;
 
         let game_settings = TakGameSettings {
             board_size: 5,
@@ -318,10 +356,10 @@ mod tests {
             .await
             .expect("Failed to add seek");
 
-        let sent_messages = mock_transport_service.get_broadcasts();
-        assert!(sent_messages.len() == 1);
+        let sent_messages = mock_transport_service.get_messages();
+        assert!(sent_messages.len() == 2);
         assert!(matches!(
-            &sent_messages[0],
+            &sent_messages[0].1,
             ServerMessage::SeekList { add: true, seek } if *seek == expected_seek
         ));
         assert!(seek_service.get_seek_ids().len() == 1);
@@ -331,11 +369,23 @@ mod tests {
     #[tokio::test]
     async fn test_remove_seek() {
         let mock_transport_service = MockTransportService::default();
+        let mock_player_connection_service = MockPlayerConnectionService::new();
         let mock_game_service = MockGameService::default();
         let seek_service = SeekServiceImpl::new(
             Arc::new(Box::new(mock_transport_service.clone())),
+            Arc::new(Box::new(mock_player_connection_service.clone())),
             Arc::new(Box::new(mock_game_service.clone())),
         );
+
+        let player1_id = ListenerId::new();
+        let player2_id = ListenerId::new();
+
+        mock_player_connection_service
+            .on_player_connected(player1_id, &"player1".to_string())
+            .await;
+        mock_player_connection_service
+            .on_player_connected(player2_id, &"player2".to_string())
+            .await;
 
         let game_settings = TakGameSettings {
             board_size: 5,
@@ -375,10 +425,10 @@ mod tests {
             .await
             .expect("Failed to remove seek");
 
-        let sent_messages = mock_transport_service.get_broadcasts();
-        assert!(sent_messages.len() == 2);
+        let sent_messages = mock_transport_service.get_messages();
+        assert!(sent_messages.len() == 4);
         assert!(matches!(
-            &sent_messages[1],
+            &sent_messages[2].1,
             ServerMessage::SeekList {
                 add: false,
                 seek,
@@ -390,11 +440,23 @@ mod tests {
     #[tokio::test]
     async fn test_rematch_seek() {
         let mock_transport_service = MockTransportService::default();
+        let mock_player_connection_service = MockPlayerConnectionService::new();
         let mock_game_service = MockGameService::default();
         let seek_service = SeekServiceImpl::new(
             Arc::new(Box::new(mock_transport_service.clone())),
+            Arc::new(Box::new(mock_player_connection_service.clone())),
             Arc::new(Box::new(mock_game_service.clone())),
         );
+
+        let player1_id = ListenerId::new();
+        let player2_id = ListenerId::new();
+
+        mock_player_connection_service
+            .on_player_connected(player1_id, &"player1".to_string())
+            .await;
+        mock_player_connection_service
+            .on_player_connected(player2_id, &"player2".to_string())
+            .await;
 
         let game_settings = TakGameSettings {
             board_size: 5,
@@ -430,9 +492,9 @@ mod tests {
             .await
             .expect("Failed to add seek");
 
-        let sent_broadcasts = mock_transport_service.get_broadcasts();
-        assert_eq!(sent_broadcasts.len(), 1);
-        if let ServerMessage::SeekList { add, seek } = &sent_broadcasts[0] {
+        let sent_broadcasts = mock_transport_service.get_messages();
+        assert_eq!(sent_broadcasts.len(), 2);
+        if let ServerMessage::SeekList { add, seek } = &sent_broadcasts[0].1 {
             assert!(*add);
             assert_eq!(seek, &expected_seek);
         } else {
@@ -458,7 +520,7 @@ mod tests {
         assert_eq!(sent_messages.len(), 1);
         assert!(matches!(
             &sent_messages[0],
-            (player, ServerMessage::AcceptRematch { seek_id: 1 }) if *player == "player2"
+            (player, ServerMessage::AcceptRematch { seek_id: 1 }) if *player == player2_id
         ));
         assert_eq!(seek_service.get_seek_ids().len(), 1);
         assert_eq!(seek_service.get_seek(&1).ok(), Some(expected_seek));

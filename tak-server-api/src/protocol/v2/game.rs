@@ -1,21 +1,21 @@
-use crate::{
-    client::ClientId,
-    protocol::{
-        Protocol,
-        v2::{ProtocolV2Handler, ProtocolV2Result},
-    },
+use crate::protocol::{
+    Protocol,
+    v2::{ProtocolV2Handler, ProtocolV2Result},
 };
 use tak_core::{
     TakAction, TakActionRecord, TakDir, TakGameState, TakPos, TakVariant, ptn::game_state_to_string,
 };
 use tak_server_domain::{
-    ServiceError, ServiceResult, game::GameId, player::PlayerUsername, transport::ServerGameMessage,
+    ServiceError, ServiceResult,
+    game::GameId,
+    player::PlayerUsername,
+    transport::{ListenerId, ServerGameMessage},
 };
 
 impl ProtocolV2Handler {
     pub fn handle_server_game_message(
         &self,
-        id: &ClientId,
+        id: ListenerId,
         game_id: &GameId,
         msg: &ServerGameMessage,
     ) {
@@ -78,7 +78,7 @@ impl ProtocolV2Handler {
 
     pub fn send_game_over_message(
         &self,
-        id: &ClientId,
+        id: ListenerId,
         game_id: &GameId,
         game_state: &TakGameState,
     ) {
@@ -223,7 +223,7 @@ impl ProtocolV2Handler {
 
     pub fn send_game_action_message(
         &self,
-        id: &ClientId,
+        id: ListenerId,
         game_id: &GameId,
         action: &TakActionRecord,
     ) {
@@ -257,6 +257,6 @@ impl ProtocolV2Handler {
                 )
             }
         };
-        self.send_to(&id, message);
+        self.send_to(id, message);
     }
 }

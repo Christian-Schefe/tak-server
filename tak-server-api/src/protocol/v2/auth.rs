@@ -1,12 +1,9 @@
-use tak_server_domain::{ServiceError, player::PlayerUsername};
+use tak_server_domain::{ServiceError, player::PlayerUsername, transport::ListenerId};
 
-use crate::{
-    client::ClientId,
-    protocol::v2::{ProtocolV2Handler, ProtocolV2Result},
-};
+use crate::protocol::v2::{ProtocolV2Handler, ProtocolV2Result};
 
 impl ProtocolV2Handler {
-    pub async fn handle_login_message(&self, id: &ClientId, parts: &[&str]) -> ProtocolV2Result {
+    pub async fn handle_login_message(&self, id: ListenerId, parts: &[&str]) -> ProtocolV2Result {
         if parts.len() >= 2 && parts[1] == "Guest" {
             let token = parts.get(2).copied();
             let username = self.app_state.player_service.try_login_guest(token)?;
@@ -34,7 +31,7 @@ impl ProtocolV2Handler {
 
     pub async fn handle_login_token_message(
         &self,
-        id: &ClientId,
+        id: ListenerId,
         parts: &[&str],
     ) -> ProtocolV2Result {
         if parts.len() != 2 {
@@ -52,7 +49,11 @@ impl ProtocolV2Handler {
         Ok(Some(format!("Welcome {}!", username)))
     }
 
-    pub async fn handle_register_message(&self, id: &ClientId, parts: &[&str]) -> ProtocolV2Result {
+    pub async fn handle_register_message(
+        &self,
+        id: ListenerId,
+        parts: &[&str],
+    ) -> ProtocolV2Result {
         if parts.len() != 3 {
             return ServiceError::bad_request("Invalid Register message format");
         }
@@ -77,7 +78,7 @@ impl ProtocolV2Handler {
 
     pub async fn handle_reset_token_message(
         &self,
-        id: &ClientId,
+        id: ListenerId,
         parts: &[&str],
     ) -> ProtocolV2Result {
         if parts.len() != 3 {
@@ -115,7 +116,7 @@ impl ProtocolV2Handler {
 
     pub async fn handle_change_password_message(
         &self,
-        id: &ClientId,
+        id: ListenerId,
         username: &PlayerUsername,
         parts: &[&str],
     ) -> ProtocolV2Result {

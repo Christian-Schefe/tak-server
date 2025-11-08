@@ -8,11 +8,11 @@ use tak_server_domain::{
     app::AppState,
     game::{GameId, GameType},
     player::PlayerUsername,
+    transport::ListenerId,
 };
 
 use crate::{
     app::MyServiceError,
-    client::ClientId,
     jwt::Claims,
     protocol::json::{ClientResponse, ProtocolJsonHandler},
 };
@@ -75,7 +75,7 @@ pub async fn get_game_endpoint(
 impl ProtocolJsonHandler {
     pub fn handle_observe_game_message(
         &self,
-        id: &ClientId,
+        id: ListenerId,
         game_id: &GameId,
         observe: bool,
     ) -> ServiceResult<ClientResponse> {

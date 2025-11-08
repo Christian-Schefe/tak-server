@@ -4,6 +4,7 @@ use std::{
 };
 
 use dashmap::DashMap;
+use log::info;
 use passwords::PasswordGenerator;
 use rustrict::CensorStr;
 
@@ -11,7 +12,10 @@ use crate::{
     ServiceError, ServiceResult,
     email::ArcEmailService,
     jwt::ArcJwtService,
-    transport::{ArcTransportService, DisconnectReason, ServerMessage},
+    transport::{
+        ArcPlayerConnectionService, ArcTransportService, DisconnectReason, ServerMessage,
+        do_player_send,
+    },
     util::validate_email,
 };
 
@@ -188,6 +192,7 @@ pub type PlayerId = i64;
 
 pub struct PlayerServiceImpl {
     transport_service: ArcTransportService,
+    player_connection_service: ArcPlayerConnectionService,
     email_service: ArcEmailService,
     jwt_service: ArcJwtService,
     player_repository: ArcPlayerRepository,
@@ -202,12 +207,14 @@ pub struct PlayerServiceImpl {
 impl PlayerServiceImpl {
     pub fn new(
         transport_service: ArcTransportService,
+        player_connection_service: ArcPlayerConnectionService,
         email_service: ArcEmailService,
         jwt_service: ArcJwtService,
         player_repository: ArcPlayerRepository,
     ) -> Self {
         Self {
             transport_service,
+            player_connection_service,
             email_service,
             jwt_service,
             player_repository,
@@ -454,7 +461,7 @@ impl PlayerService for PlayerServiceImpl {
         flags.is_gagged = Some(gagged);
         self.update_player(username, target_username, Self::more_rights, &flags)
             .await?;
-        println!(
+        info!(
             "User {} set gagged={} for user {}",
             username, gagged, target_username
         );
@@ -472,14 +479,16 @@ impl PlayerService for PlayerServiceImpl {
         self.update_player(username, target_username, Self::more_rights, &flags)
             .await?;
         if let Some(ban_msg) = &banned {
-            self.transport_service
-                .try_player_send(
-                    &target_username,
-                    &ServerMessage::ConnectionClosed {
-                        reason: DisconnectReason::Ban(ban_msg.clone()),
-                    },
-                )
-                .await;
+            let msg = ServerMessage::ConnectionClosed {
+                reason: DisconnectReason::Ban(ban_msg.clone()),
+            };
+            do_player_send(
+                &self.player_connection_service,
+                &self.transport_service,
+                target_username,
+                &msg,
+            )
+            .await;
 
             let target_player = self.fetch_player_data(target_username).await?;
             if let Some(player_email) = &target_player.email
@@ -488,7 +497,7 @@ impl PlayerService for PlayerServiceImpl {
                 self.send_ban_email(&email, target_username, ban_msg)?;
             }
         }
-        println!(
+        info!(
             "User {} set banned={} for user {}: {}",
             banned.is_some(),
             username,
@@ -513,7 +522,7 @@ impl PlayerService for PlayerServiceImpl {
             &flags,
         )
         .await?;
-        println!(
+        info!(
             "User {} set modded={} for user {}",
             username, modded, target_username
         );
@@ -535,7 +544,7 @@ impl PlayerService for PlayerServiceImpl {
             &flags,
         )
         .await?;
-        println!(
+        info!(
             "User {} set admin={} for user {}",
             username, admin, target_username
         );
@@ -557,7 +566,7 @@ impl PlayerService for PlayerServiceImpl {
             &flags,
         )
         .await?;
-        println!(
+        info!(
             "User {} set bot={} for user {}",
             username, bot, target_username
         );
@@ -575,15 +584,19 @@ impl PlayerService for PlayerServiceImpl {
             return ServiceError::unauthorized("Insufficient rights to kick this player");
         }
 
-        self.transport_service
-            .try_player_send(
-                &target_username,
-                &ServerMessage::ConnectionClosed {
-                    reason: DisconnectReason::Kick,
-                },
-            )
-            .await;
-        println!("User {} kicked user {}", username, target_username);
+        let msg = ServerMessage::ConnectionClosed {
+            reason: DisconnectReason::Kick,
+        };
+
+        do_player_send(
+            &self.player_connection_service,
+            &self.transport_service,
+            target_username,
+            &msg,
+        )
+        .await;
+
+        info!("User {} kicked user {}", username, target_username);
 
         Ok(())
     }
@@ -595,10 +608,9 @@ impl PlayerService for PlayerServiceImpl {
         };
         let valid = bcrypt::verify(password, password_hash)
             .map_err(|_| ServiceError::BadRequest("Failed to hash password".into()))?;
-        println!(
-            "Login attempt for user {}: {}, {}",
+        info!(
+            "Login attempt for user {}: {}",
             username,
-            password,
             if valid { "success" } else { "failure" }
         );
         if !valid {

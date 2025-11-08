@@ -85,6 +85,7 @@ pub fn construct_app(
 
     let player_service: ArcPlayerService = Arc::new(Box::new(PlayerServiceImpl::new(
         transport_service.clone(),
+        player_connection_service.clone(),
         email_service.clone(),
         jwt_service.clone(),
         player_repository.clone(),
@@ -99,11 +100,13 @@ pub fn construct_app(
 
     let seek_service: ArcSeekService = Arc::new(Box::new(SeekServiceImpl::new(
         transport_service.clone(),
+        player_connection_service.clone(),
         game_service.clone(),
     )));
 
     let chat_service: ArcChatService = Arc::new(Box::new(ChatServiceImpl::new(
         transport_service.clone(),
+        player_connection_service.clone(),
         player_service.clone(),
     )));
 

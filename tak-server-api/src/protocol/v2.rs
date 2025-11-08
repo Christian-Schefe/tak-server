@@ -1,13 +1,14 @@
 use std::time::Instant;
 
+use log::info;
 use tak_server_domain::{
     ServiceError, ServiceResult,
     app::AppState,
     player::PlayerUsername,
-    transport::{DisconnectReason, ServerGameMessage, ServerMessage},
+    transport::{DisconnectReason, ListenerId, ServerGameMessage, ServerMessage},
 };
 
-use crate::client::{ClientId, TransportServiceImpl};
+use crate::client::TransportServiceImpl;
 
 mod auth;
 mod chat;
@@ -31,10 +32,10 @@ impl ProtocolV2Handler {
         }
     }
 
-    pub async fn handle_client_message(&self, id: &ClientId, msg: String) {
+    pub async fn handle_client_message(&self, id: ListenerId, msg: String) {
         let parts = msg.split_whitespace().collect::<Vec<_>>();
         if parts.is_empty() {
-            println!("Received empty message");
+            info!("Received empty message");
             return;
         }
         let res: ProtocolV2Result = match parts[0].to_ascii_lowercase().as_str() {
@@ -60,13 +61,13 @@ impl ProtocolV2Handler {
                 self.send_to(id, "OK");
             }
             Err(e) => {
-                println!("Error handling message {:?}: {}", parts, e);
+                info!("Error handling message {:?}: {}", parts, e);
                 self.send_to(id, "NOK");
             }
         }
     }
 
-    pub async fn handle_server_message(&self, id: &ClientId, msg: &ServerMessage) {
+    pub async fn handle_server_message(&self, id: ListenerId, msg: &ServerMessage) {
         match msg {
             ServerMessage::SeekList { add, seek } => {
                 self.handle_server_seek_list_message(id, seek, *add).await;
@@ -106,7 +107,7 @@ impl ProtocolV2Handler {
         }
     }
 
-    pub async fn on_authenticated(&self, id: &ClientId, username: &PlayerUsername) {
+    pub async fn on_authenticated(&self, id: ListenerId, username: &PlayerUsername) {
         let seeks = self.app_state.seek_service.get_seeks();
         for seek in seeks {
             let seek_msg = ServerMessage::SeekList { add: true, seek };
@@ -148,14 +149,14 @@ impl ProtocolV2Handler {
         }
     }
 
-    pub fn on_connected(&self, id: &ClientId) {
+    pub fn on_connected(&self, id: ListenerId) {
         self.send_to(id, "Welcome!");
         self.send_to(id, "Login or Register");
     }
 
     async fn handle_logged_in_client_message(
         &self,
-        id: &ClientId,
+        id: ListenerId,
         parts: &[&str],
         msg: &str,
     ) -> ProtocolV2Result {
@@ -186,7 +187,7 @@ impl ProtocolV2Handler {
         }
     }
 
-    fn send_to<T>(&self, id: &ClientId, msg: T)
+    fn send_to<T>(&self, id: ListenerId, msg: T)
     where
         T: AsRef<str>,
     {

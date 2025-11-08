@@ -1,21 +1,19 @@
 use std::time::Instant;
 
+use log::{error, warn};
 use tak_server_domain::{
     ServiceError,
     game::{Game, GameId, GameType},
-    transport::ServerGameMessage,
+    transport::{ListenerId, ServerGameMessage},
 };
 
-use crate::{
-    client::ClientId,
-    protocol::{
-        Protocol, ServerMessage,
-        v2::{ProtocolV2Handler, ProtocolV2Result},
-    },
+use crate::protocol::{
+    Protocol, ServerMessage,
+    v2::{ProtocolV2Handler, ProtocolV2Result},
 };
 
 impl ProtocolV2Handler {
-    pub async fn handle_server_game_list_message(&self, id: &ClientId, msg: &ServerMessage) {
+    pub async fn handle_server_game_list_message(&self, id: ListenerId, msg: &ServerMessage) {
         match msg {
             ServerMessage::GameList { add, game } => {
                 self.send_game_string_message(
@@ -32,12 +30,12 @@ impl ProtocolV2Handler {
                 self.send_game_start_message(id, game_id).await;
             }
             _ => {
-                eprintln!("Unhandled server game list message: {:?}", msg);
+                error!("Unhandled server game list message: {:?}", msg);
             }
         }
     }
 
-    pub fn handle_game_list_message(&self, id: &ClientId) -> ProtocolV2Result {
+    pub fn handle_game_list_message(&self, id: ListenerId) -> ProtocolV2Result {
         for game in self.app_state.game_service.get_games() {
             self.send_game_string_message(id, &game, "GameList Add");
         }
@@ -46,7 +44,7 @@ impl ProtocolV2Handler {
 
     pub fn handle_observe_message(
         &self,
-        id: &ClientId,
+        id: ListenerId,
         parts: &[&str],
         observe: bool,
     ) -> ProtocolV2Result {
@@ -81,7 +79,7 @@ impl ProtocolV2Handler {
         Ok(None)
     }
 
-    pub fn send_game_string_message(&self, id: &ClientId, game: &Game, operation: &str) {
+    pub fn send_game_string_message(&self, id: ListenerId, game: &Game, operation: &str) {
         let settings = &game.game.base.settings;
         let message = format!(
             "{} {} {} {} {} {} {} {} {} {} {} {} {} {}",
@@ -122,13 +120,13 @@ impl ProtocolV2Handler {
         self.send_to(id, message);
     }
 
-    pub async fn send_game_start_message(&self, id: &ClientId, game_id: &GameId) {
+    pub async fn send_game_start_message(&self, id: ListenerId, game_id: &GameId) {
         let Some(game) = self.app_state.game_service.get_game(game_id) else {
-            eprintln!("GameStart message for unknown game ID: {}", game_id);
+            warn!("GameStart message for unknown game ID: {}", game_id);
             return;
         };
-        let Some(player) = self.transport.get_associated_player(&id) else {
-            println!("Client {} not associated with any player", id);
+        let Some(player) = self.transport.get_associated_player(id) else {
+            warn!("Client {} not associated with any player", id);
             return;
         };
         let is_bot_game = self
@@ -205,6 +203,6 @@ impl ProtocolV2Handler {
                 if is_bot_game { "1" } else { "0" }
             )
         };
-        self.send_to(&id, message);
+        self.send_to(id, message);
     }
 }

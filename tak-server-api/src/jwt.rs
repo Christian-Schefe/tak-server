@@ -7,6 +7,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use log::info;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tak_server_domain::{ServiceError, app::AppState, jwt::JwtService, player::PlayerUsername};
@@ -87,7 +88,7 @@ fn read_or_generate_secret() -> Vec<u8> {
     if let Ok(secret) = std::env::var("TAK_JWT_SECRET") {
         secret.as_bytes().to_vec()
     } else {
-        println!("JWT secret not found, generating a random one...");
+        info!("JWT secret not found, generating a random one...");
         Uuid::new_v4().as_bytes().to_vec()
     }
 }

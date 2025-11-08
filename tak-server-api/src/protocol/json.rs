@@ -2,6 +2,7 @@ use axum::{
     Router,
     routing::{delete, get, post},
 };
+use log::{error, warn};
 use serde::{Deserialize, Serialize};
 use tak_server_domain::{
     ServiceError, ServiceResult,
@@ -10,13 +11,10 @@ use tak_server_domain::{
     game::{ArcGameService, GameId},
     player::{ArcPlayerService, PlayerUsername},
     seek::SeekId,
-    transport::{ChatMessageSource, DisconnectReason, ServerGameMessage},
+    transport::{ChatMessageSource, DisconnectReason, ListenerId, ServerGameMessage},
 };
 
-use crate::{
-    client::{ClientId, TransportServiceImpl},
-    protocol::ServerMessage,
-};
+use crate::{client::TransportServiceImpl, protocol::ServerMessage};
 use tak_core::ptn::{action_to_ptn, game_state_to_string};
 
 mod auth;
@@ -103,31 +101,31 @@ impl ProtocolJsonHandler {
         }
     }
 
-    pub fn handle_server_message(&self, id: &ClientId, msg: &ServerMessage) {
+    pub fn handle_server_message(&self, id: ListenerId, msg: &ServerMessage) {
         let msg = server_message_to_json(msg);
         self.send_json_to(id, &msg);
     }
 
-    pub fn send_json_to(&self, id: &ClientId, msg: &impl serde::Serialize) {
+    pub fn send_json_to(&self, id: ListenerId, msg: &impl serde::Serialize) {
         match serde_json::to_string(msg) {
             Ok(json) => {
                 let _ = self.transport.try_send_to(id, &json);
             }
-            Err(e) => eprintln!(
+            Err(e) => error!(
                 "Failed to serialize message to JSON for client {}: {}",
                 id, e
             ),
         }
     }
 
-    pub async fn handle_client_message(&self, id: &ClientId, msg: String) {
+    pub async fn handle_client_message(&self, id: ListenerId, msg: String) {
         if msg.to_ascii_lowercase().starts_with("protocol") {
             return;
         }
         let msg = match serde_json::from_str::<TrackedClientMessage>(&msg) {
             Ok(msg) => msg,
             Err(e) => {
-                println!("Failed to parse JSON message from client {}: {}", id, e);
+                warn!("Failed to parse JSON message from client {}: {}", id, e);
                 self.send_json_to(
                     id,
                     &ClientResponse::Error {
@@ -156,7 +154,7 @@ impl ProtocolJsonHandler {
 
     async fn handle_logged_in_client_message(
         &self,
-        id: &ClientId,
+        id: ListenerId,
         msg: ClientMessage,
     ) -> ServiceResult<ClientResponse> {
         let Some(username) = self.transport.get_associated_player(id) else {

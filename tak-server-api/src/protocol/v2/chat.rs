@@ -1,15 +1,17 @@
-use tak_server_domain::{ServiceError, player::PlayerUsername, transport::ChatMessageSource};
+use log::error;
+use tak_server_domain::{
+    ServiceError,
+    player::PlayerUsername,
+    transport::{ChatMessageSource, ListenerId},
+};
 
-use crate::{
-    client::ClientId,
-    protocol::{
-        ServerMessage,
-        v2::{ProtocolV2Handler, ProtocolV2Result, split_n_and_rest},
-    },
+use crate::protocol::{
+    ServerMessage,
+    v2::{ProtocolV2Handler, ProtocolV2Result, split_n_and_rest},
 };
 
 impl ProtocolV2Handler {
-    pub fn handle_server_chat_message(&self, id: &ClientId, msg: &ServerMessage) {
+    pub fn handle_server_chat_message(&self, id: ListenerId, msg: &ServerMessage) {
         match msg {
             ServerMessage::ChatMessage {
                 from,
@@ -34,14 +36,14 @@ impl ProtocolV2Handler {
                 self.send_to(id, msg);
             }
             _ => {
-                eprintln!("Unhandled server chat message: {:?}", msg);
+                error!("Unhandled server chat message: {:?}", msg);
             }
         }
     }
 
     pub async fn handle_room_membership_message(
         &self,
-        id: &ClientId,
+        id: ListenerId,
         parts: &[&str],
         join: bool,
     ) -> ProtocolV2Result {

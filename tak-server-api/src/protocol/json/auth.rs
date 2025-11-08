@@ -1,17 +1,18 @@
 use axum::{Json, extract::State};
 use serde::Deserialize;
-use tak_server_domain::{ServiceResult, app::AppState, player::PlayerUsername};
+use tak_server_domain::{
+    ServiceResult, app::AppState, player::PlayerUsername, transport::ListenerId,
+};
 
 use crate::{
     app::MyServiceError,
-    client::ClientId,
     protocol::json::{ClientResponse, ProtocolJsonHandler},
 };
 
 impl ProtocolJsonHandler {
     pub async fn handle_login_message(
         &self,
-        id: &ClientId,
+        id: ListenerId,
         token: &str,
     ) -> ServiceResult<ClientResponse> {
         let username = self.player_service.try_login_jwt(&token).await?;
@@ -21,7 +22,7 @@ impl ProtocolJsonHandler {
 
     pub async fn handle_login_guest_message(
         &self,
-        id: &ClientId,
+        id: ListenerId,
         token: Option<&str>,
     ) -> ServiceResult<ClientResponse> {
         let username = self.player_service.try_login_guest(token)?;
