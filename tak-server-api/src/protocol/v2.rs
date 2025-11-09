@@ -22,7 +22,13 @@ pub struct ProtocolV2Handler {
     transport: TransportServiceImpl,
 }
 
-pub type ProtocolV2Result = ServiceResult<Option<String>>;
+pub type ProtocolV2Result = ServiceResult<V2Response>;
+
+pub enum V2Response {
+    OK,
+    Message(String),
+    ErrorMessage(ServiceError, String),
+}
 
 impl ProtocolV2Handler {
     pub fn new(app: &AppState, transport: &TransportServiceImpl) -> Self {
@@ -39,26 +45,31 @@ impl ProtocolV2Handler {
             return;
         }
         let res: ProtocolV2Result = match parts[0].to_ascii_lowercase().as_str() {
-            "ping" => Ok(None),
-            "protocol" => Ok(None), // Noop, ignore
-            "client" => Ok(None),   // Noop, ignore
+            "ping" => Ok(V2Response::OK),
+            "protocol" => Ok(V2Response::OK), // Noop, ignore
+            "client" => Ok(V2Response::OK),   // Noop, ignore
             "quit" | "exit" => {
-                self.transport.close_client(id);
-                Ok(None)
+                self.transport
+                    .close_with_reason(id, DisconnectReason::ClientQuit)
+                    .await;
+                Ok(V2Response::OK)
             }
             "login" => self.handle_login_message(id, &parts).await,
-            "logintoken" => self.handle_login_token_message(id, &parts).await,
             "register" => self.handle_register_message(id, &parts).await,
             "sendresettoken" => self.handle_reset_token_message(id, &parts).await,
             "resetpassword" => self.handle_reset_password_message(&parts).await,
             _ => self.handle_logged_in_client_message(id, &parts, &msg).await,
         };
         match res {
-            Ok(Some(msg)) => {
+            Ok(V2Response::Message(msg)) => {
                 self.send_to(id, msg);
             }
-            Ok(None) => {
+            Ok(V2Response::OK) => {
                 self.send_to(id, "OK");
+            }
+            Ok(V2Response::ErrorMessage(err, msg)) => {
+                info!("Error handling message {:?}: {}", parts, err);
+                self.send_to(id, msg);
             }
             Err(e) => {
                 info!("Error handling message {:?}: {}", parts, e);
@@ -100,6 +111,8 @@ impl ProtocolV2Handler {
                     DisconnectReason::Inactivity => "Disconnected due to inactivity",
                     DisconnectReason::Ban(msg) => &msg,
                     DisconnectReason::Kick => "You have been kicked from the server",
+                    DisconnectReason::ServerShutdown => "Server is shutting down",
+                    DisconnectReason::ClientQuit => "Quitting. Goodbye!",
                 };
                 let disconnect_message = format!("Message {}", reason_str);
                 self.send_to(id, disconnect_message);
@@ -165,10 +178,7 @@ impl ProtocolV2Handler {
         };
 
         match parts[0].to_ascii_lowercase().as_str() {
-            "changepassword" => {
-                self.handle_change_password_message(id, &username, &parts)
-                    .await
-            }
+            "changepassword" => self.handle_change_password_message(&username, &parts).await,
             "seek" => self.handle_seek_message(&username, &parts).await,
             "rematch" => self.handle_rematch_message(&username, &parts).await,
             "list" => self.handle_seek_list_message(id).await,
@@ -181,7 +191,7 @@ impl ProtocolV2Handler {
             "tell" => self.handle_tell_message(&username, &msg).await,
             "joinroom" => self.handle_room_membership_message(id, &parts, true).await,
             "leaveroom" => self.handle_room_membership_message(id, &parts, false).await,
-            "sudo" => self.handle_sudo_message(&username, msg, &parts).await,
+            "sudo" => self.handle_sudo_message(id, &username, msg, &parts).await,
             s if s.starts_with("game#") => self.handle_game_message(&username, &parts).await,
             _ => ServiceError::bad_request(format!("Unknown V2 message type: {}", parts[0])),
         }

@@ -1,6 +1,6 @@
 use crate::protocol::{
     Protocol,
-    v2::{ProtocolV2Handler, ProtocolV2Result},
+    v2::{ProtocolV2Handler, ProtocolV2Result, V2Response},
 };
 use tak_core::{
     TakAction, TakActionRecord, TakDir, TakGameState, TakPos, TakVariant, ptn::game_state_to_string,
@@ -105,12 +105,22 @@ impl ProtocolV2Handler {
 
         match parts[1] {
             "P" => {
-                self.handle_game_place_message(&username, game_id, &parts[2..])
-                    .await?
+                if let Err(e) = self
+                    .handle_game_place_message(&username, game_id, &parts[2..])
+                    .await
+                {
+                    let err_str = format!("Error: {}", e);
+                    return Ok(V2Response::ErrorMessage(e, err_str));
+                }
             }
             "M" => {
-                self.handle_game_move_message(&username, game_id, &parts[2..])
-                    .await?
+                if let Err(e) = self
+                    .handle_game_move_message(&username, game_id, &parts[2..])
+                    .await
+                {
+                    let err_str = format!("Error: {}", e);
+                    return Ok(V2Response::ErrorMessage(e, err_str));
+                }
             }
             "Resign" => game_service.resign_game(&username, &game_id).await?,
             "OfferDraw" => game_service.offer_draw(&username, &game_id, true).await?,
@@ -124,7 +134,7 @@ impl ProtocolV2Handler {
             _ => return ServiceError::not_found("Unknown Game action"),
         };
 
-        Ok(None)
+        Ok(V2Response::OK)
     }
 
     pub async fn handle_game_place_message(

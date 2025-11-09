@@ -33,6 +33,7 @@ pub type ArcTransportService = Arc<Box<dyn TransportService + Send + Sync + 'sta
 
 #[async_trait::async_trait]
 pub trait TransportService {
+    async fn disconnect_listener(&self, id: ListenerId, reason: DisconnectReason);
     async fn try_listener_send(&self, id: ListenerId, msg: &ServerMessage);
     async fn try_listener_multicast(&self, ids: &[ListenerId], msg: &ServerMessage) {
         let futures = ids.iter().map(|id| self.try_listener_send(*id, msg));
@@ -79,10 +80,12 @@ pub enum ServerMessage {
 
 #[derive(Clone, Debug)]
 pub enum DisconnectReason {
+    ClientQuit,
     NewSession,
     Inactivity,
     Kick,
     Ban(String),
+    ServerShutdown,
 }
 
 #[derive(Clone, Debug)]
@@ -127,6 +130,9 @@ impl MockTransportService {
 
 #[async_trait::async_trait]
 impl TransportService for MockTransportService {
+    async fn disconnect_listener(&self, _id: ListenerId, _reason: DisconnectReason) {
+        //No-op
+    }
     async fn try_listener_send(&self, id: ListenerId, msg: &ServerMessage) {
         self.sent_messages
             .lock()
@@ -147,6 +153,13 @@ impl CompositeTransportService {
 
 #[async_trait::async_trait]
 impl TransportService for CompositeTransportService {
+    async fn disconnect_listener(&self, id: ListenerId, reason: DisconnectReason) {
+        let futures = self
+            .services
+            .iter()
+            .map(|service| service.disconnect_listener(id.clone(), reason.clone()));
+        futures::future::join_all(futures).await;
+    }
     async fn try_listener_send(&self, id: ListenerId, msg: &ServerMessage) {
         let futures = self
             .services
@@ -243,7 +256,10 @@ impl PlayerConnectionService for PlayerConnectionServiceImpl {
     }
 
     fn on_listener_disconnected(&self, listener_id: ListenerId) {
-        let _ = self.app_state.chat_service().leave_all_rooms(listener_id);
+        let _ = self
+            .app_state
+            .chat_service()
+            .leave_all_rooms_quiet(listener_id);
         let _ = self.app_state.game_service().unobserve_all(listener_id);
     }
 

@@ -25,7 +25,7 @@ const GUEST_TTL: Duration = Duration::from_secs(60 * 60 * 4);
 
 const PASSWORD_RESET_TOKEN_TTL: Duration = Duration::from_secs(60 * 60 * 24);
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Player {
     pub username: PlayerUsername,
     pub email: Option<String>,
@@ -34,7 +34,7 @@ pub struct Player {
     pub flags: PlayerFlags,
 }
 
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct PlayerFlags {
     pub is_bot: bool,
     pub is_gagged: bool,
@@ -248,8 +248,8 @@ impl PlayerServiceImpl {
             || (this.flags.is_mod && !target.flags.is_admin && !target.flags.is_mod)
     }
 
-    fn more_rights_and_admin(this: &Player, target: &Player) -> bool {
-        this.flags.is_admin && !target.flags.is_admin
+    fn must_be_admin(this: &Player, _target: &Player) -> bool {
+        this.flags.is_admin
     }
 
     fn uniquify_username(username: &PlayerUsername) -> PlayerUsername {
@@ -515,13 +515,8 @@ impl PlayerService for PlayerServiceImpl {
     ) -> ServiceResult<()> {
         let mut flags = PlayerFlagsUpdate::new();
         flags.is_mod = Some(modded);
-        self.update_player(
-            username,
-            target_username,
-            Self::more_rights_and_admin,
-            &flags,
-        )
-        .await?;
+        self.update_player(username, target_username, Self::must_be_admin, &flags)
+            .await?;
         info!(
             "User {} set modded={} for user {}",
             username, modded, target_username
@@ -537,13 +532,8 @@ impl PlayerService for PlayerServiceImpl {
     ) -> ServiceResult<()> {
         let mut flags = PlayerFlagsUpdate::new();
         flags.is_admin = Some(admin);
-        self.update_player(
-            username,
-            target_username,
-            Self::more_rights_and_admin,
-            &flags,
-        )
-        .await?;
+        self.update_player(username, target_username, Self::must_be_admin, &flags)
+            .await?;
         info!(
             "User {} set admin={} for user {}",
             username, admin, target_username
@@ -559,13 +549,8 @@ impl PlayerService for PlayerServiceImpl {
     ) -> ServiceResult<()> {
         let mut flags = PlayerFlagsUpdate::new();
         flags.is_bot = Some(bot);
-        self.update_player(
-            username,
-            target_username,
-            Self::more_rights_and_admin,
-            &flags,
-        )
-        .await?;
+        self.update_player(username, target_username, Self::must_be_admin, &flags)
+            .await?;
         info!(
             "User {} set bot={} for user {}",
             username, bot, target_username
@@ -584,17 +569,14 @@ impl PlayerService for PlayerServiceImpl {
             return ServiceError::unauthorized("Insufficient rights to kick this player");
         }
 
-        let msg = ServerMessage::ConnectionClosed {
-            reason: DisconnectReason::Kick,
-        };
-
-        do_player_send(
-            &self.player_connection_service,
-            &self.transport_service,
-            target_username,
-            &msg,
-        )
-        .await;
+        if let Some(id) = self
+            .player_connection_service
+            .get_player_connection(target_username)
+        {
+            self.transport_service
+                .disconnect_listener(id, DisconnectReason::Kick)
+                .await;
+        }
 
         info!("User {} kicked user {}", username, target_username);
 
@@ -609,14 +591,14 @@ impl PlayerService for PlayerServiceImpl {
         let valid = bcrypt::verify(password, password_hash)
             .map_err(|_| ServiceError::BadRequest("Failed to hash password".into()))?;
         info!(
-            "Login attempt for user {}: {}",
+            "Login attempt for user {} with pw {} and hash {}: {}",
             username,
+            password,
+            password_hash,
             if valid { "success" } else { "failure" }
         );
         if !valid {
-            return Err(ServiceError::Unauthorized(
-                "Invalid username or password".into(),
-            ));
+            return ServiceError::unauthorized("Invalid username or password");
         }
         Ok(())
     }
@@ -692,7 +674,7 @@ impl PlayerService for PlayerServiceImpl {
     async fn send_reset_token(&self, username: &PlayerUsername, email: &str) -> ServiceResult<()> {
         let player = self.fetch_player_data(username).await?;
         if player.email.is_none_or(|e| e != email) {
-            return ServiceError::bad_request("Email does not match");
+            return ServiceError::unauthorized("Email does not match");
         }
         let email = validate_email(email)?;
         let reset_token = Self::generate_temporary_password();

@@ -2,12 +2,12 @@ use log::error;
 use tak_server_domain::{
     ServiceError,
     player::PlayerUsername,
-    transport::{ChatMessageSource, ListenerId},
+    transport::{ChatMessageSource, ListenerId, do_player_send},
 };
 
 use crate::protocol::{
     ServerMessage,
-    v2::{ProtocolV2Handler, ProtocolV2Result, split_n_and_rest},
+    v2::{ProtocolV2Handler, ProtocolV2Result, V2Response, split_n_and_rest},
 };
 
 impl ProtocolV2Handler {
@@ -56,7 +56,7 @@ impl ProtocolV2Handler {
         } else {
             self.app_state.chat_service.leave_room(id, &room).await?;
         }
-        Ok(None)
+        Ok(V2Response::OK)
     }
 
     pub async fn handle_shout_message(
@@ -68,11 +68,30 @@ impl ProtocolV2Handler {
         if parts.len() != 1 || msg.is_empty() {
             return ServiceError::bad_request("Invalid Shout message format");
         }
-        self.app_state
+        match self
+            .app_state
             .chat_service
             .send_message_to_all(username, &msg)
-            .await?;
-        Ok(None)
+            .await
+        {
+            Ok(_) => Ok(V2Response::OK),
+            Err(ServiceError::Forbidden(_)) => {
+                do_player_send(
+                    &self.app_state.player_connection_service,
+                    &self.app_state.transport_service,
+                    username,
+                    &ServerMessage::ChatMessage {
+                        from: username.clone(),
+                        message: "<Server: You have been muted for inappropriate chat behavior.>"
+                            .to_string(),
+                        source: ChatMessageSource::Global,
+                    },
+                )
+                .await;
+                Ok(V2Response::OK)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     pub async fn handle_shout_room_message(
@@ -86,11 +105,30 @@ impl ProtocolV2Handler {
         }
         let room = parts[1].to_string();
 
-        self.app_state
+        match self
+            .app_state
             .chat_service
             .send_message_to_room(username, &room, &msg)
-            .await?;
-        Ok(None)
+            .await
+        {
+            Ok(_) => Ok(V2Response::OK),
+            Err(ServiceError::Forbidden(_)) => {
+                do_player_send(
+                    &self.app_state.player_connection_service,
+                    &self.app_state.transport_service,
+                    username,
+                    &ServerMessage::ChatMessage {
+                        from: username.clone(),
+                        message: "<Server: You have been muted for inappropriate chat behavior.>"
+                            .to_string(),
+                        source: ChatMessageSource::Room { name: room },
+                    },
+                )
+                .await;
+                Ok(V2Response::OK)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     pub async fn handle_tell_message(
@@ -104,11 +142,21 @@ impl ProtocolV2Handler {
         }
         let target_username = parts[1];
 
-        let sent_msg = self
+        match self
             .app_state
             .chat_service
             .send_message_to_player(username, &target_username.to_string(), &msg)
-            .await?;
-        Ok(Some(format!("Told <{}> {}", target_username, sent_msg)))
+            .await
+        {
+            Ok(sent_msg) => Ok(V2Response::Message(format!(
+                "Told <{}> {}",
+                target_username, sent_msg
+            ))),
+            Err(ServiceError::Forbidden(_)) => Ok(V2Response::Message(format!(
+                "Told <{}> <Server: You have been muted for inappropriate chat behavior.>",
+                target_username
+            ))),
+            Err(e) => Err(e),
+        }
     }
 }

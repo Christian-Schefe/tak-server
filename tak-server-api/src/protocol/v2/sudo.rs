@@ -1,10 +1,11 @@
-use tak_server_domain::{ServiceError, player::PlayerUsername};
+use tak_server_domain::{ServiceError, player::PlayerUsername, transport::ListenerId};
 
-use crate::protocol::v2::{ProtocolV2Handler, ProtocolV2Result, split_n_and_rest};
+use crate::protocol::v2::{ProtocolV2Handler, ProtocolV2Result, V2Response, split_n_and_rest};
 
 impl ProtocolV2Handler {
     pub async fn handle_sudo_message(
         &self,
+        id: ListenerId,
         username: &PlayerUsername,
         msg: &str,
         parts: &[&str],
@@ -13,7 +14,8 @@ impl ProtocolV2Handler {
             return ServiceError::bad_request("Invalid Sudo command format");
         }
         let command = parts[1];
-        match command {
+        self.send_to(id, format!("sudoReply > {}", msg));
+        let response = match command {
             "ban" => self.handle_ban_message(username, msg, true).await,
             "unban" => self.handle_ban_message(username, msg, false).await,
             "gag" => {
@@ -50,10 +52,21 @@ impl ProtocolV2Handler {
             }
             "kick" => self.handle_kick_message(username, parts).await,
             "list" => self.handle_list_message(parts).await,
-            "reload" => Ok(None), // Was used in legacy profanity filter, no-op here.
-            "broadcast" => Ok(None), // What's the point, players can already broadcast via global chat anyways.
+            "reload" => Ok(V2Response::OK), // Was used in legacy profanity filter, no-op here.
+            "broadcast" => Ok(V2Response::OK), // What's the point, players can already broadcast via global chat anyways.
             "set" => self.handle_set_message(username, parts).await,
             _ => ServiceError::bad_request("Unknown Sudo command"),
+        };
+        match response {
+            Ok(V2Response::Message(msg)) => Ok(V2Response::Message(format!("sudoReply {}", msg))),
+            Ok(V2Response::ErrorMessage(e, msg)) => {
+                Ok(V2Response::ErrorMessage(e, format!("sudoReply {}", msg)))
+            }
+            Ok(V2Response::OK) => Ok(V2Response::Message("sudoReply Success".to_string())),
+            Err(e) => {
+                let err_str = format!("sudoReply {}", e);
+                Ok(V2Response::ErrorMessage(e, err_str))
+            }
         }
     }
 
@@ -75,26 +88,48 @@ impl ProtocolV2Handler {
                 .player_service
                 .set_gagged(username, &target_username, gagged)
                 .await?;
-        }
-        if let Some(modded) = modded {
+
+            return Ok(V2Response::Message(format!(
+                "{} {}",
+                target_username,
+                if gagged { "gagged" } else { "ungagged" }
+            )));
+        } else if let Some(modded) = modded {
             self.app_state
                 .player_service
                 .set_modded(username, &target_username, modded)
                 .await?;
-        }
-        if let Some(admin) = admin {
+
+            return Ok(V2Response::Message(format!(
+                "{} {} as moderator",
+                if modded { "Added" } else { "Removed" },
+                target_username
+            )));
+        } else if let Some(admin) = admin {
             self.app_state
                 .player_service
                 .set_admin(username, &target_username, admin)
                 .await?;
-        }
-        if let Some(bot) = bot {
+
+            return Ok(V2Response::Message(format!(
+                "{} {} as admin",
+                if admin { "Added" } else { "Removed" },
+                target_username
+            )));
+        } else if let Some(bot) = bot {
             self.app_state
                 .player_service
                 .set_bot(username, &target_username, bot)
                 .await?;
+
+            return Ok(V2Response::Message(format!(
+                "{} {} as bot",
+                if bot { "Added" } else { "Removed" },
+                target_username
+            )));
+        } else {
+            return ServiceError::bad_request("No valid player update specified");
         }
-        Ok(None)
     }
 
     async fn handle_kick_message(
@@ -110,7 +145,7 @@ impl ProtocolV2Handler {
             .player_service
             .try_kick(username, &target_username)
             .await?;
-        Ok(None)
+        Ok(V2Response::Message(format!("{} kicked", target_username)))
     }
 
     async fn handle_ban_message(
@@ -130,7 +165,11 @@ impl ProtocolV2Handler {
             .player_service
             .set_banned(username, &target_username, ban_msg)
             .await?;
-        Ok(None)
+        Ok(V2Response::Message(format!(
+            "{} {}",
+            target_username,
+            if ban { "banned" } else { "unbanned" }
+        )))
     }
 
     async fn handle_list_message(&self, parts: &[&str]) -> ProtocolV2Result {
@@ -168,7 +207,7 @@ impl ProtocolV2Handler {
                     .await?
             }
             _ => {
-                return ServiceError::bad_request("Unknown Sudo list type");
+                return ServiceError::bad_request("Unknown Sudo list command");
             }
         };
         let response = format!(
@@ -179,7 +218,7 @@ impl ProtocolV2Handler {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        Ok(Some(response))
+        Ok(V2Response::Message(response))
     }
 
     async fn handle_set_message(
@@ -200,11 +239,9 @@ impl ProtocolV2Handler {
                     .player_service
                     .set_password(username, &target_username, value)
                     .await?;
+                Ok(V2Response::Message("Password set".to_string()))
             }
-            _ => {
-                return ServiceError::bad_request("Unknown Sudo set setting");
-            }
+            _ => ServiceError::bad_request("Unknown Sudo set setting"),
         }
-        Ok(None)
     }
 }

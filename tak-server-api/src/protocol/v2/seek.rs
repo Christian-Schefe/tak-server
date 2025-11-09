@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::protocol::v2::{ProtocolV2Handler, ProtocolV2Result};
+use crate::protocol::v2::{ProtocolV2Handler, ProtocolV2Result, V2Response};
 
 use tak_core::{TakGameSettings, TakPlayer, TakTimeControl};
 use tak_server_domain::{
@@ -24,7 +24,7 @@ impl ProtocolV2Handler {
         for seek in self.app_state.seek_service.get_seeks() {
             self.handle_server_seek_list_message(id, &seek, true).await;
         }
-        Ok(None)
+        Ok(V2Response::OK)
     }
 
     // TODO: Support V0 seek messages
@@ -134,9 +134,10 @@ impl ProtocolV2Handler {
                     "Rematch seek must specify opponent".into(),
                 ));
             };
-            self.app_state
+            if let Some(new_seek_id) = self
+                .app_state
                 .seek_service
-                .add_rematch_seek(
+                .request_rematch(
                     username.to_string(),
                     opponent,
                     color,
@@ -144,7 +145,13 @@ impl ProtocolV2Handler {
                     game_type,
                     from_game,
                 )
-                .await?;
+                .await?
+            {
+                return Ok(V2Response::Message(format!(
+                    "Rematch seek created with ID: {}",
+                    new_seek_id
+                )));
+            }
         } else {
             self.app_state
                 .seek_service
@@ -158,7 +165,7 @@ impl ProtocolV2Handler {
                 .await?;
         }
 
-        Ok(None)
+        Ok(V2Response::OK)
     }
 
     pub async fn handle_rematch_message(
@@ -173,8 +180,7 @@ impl ProtocolV2Handler {
             return ServiceError::bad_request("Invalid Game ID in Rematch message");
         };
         self.handle_add_seek_message(username, &parts[1..], Some(game_id))
-            .await?;
-        Ok(None)
+            .await
     }
 
     pub async fn handle_accept_message(
@@ -192,7 +198,7 @@ impl ProtocolV2Handler {
             .seek_service
             .accept_seek(username, &seek_id)
             .await?;
-        Ok(None)
+        Ok(V2Response::OK)
     }
 
     pub async fn handle_server_seek_list_message(&self, id: ListenerId, seek: &Seek, add: bool) {

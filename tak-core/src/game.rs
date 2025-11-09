@@ -401,3 +401,287 @@ impl TakGame {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{TakDir, TakPos, TakTimeControl};
+
+    use super::*;
+
+    #[test]
+    fn test_reserve_constraints() {
+        let mut game = TakGame::new(TakGameSettings {
+            board_size: 5,
+            half_komi: 0,
+            reserve_pieces: 3,
+            reserve_capstones: 1,
+            time_control: TakTimeControl {
+                contingent: Duration::from_secs(300),
+                increment: Duration::from_secs(5),
+                extra: Some((2, Duration::from_secs(60))),
+            },
+        });
+
+        game.do_action(&TakAction::Place {
+            pos: TakPos::new(0, 0),
+            variant: TakVariant::Flat,
+        })
+        .unwrap();
+        game.do_action(&TakAction::Place {
+            pos: TakPos::new(1, 0),
+            variant: TakVariant::Flat,
+        })
+        .unwrap();
+        game.do_action(&TakAction::Place {
+            pos: TakPos::new(2, 0),
+            variant: TakVariant::Flat,
+        })
+        .unwrap();
+        game.do_action(&TakAction::Place {
+            pos: TakPos::new(3, 0),
+            variant: TakVariant::Capstone,
+        })
+        .unwrap();
+        game.do_action(&TakAction::Place {
+            pos: TakPos::new(4, 0),
+            variant: TakVariant::Flat,
+        })
+        .unwrap();
+
+        // player 2 has placed one flat and one capstone, has two flat left
+        assert!(
+            game.do_action(&TakAction::Place {
+                pos: TakPos::new(0, 1),
+                variant: TakVariant::Capstone,
+            })
+            .is_err()
+        );
+        game.do_action(&TakAction::Place {
+            pos: TakPos::new(0, 1),
+            variant: TakVariant::Flat,
+        })
+        .unwrap();
+
+        // player 1 has placed all flats and has a capstone left
+        assert!(
+            game.do_action(&TakAction::Place {
+                pos: TakPos::new(0, 2),
+                variant: TakVariant::Flat,
+            })
+            .is_err()
+        );
+        game.do_action(&TakAction::Place {
+            pos: TakPos::new(0, 2),
+            variant: TakVariant::Capstone,
+        })
+        .unwrap();
+
+        // game should be over now
+        // player 1 wins with 2 flats against 1 flat
+        assert_eq!(
+            game.base.game_state,
+            TakGameState::Win {
+                winner: TakPlayer::White,
+                reason: TakWinReason::Flats,
+            }
+        );
+    }
+
+    #[test]
+    fn test_komi_effect() {
+        for (half_komi, result, result2) in [
+            (
+                0,
+                TakGameState::Win {
+                    winner: TakPlayer::White,
+                    reason: TakWinReason::Flats,
+                },
+                TakGameState::Draw,
+            ),
+            (
+                1,
+                TakGameState::Win {
+                    winner: TakPlayer::White,
+                    reason: TakWinReason::Flats,
+                },
+                TakGameState::Win {
+                    winner: TakPlayer::Black,
+                    reason: TakWinReason::Flats,
+                },
+            ),
+            (
+                2,
+                TakGameState::Draw,
+                TakGameState::Win {
+                    winner: TakPlayer::Black,
+                    reason: TakWinReason::Flats,
+                },
+            ),
+            (
+                3,
+                TakGameState::Win {
+                    winner: TakPlayer::Black,
+                    reason: TakWinReason::Flats,
+                },
+                TakGameState::Win {
+                    winner: TakPlayer::Black,
+                    reason: TakWinReason::Flats,
+                },
+            ),
+        ] {
+            let mut game = TakGame::new(TakGameSettings {
+                board_size: 5,
+                half_komi,
+                reserve_pieces: 2,
+                reserve_capstones: 0,
+                time_control: TakTimeControl {
+                    contingent: Duration::from_secs(300),
+                    increment: Duration::from_secs(5),
+                    extra: Some((2, Duration::from_secs(60))),
+                },
+            });
+            game.do_action(&TakAction::Place {
+                pos: TakPos::new(0, 0),
+                variant: TakVariant::Flat,
+            })
+            .unwrap();
+            game.do_action(&TakAction::Place {
+                pos: TakPos::new(1, 0),
+                variant: TakVariant::Flat,
+            })
+            .unwrap();
+            game.do_action(&TakAction::Place {
+                pos: TakPos::new(2, 0),
+                variant: TakVariant::Flat,
+            })
+            .unwrap();
+
+            assert_eq!(game.base.game_state, result);
+
+            let mut game2 = TakGame::new(TakGameSettings {
+                board_size: 5,
+                half_komi,
+                reserve_pieces: 1,
+                reserve_capstones: 1,
+                time_control: TakTimeControl {
+                    contingent: Duration::from_secs(300),
+                    increment: Duration::from_secs(5),
+                    extra: Some((2, Duration::from_secs(60))),
+                },
+            });
+            game2
+                .do_action(&TakAction::Place {
+                    pos: TakPos::new(0, 0),
+                    variant: TakVariant::Flat,
+                })
+                .unwrap();
+            game2
+                .do_action(&TakAction::Place {
+                    pos: TakPos::new(1, 0),
+                    variant: TakVariant::Flat,
+                })
+                .unwrap();
+            game2
+                .do_action(&TakAction::Place {
+                    pos: TakPos::new(2, 0),
+                    variant: TakVariant::Capstone,
+                })
+                .unwrap();
+
+            assert_eq!(game2.base.game_state, result2);
+        }
+    }
+
+    #[test]
+    fn test_first_move_must_be_flat() {
+        let mut game = TakGame::new(TakGameSettings {
+            board_size: 5,
+            half_komi: 0,
+            reserve_pieces: 21,
+            reserve_capstones: 1,
+            time_control: TakTimeControl {
+                contingent: Duration::from_secs(300),
+                increment: Duration::from_secs(5),
+                extra: Some((2, Duration::from_secs(60))),
+            },
+        });
+
+        // first move must be flat stone
+        assert!(
+            game.do_action(&TakAction::Place {
+                pos: TakPos::new(0, 0),
+                variant: TakVariant::Capstone,
+            })
+            .is_err()
+        );
+        assert!(
+            game.do_action(&TakAction::Place {
+                pos: TakPos::new(0, 0),
+                variant: TakVariant::Standing,
+            })
+            .is_err()
+        );
+        assert!(
+            game.do_action(&TakAction::Place {
+                pos: TakPos::new(0, 0),
+                variant: TakVariant::Flat,
+            })
+            .is_ok()
+        );
+
+        // second move must be flat stone
+        assert!(
+            game.do_action(&TakAction::Place {
+                pos: TakPos::new(1, 0),
+                variant: TakVariant::Capstone,
+            })
+            .is_err()
+        );
+        assert!(
+            game.do_action(&TakAction::Place {
+                pos: TakPos::new(1, 0),
+                variant: TakVariant::Standing,
+            })
+            .is_err()
+        );
+        // moving piece from first place is not allowed either
+        assert!(
+            game.do_action(&TakAction::Move {
+                pos: TakPos::new(0, 0),
+                dir: TakDir::Right,
+                drops: vec![1],
+            })
+            .is_err()
+        );
+        assert!(
+            game.do_action(&TakAction::Place {
+                pos: TakPos::new(1, 0),
+                variant: TakVariant::Flat,
+            })
+            .is_ok()
+        );
+
+        // from third move onwards, any variant is allowed
+        assert!(
+            game.do_action(&TakAction::Place {
+                pos: TakPos::new(0, 1),
+                variant: TakVariant::Capstone,
+            })
+            .is_ok()
+        );
+        assert!(
+            game.do_action(&TakAction::Place {
+                pos: TakPos::new(0, 2),
+                variant: TakVariant::Standing,
+            })
+            .is_ok()
+        );
+        assert!(
+            game.do_action(&TakAction::Place {
+                pos: TakPos::new(0, 3),
+                variant: TakVariant::Flat,
+            })
+            .is_ok()
+        );
+    }
+}

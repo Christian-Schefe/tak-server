@@ -32,7 +32,8 @@ fn init_logger() {
     let archive_pattern =
         std::env::var("LOG_ARCHIVE_PATTERN").expect("LOG_ARCHIVE_PATTERN must be set");
 
-    let level = LevelFilter::Info;
+    let stderr_level = LevelFilter::Info;
+    let file_level = LevelFilter::Debug;
 
     let stderr = ConsoleAppender::builder().target(Target::Stderr).build();
 
@@ -48,10 +49,14 @@ fn init_logger() {
         .unwrap();
 
     let config = Config::builder()
-        .appender(Appender::builder().build("logfile", Box::new(logfile)))
         .appender(
             Appender::builder()
-                .filter(Box::new(ThresholdFilter::new(level)))
+                .filter(Box::new(ThresholdFilter::new(file_level)))
+                .build("logfile", Box::new(logfile)),
+        )
+        .appender(
+            Appender::builder()
+                .filter(Box::new(ThresholdFilter::new(stderr_level)))
                 .build("stderr", Box::new(stderr)),
         )
         .build(

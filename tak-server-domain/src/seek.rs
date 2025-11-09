@@ -39,7 +39,7 @@ pub trait SeekService {
         game_settings: TakGameSettings,
         game_type: GameType,
     ) -> ServiceResult<SeekId>;
-    async fn add_rematch_seek(
+    async fn request_rematch(
         &self,
         player: PlayerUsername,
         opponent: PlayerUsername,
@@ -47,7 +47,7 @@ pub trait SeekService {
         game_settings: TakGameSettings,
         game_type: GameType,
         from_game: GameId,
-    ) -> ServiceResult<()>;
+    ) -> ServiceResult<Option<SeekId>>;
     fn get_seek_ids(&self) -> Vec<SeekId>;
     fn get_seeks(&self) -> Vec<Seek>;
     fn get_seek(&self, id: &SeekId) -> ServiceResult<Seek>;
@@ -151,7 +151,7 @@ impl SeekService for SeekServiceImpl {
             .await
     }
 
-    async fn add_rematch_seek(
+    async fn request_rematch(
         &self,
         player: PlayerUsername,
         opponent: PlayerUsername,
@@ -159,7 +159,7 @@ impl SeekService for SeekServiceImpl {
         game_settings: TakGameSettings,
         game_type: GameType,
         from_game: GameId,
-    ) -> ServiceResult<()> {
+    ) -> ServiceResult<Option<SeekId>> {
         // rematch seek entry is removed when the rematch seek gets accepted, so no need to remove it here
         if let Some(existing_seek_id) = self.rematch_seeks.get(&from_game) {
             let seek = self
@@ -182,7 +182,7 @@ impl SeekService for SeekServiceImpl {
             )
             .await;
 
-            return Ok(());
+            return Ok(None);
         }
         let seek_id = self
             .add_seek_internal(
@@ -196,7 +196,7 @@ impl SeekService for SeekServiceImpl {
             .await?;
         self.rematch_seeks.insert(from_game, seek_id);
 
-        Ok(())
+        Ok(Some(seek_id))
     }
 
     fn get_seek(&self, id: &SeekId) -> ServiceResult<Seek> {
@@ -481,7 +481,7 @@ mod tests {
         };
 
         seek_service
-            .add_rematch_seek(
+            .request_rematch(
                 "player1".to_string(),
                 "player2".to_string(),
                 None,
@@ -505,7 +505,7 @@ mod tests {
         assert_eq!(seek_service.get_seek(&1).ok(), Some(expected_seek.clone()));
 
         seek_service
-            .add_rematch_seek(
+            .request_rematch(
                 "player2".to_string(),
                 "player1".to_string(),
                 None,
@@ -517,9 +517,9 @@ mod tests {
             .expect("Failed to add seek");
 
         let sent_messages = mock_transport_service.get_messages();
-        assert_eq!(sent_messages.len(), 1);
+        assert_eq!(sent_messages.len(), 3);
         assert!(matches!(
-            &sent_messages[0],
+            &sent_messages[2],
             (player, ServerMessage::AcceptRematch { seek_id: 1 }) if *player == player2_id
         ));
         assert_eq!(seek_service.get_seek_ids().len(), 1);

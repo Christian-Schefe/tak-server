@@ -253,13 +253,8 @@ impl TransportServiceImpl {
             return ServiceError::not_possible(format!("Player {} already logged in", username));
         }
         if let Some(prev_client_id) = self.player_associations.get_by_value(username) {
-            let _ = self.try_listener_send(
-                prev_client_id,
-                &ServerMessage::ConnectionClosed {
-                    reason: DisconnectReason::NewSession,
-                },
-            );
-            self.close_client(prev_client_id);
+            self.close_with_reason(prev_client_id, DisconnectReason::NewSession)
+                .await;
             // call on_disconnect directly to clean up immediately
             self.on_disconnect(prev_client_id).await;
             info!(
@@ -297,7 +292,15 @@ impl TransportServiceImpl {
         self.player_associations.get_by_key(&id)
     }
 
-    pub fn close_client(&self, id: ListenerId) {
+    pub async fn close_with_reason(&self, id: ListenerId, reason: DisconnectReason) {
+        self.try_listener_send(id, &ServerMessage::ConnectionClosed { reason })
+            .await;
+        //wait a moment to allow message to be sent
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        self.close_client(id);
+    }
+
+    fn close_client(&self, id: ListenerId) {
         let Some(entry) = self.client_senders.get(&id) else {
             warn!("Client {} already closed", id);
             return;
@@ -306,6 +309,21 @@ impl TransportServiceImpl {
         drop(entry);
         token.cancel();
         info!("Client {} closed", id);
+    }
+
+    async fn close_all_clients(&self) {
+        let client_ids: Vec<ListenerId> = self
+            .client_senders
+            .iter()
+            .map(|entry| *entry.key())
+            .collect();
+
+        let mut futures = vec![];
+        for id in client_ids {
+            let fut = self.close_with_reason(id, DisconnectReason::ServerShutdown);
+            futures.push(fut);
+        }
+        futures::future::join_all(futures).await;
     }
 
     pub fn get_protocol(&self, id: ListenerId) -> Protocol {
@@ -340,13 +358,8 @@ impl TransportServiceImpl {
                 .collect();
             for client_id in inactive_clients {
                 info!("Cleaning up inactive client {}", client_id);
-                let _ = self.try_listener_send(
-                    client_id,
-                    &ServerMessage::ConnectionClosed {
-                        reason: DisconnectReason::NewSession,
-                    },
-                );
-                self.close_client(client_id);
+                self.close_with_reason(client_id, DisconnectReason::Inactivity)
+                    .await;
             }
         }
     }
@@ -395,6 +408,8 @@ impl TransportServiceImpl {
 
         let cancellation_token = CancellationToken::new();
 
+        let self_clone = self.clone();
+
         let cancellation_token_clone = cancellation_token.clone();
         let tcp_server_handle = tokio::spawn(async move {
             serve_tcp_server(cancellation_token_clone).await;
@@ -405,13 +420,18 @@ impl TransportServiceImpl {
                 .await;
         });
 
+        let on_shutdown = async move {
+            shutdown_signal.await;
+            info!("Shutdown signal received, closing all clients");
+            self_clone.close_all_clients().await;
+            cancellation_token.cancel();
+        };
+
         info!("WebSocket server listening on port {}", ws_port);
         axum::serve(listener, router.with_state(app.unwrap().clone()))
-            .with_graceful_shutdown(shutdown_signal)
+            .with_graceful_shutdown(on_shutdown)
             .await
             .unwrap();
-
-        cancellation_token.cancel();
 
         let (r1, r2) = tokio::join!(tcp_server_handle, client_cleanup_handle);
         if let Err(e1) = r1 {
@@ -427,6 +447,9 @@ impl TransportServiceImpl {
 
 #[async_trait::async_trait]
 impl TransportService for TransportServiceImpl {
+    async fn disconnect_listener(&self, id: ListenerId, reason: DisconnectReason) {
+        self.close_with_reason(id, reason).await;
+    }
     async fn try_listener_send(&self, id: ListenerId, msg: &ServerMessage) {
         if let Some(handler) = self.client_handlers.get(&id) {
             let protocol = handler.clone();

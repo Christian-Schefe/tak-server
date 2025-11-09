@@ -10,7 +10,7 @@ pub mod seek;
 pub mod transport;
 pub mod util;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum ServiceError {
     #[error("not found: {0}")]
     NotFound(String),

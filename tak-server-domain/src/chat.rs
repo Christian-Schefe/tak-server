@@ -18,7 +18,7 @@ pub type ArcChatService = Arc<Box<dyn ChatService + Send + Sync>>;
 pub trait ChatService {
     async fn join_room(&self, id: ListenerId, room_name: &String) -> ServiceResult<()>;
     async fn leave_room(&self, id: ListenerId, room_name: &String) -> ServiceResult<()>;
-    fn leave_all_rooms(&self, id: ListenerId) -> ServiceResult<()>;
+    fn leave_all_rooms_quiet(&self, id: ListenerId) -> ServiceResult<()>;
     async fn send_message_to_all(
         &self,
         username: &PlayerUsername,
@@ -82,7 +82,7 @@ impl ChatService for ChatServiceImpl {
         Ok(())
     }
 
-    fn leave_all_rooms(&self, id: ListenerId) -> ServiceResult<()> {
+    fn leave_all_rooms_quiet(&self, id: ListenerId) -> ServiceResult<()> {
         self.chat_rooms.remove_value(&id);
         Ok(())
     }
@@ -94,6 +94,18 @@ impl ChatService for ChatServiceImpl {
     ) -> ServiceResult<()> {
         let player = self.player_service.fetch_player_data(username).await?;
         if player.flags.is_gagged {
+            do_player_send(
+                &self.player_connection_service,
+                &self.transport_service,
+                username,
+                &ServerMessage::ChatMessage {
+                    from: username.clone(),
+                    message: "<Server: You have been muted for inappropriate chat behavior.>"
+                        .to_string(),
+                    source: ChatMessageSource::Global,
+                },
+            )
+            .await;
             return ServiceError::forbidden("You are gagged and cannot send messages");
         }
         let msg = ServerMessage::ChatMessage {
@@ -187,8 +199,12 @@ mod tests {
         let test_user_id = ListenerId::new();
         let test_admin_id = ListenerId::new();
 
-        mock_player_connection_service.on_listener_connected(test_user_id);
-        mock_player_connection_service.on_listener_connected(test_admin_id);
+        mock_player_connection_service
+            .on_player_connected(test_user_id, &"test_user".to_string())
+            .await;
+        mock_player_connection_service
+            .on_player_connected(test_admin_id, &"test_admin".to_string())
+            .await;
 
         assert_eq!(
             chat_service
@@ -233,8 +249,12 @@ mod tests {
         let test_user = ListenerId::new();
         let test_admin = ListenerId::new();
 
-        mock_player_connection_service.on_listener_connected(test_user);
-        mock_player_connection_service.on_listener_connected(test_admin);
+        mock_player_connection_service
+            .on_player_connected(test_user, &"test_user".to_string())
+            .await;
+        mock_player_connection_service
+            .on_player_connected(test_admin, &"test_admin".to_string())
+            .await;
 
         chat_service
             .join_room(test_user, &"room".to_string())
@@ -293,8 +313,12 @@ mod tests {
         let test_admin = ListenerId::new();
         let test_gagged = ListenerId::new();
 
-        mock_player_connection_service.on_listener_connected(test_admin);
-        mock_player_connection_service.on_listener_connected(test_gagged);
+        mock_player_connection_service
+            .on_player_connected(test_admin, &"test_admin".to_string())
+            .await;
+        mock_player_connection_service
+            .on_player_connected(test_gagged, &"test_gagged".to_string())
+            .await;
 
         assert!(
             chat_service
@@ -303,9 +327,12 @@ mod tests {
                 .is_ok()
         );
         let messages = mock_client_service.get_messages();
-        assert_eq!(messages.len(), 1);
+        assert_eq!(messages.len(), 2);
         assert!(
             matches!(&messages[0].1,  ServerMessage::ChatMessage { from, message, source: ChatMessageSource::Global } if from == "test_admin" && message == "Hello!"),
+        );
+        assert!(
+            matches!(&messages[1].1,  ServerMessage::ChatMessage { from, message, source: ChatMessageSource::Global } if from == "test_admin" && message == "Hello!"),
         );
 
         assert!(matches!(

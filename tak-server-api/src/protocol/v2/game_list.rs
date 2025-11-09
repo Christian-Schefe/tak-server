@@ -9,7 +9,7 @@ use tak_server_domain::{
 
 use crate::protocol::{
     Protocol, ServerMessage,
-    v2::{ProtocolV2Handler, ProtocolV2Result},
+    v2::{ProtocolV2Handler, ProtocolV2Result, V2Response},
 };
 
 impl ProtocolV2Handler {
@@ -39,7 +39,7 @@ impl ProtocolV2Handler {
         for game in self.app_state.game_service.get_games() {
             self.send_game_string_message(id, &game, "GameList Add");
         }
-        Ok(None)
+        Ok(V2Response::OK)
     }
 
     pub fn handle_observe_message(
@@ -76,7 +76,7 @@ impl ProtocolV2Handler {
         } else {
             self.app_state.game_service.unobserve_game(id, &game_id)?;
         }
-        Ok(None)
+        Ok(V2Response::OK)
     }
 
     pub fn send_game_string_message(&self, id: ListenerId, game: &Game, operation: &str) {

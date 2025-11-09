@@ -323,6 +323,8 @@ fn server_message_to_json(msg: &ServerMessage) -> JsonServerMessage {
                 DisconnectReason::Inactivity => "Disconnected due to inactivity".to_string(),
                 DisconnectReason::Ban(msg) => format!("Banned: {}", msg),
                 DisconnectReason::Kick => "You have been kicked from the server".to_string(),
+                DisconnectReason::ServerShutdown => "Server is shutting down".to_string(),
+                DisconnectReason::ClientQuit => "Quitting. Goodbye!".to_string(),
             },
         },
     }

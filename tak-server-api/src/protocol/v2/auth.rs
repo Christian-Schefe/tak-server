@@ -1,6 +1,6 @@
 use tak_server_domain::{ServiceError, player::PlayerUsername, transport::ListenerId};
 
-use crate::protocol::v2::{ProtocolV2Handler, ProtocolV2Result};
+use crate::protocol::v2::{ProtocolV2Handler, ProtocolV2Result, V2Response};
 
 impl ProtocolV2Handler {
     pub async fn handle_login_message(&self, id: ListenerId, parts: &[&str]) -> ProtocolV2Result {
@@ -8,7 +8,7 @@ impl ProtocolV2Handler {
             let token = parts.get(2).copied();
             let username = self.app_state.player_service.try_login_guest(token)?;
             self.transport.associate_player(id, &username).await?;
-            return Ok(Some(format!("Welcome {}!", username)));
+            return Ok(V2Response::Message(format!("Welcome {}!", username)));
         }
         if parts.len() != 3 {
             return ServiceError::bad_request("Invalid Login message format");
@@ -22,31 +22,24 @@ impl ProtocolV2Handler {
             .try_login(&username, &password)
             .await
         {
-            let _ = self.send_to(id, format!("Authentication failure: {}", e));
-            return Err(e);
+            return Ok(V2Response::ErrorMessage(
+                e,
+                "Authentication failure".to_string(),
+            ));
         }
         self.transport.associate_player(id, &username).await?;
-        Ok(Some(format!("Welcome {}!", username)))
-    }
 
-    pub async fn handle_login_token_message(
-        &self,
-        id: ListenerId,
-        parts: &[&str],
-    ) -> ProtocolV2Result {
-        if parts.len() != 2 {
-            return ServiceError::bad_request("Invalid LoginToken message format");
+        let player = self
+            .app_state
+            .player_service
+            .fetch_player_data(&username)
+            .await?;
+
+        if player.flags.is_admin || player.flags.is_mod {
+            self.send_to(id, "Is Mod");
         }
-        let token = parts[1];
-        let username = match self.app_state.player_service.try_login_jwt(token).await {
-            Ok(name) => name,
-            Err(e) => {
-                let _ = self.send_to(id, format!("Authentication failure: {}", e));
-                return Err(e);
-            }
-        };
-        self.transport.associate_player(id, &username).await?;
-        Ok(Some(format!("Welcome {}!", username)))
+
+        Ok(V2Response::Message(format!("Welcome {}!", username)))
     }
 
     pub async fn handle_register_message(
@@ -70,7 +63,7 @@ impl ProtocolV2Handler {
             return Err(e);
         }
 
-        Ok(Some(format!(
+        Ok(V2Response::Message(format!(
             "Registered {}. Check your email for the password.",
             username
         )))
@@ -96,7 +89,7 @@ impl ProtocolV2Handler {
             let _ = self.send_to(id, format!("Reset Token Error: {}", e));
             return Err(e);
         }
-        Ok(None)
+        Ok(V2Response::Message("Reset token sent".to_string()))
     }
 
     pub async fn handle_reset_password_message(&self, parts: &[&str]) -> ProtocolV2Result {
@@ -107,16 +100,22 @@ impl ProtocolV2Handler {
         let token = parts[2].to_string();
         let new_password = parts[3].to_string();
 
-        self.app_state
+        match self
+            .app_state
             .player_service
             .reset_password(&username, &token, &new_password)
-            .await?;
-        Ok(None)
+            .await
+        {
+            Ok(_) => Ok(V2Response::Message("Password is changed".to_string())),
+            Err(e @ ServiceError::Unauthorized(_)) => {
+                Ok(V2Response::ErrorMessage(e, "Wrong token".to_string()))
+            }
+            Err(e) => Err(e),
+        }
     }
 
     pub async fn handle_change_password_message(
         &self,
-        id: ListenerId,
         username: &PlayerUsername,
         parts: &[&str],
     ) -> ProtocolV2Result {
@@ -132,11 +131,11 @@ impl ProtocolV2Handler {
             .change_password(username, &old_password, &new_password)
             .await
         {
-            Ok(_) => Ok(Some("Password changed".to_string())),
-            Err(e) => {
-                let _ = self.send_to(id, format!("Error: {}", e));
-                Err(e)
+            Ok(_) => Ok(V2Response::Message("Password changed".to_string())),
+            Err(e @ ServiceError::Unauthorized(_)) => {
+                Ok(V2Response::ErrorMessage(e, "Wrong password".to_string()))
             }
+            Err(e) => Err(e),
         }
     }
 }
