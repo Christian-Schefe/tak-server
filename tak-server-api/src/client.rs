@@ -489,6 +489,7 @@ async fn serve_tcp_server(cancellation_token: CancellationToken) {
         .await
         .unwrap();
     info!("TCP server listening on port {}", tcp_port);
+    let handles = Arc::new(DashMap::new());
     loop {
         let (socket, addr) = select! {
             res = listener.accept() => res.unwrap(),
@@ -498,12 +499,26 @@ async fn serve_tcp_server(cancellation_token: CancellationToken) {
             }
         };
         info!("New TCP connection from {}", addr);
-        tokio::spawn(async move {
-            TRANSPORT_IMPL
-                .get()
-                .unwrap()
-                .handle_client_tcp(socket)
-                .await;
+        let conn_id = uuid::Uuid::new_v4();
+        let token_clone = cancellation_token.clone();
+        let handles_clone = handles.clone();
+        let handle = tokio::spawn(async move {
+            select! {
+                _ = token_clone.cancelled() => {
+                    info!("Closing TCP connection from {} due to server shutdown", addr);
+                    return;
+                }
+                _ = TRANSPORT_IMPL.get().unwrap().handle_client_tcp(socket)  => {}
+            }
+            handles_clone.remove(&conn_id);
         });
+        handles.insert(conn_id, Some(handle));
+    }
+
+    for mut entry in handles.iter_mut() {
+        let handle = entry.value_mut();
+        if let Some(handle) = handle.take() {
+            let _ = handle.await;
+        }
     }
 }

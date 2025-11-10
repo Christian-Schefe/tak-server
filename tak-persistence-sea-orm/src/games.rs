@@ -1,11 +1,11 @@
-use sqlx::{Pool, Sqlite};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
 use tak_core::{TakAction, TakActionRecord, TakPos, TakVariant, ptn::game_state_to_string};
 use tak_server_domain::{
     ServiceError, ServiceResult,
     game::{GameId, GameRecord, GameRecordUpdate, GameRepository, GameType},
 };
 
-use crate::create_games_db_pool;
+use crate::{create_games_db_pool, entity::game};
 
 #[derive(Debug)]
 pub struct GameEntity {
@@ -30,44 +30,46 @@ pub struct GameEntity {
     pub extra_time_trigger: i32,
 }
 
-pub struct SqliteGameRepository {
-    pool: Pool<Sqlite>,
+pub struct GameRepositoryImpl {
+    db: DatabaseConnection,
 }
 
-impl SqliteGameRepository {
-    pub fn new() -> Self {
-        let pool = create_games_db_pool();
-        Self { pool }
+impl GameRepositoryImpl {
+    pub async fn new() -> Self {
+        let db = create_games_db_pool().await;
+        Self { db }
     }
 
     async fn create_game(&self, game: &GameEntity) -> ServiceResult<GameId> {
-        // Id is auto-incremented
-        let res = sqlx::query(
-            "INSERT INTO games (date, size, player_white, player_black, notation, result, timertime, timerinc, rating_white, rating_black, unrated, tournament, komi, pieces, capstones, rating_change_white, rating_change_black, extra_time_amount, extra_time_trigger) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .bind(game.date)
-        .bind(game.size)
-        .bind(&game.player_white)
-        .bind(&game.player_black)
-        .bind(&game.notation)
-        .bind(&game.result)
-        .bind(game.timertime)
-        .bind(game.timerinc)
-        .bind(game.rating_white)
-        .bind(game.rating_black)
-        .bind(if game.unrated { 1 } else { 0 })
-        .bind(if game.tournament { 1 } else { 0 })
-        .bind(game.komi)
-        .bind(game.pieces)
-        .bind(game.capstones)
-        .bind(game.rating_change_white)
-        .bind(game.rating_change_black)
-        .bind(game.extra_time_amount)
-        .bind(game.extra_time_trigger)
-        .execute(&self.pool).await
-        .map_err(|e| ServiceError::Internal(e.to_string()))?;
+        let new_game = game::ActiveModel {
+            id: Default::default(), // Auto-increment
+            date: Set(game.date),
+            size: Set(game.size),
+            player_white: Set(game.player_white.clone()),
+            player_black: Set(game.player_black.clone()),
+            notation: Set(game.notation.clone()),
+            result: Set(game.result.clone()),
+            timertime: Set(game.timertime),
+            timerinc: Set(game.timerinc),
+            rating_white: Set(game.rating_white),
+            rating_black: Set(game.rating_black),
+            unrated: Set(game.unrated),
+            tournament: Set(game.tournament),
+            komi: Set(game.komi),
+            pieces: Set(game.pieces),
+            capstones: Set(game.capstones),
+            rating_change_white: Set(game.rating_change_white),
+            rating_change_black: Set(game.rating_change_black),
+            extra_time_amount: Set(game.extra_time_amount),
+            extra_time_trigger: Set(game.extra_time_trigger),
+        };
 
-        Ok(res.last_insert_rowid())
+        let result = new_game
+            .insert(&self.db)
+            .await
+            .map_err(|e| ServiceError::Internal(e.to_string()))?;
+
+        Ok(result.id)
     }
 
     fn action_record_to_database_string(record: &TakActionRecord) -> String {
@@ -107,7 +109,7 @@ impl SqliteGameRepository {
 }
 
 #[async_trait::async_trait]
-impl GameRepository for SqliteGameRepository {
+impl GameRepository for GameRepositoryImpl {
     async fn create_game(&self, game: &GameRecord) -> ServiceResult<GameId> {
         let game_entity = GameEntity {
             date: game.date.timestamp(),
@@ -151,13 +153,21 @@ impl GameRepository for SqliteGameRepository {
             .collect::<Vec<_>>()
             .join(" ");
         let result_val = game_state_to_string(&update.result);
-        sqlx::query("UPDATE games SET notation = ?, result = ? WHERE id = ?")
-            .bind(&notation_val)
-            .bind(&result_val)
-            .bind(id)
-            .execute(&self.pool)
+
+        let game = game::Entity::find_by_id(id)
+            .one(&self.db)
+            .await
+            .map_err(|e| ServiceError::Internal(e.to_string()))?
+            .ok_or_else(|| ServiceError::Internal("Game not found".to_string()))?;
+
+        let mut game: game::ActiveModel = game.into();
+        game.notation = Set(notation_val);
+        game.result = Set(result_val);
+
+        game.update(&self.db)
             .await
             .map_err(|e| ServiceError::Internal(e.to_string()))?;
+
         Ok(())
     }
 }

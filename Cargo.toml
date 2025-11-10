@@ -9,8 +9,7 @@ resolver = "3"
 members = [
     "tak-client",
     "tak-core",
-    "tak-persistence-sqlite",
-    "tak-persistence-mariadb",
+    "tak-persistence-sea-orm",
     "tak-server-domain",
     "tak-server-api",
 ]
@@ -41,7 +40,7 @@ uuid = { version = "1.18.1", features = ["v4"] }
 validator = { version = "0.20.0", features = ["derive"] }
 tak-core = { path = "./tak-core" }
 tak-server-domain = { path = "./tak-server-domain" }
-tak-persistence-sqlite = { path = "./tak-persistence-sqlite" }
+tak-persistence-sea-orm = { path = "./tak-persistence-sea-orm" }
 tak-server-api = { path = "./tak-server-api" }
 log = "0.4.28"
 log4rs = { version = "1.4.0", features = ["gzip"] }

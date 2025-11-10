@@ -92,10 +92,10 @@ pub struct PlayerFilter {
     pub is_banned: Option<bool>,
 }
 
-pub type ArcPlayerRepository = Arc<Box<dyn PlayerRepository + Send + Sync + 'static>>;
+pub type ArcPlayerRepository = Arc<Box<dyn PlayerRepositoryImpl + Send + Sync + 'static>>;
 
 #[async_trait::async_trait]
-pub trait PlayerRepository {
+pub trait PlayerRepositoryImpl {
     async fn get_player_by_id(&self, id: PlayerId) -> ServiceResult<Option<Player>>;
     async fn get_player_by_name(&self, name: &str) -> ServiceResult<Option<(PlayerId, Player)>>;
     async fn create_player(&self, player: &Player) -> ServiceResult<()>;
