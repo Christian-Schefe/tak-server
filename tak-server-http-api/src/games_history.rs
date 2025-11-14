@@ -1,0 +1,328 @@
+use axum::{
+    Json,
+    extract::{Path, State},
+};
+use tak_core::{TakGameState, TakPlayer, TakWinReason, ptn::game_state_to_string};
+use tak_server_domain::{
+    ServiceError,
+    app::AppState,
+    game::{GameId, GameRecord},
+    game_history::{DateSelector, GameFilter, GameFilterResult, GameIdSelector, GamePagination},
+};
+
+use crate::MyServiceError;
+
+pub async fn get_all(
+    State(app_state): State<AppState>,
+    Json(filter): Json<JsonGameRecordFilter>,
+) -> Result<Json<JsonGameRecords>, MyServiceError> {
+    let id_selector = filter
+        .id
+        .as_ref()
+        .and_then(|id_str| {
+            let id_str = id_str.trim();
+            if id_str.is_empty() {
+                return None;
+            }
+            if id_str.contains("-") {
+                let parts: Vec<&str> = id_str.split('-').filter(|s| !s.is_empty()).collect();
+                if parts.len() == 2
+                    && let (Ok(start), Ok(end)) = (parts[0].parse(), parts[1].parse())
+                {
+                    return Some(Ok(GameIdSelector::Range(start, end)));
+                } else {
+                    return Some(Err(MyServiceError(ServiceError::BadRequest(
+                        "Invalid ID range format".to_string(),
+                    ))));
+                }
+            } else {
+                let ids: Vec<GameId> = id_str.split(',').filter_map(|s| s.parse().ok()).collect();
+                Some(Ok(GameIdSelector::List(ids)))
+            }
+        })
+        .transpose()?;
+    let date_selector = filter
+        .date
+        .as_ref()
+        .and_then(|date_str| {
+            let date_str = date_str.trim();
+            if date_str.is_empty() {
+                return None;
+            }
+            if date_str.contains("-") {
+                let parts: Vec<&str> = date_str.split('-').filter(|s| !s.is_empty()).collect();
+                if parts.len() == 2
+                    && let (Ok(start), Ok(end)) = (parts[0].parse(), parts[1].parse())
+                {
+                    return Some(Ok(DateSelector::Range(start, end)));
+                } else {
+                    return Some(Err(MyServiceError(ServiceError::BadRequest(
+                        "Invalid ID range format".to_string(),
+                    ))));
+                }
+            } else {
+                let is_after = if date_str.starts_with('<') {
+                    false
+                } else if date_str.starts_with('>') {
+                    true
+                } else {
+                    return Some(Err(MyServiceError(ServiceError::BadRequest(
+                        "Invalid date selector format".to_string(),
+                    ))));
+                };
+                let date_part = &date_str[1..];
+                match date_part.parse() {
+                    Ok(date) => {
+                        if is_after {
+                            Some(Ok(DateSelector::After(date)))
+                        } else {
+                            Some(Ok(DateSelector::Before(date)))
+                        }
+                    }
+                    Err(_) => Some(Err(MyServiceError(ServiceError::BadRequest(
+                        "Invalid date format".to_string(),
+                    )))),
+                }
+            }
+        })
+        .transpose()?;
+    let game_states = filter
+        .game_result
+        .as_ref()
+        .map(|res_str| {
+            let res_str = res_str.trim().to_lowercase();
+            match res_str.as_str() {
+                "X-0" => Ok(TakWinReason::ALL
+                    .iter()
+                    .map(|reason| TakGameState::Win {
+                        winner: TakPlayer::White,
+                        reason: reason.clone(),
+                    })
+                    .collect()),
+                "F-0" => Ok(vec![TakGameState::Win {
+                    winner: TakPlayer::White,
+                    reason: TakWinReason::Flats,
+                }]),
+                "R-0" => Ok(vec![TakGameState::Win {
+                    winner: TakPlayer::White,
+                    reason: TakWinReason::Road,
+                }]),
+                "1-0" => Ok(vec![TakGameState::Win {
+                    winner: TakPlayer::White,
+                    reason: TakWinReason::Default,
+                }]),
+                "0-X" => Ok(TakWinReason::ALL
+                    .iter()
+                    .map(|reason| TakGameState::Win {
+                        winner: TakPlayer::Black,
+                        reason: reason.clone(),
+                    })
+                    .collect()),
+                "0-F" => Ok(vec![TakGameState::Win {
+                    winner: TakPlayer::Black,
+                    reason: TakWinReason::Flats,
+                }]),
+                "0-R" => Ok(vec![TakGameState::Win {
+                    winner: TakPlayer::Black,
+                    reason: TakWinReason::Road,
+                }]),
+                "0-1" => Ok(vec![TakGameState::Win {
+                    winner: TakPlayer::Black,
+                    reason: TakWinReason::Default,
+                }]),
+                "1/2-1/2" => Ok(vec![TakGameState::Draw]),
+                _ => Err(MyServiceError(ServiceError::BadRequest(
+                    "Invalid game result filter".to_string(),
+                ))),
+            }
+        })
+        .transpose()?;
+    let game_type = filter
+        .game_type
+        .as_ref()
+        .and_then(|type_str| {
+            let type_str = type_str.trim().to_lowercase();
+            match type_str.as_str() {
+                "" => None,
+                "normal" => Some(Ok(tak_server_domain::game::GameType::Rated)),
+                "unrated" => Some(Ok(tak_server_domain::game::GameType::Unrated)),
+                "tournament" => Some(Ok(tak_server_domain::game::GameType::Tournament)),
+                _ => Some(Err(MyServiceError(ServiceError::BadRequest(
+                    "Invalid game type filter".to_string(),
+                )))),
+            }
+        })
+        .transpose()?;
+    let page = filter.page.unwrap_or(1).max(1);
+    let limit = filter.limit.unwrap_or(50);
+    let skip = filter.skip.unwrap_or(0);
+    let offset = if page > 1 { (page - 1) * limit } else { skip };
+    let pagination = GamePagination {
+        offset: Some(offset),
+        limit: Some(limit),
+    };
+    let game_filter = GameFilter {
+        id_selector,
+        date_selector,
+        player_white: filter.player_white,
+        player_black: filter.player_black,
+        game_states,
+        half_komi: filter.komi,
+        board_size: filter.size,
+        game_type,
+        pagination,
+    };
+    let res: GameFilterResult = app_state
+        .game_history_service
+        .get_games(game_filter)
+        .await?;
+    let total = res.total_count;
+    let per_page = 10;
+    Ok(Json(JsonGameRecords {
+        items: res
+            .games
+            .into_iter()
+            .map(|(id, record)| JsonGameRecord::from_game_record(id, &record))
+            .collect(),
+        total,
+        page,
+        per_page,
+        total_pages: (total + per_page - 1) / per_page,
+    }))
+}
+
+#[derive(serde::Deserialize)]
+pub struct JsonGameRecordFilter {
+    limit: Option<usize>,
+    page: Option<usize>,
+    skip: Option<usize>,
+    order: Option<String>,
+    sort: Option<String>,
+    id: Option<String>,
+    player_white: Option<String>,
+    player_black: Option<String>,
+    game_result: Option<String>,
+    size: Option<usize>,
+    #[serde(rename = "type")]
+    game_type: Option<String>,
+    #[serde(default)]
+    mirror: bool,
+    date: Option<String>,
+    komi: Option<usize>,
+    timertime: Option<usize>,
+    timerinc: Option<usize>,
+    extra_time_amount: Option<usize>,
+    extra_time_trigger: Option<usize>,
+}
+
+#[derive(serde::Serialize)]
+pub struct JsonGameRecords {
+    items: Vec<JsonGameRecord>,
+    total: usize,
+    page: usize,
+    per_page: usize,
+    total_pages: usize,
+}
+
+pub async fn get_by_id(
+    Path(game_id): Path<String>,
+    State(app_state): State<AppState>,
+) -> Result<Json<JsonGameRecord>, MyServiceError> {
+    let game_id = game_id
+        .parse()
+        .map_err(|e| MyServiceError(ServiceError::BadRequest(format!("Invalid game ID: {}", e))))?;
+    let res: Option<GameRecord> = app_state
+        .game_history_service
+        .get_game_record(game_id)
+        .await?;
+    if let Some(record) = res {
+        let json_record = JsonGameRecord::from_game_record(game_id, &record);
+        let json = serde_json::to_string(&json_record).map_err(|e| {
+            MyServiceError(ServiceError::Internal(format!(
+                "Failed to serialize game record: {}",
+                e
+            )))
+        })?;
+        println!("{}", json);
+        Ok(Json(json_record))
+    } else {
+        Err(MyServiceError(ServiceError::NotFound(format!(
+            "Game with ID {} not found",
+            game_id
+        ))))
+    }
+}
+
+#[derive(serde::Serialize)]
+pub struct JsonGameRecord {
+    id: i64,
+    date: i64,
+    size: u32,
+    player_white: String,
+    player_black: String,
+    notation: String,
+    result: String,
+    timer_time: u32,
+    timer_inc: u32,
+    rating_white: f64,
+    rating_black: f64,
+    unrated: bool,
+    tournament: bool,
+    komi: u32,
+    pieces: i32,
+    capstones: i32,
+    rating_change_white: f64,
+    rating_change_black: f64,
+    extra_time_amount: u64,
+    extra_time_trigger: u32,
+}
+
+impl JsonGameRecord {
+    fn from_game_record(id: GameId, record: &GameRecord) -> Self {
+        Self {
+            id: id,
+            date: record.date.timestamp(),
+            size: record.settings.board_size,
+            player_white: record.white.clone(),
+            player_black: record.black.clone(),
+            notation: "".to_string(), //TODO: generate PTN
+            result: game_state_to_string(&record.result),
+            timer_time: record.settings.time_control.contingent.as_secs() as u32,
+            timer_inc: record.settings.time_control.increment.as_secs() as u32,
+            rating_white: record
+                .rating_info
+                .as_ref()
+                .map_or(0.0, |info| info.rating_white),
+            rating_black: record
+                .rating_info
+                .as_ref()
+                .map_or(0.0, |info| info.rating_black),
+            unrated: matches!(record.game_type, tak_server_domain::game::GameType::Unrated),
+            tournament: matches!(
+                record.game_type,
+                tak_server_domain::game::GameType::Tournament
+            ),
+            komi: record.settings.half_komi,
+            pieces: record.settings.reserve_pieces as i32,
+            capstones: record.settings.reserve_capstones as i32,
+            rating_change_white: record
+                .rating_info
+                .as_ref()
+                .map_or(0.0, |info| info.rating_change_white),
+            rating_change_black: record
+                .rating_info
+                .as_ref()
+                .map_or(0.0, |info| info.rating_change_black),
+            extra_time_amount: record
+                .settings
+                .time_control
+                .extra
+                .map_or(0, |(_, amount)| amount.as_secs()),
+            extra_time_trigger: record
+                .settings
+                .time_control
+                .extra
+                .map_or(0, |(trigger, _)| trigger),
+        }
+    }
+}

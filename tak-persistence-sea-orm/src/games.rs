@@ -1,7 +1,10 @@
 use std::time::Duration;
 
 use chrono::DateTime;
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, Set};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QuerySelect, Set,
+};
 use tak_core::{
     TakAction, TakActionRecord, TakDir, TakGameSettings, TakGameState, TakPos, TakTimeControl,
     TakVariant,
@@ -10,6 +13,7 @@ use tak_core::{
 use tak_server_domain::{
     ServiceError, ServiceResult,
     game::{GameId, GameRatingUpdate, GameRecord, GameRepository, GameResultUpdate, GameType},
+    game_history::{DateSelector, GameFilter, GameFilterResult, GameIdSelector},
     player::Player,
     rating::GameRatingInfo,
 };
@@ -276,8 +280,83 @@ impl GameRepository for GameRepositoryImpl {
         Ok(())
     }
 
-    async fn get_games(&self) -> ServiceResult<Vec<(GameId, GameRecord)>> {
-        let models = game::Entity::find()
+    async fn get_game_record(&self, id: GameId) -> ServiceResult<Option<GameRecord>> {
+        let model = game::Entity::find_by_id(id)
+            .one(&self.db)
+            .await
+            .map_err(|e| ServiceError::Internal(e.to_string()))?;
+
+        Ok(model.map(|m| Self::model_to_game(&m)))
+    }
+
+    async fn get_games(&self, filter: GameFilter) -> ServiceResult<GameFilterResult> {
+        let mut query = game::Entity::find();
+        if let Some(game_id_selector) = filter.id_selector {
+            query = match game_id_selector {
+                GameIdSelector::Range(start_id, end_id) => {
+                    query.filter(game::Column::Id.between(start_id, end_id))
+                }
+                GameIdSelector::AndBefore(end_id) => query.filter(game::Column::Id.lte(end_id)),
+                GameIdSelector::AndAfter(start_id) => query.filter(game::Column::Id.gte(start_id)),
+                GameIdSelector::List(id_list) => query.filter(game::Column::Id.is_in(id_list)),
+            }
+        }
+        if let Some(date_selector) = filter.date_selector {
+            query = match date_selector {
+                DateSelector::Range(start_date, end_date) => query.filter(
+                    game::Column::Date.between(start_date.timestamp(), end_date.timestamp()),
+                ),
+                DateSelector::Before(end_date) => {
+                    query.filter(game::Column::Date.lte(end_date.timestamp()))
+                }
+                DateSelector::After(start_date) => {
+                    query.filter(game::Column::Date.gte(start_date.timestamp()))
+                }
+            }
+        }
+        if let Some(player_white) = filter.player_white {
+            query = query.filter(game::Column::PlayerWhite.eq(player_white));
+        }
+        if let Some(player_black) = filter.player_black {
+            query = query.filter(game::Column::PlayerBlack.eq(player_black));
+        }
+        if let Some(game_type) = filter.game_type {
+            query = match game_type {
+                GameType::Rated => query
+                    .filter(game::Column::Unrated.eq(false))
+                    .filter(game::Column::Tournament.eq(false)),
+                GameType::Unrated => query.filter(game::Column::Unrated.eq(true)),
+                GameType::Tournament => query.filter(game::Column::Tournament.eq(true)),
+            }
+        }
+        if let Some(game_states) = filter.game_states {
+            let state_strings: Vec<String> = game_states
+                .iter()
+                .map(|state| game_state_to_string(state))
+                .collect();
+            query = query.filter(game::Column::Result.is_in(state_strings));
+        }
+        if let Some(half_komi) = filter.half_komi {
+            query = query.filter(game::Column::Komi.eq(half_komi as i32));
+        }
+        if let Some(board_size) = filter.board_size {
+            query = query.filter(game::Column::Size.eq(board_size as i32));
+        }
+
+        let count_query = query.clone();
+        let total_count: u64 = count_query
+            .count(&self.db)
+            .await
+            .map_err(|e| ServiceError::Internal(e.to_string()))?;
+
+        if let Some(offset) = filter.pagination.offset {
+            query = query.offset(offset as u64);
+        }
+        if let Some(limit) = filter.pagination.limit {
+            query = query.limit(limit as u64);
+        }
+
+        let models = query
             .all(&self.db)
             .await
             .map_err(|e| ServiceError::Internal(e.to_string()))?;
@@ -288,6 +367,9 @@ impl GameRepository for GameRepositoryImpl {
             results.push((model.id, game_record));
         }
 
-        Ok(results)
+        Ok(GameFilterResult {
+            total_count: total_count as usize,
+            games: results,
+        })
     }
 }

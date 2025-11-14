@@ -4,6 +4,7 @@ pub mod app;
 pub mod chat;
 mod email;
 pub mod game;
+pub mod game_history;
 pub mod jwt;
 pub mod player;
 pub mod rating;

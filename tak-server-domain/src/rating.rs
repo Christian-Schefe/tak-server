@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::{
     ServiceResult,
     game::{ArcGameRepository, GameId, GameRecord, GameType},
+    game_history::{GameFilter, GameFilterResult},
     player::{ArcPlayerRepository, ArcPlayerService, Player, PlayerId},
 };
 
@@ -166,7 +167,12 @@ impl RatingServiceImpl {
         const MAX_DROP: f64 = 200.0;
         const RATING_RETENTION: f64 = 1000.0 * 60.0 * 60.0 * 24.0 * 240.0;
 
-        let games: Vec<(GameId, GameRecord)> = self.game_repository.get_games().await?;
+        let result: GameFilterResult = self
+            .game_repository
+            .get_games(GameFilter::default())
+            .await?;
+        let games = result.games;
+
         for (game_id, game_record) in games {
             if !self.is_game_eligible_for_rating(&game_record) {
                 continue;

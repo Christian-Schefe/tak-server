@@ -120,7 +120,22 @@ async fn main() {
 
     info!("Starting application");
 
-    transport_service_impl
-        .run(app.clone(), shutdown_signal())
-        .await;
+    let app_clone = app.clone();
+    let http_app = tokio::spawn(async move {
+        tak_server_http_api::run(app_clone, shutdown_signal()).await;
+    });
+
+    let transport_app = tokio::spawn(async move {
+        transport_service_impl.run(app, shutdown_signal()).await;
+    });
+
+    let (r1, r2) = tokio::join!(http_app, transport_app);
+
+    if let Err(e) = r1 {
+        eprintln!("HTTP API task failed: {}", e);
+    }
+
+    if let Err(e) = r2 {
+        eprintln!("Transport service task failed: {}", e);
+    }
 }

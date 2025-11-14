@@ -138,6 +138,14 @@ pub enum TakWinReason {
     Default,
 }
 
+impl TakWinReason {
+    pub const ALL: [TakWinReason; 3] = [
+        TakWinReason::Road,
+        TakWinReason::Flats,
+        TakWinReason::Default,
+    ];
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

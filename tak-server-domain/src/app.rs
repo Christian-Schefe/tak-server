@@ -4,6 +4,7 @@ use crate::{
     chat::{ArcChatService, ChatServiceImpl},
     email::{ArcEmailService, EmailServiceImpl},
     game::{ArcGameRepository, ArcGameService, GameServiceImpl},
+    game_history::{ArcGameHistoryService, GameHistoryServiceImpl},
     jwt::ArcJwtService,
     player::{ArcPlayerRepository, ArcPlayerService, PlayerServiceImpl},
     seek::{ArcSeekService, SeekServiceImpl},
@@ -56,6 +57,7 @@ pub struct AppState {
     pub chat_service: ArcChatService,
     pub jwt_service: ArcJwtService,
     pub player_connection_service: ArcPlayerConnectionService,
+    pub game_history_service: ArcGameHistoryService,
 
     pub game_repository: ArcGameRepository,
     pub player_repository: ArcPlayerRepository,
@@ -110,6 +112,10 @@ pub fn construct_app(
         player_service.clone(),
     )));
 
+    let game_history_service: ArcGameHistoryService = Arc::new(Box::new(
+        GameHistoryServiceImpl::new(game_repository.clone()),
+    ));
+
     let app = AppState {
         transport_service,
         game_service,
@@ -119,6 +125,7 @@ pub fn construct_app(
         chat_service,
         jwt_service,
         player_connection_service,
+        game_history_service,
 
         game_repository,
         player_repository,

@@ -16,6 +16,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     ServiceError, ServiceResult,
+    game_history::{GameFilter, GameFilterResult},
     player::{ArcPlayerService, Player, PlayerUsername},
     rating::GameRatingInfo,
     seek::Seek,
@@ -83,7 +84,8 @@ pub trait GameRepository {
         id: GameId,
         rating_update: &GameRatingUpdate,
     ) -> ServiceResult<()>;
-    async fn get_games(&self) -> ServiceResult<Vec<(GameId, GameRecord)>>;
+    async fn get_game_record(&self, id: GameId) -> ServiceResult<Option<GameRecord>>;
+    async fn get_games(&self, filter: GameFilter) -> ServiceResult<GameFilterResult>;
 }
 
 pub type ArcGameService = Arc<Box<dyn GameService + Send + Sync + 'static>>;
