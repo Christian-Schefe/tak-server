@@ -12,6 +12,7 @@ use crate::{
     ServiceError, ServiceResult,
     email::ArcEmailService,
     jwt::ArcJwtService,
+    rating::PlayerRating,
     transport::{
         ArcPlayerConnectionService, ArcTransportService, DisconnectReason, ServerMessage,
         do_player_send,
@@ -29,7 +30,7 @@ const PASSWORD_RESET_TOKEN_TTL: Duration = Duration::from_secs(60 * 60 * 24);
 pub struct Player {
     pub username: PlayerUsername,
     pub email: Option<String>,
-    pub rating: f64,
+    pub rating: PlayerRating,
     pub password_hash: Option<String>,
     pub flags: PlayerFlags,
 }
@@ -84,6 +85,7 @@ impl PlayerFlagsUpdate {
     }
 }
 
+#[derive(Clone, Debug, Default)]
 pub struct PlayerFilter {
     pub is_bot: Option<bool>,
     pub is_gagged: Option<bool>,
@@ -92,10 +94,10 @@ pub struct PlayerFilter {
     pub is_banned: Option<bool>,
 }
 
-pub type ArcPlayerRepository = Arc<Box<dyn PlayerRepositoryImpl + Send + Sync + 'static>>;
+pub type ArcPlayerRepository = Arc<Box<dyn PlayerRepository + Send + Sync + 'static>>;
 
 #[async_trait::async_trait]
-pub trait PlayerRepositoryImpl {
+pub trait PlayerRepository {
     async fn get_player_by_id(&self, id: PlayerId) -> ServiceResult<Option<Player>>;
     async fn get_player_by_name(&self, name: &str) -> ServiceResult<Option<(PlayerId, Player)>>;
     async fn create_player(&self, player: &Player) -> ServiceResult<()>;
@@ -644,7 +646,7 @@ impl PlayerService for PlayerServiceImpl {
             .or_insert_with(|| Player {
                 username: guest_name.clone(),
                 email: None,
-                rating: 1000.0,
+                rating: PlayerRating::new(),
                 password_hash: None,
                 flags: PlayerFlags::new(),
             });
@@ -662,7 +664,7 @@ impl PlayerService for PlayerServiceImpl {
             .create_player(&Player {
                 username: username.clone(),
                 email: Some(email.to_string()),
-                rating: 1000.0,
+                rating: PlayerRating::new(),
                 password_hash: Some(password_hash),
                 flags: PlayerFlags::new(),
             })
@@ -765,7 +767,7 @@ impl PlayerService for MockPlayerService {
                 Player {
                     username: "test_admin".into(),
                     email: Some("test_admin@example.com".into()),
-                    rating: 1500.0,
+                    rating: PlayerRating::new(),
                     password_hash: Some("".to_string()),
                     flags: PlayerFlags {
                         is_bot: false,
@@ -781,7 +783,7 @@ impl PlayerService for MockPlayerService {
                 Player {
                     username: "test_gagged".into(),
                     email: Some("test_gagged@example.com".into()),
-                    rating: 1200.0,
+                    rating: PlayerRating::new(),
                     password_hash: Some("".to_string()),
                     flags: PlayerFlags {
                         is_bot: false,

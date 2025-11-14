@@ -3,18 +3,17 @@ use sea_orm::{
 };
 use tak_server_domain::{
     ServiceError, ServiceResult,
-    player::{
-        Player, PlayerFilter, PlayerFlags, PlayerFlagsUpdate, PlayerId, PlayerRepositoryImpl,
-    },
+    player::{Player, PlayerFilter, PlayerFlags, PlayerFlagsUpdate, PlayerId, PlayerRepository},
+    rating::PlayerRating,
 };
 
 use crate::{create_player_db_pool, entity::player};
 
-pub struct SqlitePlayerRepository {
+pub struct PlayerRepositoryImpl {
     db: DatabaseConnection,
 }
 
-impl SqlitePlayerRepository {
+impl PlayerRepositoryImpl {
     pub async fn new() -> Self {
         let db = create_player_db_pool().await;
         Self { db }
@@ -24,7 +23,17 @@ impl SqlitePlayerRepository {
         Player {
             password_hash: map_string_to_option(model.password),
             username: model.name,
-            rating: model.rating,
+            rating: PlayerRating {
+                rating: model.rating,
+                boost: model.boost,
+                max_rating: model.maxrating,
+                rated_games_played: model.ratedgames as u32,
+                unrated_games_played: model.unrated as u32,
+                participation_rating: model.participation_rating as f64,
+                rating_base: model.ratingbase as f64,
+                rating_age: model.ratingage,
+                fatigue: serde_json::from_str(&model.fatigue).unwrap_or_default(),
+            },
             email: map_string_to_option(model.email),
             flags: PlayerFlags {
                 is_bot: model.isbot,
@@ -42,7 +51,7 @@ fn map_string_to_option(s: String) -> Option<String> {
 }
 
 #[async_trait::async_trait]
-impl PlayerRepositoryImpl for SqlitePlayerRepository {
+impl PlayerRepository for PlayerRepositoryImpl {
     async fn get_player_by_id(&self, id: i64) -> ServiceResult<Option<Player>> {
         let model = player::Entity::find_by_id(id)
             .one(&self.db)
@@ -86,15 +95,15 @@ impl PlayerRepositoryImpl for SqlitePlayerRepository {
                 .as_ref()
                 .unwrap_or(&String::new())
                 .clone()),
-            rating: Set(player.rating as f64),
-            boost: Set(750.0),
-            ratedgames: Set(0),
-            maxrating: Set(1000.0),
-            ratingage: Set(0.0),
-            ratingbase: Set(0),
-            unrated: Set(0),
+            rating: Set(player.rating.rating),
+            boost: Set(player.rating.boost),
+            ratedgames: Set(player.rating.rated_games_played as i32),
+            maxrating: Set(player.rating.max_rating),
+            ratingage: Set(player.rating.rating_age),
+            ratingbase: Set(player.rating.rating_base as i32),
+            unrated: Set(player.rating.unrated_games_played as i32),
             isbot: Set(player.flags.is_bot),
-            fatigue: Set("{}".to_string()),
+            fatigue: Set(serde_json::to_string(&player.rating.fatigue).unwrap()),
             is_gagged: Set(player.flags.is_gagged),
             is_mod: Set(player.flags.is_mod),
             is_admin: Set(player.flags.is_admin),

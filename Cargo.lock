@@ -3220,8 +3220,11 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bcrypt",
+ "chrono",
  "dotenvy",
  "sea-orm",
+ "serde",
+ "serde_json",
  "tak-core",
  "tak-server-domain",
  "tokio",

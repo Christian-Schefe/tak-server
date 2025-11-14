@@ -16,7 +16,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     ServiceError, ServiceResult,
-    player::{ArcPlayerService, PlayerUsername},
+    player::{ArcPlayerService, Player, PlayerUsername},
+    rating::GameRatingInfo,
     seek::Seek,
     transport::{
         ArcPlayerConnectionService, ArcTransportService, ListenerId, ServerGameMessage,
@@ -43,17 +44,20 @@ pub struct GameRecord {
     pub date: DateTime<Utc>,
     pub white: PlayerUsername,
     pub black: PlayerUsername,
-    pub white_rating: f64,
-    pub black_rating: f64,
+    pub rating_info: Option<GameRatingInfo>,
     pub settings: TakGameSettings,
     pub game_type: GameType,
     pub result: TakGameState,
-    pub moves: Vec<TakAction>,
+    pub moves: Vec<TakActionRecord>,
 }
 
-pub struct GameRecordUpdate {
+pub struct GameResultUpdate {
     pub result: TakGameState,
     pub moves: Vec<TakActionRecord>,
+}
+
+pub struct GameRatingUpdate {
+    pub rating_info: GameRatingInfo,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -67,8 +71,19 @@ pub type ArcGameRepository = Arc<Box<dyn GameRepository + Send + Sync + 'static>
 
 #[async_trait::async_trait]
 pub trait GameRepository {
-    async fn create_game(&self, game: &GameRecord) -> ServiceResult<GameId>;
-    async fn update_game(&self, id: GameId, update: &GameRecordUpdate) -> ServiceResult<()>;
+    async fn create_game(
+        &self,
+        game: &GameRecord,
+        player_white: &Player,
+        player_black: &Player,
+    ) -> ServiceResult<GameId>;
+    async fn update_game_result(&self, id: GameId, update: &GameResultUpdate) -> ServiceResult<()>;
+    async fn update_game_rating(
+        &self,
+        id: GameId,
+        rating_update: &GameRatingUpdate,
+    ) -> ServiceResult<()>;
+    async fn get_games(&self) -> ServiceResult<Vec<(GameId, GameRecord)>>;
 }
 
 pub type ArcGameService = Arc<Box<dyn GameService + Send + Sync + 'static>>;
@@ -160,29 +175,33 @@ impl GameServiceImpl {
         black: &PlayerUsername,
         seek: &Seek,
     ) -> ServiceResult<GameId> {
-        let white_player = self.player_service.fetch_player_data(white).await?;
-        let black_player = self.player_service.fetch_player_data(black).await?;
+        let player_white = self.player_service.fetch_player_data(white).await?;
+        let player_black = self.player_service.fetch_player_data(black).await?;
         let game_record = GameRecord {
             date: chrono::Utc::now(),
             white: white.clone(),
             black: black.clone(),
-            white_rating: white_player.rating,
-            black_rating: black_player.rating,
+            rating_info: None,
             settings: seek.game_settings.clone(),
             game_type: seek.game_type.clone(),
             result: TakGameState::Ongoing,
             moves: vec![],
         };
-        let game_id = self.game_repository.create_game(&game_record).await?;
+        let game_id = self
+            .game_repository
+            .create_game(&game_record, &player_white, &player_black)
+            .await?;
         Ok(game_id)
     }
 
     async fn save_to_database(&self, game: &Game) -> ServiceResult<()> {
-        let update = GameRecordUpdate {
+        let update = GameResultUpdate {
             moves: game.game.action_history.clone(),
             result: game.game.base.game_state.clone(),
         };
-        self.game_repository.update_game(game.id, &update).await?;
+        self.game_repository
+            .update_game_result(game.id, &update)
+            .await?;
         Ok(())
     }
 

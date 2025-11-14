@@ -6,6 +6,7 @@ mod email;
 pub mod game;
 pub mod jwt;
 pub mod player;
+pub mod rating;
 pub mod seek;
 pub mod transport;
 pub mod util;

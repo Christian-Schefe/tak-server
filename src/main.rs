@@ -13,7 +13,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
     filter::threshold::ThresholdFilter,
 };
-use tak_persistence_sea_orm::{games::GameRepositoryImpl, players::SqlitePlayerRepository};
+use tak_persistence_sea_orm::{games::GameRepositoryImpl, players::PlayerRepositoryImpl};
 use tak_server_api::{JwtServiceImpl, TransportServiceImpl};
 use tak_server_domain::{
     app::{LazyAppState, construct_app},
@@ -106,7 +106,7 @@ async fn main() {
     let transport_service_impl = TransportServiceImpl::new(app.clone());
 
     let game_repo: ArcGameRepository = Arc::new(Box::new(GameRepositoryImpl::new().await));
-    let player_repo: ArcPlayerRepository = Arc::new(Box::new(SqlitePlayerRepository::new().await));
+    let player_repo: ArcPlayerRepository = Arc::new(Box::new(PlayerRepositoryImpl::new().await));
     let transport_service: ArcTransportService = Arc::new(Box::new(transport_service_impl.clone()));
 
     let jwt_service: ArcJwtService = Arc::new(Box::new(JwtServiceImpl {}));

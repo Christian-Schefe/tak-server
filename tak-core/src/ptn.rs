@@ -108,6 +108,38 @@ pub fn game_state_to_string(game_state: &TakGameState) -> String {
     }
 }
 
+pub fn game_state_from_string(s: &str) -> Option<TakGameState> {
+    match s {
+        "0-0" => Some(TakGameState::Ongoing),
+        "R-0" => Some(TakGameState::Win {
+            winner: TakPlayer::White,
+            reason: TakWinReason::Road,
+        }),
+        "0-R" => Some(TakGameState::Win {
+            winner: TakPlayer::Black,
+            reason: TakWinReason::Road,
+        }),
+        "F-0" => Some(TakGameState::Win {
+            winner: TakPlayer::White,
+            reason: TakWinReason::Flats,
+        }),
+        "0-F" => Some(TakGameState::Win {
+            winner: TakPlayer::Black,
+            reason: TakWinReason::Flats,
+        }),
+        "1-0" => Some(TakGameState::Win {
+            winner: TakPlayer::White,
+            reason: TakWinReason::Default,
+        }),
+        "0-1" => Some(TakGameState::Win {
+            winner: TakPlayer::Black,
+            reason: TakWinReason::Default,
+        }),
+        "1/2-1/2" => Some(TakGameState::Draw),
+        _ => None,
+    }
+}
+
 fn variant_to_string(variant: &TakVariant) -> &'static str {
     match variant {
         TakVariant::Flat => "",
