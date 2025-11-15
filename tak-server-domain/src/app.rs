@@ -3,6 +3,7 @@ use std::sync::{Arc, OnceLock};
 use crate::{
     chat::{ArcChatService, ChatServiceImpl},
     email::{ArcEmailService, EmailServiceImpl},
+    event::{ArcEventRepository, ArcEventService, EventServiceImpl},
     game::{ArcGameRepository, ArcGameService, GameServiceImpl},
     game_history::{ArcGameHistoryService, GameHistoryServiceImpl},
     jwt::ArcJwtService,
@@ -58,9 +59,7 @@ pub struct AppState {
     pub jwt_service: ArcJwtService,
     pub player_connection_service: ArcPlayerConnectionService,
     pub game_history_service: ArcGameHistoryService,
-
-    pub game_repository: ArcGameRepository,
-    pub player_repository: ArcPlayerRepository,
+    pub event_service: ArcEventService,
 }
 
 impl AppState {
@@ -76,6 +75,7 @@ pub fn construct_app(
     lazy_app_state: LazyAppState,
     game_repository: ArcGameRepository,
     player_repository: ArcPlayerRepository,
+    event_repository: ArcEventRepository,
     jwt_service: ArcJwtService,
     transport_service: ArcTransportService,
 ) {
@@ -116,6 +116,9 @@ pub fn construct_app(
         GameHistoryServiceImpl::new(game_repository.clone()),
     ));
 
+    let event_service: ArcEventService =
+        Arc::new(Box::new(EventServiceImpl::new(event_repository.clone())));
+
     let app = AppState {
         transport_service,
         game_service,
@@ -126,9 +129,7 @@ pub fn construct_app(
         jwt_service,
         player_connection_service,
         game_history_service,
-
-        game_repository,
-        player_repository,
+        event_service,
     };
 
     lazy_app_state.0.set(app.clone()).ok().unwrap();

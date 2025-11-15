@@ -1,6 +1,4 @@
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Database, EntityTrait, QueryFilter, QuerySelect, Set,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, Database, EntityTrait, QueryFilter, Set};
 use tak_persistence_sea_orm::entity::player;
 
 #[tokio::main]
@@ -22,7 +20,7 @@ async fn main() {
     let is_admin = role == "admin";
     let is_mod = role == "mod";
 
-    let players_db_url = format!("sqlite://{}?mode=rwc", players_db_path);
+    let players_db_url = format!("sqlite://{}?mode=rw", players_db_path);
     let db = Database::connect(&players_db_url)
         .await
         .expect("Failed to connect to database");
@@ -37,16 +35,6 @@ async fn create_user(
     is_admin: bool,
     is_mod: bool,
 ) {
-    let largest_id = player::Entity::find()
-        .select_only()
-        .column_as(player::Column::Id.max(), "max_id")
-        .into_tuple::<Option<i64>>()
-        .one(db)
-        .await
-        .expect("Failed to get largest player id")
-        .flatten()
-        .unwrap_or(0);
-
     let existing_user = player::Entity::find()
         .filter(player::Column::Name.eq(name))
         .one(db)
@@ -60,18 +48,17 @@ async fn create_user(
     let pw_hash = bcrypt::hash(password, bcrypt::DEFAULT_COST).expect("Failed to hash password");
 
     let new_user = player::ActiveModel {
-        id: Set(largest_id + 1),
+        id: Default::default(), // Auto-increment
         name: Set(name.to_string()),
-        password: Set(pw_hash),
+        password_hash: Set(pw_hash),
         email: Set(String::new()),
         rating: Set(1000.0),
         boost: Set(750.0),
-        ratedgames: Set(0),
-        maxrating: Set(1000.0),
-        ratingage: Set(0.0),
-        ratingbase: Set(0),
-        unrated: Set(0),
-        isbot: Set(false),
+        rated_games: Set(0),
+        max_rating: Set(1000.0),
+        rating_age: Set(0.0),
+        unrated_games: Set(0),
+        is_bot: Set(false),
         fatigue: Set("{}".to_string()),
         is_admin: Set(is_admin),
         is_mod: Set(is_mod || is_admin),

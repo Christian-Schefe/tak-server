@@ -1,4 +1,4 @@
-use tak_core::ptn::ptn_to_action;
+use tak_core::ptn::action_from_ptn;
 use tak_server_domain::{ServiceError, ServiceResult, game::GameId, player::PlayerUsername};
 
 use crate::protocol::json::{ClientResponse, ProtocolJsonHandler};
@@ -10,7 +10,7 @@ impl ProtocolJsonHandler {
         game_id: &GameId,
         action: &str,
     ) -> ServiceResult<ClientResponse> {
-        let Some(action) = ptn_to_action(&action) else {
+        let Some(action) = action_from_ptn(&action) else {
             return ServiceError::bad_request("Invalid action PTN");
         };
         self.game_service

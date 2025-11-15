@@ -1,3 +1,4 @@
+use chrono::Utc;
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
@@ -5,23 +6,23 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = true)]
     pub id: i64,
-    pub date: i64,
+    pub date: chrono::DateTime<Utc>,
     pub size: i32,
     pub player_white: String,
     pub player_black: String,
     pub notation: String,
     pub result: String,
-    pub timertime: i32,
-    pub timerinc: i32,
-    pub rating_white: i32,
-    pub rating_black: i32,
-    pub unrated: bool,
-    pub tournament: bool,
-    pub komi: i32,
+    pub clock_contingent: i32,
+    pub clock_increment: i32,
+    pub rating_white: f64,
+    pub rating_black: f64,
+    pub rating_change_white: Option<f64>,
+    pub rating_change_black: Option<f64>,
+    pub is_unrated: bool,
+    pub is_tournament: bool,
+    pub half_komi: i32,
     pub pieces: i32,
     pub capstones: i32,
-    pub rating_change_white: i32,
-    pub rating_change_black: i32,
     pub extra_time_amount: i32,
     pub extra_time_trigger: i32,
 }

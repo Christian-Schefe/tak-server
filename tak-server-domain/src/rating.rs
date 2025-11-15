@@ -15,7 +15,6 @@ pub struct PlayerRating {
     pub rated_games_played: u32,
     pub unrated_games_played: u32,
     pub participation_rating: f64,
-    pub rating_base: f64,
     pub rating_age: f64,
     pub fatigue: HashMap<GameId, f64>,
 }
@@ -29,7 +28,6 @@ impl PlayerRating {
             rated_games_played: 0,
             unrated_games_played: 0,
             participation_rating: 0.0,
-            rating_base: 1000.0,
             rating_age: 0.0,
             fatigue: HashMap::new(),
         }
@@ -83,13 +81,14 @@ impl RatingServiceImpl {
         if time_score < TIME_LIMITS[size_index] as u64 || contingent_secs < 60 {
             return false;
         }
-        if game_record.settings.reserve_pieces < PIECE_LIMITS[size_index].0
-            || game_record.settings.reserve_pieces > PIECE_LIMITS[size_index].1
+        let reserve = &game_record.settings.reserve;
+        if reserve.pieces < PIECE_LIMITS[size_index].0
+            || reserve.pieces > PIECE_LIMITS[size_index].1
         {
             return false;
         }
-        if game_record.settings.reserve_capstones < CAPSTONE_LIMITS[size_index].0
-            || game_record.settings.reserve_capstones > CAPSTONE_LIMITS[size_index].1
+        if reserve.capstones < CAPSTONE_LIMITS[size_index].0
+            || reserve.capstones > CAPSTONE_LIMITS[size_index].1
         {
             return false;
         }

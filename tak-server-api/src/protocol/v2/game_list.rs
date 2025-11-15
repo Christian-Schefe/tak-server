@@ -91,8 +91,8 @@ impl ProtocolV2Handler {
             settings.time_control.contingent.as_secs(),
             settings.time_control.increment.as_secs(),
             settings.half_komi,
-            settings.reserve_pieces,
-            settings.reserve_capstones,
+            settings.reserve.pieces,
+            settings.reserve.capstones,
             match game.game_type {
                 GameType::Unrated => "1",
                 GameType::Rated => "0",
@@ -157,8 +157,8 @@ impl ProtocolV2Handler {
                 },
                 settings.time_control.contingent.as_secs(),
                 settings.half_komi,
-                settings.reserve_pieces,
-                settings.reserve_capstones,
+                settings.reserve.pieces,
+                settings.reserve.capstones,
             )
         } else {
             format!(
@@ -175,8 +175,8 @@ impl ProtocolV2Handler {
                 settings.time_control.contingent.as_secs(),
                 settings.time_control.increment.as_secs(),
                 settings.half_komi,
-                settings.reserve_pieces,
-                settings.reserve_capstones,
+                settings.reserve.pieces,
+                settings.reserve.capstones,
                 match game.game_type {
                     GameType::Unrated => "1",
                     GameType::Rated => "0",

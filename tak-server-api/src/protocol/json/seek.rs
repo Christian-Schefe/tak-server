@@ -13,7 +13,7 @@ use tak_server_domain::{
 };
 
 use crate::{app::MyServiceError, jwt::Claims};
-use tak_core::{TakGameSettings, TakPlayer, TakTimeControl};
+use tak_core::{TakGameSettings, TakPlayer, TakReserve, TakTimeControl};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -60,8 +60,8 @@ fn json_seek_from_seek(seek: &Seek) -> JsonSeek {
         unrated: matches!(seek.game_type, GameType::Unrated),
         board_size: seek.game_settings.board_size,
         half_komi: seek.game_settings.half_komi,
-        reserve_pieces: seek.game_settings.reserve_pieces,
-        reserve_capstones: seek.game_settings.reserve_capstones,
+        reserve_pieces: seek.game_settings.reserve.pieces,
+        reserve_capstones: seek.game_settings.reserve.capstones,
         time_ms: seek.game_settings.time_control.contingent.as_millis() as u64,
         increment_ms: seek.game_settings.time_control.increment.as_millis() as u64,
         extra_move: seek
@@ -86,8 +86,7 @@ pub async fn handle_add_seek_endpoint(
     let game_settings = TakGameSettings {
         board_size: seek.board_size,
         half_komi: seek.half_komi,
-        reserve_pieces: seek.reserve_pieces,
-        reserve_capstones: seek.reserve_capstones,
+        reserve: TakReserve::new(seek.reserve_pieces, seek.reserve_capstones),
         time_control: TakTimeControl {
             contingent: Duration::from_millis(seek.time_ms),
             increment: Duration::from_millis(seek.increment_ms),

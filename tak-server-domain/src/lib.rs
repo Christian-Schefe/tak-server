@@ -11,6 +11,7 @@ pub mod rating;
 pub mod seek;
 pub mod transport;
 pub mod util;
+pub mod event;
 
 #[derive(Debug, Clone, Error)]
 pub enum ServiceError {

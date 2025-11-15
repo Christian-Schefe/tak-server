@@ -2,6 +2,7 @@ use axum::{Router, response::IntoResponse, routing::get};
 use log::info;
 use tak_server_domain::{ServiceError, app::LazyAppState};
 
+mod event;
 mod games_history;
 
 pub async fn run(
@@ -10,7 +11,9 @@ pub async fn run(
 ) {
     let router = Router::new()
         .route("/games-history", get(games_history::get_all))
-        .route("/games-history/{id}", get(games_history::get_by_id));
+        .route("/games-history/{id}", get(games_history::get_by_id))
+        .route("/games-history/ptn/{id}", get(games_history::get_ptn_by_id))
+        .route("/events", get(event::get_all_events));
 
     let port = std::env::var("TAK_HTTP_API_PORT")
         .unwrap_or_else(|_| "3004".to_string())

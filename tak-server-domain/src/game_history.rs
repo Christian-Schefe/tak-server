@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use chrono::{DateTime, Utc};
 use tak_core::TakGameState;
@@ -13,13 +13,36 @@ use crate::{
 pub struct GameFilter {
     pub id_selector: Option<GameIdSelector>,
     pub date_selector: Option<DateSelector>,
-    pub player_white: Option<PlayerUsername>,
-    pub player_black: Option<PlayerUsername>,
+    pub player_white: Option<GamePlayerFilter>,
+    pub player_black: Option<GamePlayerFilter>,
     pub game_states: Option<Vec<TakGameState>>,
     pub half_komi: Option<usize>,
     pub board_size: Option<usize>,
     pub game_type: Option<GameType>,
+    pub clock_contingent: Option<Duration>,
+    pub clock_increment: Option<Duration>,
+    pub clock_extra_trigger: Option<usize>,
+    pub clock_extra_time: Option<Duration>,
     pub pagination: GamePagination,
+    pub sort: Option<(GameSortOrder, GameSortBy)>,
+}
+
+#[derive(Debug, Clone)]
+pub enum GameSortBy {
+    Date,
+    GameId,
+}
+
+#[derive(Debug, Clone)]
+pub enum GameSortOrder {
+    Ascending,
+    Descending,
+}
+
+#[derive(Debug, Clone)]
+pub enum GamePlayerFilter {
+    Contains(String),
+    Equals(PlayerUsername),
 }
 
 pub struct GameFilterResult {

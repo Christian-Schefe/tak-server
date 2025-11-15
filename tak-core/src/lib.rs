@@ -41,11 +41,22 @@ pub struct TakActionRecord {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct TakReserve {
+    pub pieces: u32,
+    pub capstones: u32,
+}
+
+impl TakReserve {
+    pub fn new(pieces: u32, capstones: u32) -> Self {
+        TakReserve { pieces, capstones }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct TakGameSettings {
     pub board_size: u32,
     pub half_komi: u32,
-    pub reserve_pieces: u32,
-    pub reserve_capstones: u32,
+    pub reserve: TakReserve,
     pub time_control: TakTimeControl,
 }
 
@@ -53,7 +64,7 @@ impl TakGameSettings {
     pub fn is_valid(&self) -> bool {
         self.board_size >= 3
             && self.board_size <= 8
-            && self.reserve_pieces > 0
+            && self.reserve.pieces > 0
             && !self.time_control.contingent.is_zero()
             && self
                 .time_control
@@ -156,8 +167,7 @@ mod tests {
         let valid_settings = TakGameSettings {
             board_size: 5,
             half_komi: 0,
-            reserve_pieces: 21,
-            reserve_capstones: 1,
+            reserve: TakReserve::new(21, 1),
             time_control: TakTimeControl {
                 contingent: Duration::from_secs(300),
                 increment: Duration::from_secs(5),
@@ -169,8 +179,7 @@ mod tests {
         let invalid_settings = TakGameSettings {
             board_size: 9,
             half_komi: 0,
-            reserve_pieces: 21,
-            reserve_capstones: 1,
+            reserve: TakReserve::new(21, 1),
             time_control: TakTimeControl {
                 contingent: Duration::from_secs(300),
                 increment: Duration::from_secs(5),
@@ -182,8 +191,7 @@ mod tests {
         let invalid_time_control = TakGameSettings {
             board_size: 5,
             half_komi: 0,
-            reserve_pieces: 21,
-            reserve_capstones: 1,
+            reserve: TakReserve::new(21, 1),
             time_control: TakTimeControl {
                 contingent: Duration::from_secs(0),
                 increment: Duration::from_secs(5),
@@ -195,8 +203,7 @@ mod tests {
         let invalid_extra_time = TakGameSettings {
             board_size: 5,
             half_komi: 0,
-            reserve_pieces: 21,
-            reserve_capstones: 1,
+            reserve: TakReserve::new(21, 1),
             time_control: TakTimeControl {
                 contingent: Duration::from_secs(300),
                 increment: Duration::from_secs(5),

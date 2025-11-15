@@ -21,22 +21,21 @@ impl PlayerRepositoryImpl {
 
     fn model_to_player(model: player::Model) -> Player {
         Player {
-            password_hash: map_string_to_option(model.password),
+            password_hash: map_string_to_option(model.password_hash),
             username: model.name,
             rating: PlayerRating {
                 rating: model.rating,
                 boost: model.boost,
-                max_rating: model.maxrating,
-                rated_games_played: model.ratedgames as u32,
-                unrated_games_played: model.unrated as u32,
+                max_rating: model.max_rating,
+                rated_games_played: model.rated_games as u32,
+                unrated_games_played: model.unrated_games as u32,
                 participation_rating: model.participation_rating as f64,
-                rating_base: model.ratingbase as f64,
-                rating_age: model.ratingage,
+                rating_age: model.rating_age,
                 fatigue: serde_json::from_str(&model.fatigue).unwrap_or_default(),
             },
             email: map_string_to_option(model.email),
             flags: PlayerFlags {
-                is_bot: model.isbot,
+                is_bot: model.is_bot,
                 is_gagged: model.is_gagged,
                 is_mod: model.is_mod,
                 is_admin: model.is_admin,
@@ -74,35 +73,23 @@ impl PlayerRepository for PlayerRepositoryImpl {
         }))
     }
 
-    // TODO: remove manual id handling, use AUTOINCREMENT
     async fn create_player(&self, player: &Player) -> ServiceResult<()> {
-        let largest_player_id = player::Entity::find()
-            .select_only()
-            .column_as(player::Column::Id.max(), "max_id")
-            .into_tuple::<Option<i64>>()
-            .one(&self.db)
-            .await
-            .map_err(|e| ServiceError::Internal(e.to_string()))?
-            .flatten()
-            .unwrap_or(0);
-
         let new_player = player::ActiveModel {
-            id: Set(largest_player_id + 1),
+            id: Default::default(), // Auto-increment
             name: Set(player.username.clone()),
             email: Set(player.email.as_ref().unwrap_or(&String::new()).clone()),
-            password: Set(player
+            password_hash: Set(player
                 .password_hash
                 .as_ref()
                 .unwrap_or(&String::new())
                 .clone()),
             rating: Set(player.rating.rating),
             boost: Set(player.rating.boost),
-            ratedgames: Set(player.rating.rated_games_played as i32),
-            maxrating: Set(player.rating.max_rating),
-            ratingage: Set(player.rating.rating_age),
-            ratingbase: Set(player.rating.rating_base as i32),
-            unrated: Set(player.rating.unrated_games_played as i32),
-            isbot: Set(player.flags.is_bot),
+            rated_games: Set(player.rating.rated_games_played as i32),
+            max_rating: Set(player.rating.max_rating),
+            rating_age: Set(player.rating.rating_age),
+            unrated_games: Set(player.rating.unrated_games_played as i32),
+            is_bot: Set(player.flags.is_bot),
             fatigue: Set(serde_json::to_string(&player.rating.fatigue).unwrap()),
             is_gagged: Set(player.flags.is_gagged),
             is_mod: Set(player.flags.is_mod),
@@ -127,7 +114,7 @@ impl PlayerRepository for PlayerRepositoryImpl {
             .ok_or_else(|| ServiceError::Internal("Player not found".to_string()))?;
 
         let mut player: player::ActiveModel = player.into();
-        player.password = Set(new_password_hash);
+        player.password_hash = Set(new_password_hash);
         player
             .update(&self.db)
             .await
@@ -146,7 +133,7 @@ impl PlayerRepository for PlayerRepositoryImpl {
         let mut player: player::ActiveModel = player.into();
 
         if let Some(value) = update.is_bot {
-            player.isbot = Set(value);
+            player.is_bot = Set(value);
         }
         if let Some(value) = update.is_gagged {
             player.is_gagged = Set(value);
@@ -173,7 +160,7 @@ impl PlayerRepository for PlayerRepositoryImpl {
         let mut query = player::Entity::find();
 
         if let Some(value) = filter.is_bot {
-            query = query.filter(player::Column::Isbot.eq(value));
+            query = query.filter(player::Column::IsBot.eq(value));
         }
         if let Some(value) = filter.is_gagged {
             query = query.filter(player::Column::IsGagged.eq(value));

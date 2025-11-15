@@ -1,0 +1,9 @@
+[package]
+name = "tak-events-persistence"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-trait = "0.1.89"
+google-sheets4 = "5"
+tak-server-domain = { path = "../../tak-server-domain" }

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::protocol::v2::{ProtocolV2Handler, ProtocolV2Result, V2Response};
 
-use tak_core::{TakGameSettings, TakPlayer, TakTimeControl};
+use tak_core::{TakGameSettings, TakPlayer, TakReserve, TakTimeControl};
 use tak_server_domain::{
     ServiceError,
     game::{GameId, GameType},
@@ -114,8 +114,7 @@ impl ProtocolV2Handler {
         let game_settings = TakGameSettings {
             board_size,
             half_komi,
-            reserve_pieces,
-            reserve_capstones,
+            reserve: TakReserve::new(reserve_pieces, reserve_capstones),
             time_control: TakTimeControl {
                 contingent: Duration::from_secs(time_contingent_seconds as u64),
                 increment: Duration::from_secs(time_increment_seconds as u64),
@@ -215,8 +214,8 @@ impl ProtocolV2Handler {
                 TakPlayer::Black => "B",
             }),
             seek.game_settings.half_komi,
-            seek.game_settings.reserve_pieces,
-            seek.game_settings.reserve_capstones,
+            seek.game_settings.reserve.pieces,
+            seek.game_settings.reserve.capstones,
             match seek.game_type {
                 GameType::Unrated => "1",
                 GameType::Rated => "0",

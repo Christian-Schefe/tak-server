@@ -1,19 +1,21 @@
 use std::time::Duration;
 
-use chrono::DateTime;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QuerySelect, Set,
+    QueryOrder, QuerySelect, Set,
 };
+use serde::Deserialize;
 use tak_core::{
-    TakAction, TakActionRecord, TakDir, TakGameSettings, TakGameState, TakPos, TakTimeControl,
-    TakVariant,
-    ptn::{game_state_from_string, game_state_to_string},
+    TakAction, TakActionRecord, TakGameSettings, TakGameState, TakReserve, TakTimeControl,
+    ptn::{action_from_ptn, action_to_ptn, game_state_from_string, game_state_to_string},
 };
 use tak_server_domain::{
     ServiceError, ServiceResult,
     game::{GameId, GameRatingUpdate, GameRecord, GameRepository, GameResultUpdate, GameType},
-    game_history::{DateSelector, GameFilter, GameFilterResult, GameIdSelector},
+    game_history::{
+        DateSelector, GameFilter, GameFilterResult, GameIdSelector, GamePlayerFilter, GameSortBy,
+        GameSortOrder,
+    },
     player::Player,
     rating::GameRatingInfo,
 };
@@ -24,129 +26,55 @@ pub struct GameRepositoryImpl {
     db: DatabaseConnection,
 }
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+struct JsonMoveRecord {
+    #[serde(
+        serialize_with = "serialize_action",
+        deserialize_with = "deserialize_action"
+    )]
+    pub action: TakAction,
+    pub white_remaining_ms: u64,
+    pub black_remaining_ms: u64,
+}
+
+fn serialize_action<S>(action: &TakAction, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let ptn_string = action_to_ptn(action);
+    serializer.serialize_str(&ptn_string)
+}
+
+fn deserialize_action<'de, D>(deserializer: D) -> Result<TakAction, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    action_from_ptn(&s).ok_or_else(|| serde::de::Error::custom("Invalid action PTN string"))
+}
+
 impl GameRepositoryImpl {
     pub async fn new() -> Self {
         let db = create_games_db_pool().await;
         Self { db }
     }
 
-    fn action_record_to_database_string(record: &TakActionRecord) -> String {
-        fn square_to_string(pos: &TakPos) -> String {
-            format!(
-                "{}{}",
-                (b'A' + pos.x as u8) as char,
-                (b'1' + pos.y as u8) as char,
-            )
-        }
-        match &record.action {
-            TakAction::Place { pos, variant } => format!(
-                "P {} {}",
-                square_to_string(pos),
-                match variant {
-                    TakVariant::Flat => "",
-                    TakVariant::Standing => "S",
-                    TakVariant::Capstone => "C",
-                },
-            ),
-            TakAction::Move { pos, dir, drops } => {
-                let to_pos = pos.offset(dir, drops.len() as i32);
-                let drops_str = drops
-                    .iter()
-                    .map(|d| d.to_string())
-                    .collect::<Vec<_>>()
-                    .join("");
-                format!(
-                    "M {} {} {}",
-                    square_to_string(pos),
-                    square_to_string(&to_pos),
-                    drops_str
-                )
-            }
-        }
-    }
-
-    fn action_record_from_database_string(s: &str) -> Option<TakActionRecord> {
-        fn square_from_string(s: &str) -> Option<TakPos> {
-            if s.len() != 2 {
-                return None;
-            }
-            let x = s.chars().nth(0)?;
-            let y = s.chars().nth(1)?;
-            if !('A'..='Z').contains(&x) || !('1'..='9').contains(&y) {
-                return None;
-            }
-            Some(TakPos {
-                x: (x as u8 - b'A') as i32,
-                y: (y as u8 - b'1') as i32,
-            })
-        }
-        let parts: Vec<&str> = s.split_whitespace().collect();
-        if parts.is_empty() {
-            return None;
-        }
-        match parts[0] {
-            "P" if parts.len() == 3 => {
-                let pos_str = parts[1];
-                let variant_str = parts[2];
-                let pos = square_from_string(&pos_str)?;
-                let variant = match variant_str {
-                    "" => TakVariant::Flat,
-                    "S" => TakVariant::Standing,
-                    "C" => TakVariant::Capstone,
-                    _ => return None,
-                };
-                Some(TakActionRecord {
-                    action: TakAction::Place { pos, variant },
-                    time_remaining: (Duration::ZERO, Duration::ZERO),
-                })
-            }
-            "M" if parts.len() == 4 => {
-                let from_str = parts[1];
-                let to_str = parts[2];
-                let drops_str = parts[3];
-                let from_pos = square_from_string(&from_str)?;
-                let to_pos = square_from_string(&to_str)?;
-                let dir = if to_pos.x > from_pos.x {
-                    TakDir::Right
-                } else if to_pos.x < from_pos.x {
-                    TakDir::Left
-                } else if to_pos.y > from_pos.y {
-                    TakDir::Up
-                } else {
-                    TakDir::Down
-                };
-                let drops = drops_str
-                    .chars()
-                    .filter_map(|c| c.to_digit(10).map(|d| d as u32))
-                    .collect::<Vec<_>>();
-                Some(TakActionRecord {
-                    action: TakAction::Move {
-                        pos: from_pos,
-                        dir,
-                        drops,
-                    },
-                    time_remaining: (Duration::ZERO, Duration::ZERO),
-                })
-            }
-            _ => None,
-        }
-    }
-
     fn model_to_game(model: &game::Model) -> GameRecord {
-        let rating_info = if model.rating_change_white != 1000 || model.rating_change_black != 1000
+        let rating_info = if let Some(rating_change_white) = model.rating_change_white
+            && let Some(rating_change_black) = model.rating_change_black
         {
             Some(GameRatingInfo {
-                rating_white: model.rating_white as f64,
-                rating_black: model.rating_black as f64,
-                rating_change_white: model.rating_change_white as f64,
-                rating_change_black: model.rating_change_black as f64,
+                rating_white: model.rating_white,
+                rating_black: model.rating_black,
+                rating_change_white,
+                rating_change_black,
             })
         } else {
             None
         };
         let time_control = TakTimeControl {
-            contingent: Duration::from_secs(model.timertime as u64),
-            increment: Duration::from_secs(model.timerinc as u64),
+            contingent: Duration::from_secs(model.clock_contingent as u64),
+            increment: Duration::from_secs(model.clock_increment as u64),
             extra: if model.extra_time_amount > 0 && model.extra_time_trigger > 0 {
                 Some((
                     model.extra_time_amount as u32,
@@ -156,28 +84,34 @@ impl GameRepositoryImpl {
                 None
             },
         };
+        let json_moves: Vec<JsonMoveRecord> =
+            serde_json::from_str(&model.notation).unwrap_or_default();
         GameRecord {
-            date: DateTime::from_timestamp_secs(model.date).unwrap_or_default(),
+            date: model.date.clone(),
             settings: TakGameSettings {
                 board_size: model.size as u32,
                 time_control,
-                half_komi: model.komi as u32,
-                reserve_pieces: model.pieces as u32,
-                reserve_capstones: model.capstones as u32,
+                half_komi: model.half_komi as u32,
+                reserve: TakReserve::new(model.pieces as u32, model.capstones as u32),
             },
             white: model.player_white.clone(),
             black: model.player_black.clone(),
-            game_type: if model.unrated {
+            game_type: if model.is_unrated {
                 GameType::Unrated
-            } else if model.tournament {
+            } else if model.is_tournament {
                 GameType::Tournament
             } else {
                 GameType::Rated
             },
-            moves: model
-                .notation
-                .split(',')
-                .filter_map(|s| Self::action_record_from_database_string(s))
+            moves: json_moves
+                .into_iter()
+                .map(|jm| TakActionRecord {
+                    action: jm.action,
+                    time_remaining: (
+                        Duration::from_millis(jm.white_remaining_ms),
+                        Duration::from_millis(jm.black_remaining_ms),
+                    ),
+                })
                 .collect(),
             rating_info,
             result: game_state_from_string(&model.result).unwrap_or(TakGameState::Ongoing),
@@ -195,23 +129,23 @@ impl GameRepository for GameRepositoryImpl {
     ) -> ServiceResult<GameId> {
         let new_game = game::ActiveModel {
             id: Default::default(), // Auto-increment
-            date: Set(game.date.timestamp()),
+            date: Set(game.date.clone()),
             size: Set(game.settings.board_size as i32),
             player_white: Set(game.white.clone()),
             player_black: Set(game.black.clone()),
             notation: Set(String::new()),
             result: Set("0-0".to_string()),
-            timertime: Set(game.settings.time_control.contingent.as_secs() as i32),
-            timerinc: Set(game.settings.time_control.increment.as_secs() as i32),
-            rating_white: Set(player_white.rating.rating as i32),
-            rating_black: Set(player_black.rating.rating as i32),
-            unrated: Set(game.game_type == GameType::Unrated),
-            tournament: Set(game.game_type == GameType::Tournament),
-            komi: Set(game.settings.half_komi as i32),
-            pieces: Set(game.settings.reserve_pieces as i32),
-            capstones: Set(game.settings.reserve_capstones as i32),
-            rating_change_white: Set(-1000),
-            rating_change_black: Set(-1000),
+            clock_contingent: Set(game.settings.time_control.contingent.as_secs() as i32),
+            clock_increment: Set(game.settings.time_control.increment.as_secs() as i32),
+            rating_white: Set(player_white.rating.rating),
+            rating_black: Set(player_black.rating.rating),
+            is_unrated: Set(game.game_type == GameType::Unrated),
+            is_tournament: Set(game.game_type == GameType::Tournament),
+            half_komi: Set(game.settings.half_komi as i32),
+            pieces: Set(game.settings.reserve.pieces as i32),
+            capstones: Set(game.settings.reserve.capstones as i32),
+            rating_change_white: Set(None),
+            rating_change_black: Set(None),
             extra_time_amount: Set(game
                 .settings
                 .time_control
@@ -238,9 +172,15 @@ impl GameRepository for GameRepositoryImpl {
         let notation_val = update
             .moves
             .iter()
-            .map(|action| Self::action_record_to_database_string(action))
-            .collect::<Vec<_>>()
-            .join(",");
+            .map(|action| JsonMoveRecord {
+                action: action.action.clone(),
+                white_remaining_ms: action.time_remaining.0.as_millis() as u64,
+                black_remaining_ms: action.time_remaining.1.as_millis() as u64,
+            })
+            .collect::<Vec<_>>();
+        let notation_str = serde_json::to_string(&notation_val)
+            .map_err(|e| ServiceError::Internal(e.to_string()))?;
+
         let result_val = game_state_to_string(&update.result);
 
         let game = game::Entity::find_by_id(id)
@@ -250,7 +190,7 @@ impl GameRepository for GameRepositoryImpl {
             .ok_or_else(|| ServiceError::Internal("Game not found".to_string()))?;
 
         let mut game: game::ActiveModel = game.into();
-        game.notation = Set(notation_val);
+        game.notation = Set(notation_str);
         game.result = Set(result_val);
 
         game.update(&self.db)
@@ -268,10 +208,10 @@ impl GameRepository for GameRepositoryImpl {
             .ok_or_else(|| ServiceError::Internal("Game not found".to_string()))?;
 
         let mut game: game::ActiveModel = game.into();
-        game.rating_white = Set(update.rating_info.rating_white as i32);
-        game.rating_black = Set(update.rating_info.rating_black as i32);
-        game.rating_change_white = Set(update.rating_info.rating_change_white as i32);
-        game.rating_change_black = Set(update.rating_info.rating_change_black as i32);
+        game.rating_white = Set(update.rating_info.rating_white);
+        game.rating_black = Set(update.rating_info.rating_black);
+        game.rating_change_white = Set(Some(update.rating_info.rating_change_white));
+        game.rating_change_black = Set(Some(update.rating_info.rating_change_black));
 
         game.update(&self.db)
             .await
@@ -315,18 +255,28 @@ impl GameRepository for GameRepositoryImpl {
             }
         }
         if let Some(player_white) = filter.player_white {
-            query = query.filter(game::Column::PlayerWhite.eq(player_white));
+            query = match player_white {
+                GamePlayerFilter::Contains(name_part) => {
+                    query.filter(game::Column::PlayerWhite.contains(&name_part))
+                }
+                GamePlayerFilter::Equals(name) => query.filter(game::Column::PlayerWhite.eq(name)),
+            };
         }
         if let Some(player_black) = filter.player_black {
-            query = query.filter(game::Column::PlayerBlack.eq(player_black));
+            query = match player_black {
+                GamePlayerFilter::Contains(name_part) => {
+                    query.filter(game::Column::PlayerBlack.contains(&name_part))
+                }
+                GamePlayerFilter::Equals(name) => query.filter(game::Column::PlayerBlack.eq(name)),
+            };
         }
         if let Some(game_type) = filter.game_type {
             query = match game_type {
                 GameType::Rated => query
-                    .filter(game::Column::Unrated.eq(false))
-                    .filter(game::Column::Tournament.eq(false)),
-                GameType::Unrated => query.filter(game::Column::Unrated.eq(true)),
-                GameType::Tournament => query.filter(game::Column::Tournament.eq(true)),
+                    .filter(game::Column::IsUnrated.eq(false))
+                    .filter(game::Column::IsTournament.eq(false)),
+                GameType::Unrated => query.filter(game::Column::IsUnrated.eq(true)),
+                GameType::Tournament => query.filter(game::Column::IsTournament.eq(true)),
             }
         }
         if let Some(game_states) = filter.game_states {
@@ -337,10 +287,25 @@ impl GameRepository for GameRepositoryImpl {
             query = query.filter(game::Column::Result.is_in(state_strings));
         }
         if let Some(half_komi) = filter.half_komi {
-            query = query.filter(game::Column::Komi.eq(half_komi as i32));
+            query = query.filter(game::Column::HalfKomi.eq(half_komi as i32));
         }
         if let Some(board_size) = filter.board_size {
             query = query.filter(game::Column::Size.eq(board_size as i32));
+        }
+
+        if let Some(clock_contingent) = filter.clock_contingent {
+            query =
+                query.filter(game::Column::ClockContingent.eq(clock_contingent.as_secs() as i32));
+        }
+        if let Some(clock_increment) = filter.clock_increment {
+            query = query.filter(game::Column::ClockIncrement.eq(clock_increment.as_secs() as i32));
+        }
+        if let Some(clock_extra_time) = filter.clock_extra_time {
+            query =
+                query.filter(game::Column::ExtraTimeAmount.eq(clock_extra_time.as_secs() as i32));
+        }
+        if let Some(clock_extra_trigger) = filter.clock_extra_trigger {
+            query = query.filter(game::Column::ExtraTimeTrigger.eq(clock_extra_trigger as i32));
         }
 
         let count_query = query.clone();
@@ -348,6 +313,23 @@ impl GameRepository for GameRepositoryImpl {
             .count(&self.db)
             .await
             .map_err(|e| ServiceError::Internal(e.to_string()))?;
+
+        if let Some((sort_order, sort_by)) = filter.sort {
+            query = match (sort_by, sort_order) {
+                (GameSortBy::Date, GameSortOrder::Ascending) => {
+                    query.order_by_asc(game::Column::Date)
+                }
+                (GameSortBy::Date, GameSortOrder::Descending) => {
+                    query.order_by_desc(game::Column::Date)
+                }
+                (GameSortBy::GameId, GameSortOrder::Ascending) => {
+                    query.order_by_asc(game::Column::Id)
+                }
+                (GameSortBy::GameId, GameSortOrder::Descending) => {
+                    query.order_by_desc(game::Column::Id)
+                }
+            }
+        }
 
         if let Some(offset) = filter.pagination.offset {
             query = query.offset(offset as u64);

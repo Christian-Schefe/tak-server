@@ -4,8 +4,8 @@ use std::{
 };
 
 use crate::{
-    TakAction, TakActionRecord, TakGameSettings, TakGameState, TakPlayer, TakVariant, TakWinReason,
-    board::TakBoard,
+    TakAction, TakActionRecord, TakGameSettings, TakGameState, TakPlayer, TakReserve, TakVariant,
+    TakWinReason, board::TakBoard,
 };
 
 #[derive(Clone, Debug)]
@@ -22,11 +22,7 @@ pub struct TakBaseGame {
 impl TakBaseGame {
     pub fn new(settings: TakGameSettings) -> Self {
         let board = TakBoard::new(settings.board_size);
-        let reserve = TakReserve {
-            pieces: settings.reserve_pieces,
-            capstones: settings.reserve_capstones,
-        };
-        let reserves = (reserve.clone(), reserve);
+        let reserves = (settings.reserve.clone(), settings.reserve.clone());
         TakBaseGame {
             settings,
             board,
@@ -154,12 +150,6 @@ pub struct TakGame {
     pub draw_offered: (bool, bool),
     pub undo_requested: (bool, bool),
     pub clock: TakClock,
-}
-
-#[derive(Clone, Debug)]
-pub struct TakReserve {
-    pub pieces: u32,
-    pub capstones: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -413,8 +403,7 @@ mod tests {
         let mut game = TakGame::new(TakGameSettings {
             board_size: 5,
             half_komi: 0,
-            reserve_pieces: 3,
-            reserve_capstones: 1,
+            reserve: TakReserve::new(3, 1),
             time_control: TakTimeControl {
                 contingent: Duration::from_secs(300),
                 increment: Duration::from_secs(5),
@@ -532,8 +521,7 @@ mod tests {
             let mut game = TakGame::new(TakGameSettings {
                 board_size: 5,
                 half_komi,
-                reserve_pieces: 2,
-                reserve_capstones: 0,
+                reserve: TakReserve::new(2, 0),
                 time_control: TakTimeControl {
                     contingent: Duration::from_secs(300),
                     increment: Duration::from_secs(5),
@@ -561,8 +549,7 @@ mod tests {
             let mut game2 = TakGame::new(TakGameSettings {
                 board_size: 5,
                 half_komi,
-                reserve_pieces: 1,
-                reserve_capstones: 1,
+                reserve: TakReserve::new(1, 1),
                 time_control: TakTimeControl {
                     contingent: Duration::from_secs(300),
                     increment: Duration::from_secs(5),
@@ -597,8 +584,7 @@ mod tests {
         let mut game = TakGame::new(TakGameSettings {
             board_size: 5,
             half_komi: 0,
-            reserve_pieces: 21,
-            reserve_capstones: 1,
+            reserve: TakReserve::new(21, 1),
             time_control: TakTimeControl {
                 contingent: Duration::from_secs(300),
                 increment: Duration::from_secs(5),

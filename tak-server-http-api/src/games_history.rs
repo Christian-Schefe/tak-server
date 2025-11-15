@@ -1,13 +1,21 @@
+use std::time::Duration;
+
 use axum::{
     Json,
     extract::{Path, State},
 };
-use tak_core::{TakGameState, TakPlayer, TakWinReason, ptn::game_state_to_string};
+use tak_core::{
+    TakAction, TakActionRecord, TakGameState, TakPlayer, TakPos, TakVariant, TakWinReason,
+    ptn::game_state_to_string,
+};
 use tak_server_domain::{
     ServiceError,
     app::AppState,
     game::{GameId, GameRecord},
-    game_history::{DateSelector, GameFilter, GameFilterResult, GameIdSelector, GamePagination},
+    game_history::{
+        DateSelector, GameFilter, GameFilterResult, GameIdSelector, GamePagination,
+        GamePlayerFilter, GameSortBy, GameSortOrder,
+    },
 };
 
 use crate::MyServiceError;
@@ -161,17 +169,78 @@ pub async fn get_all(
         offset: Some(offset),
         limit: Some(limit),
     };
-    let game_filter = GameFilter {
+    let sort = filter
+        .sort
+        .as_ref()
+        .and_then(|sort_str| {
+            let sort_str = sort_str.trim().to_lowercase();
+            match sort_str.as_str() {
+                "" => None,
+                "date" => Some(Ok(GameSortBy::Date)),
+                "id" => Some(Ok(GameSortBy::GameId)),
+                _ => Some(Err(MyServiceError(ServiceError::BadRequest(
+                    "Invalid sort order".to_string(),
+                )))),
+            }
+        })
+        .transpose()?;
+
+    let order = filter
+        .order
+        .as_ref()
+        .and_then(|order_str| match order_str.trim().to_lowercase().as_str() {
+            "asc" => Some(Ok(GameSortOrder::Ascending)),
+            "desc" => Some(Ok(GameSortOrder::Descending)),
+            "" => None,
+            _ => Some(Err(MyServiceError(ServiceError::BadRequest(
+                "Invalid sort order".to_string(),
+            )))),
+        })
+        .transpose()?;
+
+    let sort = match (sort, order) {
+        (Some(sort_by), Some(order)) => Some((order, sort_by)),
+        _ => None,
+    };
+
+    let clock_contingent = filter.timertime.map(|x| Duration::from_secs(x as u64));
+    let clock_increment = filter.timerinc.map(|x| Duration::from_secs(x as u64));
+    let clock_extra_time = filter
+        .extra_time_amount
+        .map(|x| Duration::from_secs(x as u64));
+
+    let mut game_filter = GameFilter {
         id_selector,
         date_selector,
-        player_white: filter.player_white,
-        player_black: filter.player_black,
+        player_white: filter.player_white.map(|s| GamePlayerFilter::Contains(s)),
+        player_black: filter.player_black.map(|s| GamePlayerFilter::Contains(s)),
         game_states,
         half_komi: filter.komi,
         board_size: filter.size,
         game_type,
+        clock_contingent,
+        clock_increment,
+        clock_extra_trigger: filter.extra_time_trigger,
+        clock_extra_time,
         pagination,
+        sort,
     };
+
+    if filter.mirror {
+        std::mem::swap(&mut game_filter.player_white, &mut game_filter.player_black);
+        game_filter.game_states.as_mut().map(|states| {
+            states.iter_mut().for_each(|state| match state {
+                TakGameState::Win { winner, .. } => {
+                    *winner = match winner {
+                        TakPlayer::White => TakPlayer::Black,
+                        TakPlayer::Black => TakPlayer::White,
+                    }
+                }
+                _ => {}
+            });
+        });
+    }
+
     let res: GameFilterResult = app_state
         .game_history_service
         .get_games(game_filter)
@@ -253,6 +322,42 @@ pub async fn get_by_id(
     }
 }
 
+pub async fn get_ptn_by_id(
+    Path(game_id): Path<String>,
+    State(app_state): State<AppState>,
+) -> Result<String, MyServiceError> {
+    let game_id = game_id
+        .parse()
+        .map_err(|e| MyServiceError(ServiceError::BadRequest(format!("Invalid game ID: {}", e))))?;
+    let res: Option<GameRecord> = app_state
+        .game_history_service
+        .get_game_record(game_id)
+        .await?;
+    if let Some(record) = res {
+        let ptn = tak_core::ptn::game_to_ptn(
+            &record.settings,
+            record.result,
+            record.moves.into_iter().map(|mv| mv.action).collect(),
+            (
+                record.white.clone(),
+                record.rating_info.as_ref().map(|x| x.rating_white),
+            ),
+            (
+                record.black.clone(),
+                record.rating_info.as_ref().map(|x| x.rating_black),
+            ),
+            record.date,
+        )
+        .to_string();
+        Ok(ptn)
+    } else {
+        Err(MyServiceError(ServiceError::NotFound(format!(
+            "Game with ID {} not found",
+            game_id
+        ))))
+    }
+}
+
 #[derive(serde::Serialize)]
 pub struct JsonGameRecord {
     id: i64,
@@ -277,6 +382,41 @@ pub struct JsonGameRecord {
     extra_time_trigger: u32,
 }
 
+fn action_record_to_database_string(record: &TakActionRecord) -> String {
+    fn square_to_string(pos: &TakPos) -> String {
+        format!(
+            "{}{}",
+            (b'A' + pos.x as u8) as char,
+            (b'1' + pos.y as u8) as char,
+        )
+    }
+    match &record.action {
+        TakAction::Place { pos, variant } => format!(
+            "P {} {}",
+            square_to_string(pos),
+            match variant {
+                TakVariant::Flat => "",
+                TakVariant::Standing => "S",
+                TakVariant::Capstone => "C",
+            },
+        ),
+        TakAction::Move { pos, dir, drops } => {
+            let to_pos = pos.offset(dir, drops.len() as i32);
+            let drops_str = drops
+                .iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+                .join("");
+            format!(
+                "M {} {} {}",
+                square_to_string(pos),
+                square_to_string(&to_pos),
+                drops_str
+            )
+        }
+    }
+}
+
 impl JsonGameRecord {
     fn from_game_record(id: GameId, record: &GameRecord) -> Self {
         Self {
@@ -285,7 +425,12 @@ impl JsonGameRecord {
             size: record.settings.board_size,
             player_white: record.white.clone(),
             player_black: record.black.clone(),
-            notation: "".to_string(), //TODO: generate PTN
+            notation: record
+                .moves
+                .iter()
+                .map(|mv| action_record_to_database_string(mv))
+                .collect::<Vec<_>>()
+                .join(","),
             result: game_state_to_string(&record.result),
             timer_time: record.settings.time_control.contingent.as_secs() as u32,
             timer_inc: record.settings.time_control.increment.as_secs() as u32,
@@ -303,8 +448,8 @@ impl JsonGameRecord {
                 tak_server_domain::game::GameType::Tournament
             ),
             komi: record.settings.half_komi,
-            pieces: record.settings.reserve_pieces as i32,
-            capstones: record.settings.reserve_capstones as i32,
+            pieces: record.settings.reserve.pieces as i32,
+            capstones: record.settings.reserve.capstones as i32,
             rating_change_white: record
                 .rating_info
                 .as_ref()

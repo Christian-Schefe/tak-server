@@ -1,4 +1,164 @@
-use crate::{TakAction, TakDir, TakGameState, TakPlayer, TakPos, TakVariant, TakWinReason};
+use std::time::Duration;
+
+use crate::{
+    TakAction, TakDir, TakGameSettings, TakGameState, TakPlayer, TakPos, TakReserve,
+    TakTimeControl, TakVariant, TakWinReason,
+};
+
+pub enum PtnHeader {
+    Size(u32),
+    HalfKomi(u32),
+    Player(TakPlayer, String),
+    Rating(TakPlayer, f64),
+    TimeControl(TakTimeControl),
+    Date(chrono::DateTime<chrono::Utc>),
+    Result(TakGameState),
+    Reserve(TakReserve),
+}
+
+impl PtnHeader {
+    pub fn timer_info(time: Duration, inc: Duration) -> String {
+        let total_secs = time.as_secs();
+
+        let secs = total_secs % 60;
+        let mins = (total_secs / 60) % 60;
+        let hrs = total_secs / 3600;
+
+        let mut out = String::new();
+        let mut force = false;
+
+        if hrs >= 1 {
+            out.push_str(&format!("{}:", hrs));
+            force = true;
+        }
+
+        if mins >= 1 || force {
+            out.push_str(&format!("{}:", mins));
+        }
+
+        out.push_str(&format!("{}", secs));
+
+        if !inc.is_zero() {
+            out.push_str(&format!(" +{}", inc.as_secs()));
+        }
+
+        out
+    }
+    pub fn to_header_string(&self) -> String {
+        match self {
+            PtnHeader::Size(size) => format!("[Size \"{size}\"]"),
+            PtnHeader::Player(player, name) => format!(
+                "[Player{} \"{name}\"]",
+                match player {
+                    TakPlayer::White => 1,
+                    TakPlayer::Black => 2,
+                }
+            ),
+            PtnHeader::Rating(player, rating) => format!(
+                "[Rating{} \"{rating}\"]",
+                match player {
+                    TakPlayer::White => 1,
+                    TakPlayer::Black => 2,
+                }
+            ),
+            PtnHeader::TimeControl(tc) => format!(
+                "[Clock \"{}\"]",
+                PtnHeader::timer_info(tc.contingent, tc.increment)
+            ),
+            PtnHeader::Date(date) => format!(
+                "[Date \"{}\"]\n[Time \"{}\"]",
+                date.format("%Y.%m.%d"),
+                date.format("%H:%M:%S")
+            ),
+            PtnHeader::Result(result) => format!("[Result \"{}\"]", game_state_to_string(result)),
+            PtnHeader::Reserve(reserve) => format!(
+                "[Flats \"{}\"]\n[Caps \"{}\"]",
+                reserve.pieces, reserve.capstones
+            ),
+            PtnHeader::HalfKomi(half_komi) => {
+                if half_komi % 2 == 0 {
+                    format!("[Komi \"{}\"]", half_komi / 2)
+                } else {
+                    format!("[Komi \"{}.5\"]", half_komi / 2)
+                }
+            }
+        }
+    }
+}
+
+pub struct Ptn {
+    pub headers: Vec<PtnHeader>,
+    pub moves: Vec<TakAction>,
+}
+
+impl Ptn {
+    pub fn new(headers: Vec<PtnHeader>, moves: Vec<TakAction>) -> Self {
+        Self { headers, moves }
+    }
+    pub fn to_string(&self) -> String {
+        let mut out = String::new();
+        for header in &self.headers {
+            out.push_str(&header.to_header_string());
+            out.push('\n');
+        }
+        out.push('\n');
+        let mut ptn_moves: Vec<String> = Vec::new();
+        for action in &self.moves {
+            ptn_moves.push(action_to_ptn(action));
+        }
+        let pairs = ptn_moves
+            .chunks(2)
+            .map(|chunk| match chunk {
+                [first, second] => format!(
+                    "{}. {} {}",
+                    (ptn_moves.iter().position(|m| m == first).unwrap() / 2) + 1,
+                    first,
+                    second
+                ),
+                [first] => format!(
+                    "{}. {}",
+                    (ptn_moves.iter().position(|m| m == first).unwrap() / 2) + 1,
+                    first
+                ),
+                _ => "".to_string(),
+            })
+            .collect::<Vec<String>>();
+        out.push_str(&pairs.join("\n"));
+        out
+    }
+}
+
+pub fn game_to_ptn(
+    settings: &TakGameSettings,
+    result: TakGameState,
+    moves: Vec<TakAction>,
+    player_white: (String, Option<f64>),
+    player_black: (String, Option<f64>),
+    time: chrono::DateTime<chrono::Utc>,
+) -> Ptn {
+    let mut headers = settings_to_ptn_headers(settings);
+    headers.push(PtnHeader::Date(time));
+    headers.push(PtnHeader::Result(result));
+    headers.push(PtnHeader::Player(TakPlayer::White, player_white.0));
+    if let Some(rating) = player_white.1 {
+        headers.push(PtnHeader::Rating(TakPlayer::White, rating));
+    }
+    headers.push(PtnHeader::Player(TakPlayer::Black, player_black.0));
+    if let Some(rating) = player_black.1 {
+        headers.push(PtnHeader::Rating(TakPlayer::Black, rating));
+    }
+
+    Ptn::new(headers, moves)
+}
+
+pub fn settings_to_ptn_headers(settings: &TakGameSettings) -> Vec<PtnHeader> {
+    let mut headers: Vec<PtnHeader> = Vec::new();
+    headers.push(PtnHeader::Size(settings.board_size));
+    headers.push(PtnHeader::HalfKomi(settings.half_komi));
+    headers.push(PtnHeader::Reserve(settings.reserve.clone()));
+    headers.push(PtnHeader::TimeControl(settings.time_control.clone()));
+    headers
+}
 
 pub fn action_to_ptn(action: &TakAction) -> String {
     match action {
@@ -29,7 +189,7 @@ pub fn action_to_ptn(action: &TakAction) -> String {
     }
 }
 
-pub fn ptn_to_action(ptn: &str) -> Option<TakAction> {
+pub fn action_from_ptn(ptn: &str) -> Option<TakAction> {
     let chars = ptn.trim().chars().collect::<Vec<_>>();
     if chars.is_empty() {
         return None;
@@ -295,7 +455,7 @@ mod tests {
     }
 
     fn helper_test_ptn_to_action(ptn: &str, expected: Option<TakAction>) {
-        let action = ptn_to_action(ptn);
+        let action = action_from_ptn(ptn);
         assert_eq!(action, expected, "ptn: {}", ptn);
     }
 

@@ -266,7 +266,7 @@ impl SeekService for SeekServiceImpl {
 mod tests {
     use std::time::Duration;
 
-    use tak_core::{TakGameSettings, TakTimeControl};
+    use tak_core::{TakGameSettings, TakReserve, TakTimeControl};
 
     use crate::{
         game::MockGameService,
@@ -301,8 +301,7 @@ mod tests {
         let game_settings = TakGameSettings {
             board_size: 5,
             half_komi: 0,
-            reserve_pieces: 21,
-            reserve_capstones: 1,
+            reserve: TakReserve::new(21, 1),
             time_control: TakTimeControl {
                 contingent: Duration::from_secs(300),
                 increment: Duration::from_secs(5),
@@ -323,8 +322,7 @@ mod tests {
         let invalid_game_settings = TakGameSettings {
             board_size: 0,
             half_komi: 0,
-            reserve_pieces: 0,
-            reserve_capstones: 0,
+            reserve: TakReserve::new(0, 0),
             time_control: TakTimeControl {
                 contingent: Duration::from_secs(0),
                 increment: Duration::from_secs(0),
@@ -390,8 +388,7 @@ mod tests {
         let game_settings = TakGameSettings {
             board_size: 5,
             half_komi: 0,
-            reserve_pieces: 21,
-            reserve_capstones: 1,
+            reserve: TakReserve::new(21, 1),
             time_control: TakTimeControl {
                 contingent: Duration::from_secs(300),
                 increment: Duration::from_secs(5),
@@ -461,8 +458,7 @@ mod tests {
         let game_settings = TakGameSettings {
             board_size: 5,
             half_komi: 0,
-            reserve_pieces: 21,
-            reserve_capstones: 1,
+            reserve: TakReserve::new(21, 1),
             time_control: TakTimeControl {
                 contingent: Duration::from_secs(300),
                 increment: Duration::from_secs(5),
