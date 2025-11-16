@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
 };
 use tak_core::{
     TakAction, TakActionRecord, TakGameState, TakPlayer, TakPos, TakVariant, TakWinReason,
@@ -10,20 +10,19 @@ use tak_core::{
 };
 use tak_server_domain::{
     ServiceError,
-    app::AppState,
+    app::{AppState, Pagination, SortOrder},
     game::{GameId, GameRecord},
     game_history::{
-        DateSelector, GameFilter, GameFilterResult, GameIdSelector, GamePagination,
-        GamePlayerFilter, GameSortBy, GameSortOrder,
+        DateSelector, GameFilter, GameFilterResult, GameIdSelector, GamePlayerFilter, GameSortBy,
     },
 };
 
-use crate::MyServiceError;
+use crate::{MyServiceError, PaginatedResponse};
 
 pub async fn get_all(
     State(app_state): State<AppState>,
-    Json(filter): Json<JsonGameRecordFilter>,
-) -> Result<Json<JsonGameRecords>, MyServiceError> {
+    Query(filter): Query<JsonGameRecordFilter>,
+) -> Result<Json<PaginatedResponse<JsonGameRecord>>, MyServiceError> {
     let id_selector = filter
         .id
         .as_ref()
@@ -161,11 +160,11 @@ pub async fn get_all(
             }
         })
         .transpose()?;
-    let page = filter.page.unwrap_or(1).max(1);
-    let limit = filter.limit.unwrap_or(50);
+    let page = filter.page.unwrap_or(0);
+    let limit = filter.limit.filter(|&l| l > 0).unwrap_or(50);
     let skip = filter.skip.unwrap_or(0);
     let offset = if page > 1 { (page - 1) * limit } else { skip };
-    let pagination = GamePagination {
+    let pagination = Pagination {
         offset: Some(offset),
         limit: Some(limit),
     };
@@ -183,25 +182,22 @@ pub async fn get_all(
                 )))),
             }
         })
-        .transpose()?;
+        .transpose()?
+        .unwrap_or(GameSortBy::GameId);
 
     let order = filter
         .order
         .as_ref()
         .and_then(|order_str| match order_str.trim().to_lowercase().as_str() {
-            "asc" => Some(Ok(GameSortOrder::Ascending)),
-            "desc" => Some(Ok(GameSortOrder::Descending)),
+            "asc" => Some(Ok(SortOrder::Ascending)),
+            "desc" => Some(Ok(SortOrder::Descending)),
             "" => None,
             _ => Some(Err(MyServiceError(ServiceError::BadRequest(
                 "Invalid sort order".to_string(),
             )))),
         })
-        .transpose()?;
-
-    let sort = match (sort, order) {
-        (Some(sort_by), Some(order)) => Some((order, sort_by)),
-        _ => None,
-    };
+        .transpose()?
+        .unwrap_or(SortOrder::Descending);
 
     let clock_contingent = filter.timertime.map(|x| Duration::from_secs(x as u64));
     let clock_increment = filter.timerinc.map(|x| Duration::from_secs(x as u64));
@@ -223,7 +219,7 @@ pub async fn get_all(
         clock_extra_trigger: filter.extra_time_trigger,
         clock_extra_time,
         pagination,
-        sort,
+        sort: Some((order, sort)),
     };
 
     if filter.mirror {
@@ -246,8 +242,7 @@ pub async fn get_all(
         .get_games(game_filter)
         .await?;
     let total = res.total_count;
-    let per_page = 10;
-    Ok(Json(JsonGameRecords {
+    Ok(Json(PaginatedResponse {
         items: res
             .games
             .into_iter()
@@ -255,8 +250,12 @@ pub async fn get_all(
             .collect(),
         total,
         page,
-        per_page,
-        total_pages: (total + per_page - 1) / per_page,
+        per_page: limit,
+        total_pages: if limit > 0 {
+            (total + limit - 1) / limit
+        } else {
+            1
+        },
     }))
 }
 
@@ -282,15 +281,6 @@ pub struct JsonGameRecordFilter {
     timerinc: Option<usize>,
     extra_time_amount: Option<usize>,
     extra_time_trigger: Option<usize>,
-}
-
-#[derive(serde::Serialize)]
-pub struct JsonGameRecords {
-    items: Vec<JsonGameRecord>,
-    total: usize,
-    page: usize,
-    per_page: usize,
-    total_pages: usize,
 }
 
 pub async fn get_by_id(

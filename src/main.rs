@@ -13,7 +13,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
     filter::threshold::ThresholdFilter,
 };
-use tak_events_persistence::GoogleSheetsEventRepository;
+use tak_events_persistence::NoopEventRepository;
 use tak_persistence_sea_orm::{games::GameRepositoryImpl, players::PlayerRepositoryImpl};
 use tak_server_api::{JwtServiceImpl, TransportServiceImpl};
 use tak_server_domain::{
@@ -109,8 +109,7 @@ async fn main() {
 
     let game_repo: ArcGameRepository = Arc::new(Box::new(GameRepositoryImpl::new().await));
     let player_repo: ArcPlayerRepository = Arc::new(Box::new(PlayerRepositoryImpl::new().await));
-    let events_repo: ArcEventRepository =
-        Arc::new(Box::new(GoogleSheetsEventRepository::new().await));
+    let events_repo: ArcEventRepository = Arc::new(Box::new(NoopEventRepository {}));
 
     let transport_service: ArcTransportService = Arc::new(Box::new(transport_service_impl.clone()));
     let jwt_service: ArcJwtService = Arc::new(Box::new(JwtServiceImpl {}));

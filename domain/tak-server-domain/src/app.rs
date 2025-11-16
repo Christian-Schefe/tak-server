@@ -134,3 +134,15 @@ pub fn construct_app(
 
     lazy_app_state.0.set(app.clone()).ok().unwrap();
 }
+
+#[derive(Debug, Clone)]
+pub enum SortOrder {
+    Ascending,
+    Descending,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Pagination {
+    pub offset: Option<usize>,
+    pub limit: Option<usize>,
+}

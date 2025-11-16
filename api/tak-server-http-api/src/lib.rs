@@ -4,6 +4,7 @@ use tak_server_domain::{ServiceError, app::LazyAppState};
 
 mod event;
 mod games_history;
+mod rating;
 
 pub async fn run(
     app: LazyAppState,
@@ -13,7 +14,9 @@ pub async fn run(
         .route("/games-history", get(games_history::get_all))
         .route("/games-history/{id}", get(games_history::get_by_id))
         .route("/games-history/ptn/{id}", get(games_history::get_ptn_by_id))
-        .route("/events", get(event::get_all_events));
+        .route("/events", get(event::get_all_events))
+        .route("/ratings", get(rating::get_ratings))
+        .route("/rating/{name}", get(rating::get_rating_by_name));
 
     let port = std::env::var("TAK_HTTP_API_PORT")
         .unwrap_or_else(|_| "3004".to_string())
@@ -24,7 +27,7 @@ pub async fn run(
         .await
         .unwrap();
 
-    info!("WebSocket server listening on port {}", port);
+    info!("API server listening on port {}", port);
     axum::serve(listener, router.with_state(app.unwrap().clone()))
         .with_graceful_shutdown(shutdown_signal)
         .await
@@ -55,4 +58,14 @@ impl From<ServiceError> for MyServiceError {
     fn from(value: ServiceError) -> Self {
         MyServiceError(value)
     }
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginatedResponse<T> {
+    items: Vec<T>,
+    total: usize,
+    page: usize,
+    per_page: usize,
+    total_pages: usize,
 }

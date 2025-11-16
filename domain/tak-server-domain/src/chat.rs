@@ -92,21 +92,21 @@ impl ChatService for ChatServiceImpl {
         username: &PlayerUsername,
         message: &str,
     ) -> ServiceResult<()> {
-        let player = self.player_service.fetch_player_data(username).await?;
-        if player.flags.is_gagged {
+        let player = self.player_service.get_player(username).await?;
+        if player.flags.is_silenced {
             do_player_send(
                 &self.player_connection_service,
                 &self.transport_service,
                 username,
                 &ServerMessage::ChatMessage {
                     from: username.clone(),
-                    message: "<Server: You have been muted for inappropriate chat behavior.>"
+                    message: "<Server: You have been silenced for inappropriate chat behavior.>"
                         .to_string(),
                     source: ChatMessageSource::Global,
                 },
             )
             .await;
-            return ServiceError::forbidden("You are gagged and cannot send messages");
+            return ServiceError::forbidden("You are silenced and cannot send messages");
         }
         let msg = ServerMessage::ChatMessage {
             from: username.clone(),
@@ -128,9 +128,9 @@ impl ChatService for ChatServiceImpl {
         room_name: &String,
         message: &str,
     ) -> ServiceResult<()> {
-        let player = self.player_service.fetch_player_data(&username).await?;
-        if player.flags.is_gagged {
-            return ServiceError::forbidden("You are gagged and cannot send messages");
+        let player = self.player_service.get_player(&username).await?;
+        if player.flags.is_silenced {
+            return ServiceError::forbidden("You are silenced and cannot send messages");
         }
         let participants = self.chat_rooms.get_by_key(room_name);
         let msg = ServerMessage::ChatMessage {
@@ -153,9 +153,9 @@ impl ChatService for ChatServiceImpl {
         to_username: &PlayerUsername,
         message: &str,
     ) -> ServiceResult<String> {
-        let from_player = self.player_service.fetch_player_data(from_username).await?;
-        if from_player.flags.is_gagged {
-            return ServiceError::forbidden("You are gagged and cannot send messages");
+        let from_player = self.player_service.get_player(from_username).await?;
+        if from_player.flags.is_silenced {
+            return ServiceError::forbidden("You are silenced and cannot send messages");
         }
         let censored_message = message.censor();
 
@@ -226,7 +226,7 @@ mod tests {
         assert!(matches!(
             chat_service
                 .send_message_to_player(
-                    &"test_gagged".to_string(),
+                    &"test_silenced".to_string(),
                     &"test_user".to_string(),
                     "Hello!",
                 )
@@ -290,7 +290,7 @@ mod tests {
         assert!(matches!(
             chat_service
                 .send_message_to_player(
-                    &"test_gagged".to_string(),
+                    &"test_silenced".to_string(),
                     &"test_user".to_string(),
                     "Hello!",
                 )
@@ -311,13 +311,13 @@ mod tests {
         );
 
         let test_admin = ListenerId::new();
-        let test_gagged = ListenerId::new();
+        let test_silenced = ListenerId::new();
 
         mock_player_connection_service
             .on_player_connected(test_admin, &"test_admin".to_string())
             .await;
         mock_player_connection_service
-            .on_player_connected(test_gagged, &"test_gagged".to_string())
+            .on_player_connected(test_silenced, &"test_silenced".to_string())
             .await;
 
         assert!(
@@ -337,7 +337,7 @@ mod tests {
 
         assert!(matches!(
             chat_service
-                .send_message_to_all(&"test_gagged".to_string(), "Hello!",)
+                .send_message_to_all(&"test_silenced".to_string(), "Hello!",)
                 .await,
             Err(ServiceError::Forbidden(..))
         ));

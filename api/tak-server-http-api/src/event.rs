@@ -44,7 +44,6 @@ pub struct EventCacheValue {
 
 static EVENT_CACHE: LazyLock<RwLock<Option<EventCacheValue>>> = LazyLock::new(|| RwLock::new(None));
 
-#[axum::debug_handler]
 pub async fn get_all_events(
     State(app_state): State<AppState>,
 ) -> Result<Json<JsonEventResponse>, MyServiceError> {

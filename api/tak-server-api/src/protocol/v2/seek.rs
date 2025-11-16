@@ -242,7 +242,7 @@ impl ProtocolV2Handler {
             seek.opponent.as_deref().unwrap_or(""),
             self.app_state
                 .player_service
-                .fetch_player_data(&seek.creator)
+                .get_player(&seek.creator)
                 .await
                 .map_or("0", |p| if p.flags.is_bot { "1" } else { "0" })
         );

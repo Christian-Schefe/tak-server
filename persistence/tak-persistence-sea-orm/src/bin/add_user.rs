@@ -62,7 +62,7 @@ async fn create_user(
         fatigue: Set("{}".to_string()),
         is_admin: Set(is_admin),
         is_mod: Set(is_mod || is_admin),
-        is_gagged: Set(false),
+        is_silenced: Set(false),
         is_banned: Set(false),
         participation_rating: Set(1000),
     };

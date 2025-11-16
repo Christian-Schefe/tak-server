@@ -5,6 +5,7 @@ use tak_core::TakGameState;
 
 use crate::{
     ServiceResult,
+    app::{Pagination, SortOrder},
     game::{ArcGameRepository, GameId, GameRecord, GameType},
     player::PlayerUsername,
 };
@@ -23,20 +24,14 @@ pub struct GameFilter {
     pub clock_increment: Option<Duration>,
     pub clock_extra_trigger: Option<usize>,
     pub clock_extra_time: Option<Duration>,
-    pub pagination: GamePagination,
-    pub sort: Option<(GameSortOrder, GameSortBy)>,
+    pub pagination: Pagination,
+    pub sort: Option<(SortOrder, GameSortBy)>,
 }
 
 #[derive(Debug, Clone)]
 pub enum GameSortBy {
     Date,
     GameId,
-}
-
-#[derive(Debug, Clone)]
-pub enum GameSortOrder {
-    Ascending,
-    Descending,
 }
 
 #[derive(Debug, Clone)]
@@ -48,12 +43,6 @@ pub enum GamePlayerFilter {
 pub struct GameFilterResult {
     pub total_count: usize,
     pub games: Vec<(GameId, GameRecord)>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct GamePagination {
-    pub offset: Option<usize>,
-    pub limit: Option<usize>,
 }
 
 #[derive(Debug, Clone)]

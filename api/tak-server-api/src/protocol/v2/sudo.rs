@@ -1,4 +1,8 @@
-use tak_server_domain::{ServiceError, player::PlayerUsername, transport::ListenerId};
+use tak_server_domain::{
+    ServiceError,
+    player::{Player, PlayerFilter, PlayerUsername},
+    transport::ListenerId,
+};
 
 use crate::protocol::v2::{ProtocolV2Handler, ProtocolV2Result, V2Response, split_n_and_rest};
 
@@ -74,7 +78,7 @@ impl ProtocolV2Handler {
         &self,
         username: &PlayerUsername,
         parts: &[&str],
-        gagged: Option<bool>,
+        silenced: Option<bool>,
         modded: Option<bool>,
         admin: Option<bool>,
         bot: Option<bool>,
@@ -83,16 +87,16 @@ impl ProtocolV2Handler {
             return ServiceError::bad_request("Invalid Sudo command format");
         }
         let target_username = parts[2].to_string();
-        if let Some(gagged) = gagged {
+        if let Some(silenced) = silenced {
             self.app_state
                 .player_service
-                .set_gagged(username, &target_username, gagged)
+                .set_silenced(username, &target_username, silenced)
                 .await?;
 
             return Ok(V2Response::Message(format!(
                 "{} {}",
                 target_username,
-                if gagged { "gagged" } else { "ungagged" }
+                if silenced { "gagged" } else { "ungagged" }
             )));
         } else if let Some(modded) = modded {
             self.app_state
@@ -180,36 +184,33 @@ impl ProtocolV2Handler {
 
         let player_service = &self.app_state.player_service;
 
-        let players = match list_type {
-            "ban" => {
-                player_service
-                    .get_players(Some(true), None, None, None, None)
-                    .await?
-            }
-            "gag" => {
-                player_service
-                    .get_players(None, Some(true), None, None, None)
-                    .await?
-            }
-            "mod" => {
-                player_service
-                    .get_players(None, None, Some(true), None, None)
-                    .await?
-            }
-            "admin" => {
-                player_service
-                    .get_players(None, None, None, Some(true), None)
-                    .await?
-            }
-            "bot" => {
-                player_service
-                    .get_players(None, None, None, None, Some(true))
-                    .await?
-            }
+        let player_filter = match list_type {
+            "ban" => PlayerFilter {
+                is_banned: Some(true),
+                ..Default::default()
+            },
+            "gag" => PlayerFilter {
+                is_silenced: Some(true),
+                ..Default::default()
+            },
+            "mod" => PlayerFilter {
+                is_mod: Some(true),
+                ..Default::default()
+            },
+            "admin" => PlayerFilter {
+                is_admin: Some(true),
+                ..Default::default()
+            },
+            "bot" => PlayerFilter {
+                is_bot: Some(true),
+                ..Default::default()
+            },
             _ => {
                 return ServiceError::bad_request("Unknown Sudo list command");
             }
         };
+
+        let players: Vec<Player> = player_service.get_players(player_filter).await?.players;
         let response = format!(
             "[{}]",
             players

@@ -177,8 +177,8 @@ impl GameServiceImpl {
         black: &PlayerUsername,
         seek: &Seek,
     ) -> ServiceResult<GameId> {
-        let player_white = self.player_service.fetch_player_data(white).await?;
-        let player_black = self.player_service.fetch_player_data(black).await?;
+        let player_white = self.player_service.get_player(white).await?;
+        let player_black = self.player_service.get_player(black).await?;
         let game_record = GameRecord {
             date: chrono::Utc::now(),
             white: white.clone(),

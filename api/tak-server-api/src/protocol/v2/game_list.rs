@@ -132,13 +132,13 @@ impl ProtocolV2Handler {
         let is_bot_game = self
             .app_state
             .player_service
-            .fetch_player_data(&game.white)
+            .get_player(&game.white)
             .await
             .map_or(false, |p| p.flags.is_bot)
             || self
                 .app_state
                 .player_service
-                .fetch_player_data(&game.black)
+                .get_player(&game.black)
                 .await
                 .map_or(false, |p| p.flags.is_bot);
         let settings = &game.game.base.settings;

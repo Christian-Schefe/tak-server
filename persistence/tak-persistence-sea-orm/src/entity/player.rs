@@ -5,6 +5,7 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = true)]
     pub id: i64,
+    #[sea_orm(unique)]
     pub name: String,
     pub email: String,
     pub password_hash: String,
@@ -16,7 +17,7 @@ pub struct Model {
     pub rating_age: f64,
     pub fatigue: String,
     pub is_bot: bool,
-    pub is_gagged: bool,
+    pub is_silenced: bool,
     pub is_mod: bool,
     pub is_admin: bool,
     pub is_banned: bool,

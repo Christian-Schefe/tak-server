@@ -110,3 +110,12 @@ impl EventRepository for GoogleSheetsEventRepository {
         Ok(events)
     }
 }
+
+pub struct NoopEventRepository;
+
+#[async_trait::async_trait]
+impl EventRepository for NoopEventRepository {
+    async fn get_all_events(&self) -> ServiceResult<Vec<Event>> {
+        Ok(Vec::new())
+    }
+}

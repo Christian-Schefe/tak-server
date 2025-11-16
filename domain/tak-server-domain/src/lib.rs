@@ -3,6 +3,7 @@ use thiserror::Error;
 pub mod app;
 pub mod chat;
 mod email;
+pub mod event;
 pub mod game;
 pub mod game_history;
 pub mod jwt;
@@ -11,7 +12,6 @@ pub mod rating;
 pub mod seek;
 pub mod transport;
 pub mod util;
-pub mod event;
 
 #[derive(Debug, Clone, Error)]
 pub enum ServiceError {

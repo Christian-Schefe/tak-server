@@ -10,6 +10,7 @@ use rustrict::CensorStr;
 
 use crate::{
     ServiceError, ServiceResult,
+    app::{Pagination, SortOrder},
     email::ArcEmailService,
     jwt::ArcJwtService,
     rating::PlayerRating,
@@ -38,7 +39,7 @@ pub struct Player {
 #[derive(Debug, Clone, Default)]
 pub struct PlayerFlags {
     pub is_bot: bool,
-    pub is_gagged: bool,
+    pub is_silenced: bool,
     pub is_mod: bool,
     pub is_admin: bool,
     pub is_banned: bool,
@@ -48,7 +49,7 @@ impl PlayerFlags {
     pub fn new() -> Self {
         Self {
             is_bot: false,
-            is_gagged: false,
+            is_silenced: false,
             is_mod: false,
             is_admin: false,
             is_banned: false,
@@ -57,7 +58,7 @@ impl PlayerFlags {
     pub fn update(&mut self, update: &PlayerFlagsUpdate) {
         *self = PlayerFlags {
             is_bot: update.is_bot.unwrap_or(self.is_bot),
-            is_gagged: update.is_gagged.unwrap_or(self.is_gagged),
+            is_silenced: update.is_silenced.unwrap_or(self.is_silenced),
             is_mod: update.is_mod.unwrap_or(self.is_mod),
             is_admin: update.is_admin.unwrap_or(self.is_admin),
             is_banned: update.is_banned.unwrap_or(self.is_banned),
@@ -67,7 +68,7 @@ impl PlayerFlags {
 
 pub struct PlayerFlagsUpdate {
     pub is_bot: Option<bool>,
-    pub is_gagged: Option<bool>,
+    pub is_silenced: Option<bool>,
     pub is_mod: Option<bool>,
     pub is_admin: Option<bool>,
     pub is_banned: Option<bool>,
@@ -77,7 +78,7 @@ impl PlayerFlagsUpdate {
     pub fn new() -> Self {
         Self {
             is_bot: None,
-            is_gagged: None,
+            is_silenced: None,
             is_mod: None,
             is_admin: None,
             is_banned: None,
@@ -87,23 +88,38 @@ impl PlayerFlagsUpdate {
 
 #[derive(Clone, Debug, Default)]
 pub struct PlayerFilter {
+    pub id: Option<PlayerId>,
+    pub username: Option<String>,
     pub is_bot: Option<bool>,
-    pub is_gagged: Option<bool>,
+    pub is_silenced: Option<bool>,
     pub is_mod: Option<bool>,
     pub is_admin: Option<bool>,
     pub is_banned: Option<bool>,
+    pub sort: Option<(SortOrder, PlayerSortBy)>,
+    pub pagination: Pagination,
+}
+
+pub struct PlayerFilterResult {
+    pub total_count: usize,
+    pub players: Vec<Player>,
+}
+
+#[derive(Clone, Debug)]
+pub enum PlayerSortBy {
+    Rating,
+    ParticipationRating,
+    PlayerId,
 }
 
 pub type ArcPlayerRepository = Arc<Box<dyn PlayerRepository + Send + Sync + 'static>>;
 
 #[async_trait::async_trait]
 pub trait PlayerRepository {
-    async fn get_player_by_id(&self, id: PlayerId) -> ServiceResult<Option<Player>>;
     async fn get_player_by_name(&self, name: &str) -> ServiceResult<Option<(PlayerId, Player)>>;
     async fn create_player(&self, player: &Player) -> ServiceResult<()>;
     async fn update_password(&self, id: PlayerId, password: String) -> ServiceResult<()>;
     async fn update_flags(&self, id: PlayerId, flags: &PlayerFlagsUpdate) -> ServiceResult<()>;
-    async fn get_players(&self, filter: PlayerFilter) -> ServiceResult<Vec<Player>>;
+    async fn get_players(&self, filter: PlayerFilter) -> ServiceResult<PlayerFilterResult>;
     async fn get_player_names(&self) -> ServiceResult<Vec<String>>;
 }
 
@@ -113,7 +129,7 @@ pub type ArcPlayerService = Arc<Box<dyn PlayerService + Send + Sync + 'static>>;
 pub trait PlayerService {
     async fn load_unique_usernames(&self) -> ServiceResult<()>;
     async fn fetch_player(&self, username: &str) -> ServiceResult<(Option<PlayerId>, Player)>;
-    async fn fetch_player_data(&self, username: &str) -> ServiceResult<Player> {
+    async fn get_player(&self, username: &str) -> ServiceResult<Player> {
         let (_, player) = self.fetch_player(username).await?;
         Ok(player)
     }
@@ -139,11 +155,11 @@ pub trait PlayerService {
         current_password: &str,
         new_password: &str,
     ) -> ServiceResult<()>;
-    async fn set_gagged(
+    async fn set_silenced(
         &self,
         username: &PlayerUsername,
         target_username: &PlayerUsername,
-        gagged: bool,
+        silenced: bool,
     ) -> ServiceResult<()>;
     async fn set_banned(
         &self,
@@ -174,14 +190,7 @@ pub trait PlayerService {
         username: &PlayerUsername,
         target_username: &PlayerUsername,
     ) -> ServiceResult<()>;
-    async fn get_players(
-        &self,
-        ban_filter: Option<bool>,
-        gag_filter: Option<bool>,
-        mod_filter: Option<bool>,
-        admin_filter: Option<bool>,
-        bot_filter: Option<bool>,
-    ) -> ServiceResult<Vec<Player>>;
+    async fn get_players(&self, player_filter: PlayerFilter) -> ServiceResult<PlayerFilterResult>;
     async fn set_password(
         &self,
         username: &PlayerUsername,
@@ -198,7 +207,6 @@ pub struct PlayerServiceImpl {
     email_service: ArcEmailService,
     jwt_service: ArcJwtService,
     player_repository: ArcPlayerRepository,
-    player_cache: Arc<moka::sync::Cache<PlayerUsername, (Option<PlayerId>, Player)>>,
     guests: Arc<DashMap<PlayerUsername, Player>>,
     guest_player_tokens: Arc<moka::sync::Cache<String, PlayerUsername>>,
     next_guest_id: Arc<std::sync::Mutex<u32>>,
@@ -220,7 +228,6 @@ impl PlayerServiceImpl {
             email_service,
             jwt_service,
             player_repository,
-            player_cache: Arc::new(moka::sync::Cache::builder().max_capacity(1000).build()),
             guests: Arc::new(DashMap::new()),
             guest_player_tokens: Arc::new(
                 moka::sync::Cache::builder().time_to_idle(GUEST_TTL).build(),
@@ -361,7 +368,6 @@ impl PlayerServiceImpl {
         self.player_repository
             .update_password(id, password_hash)
             .await?;
-        self.player_cache.invalidate(username);
         Ok(())
     }
 
@@ -372,14 +378,13 @@ impl PlayerServiceImpl {
         access_predicate: impl Fn(&Player, &Player) -> bool,
         flags: &PlayerFlagsUpdate,
     ) -> ServiceResult<()> {
-        let current_player = self.fetch_player_data(&username).await?;
+        let current_player = self.get_player(&username).await?;
         let (id, player) = self.fetch_player(target_username).await?;
         if let Some(id) = id {
             if !access_predicate(&current_player, &player) {
                 return ServiceError::unauthorized("Insufficient rights");
             }
             self.player_repository.update_flags(id, flags).await?;
-            self.player_cache.invalidate(target_username);
             Ok(())
         } else {
             let Some(mut player) = self.guests.get_mut(target_username) else {
@@ -439,33 +444,27 @@ impl PlayerService for PlayerServiceImpl {
             return Ok((None, guest));
         }
         let username = username.to_string();
-        if let Some(player) = self.player_cache.get(&username) {
-            return Ok(player);
-        }
+
         let player = self.player_repository.get_player_by_name(&username).await?;
         match player {
-            Some((id, p)) => {
-                let val = (Some(id), p);
-                self.player_cache.insert(username.clone(), val.clone());
-                Ok(val)
-            }
+            Some((id, p)) => Ok((Some(id), p)),
             None => ServiceError::not_found("Player not found"),
         }
     }
 
-    async fn set_gagged(
+    async fn set_silenced(
         &self,
         username: &PlayerUsername,
         target_username: &PlayerUsername,
-        gagged: bool,
+        silenced: bool,
     ) -> ServiceResult<()> {
         let mut flags = PlayerFlagsUpdate::new();
-        flags.is_gagged = Some(gagged);
+        flags.is_silenced = Some(silenced);
         self.update_player(username, target_username, Self::more_rights, &flags)
             .await?;
         info!(
-            "User {} set gagged={} for user {}",
-            username, gagged, target_username
+            "User {} set silenced={} for user {}",
+            username, silenced, target_username
         );
         Ok(())
     }
@@ -492,7 +491,7 @@ impl PlayerService for PlayerServiceImpl {
             )
             .await;
 
-            let target_player = self.fetch_player_data(target_username).await?;
+            let target_player = self.get_player(target_username).await?;
             if let Some(player_email) = &target_player.email
                 && let Ok(email) = validate_email(player_email)
             {
@@ -565,8 +564,8 @@ impl PlayerService for PlayerServiceImpl {
         username: &PlayerUsername,
         target_username: &PlayerUsername,
     ) -> ServiceResult<()> {
-        let current_player = self.fetch_player_data(&username).await?;
-        let target_player = self.fetch_player_data(&target_username).await?;
+        let current_player = self.get_player(&username).await?;
+        let target_player = self.get_player(&target_username).await?;
         if !Self::more_rights(&current_player, &target_player) {
             return ServiceError::unauthorized("Insufficient rights to kick this player");
         }
@@ -586,7 +585,7 @@ impl PlayerService for PlayerServiceImpl {
     }
 
     async fn validate_login(&self, username: &PlayerUsername, password: &str) -> ServiceResult<()> {
-        let player = self.fetch_player_data(&username).await?;
+        let player = self.get_player(&username).await?;
         let Some(password_hash) = &player.password_hash else {
             return ServiceError::unauthorized("Invalid username or password");
         };
@@ -611,7 +610,7 @@ impl PlayerService for PlayerServiceImpl {
         password: &str,
     ) -> ServiceResult<PlayerUsername> {
         self.validate_login(username, password).await?;
-        let player = self.fetch_player_data(username).await?;
+        let player = self.get_player(username).await?;
         if player.flags.is_banned {
             return ServiceError::unauthorized("User is banned");
         }
@@ -620,7 +619,7 @@ impl PlayerService for PlayerServiceImpl {
 
     async fn try_login_jwt(&self, token: &str) -> ServiceResult<PlayerUsername> {
         let username = self.jwt_service.validate_jwt(token)?;
-        let player = self.fetch_player_data(&username).await?;
+        let player = self.get_player(&username).await?;
         if player.flags.is_banned {
             return ServiceError::unauthorized("User is banned");
         }
@@ -674,7 +673,7 @@ impl PlayerService for PlayerServiceImpl {
     }
 
     async fn send_reset_token(&self, username: &PlayerUsername, email: &str) -> ServiceResult<()> {
-        let player = self.fetch_player_data(username).await?;
+        let player = self.get_player(username).await?;
         if player.email.is_none_or(|e| e != email) {
             return ServiceError::unauthorized("Email does not match");
         }
@@ -722,32 +721,15 @@ impl PlayerService for PlayerServiceImpl {
         target_username: &PlayerUsername,
         new_password: &str,
     ) -> ServiceResult<()> {
-        let player = self.fetch_player_data(&username).await?;
+        let player = self.get_player(&username).await?;
         if !player.flags.is_admin {
             return ServiceError::unauthorized("Only admins can set passwords directly");
         }
         self.update_password(target_username, new_password).await
     }
 
-    async fn get_players(
-        &self,
-        ban_filter: Option<bool>,
-        gag_filter: Option<bool>,
-        mod_filter: Option<bool>,
-        admin_filter: Option<bool>,
-        bot_filter: Option<bool>,
-    ) -> ServiceResult<Vec<Player>> {
-        let players = self
-            .player_repository
-            .get_players(PlayerFilter {
-                is_banned: ban_filter,
-                is_gagged: gag_filter,
-                is_mod: mod_filter,
-                is_admin: admin_filter,
-                is_bot: bot_filter,
-            })
-            .await?;
-        Ok(players)
+    async fn get_players(&self, player_filter: PlayerFilter) -> ServiceResult<PlayerFilterResult> {
+        Ok(self.player_repository.get_players(player_filter).await?)
     }
 }
 
@@ -771,23 +753,23 @@ impl PlayerService for MockPlayerService {
                     password_hash: Some("".to_string()),
                     flags: PlayerFlags {
                         is_bot: false,
-                        is_gagged: false,
+                        is_silenced: false,
                         is_mod: true,
                         is_admin: true,
                         is_banned: false,
                     },
                 },
             )),
-            "test_gagged" => Ok((
+            "test_silenced" => Ok((
                 Some(2),
                 Player {
-                    username: "test_gagged".into(),
-                    email: Some("test_gagged@example.com".into()),
+                    username: "test_silenced".into(),
+                    email: Some("test_silenced@example.com".into()),
                     rating: PlayerRating::new(),
                     password_hash: Some("".to_string()),
                     flags: PlayerFlags {
                         is_bot: false,
-                        is_gagged: true,
+                        is_silenced: true,
                         is_mod: false,
                         is_admin: false,
                         is_banned: false,
@@ -852,11 +834,11 @@ impl PlayerService for MockPlayerService {
         Ok(())
     }
 
-    async fn set_gagged(
+    async fn set_silenced(
         &self,
         _username: &PlayerUsername,
         _target_username: &PlayerUsername,
-        _gagged: bool,
+        _silenced: bool,
     ) -> ServiceResult<()> {
         Ok(())
     }
@@ -905,15 +887,11 @@ impl PlayerService for MockPlayerService {
         Ok(())
     }
 
-    async fn get_players(
-        &self,
-        _ban_filter: Option<bool>,
-        _gag_filter: Option<bool>,
-        _mod_filter: Option<bool>,
-        _admin_filter: Option<bool>,
-        _bot_filter: Option<bool>,
-    ) -> ServiceResult<Vec<Player>> {
-        Ok(vec![])
+    async fn get_players(&self, _player_filter: PlayerFilter) -> ServiceResult<PlayerFilterResult> {
+        Ok(PlayerFilterResult {
+            total_count: 0,
+            players: vec![],
+        })
     }
 
     async fn set_password(

@@ -5,7 +5,7 @@ This is a rewrite of the java server at https://github.com/USTakAssociation/play
 In progress:
 
 - Tests
-- JSON protocol alternative
+- Rating compute task
 
 To do:
 
@@ -19,17 +19,10 @@ To do:
 - [x] Game abandon after timeout on disconnect
 - [ ] Tests
 - [ ] Some V0 api endpoints
-
-To do extra features:
-
+- [ ] Rating compute task
 - [x] REST endpoints
 - [x] JWT auth
-- [ ] JSON protocol alternative
-
-Open questions / On hold:
-
-- [ ] Broadcasting (is that in use?)
-- [ ] IRCBridge (is that in use?)
+- [x] JSON protocol alternative
 
 - Old Java code does a complicated calculation for temporary rating that seems excessive, as it anyway overwritten by the typescript service.
 - The text protocol system can't handle passwords with spaces.
@@ -42,3 +35,4 @@ Changes:
 - Ban prevents login
 - sudo broadcast is a noop
 - sudo reload is a noop as profanity filter is now a library.
+- removed IRC bridge

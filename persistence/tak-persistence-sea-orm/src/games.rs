@@ -11,10 +11,10 @@ use tak_core::{
 };
 use tak_server_domain::{
     ServiceError, ServiceResult,
+    app::SortOrder,
     game::{GameId, GameRatingUpdate, GameRecord, GameRepository, GameResultUpdate, GameType},
     game_history::{
         DateSelector, GameFilter, GameFilterResult, GameIdSelector, GamePlayerFilter, GameSortBy,
-        GameSortOrder,
     },
     player::Player,
     rating::GameRatingInfo,
@@ -308,24 +308,20 @@ impl GameRepository for GameRepositoryImpl {
             query = query.filter(game::Column::ExtraTimeTrigger.eq(clock_extra_trigger as i32));
         }
 
-        let count_query = query.clone();
-        let total_count: u64 = count_query
+        let total_count: u64 = query
+            .clone()
             .count(&self.db)
             .await
             .map_err(|e| ServiceError::Internal(e.to_string()))?;
 
         if let Some((sort_order, sort_by)) = filter.sort {
             query = match (sort_by, sort_order) {
-                (GameSortBy::Date, GameSortOrder::Ascending) => {
-                    query.order_by_asc(game::Column::Date)
-                }
-                (GameSortBy::Date, GameSortOrder::Descending) => {
+                (GameSortBy::Date, SortOrder::Ascending) => query.order_by_asc(game::Column::Date),
+                (GameSortBy::Date, SortOrder::Descending) => {
                     query.order_by_desc(game::Column::Date)
                 }
-                (GameSortBy::GameId, GameSortOrder::Ascending) => {
-                    query.order_by_asc(game::Column::Id)
-                }
-                (GameSortBy::GameId, GameSortOrder::Descending) => {
+                (GameSortBy::GameId, SortOrder::Ascending) => query.order_by_asc(game::Column::Id),
+                (GameSortBy::GameId, SortOrder::Descending) => {
                     query.order_by_desc(game::Column::Id)
                 }
             }

@@ -7,13 +7,13 @@ default-run = "tak-server"
 [workspace]
 resolver = "3"
 members = [
+    "api/tak-server-api",
+    "api/tak-server-http-api",
+    "domain/tak-core",
+    "domain/tak-server-domain",
     "persistence/tak-events-persistence",
     "persistence/tak-persistence-sea-orm",
     "tak-client",
-    "tak-core",
-    "tak-server-api",
-    "tak-server-domain",
-    "tak-server-http-api",
 ]
 
 [dependencies]
@@ -22,7 +22,7 @@ log = "0.4.28"
 log4rs = { version = "1.4.0", features = ["gzip"] }
 tak-events-persistence = { path = "./persistence/tak-events-persistence" }
 tak-persistence-sea-orm = { path = "./persistence/tak-persistence-sea-orm" }
-tak-server-api = { path = "./tak-server-api" }
-tak-server-domain = { path = "./tak-server-domain" }
-tak-server-http-api = { path = "./tak-server-http-api" }
+tak-server-api = { path = "./api/tak-server-api" }
+tak-server-domain = { path = "./domain/tak-server-domain" }
+tak-server-http-api = { path = "./api/tak-server-http-api" }
 tokio = { version = "1.47.1", features = ["full"] }

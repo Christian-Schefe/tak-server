@@ -82,8 +82,9 @@ impl ProtocolV2Handler {
                     username,
                     &ServerMessage::ChatMessage {
                         from: username.clone(),
-                        message: "<Server: You have been muted for inappropriate chat behavior.>"
-                            .to_string(),
+                        message:
+                            "<Server: You have been silenced for inappropriate chat behavior.>"
+                                .to_string(),
                         source: ChatMessageSource::Global,
                     },
                 )
@@ -119,8 +120,9 @@ impl ProtocolV2Handler {
                     username,
                     &ServerMessage::ChatMessage {
                         from: username.clone(),
-                        message: "<Server: You have been muted for inappropriate chat behavior.>"
-                            .to_string(),
+                        message:
+                            "<Server: You have been silenced for inappropriate chat behavior.>"
+                                .to_string(),
                         source: ChatMessageSource::Room { name: room },
                     },
                 )
@@ -153,7 +155,7 @@ impl ProtocolV2Handler {
                 target_username, sent_msg
             ))),
             Err(ServiceError::Forbidden(_)) => Ok(V2Response::Message(format!(
-                "Told <{}> <Server: You have been muted for inappropriate chat behavior.>",
+                "Told <{}> <Server: You have been silenced for inappropriate chat behavior.>",
                 target_username
             ))),
             Err(e) => Err(e),

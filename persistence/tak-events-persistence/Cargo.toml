@@ -6,4 +6,4 @@ edition = "2024"
 [dependencies]
 async-trait = "0.1.89"
 google-sheets4 = "5"
-tak-server-domain = { path = "../../tak-server-domain" }
+tak-server-domain = { path = "../../domain/tak-server-domain" }

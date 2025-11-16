@@ -29,11 +29,7 @@ impl ProtocolV2Handler {
         }
         self.transport.associate_player(id, &username).await?;
 
-        let player = self
-            .app_state
-            .player_service
-            .fetch_player_data(&username)
-            .await?;
+        let player = self.app_state.player_service.get_player(&username).await?;
 
         if player.flags.is_admin || player.flags.is_mod {
             self.send_to(id, "Is Mod");
