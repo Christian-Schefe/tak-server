@@ -3633,6 +3633,7 @@ dependencies = [
  "bcrypt",
  "chrono",
  "dotenvy",
+ "futures",
  "moka",
  "sea-orm",
  "serde",

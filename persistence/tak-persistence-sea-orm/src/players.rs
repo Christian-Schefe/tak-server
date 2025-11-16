@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
+use crate::{create_player_db_pool, entity::player};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbErr, EntityTrait,
+    PaginatorTrait, QueryFilter, QuerySelect, Set, TransactionTrait,
 };
 use tak_server_domain::{
     ServiceError, ServiceResult,
@@ -13,14 +14,12 @@ use tak_server_domain::{
     rating::PlayerRating,
 };
 
-use crate::{create_player_db_pool, entity::player};
-
-pub struct PlayerRepositoryImpl {
-    db: DatabaseConnection,
+pub struct PlayerRepositoryImpl<C> {
+    db: C,
     player_cache: Arc<moka::future::Cache<PlayerUsername, (PlayerId, Player)>>,
 }
 
-impl PlayerRepositoryImpl {
+impl PlayerRepositoryImpl<DatabaseConnection> {
     pub async fn new() -> Self {
         let db = create_player_db_pool().await;
         let player_cache = Arc::new(
@@ -31,9 +30,15 @@ impl PlayerRepositoryImpl {
         );
         Self { db, player_cache }
     }
+}
 
-    fn model_to_player(model: player::Model) -> Player {
-        Player {
+impl<C> PlayerRepositoryImpl<C>
+where
+    C: ConnectionTrait,
+{
+    fn model_to_player(model: player::Model) -> (PlayerId, Player) {
+        let id = model.id;
+        let player = Player {
             password_hash: map_string_to_option(model.password_hash),
             username: model.name,
             rating: PlayerRating {
@@ -41,7 +46,7 @@ impl PlayerRepositoryImpl {
                 boost: model.boost,
                 max_rating: model.max_rating,
                 rated_games_played: model.rated_games as u32,
-                unrated_games_played: model.unrated_games as u32,
+                is_unrated: model.is_unrated,
                 participation_rating: model.participation_rating as f64,
                 rating_age: model.rating_age,
                 fatigue: serde_json::from_str(&model.fatigue).unwrap_or_default(),
@@ -54,7 +59,8 @@ impl PlayerRepositoryImpl {
                 is_admin: model.is_admin,
                 is_banned: model.is_banned,
             },
-        }
+        };
+        (id, player)
     }
 }
 
@@ -63,7 +69,10 @@ fn map_string_to_option(s: String) -> Option<String> {
 }
 
 #[async_trait::async_trait]
-impl PlayerRepository for PlayerRepositoryImpl {
+impl<C> PlayerRepository for PlayerRepositoryImpl<C>
+where
+    C: ConnectionTrait + TransactionTrait,
+{
     async fn get_player_by_name(&self, name: &str) -> ServiceResult<Option<(PlayerId, Player)>> {
         if let Some(cached) = self.player_cache.get(name).await {
             return Ok(Some(cached));
@@ -74,10 +83,7 @@ impl PlayerRepository for PlayerRepositoryImpl {
             .one(&self.db)
             .await
             .map_err(|e| ServiceError::Internal(e.to_string()))?
-            .map(|m| {
-                let id = m.id;
-                (id, Self::model_to_player(m))
-            });
+            .map(Self::model_to_player);
 
         if let Some((id, ref player)) = model {
             self.player_cache
@@ -103,7 +109,7 @@ impl PlayerRepository for PlayerRepositoryImpl {
             rated_games: Set(player.rating.rated_games_played as i32),
             max_rating: Set(player.rating.max_rating),
             rating_age: Set(player.rating.rating_age),
-            unrated_games: Set(player.rating.unrated_games_played as i32),
+            is_unrated: Set(player.rating.is_unrated),
             is_bot: Set(player.flags.is_bot),
             fatigue: Set(serde_json::to_string(&player.rating.fatigue).unwrap()),
             is_silenced: Set(player.flags.is_silenced),
@@ -175,6 +181,44 @@ impl PlayerRepository for PlayerRepositoryImpl {
 
         self.player_cache.invalidate(&username).await;
 
+        Ok(())
+    }
+
+    async fn update_ratings(&self, items: Vec<(PlayerId, PlayerRating)>) -> ServiceResult<()> {
+        let usernames = self
+            .db
+            .transaction::<_, _, DbErr>(|tx| {
+                Box::pin(async move {
+                    let mut usernames = Vec::new();
+                    for (id, rating) in items {
+                        let player = player::Entity::find_by_id(id)
+                            .one(tx)
+                            .await?
+                            .ok_or_else(|| DbErr::Custom("Player not found".to_string()))?;
+
+                        usernames.push(player.name.clone());
+                        let mut player: player::ActiveModel = player.into();
+
+                        player.rating = Set(rating.rating);
+                        player.boost = Set(rating.boost);
+                        player.max_rating = Set(rating.max_rating);
+                        player.rated_games = Set(rating.rated_games_played as i32);
+                        player.is_unrated = Set(rating.is_unrated);
+                        player.participation_rating = Set(rating.participation_rating as i32);
+                        player.rating_age = Set(rating.rating_age);
+                        player.fatigue = Set(serde_json::to_string(&rating.fatigue).unwrap());
+
+                        player.update(tx).await?;
+                    }
+                    Ok(usernames)
+                })
+            })
+            .await
+            .map_err(|e| ServiceError::Internal(e.to_string()))?;
+
+        for username in usernames {
+            self.player_cache.invalidate(&username).await;
+        }
         Ok(())
     }
 

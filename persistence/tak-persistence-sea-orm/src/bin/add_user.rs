@@ -57,7 +57,7 @@ async fn create_user(
         rated_games: Set(0),
         max_rating: Set(1000.0),
         rating_age: Set(0.0),
-        unrated_games: Set(0),
+        is_unrated: Set(false),
         is_bot: Set(false),
         fatigue: Set("{}".to_string()),
         is_admin: Set(is_admin),

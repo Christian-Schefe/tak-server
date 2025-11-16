@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, PaginatorTrait,
+    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
 };
 use serde::Deserialize;
 use tak_core::{
@@ -60,18 +60,17 @@ impl GameRepositoryImpl {
     }
 
     fn model_to_game(model: &game::Model) -> GameRecord {
-        let rating_info = if let Some(rating_change_white) = model.rating_change_white
-            && let Some(rating_change_black) = model.rating_change_black
-        {
-            Some(GameRatingInfo {
-                rating_white: model.rating_white,
-                rating_black: model.rating_black,
-                rating_change_white,
-                rating_change_black,
-            })
-        } else {
-            None
-        };
+        let rating_info = Some(GameRatingInfo {
+            rating_white: model.rating_white,
+            rating_black: model.rating_black,
+            rating_change: if let Some(rating_change_white) = model.rating_change_white
+                && let Some(rating_change_black) = model.rating_change_black
+            {
+                Some((rating_change_white, rating_change_black))
+            } else {
+                None
+            },
+        });
         let time_control = TakTimeControl {
             contingent: Duration::from_secs(model.clock_contingent as u64),
             increment: Duration::from_secs(model.clock_increment as u64),
@@ -200,23 +199,34 @@ impl GameRepository for GameRepositoryImpl {
         Ok(())
     }
 
-    async fn update_game_rating(&self, id: GameId, update: &GameRatingUpdate) -> ServiceResult<()> {
-        let game = game::Entity::find_by_id(id)
-            .one(&self.db)
-            .await
-            .map_err(|e| ServiceError::Internal(e.to_string()))?
-            .ok_or_else(|| ServiceError::Internal("Game not found".to_string()))?;
+    async fn update_game_ratings(
+        &self,
+        items: Vec<(GameId, GameRatingUpdate)>,
+    ) -> ServiceResult<()> {
+        self.db
+            .transaction::<_, _, DbErr>(|tx| {
+                Box::pin(async move {
+                    for (id, update) in items {
+                        let game = game::Entity::find_by_id(id)
+                            .one(tx)
+                            .await?
+                            .ok_or_else(|| DbErr::Custom("Game not found".to_string()))?;
 
-        let mut game: game::ActiveModel = game.into();
-        game.rating_white = Set(update.rating_info.rating_white);
-        game.rating_black = Set(update.rating_info.rating_black);
-        game.rating_change_white = Set(Some(update.rating_info.rating_change_white));
-        game.rating_change_black = Set(Some(update.rating_info.rating_change_black));
+                        let mut game: game::ActiveModel = game.into();
+                        game.rating_white = Set(update.rating_info.rating_white);
+                        game.rating_black = Set(update.rating_info.rating_black);
+                        game.rating_change_white =
+                            Set(update.rating_info.rating_change.map(|(white, _)| white));
+                        game.rating_change_black =
+                            Set(update.rating_info.rating_change.map(|(_, black)| black));
 
-        game.update(&self.db)
+                        game.update(tx).await?;
+                    }
+                    Ok(())
+                })
+            })
             .await
             .map_err(|e| ServiceError::Internal(e.to_string()))?;
-
         Ok(())
     }
 

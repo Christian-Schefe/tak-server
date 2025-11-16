@@ -443,11 +443,13 @@ impl JsonGameRecord {
             rating_change_white: record
                 .rating_info
                 .as_ref()
-                .map_or(0.0, |info| info.rating_change_white),
+                .and_then(|x| x.rating_change.as_ref())
+                .map_or(0.0, |(white, _)| *white),
             rating_change_black: record
                 .rating_info
                 .as_ref()
-                .map_or(0.0, |info| info.rating_change_black),
+                .and_then(|x| x.rating_change.as_ref())
+                .map_or(0.0, |(_, black)| *black),
             extra_time_amount: record
                 .settings
                 .time_control

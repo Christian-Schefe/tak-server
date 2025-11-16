@@ -101,7 +101,7 @@ pub struct PlayerFilter {
 
 pub struct PlayerFilterResult {
     pub total_count: usize,
-    pub players: Vec<Player>,
+    pub players: Vec<(PlayerId, Player)>,
 }
 
 #[derive(Clone, Debug)]
@@ -119,6 +119,7 @@ pub trait PlayerRepository {
     async fn create_player(&self, player: &Player) -> ServiceResult<()>;
     async fn update_password(&self, id: PlayerId, password: String) -> ServiceResult<()>;
     async fn update_flags(&self, id: PlayerId, flags: &PlayerFlagsUpdate) -> ServiceResult<()>;
+    async fn update_ratings(&self, items: Vec<(PlayerId, PlayerRating)>) -> ServiceResult<()>;
     async fn get_players(&self, filter: PlayerFilter) -> ServiceResult<PlayerFilterResult>;
     async fn get_player_names(&self) -> ServiceResult<Vec<String>>;
 }

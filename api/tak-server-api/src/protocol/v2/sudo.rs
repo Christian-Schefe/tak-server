@@ -210,12 +210,12 @@ impl ProtocolV2Handler {
             }
         };
 
-        let players: Vec<Player> = player_service.get_players(player_filter).await?.players;
+        let players: Vec<(_, Player)> = player_service.get_players(player_filter).await?.players;
         let response = format!(
             "[{}]",
             players
                 .into_iter()
-                .map(|p| p.username)
+                .map(|(_, p)| p.username)
                 .collect::<Vec<_>>()
                 .join(", ")
         );

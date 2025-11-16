@@ -94,7 +94,7 @@ pub async fn get_ratings(
     let ratings: Vec<JsonPlayerRatingResponse> = res
         .players
         .into_iter()
-        .map(|player| JsonPlayerRatingResponse {
+        .map(|(_, player)| JsonPlayerRatingResponse {
             name: player.username.clone(),
             rating: player.rating.rating,
             ratedgames: player.rating.rated_games_played as i32,

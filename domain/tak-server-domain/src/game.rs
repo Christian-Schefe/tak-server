@@ -79,10 +79,9 @@ pub trait GameRepository {
         player_black: &Player,
     ) -> ServiceResult<GameId>;
     async fn update_game_result(&self, id: GameId, update: &GameResultUpdate) -> ServiceResult<()>;
-    async fn update_game_rating(
+    async fn update_game_ratings(
         &self,
-        id: GameId,
-        rating_update: &GameRatingUpdate,
+        items: Vec<(GameId, GameRatingUpdate)>,
     ) -> ServiceResult<()>;
     async fn get_game_record(&self, id: GameId) -> ServiceResult<Option<GameRecord>>;
     async fn get_games(&self, filter: GameFilter) -> ServiceResult<GameFilterResult>;
