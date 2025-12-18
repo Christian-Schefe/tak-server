@@ -9,7 +9,7 @@ resolver = "3"
 members = [
     "api/tak-server-api",
     "api/tak-server-http-api",
-    "domain/tak-core",
+    "domain/tak-core", "domain/tak-server-app",
     "domain/tak-server-domain",
     "persistence/tak-events-persistence",
     "persistence/tak-persistence-sea-orm",

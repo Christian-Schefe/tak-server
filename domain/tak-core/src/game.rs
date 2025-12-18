@@ -180,6 +180,10 @@ impl TakGame {
         }
     }
 
+    pub fn current_player(&self) -> TakPlayer {
+        self.base.current_player
+    }
+
     pub fn is_ongoing(&self) -> bool {
         self.base.game_state == TakGameState::Ongoing
     }

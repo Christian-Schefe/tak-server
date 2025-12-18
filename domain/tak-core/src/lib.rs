@@ -6,7 +6,7 @@ use std::time::Duration;
 
 pub use game::TakGame;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TakPlayer {
     White,
     Black,
