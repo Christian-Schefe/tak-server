@@ -7,10 +7,9 @@ use crate::domain::{GameId, GameType, PlayerId, SeekId, seek::Seek};
 pub mod accept;
 pub mod cancel;
 pub mod create;
-pub mod event;
 pub mod get;
 pub mod list;
-pub mod notify;
+pub mod notify_seek;
 
 #[derive(Debug)]
 pub struct SeekView {

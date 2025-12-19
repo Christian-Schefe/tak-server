@@ -4,13 +4,13 @@ use tak_core::TakGame;
 
 use crate::domain::{GameId, GameType, PlayerId, game::Game};
 
-mod do_move;
-mod get;
-mod list;
-mod observe;
-mod request_draw;
-mod request_undo;
-mod resign;
+pub mod do_action;
+pub mod get;
+pub mod list;
+pub mod observe;
+pub mod offer_draw;
+pub mod request_undo;
+pub mod resign;
 
 #[derive(Clone, Debug)]
 pub struct GameView {
@@ -21,11 +21,11 @@ pub struct GameView {
     pub game_type: GameType,
 }
 
-impl<T: Borrow<Game>> From<T> for GameView {
-    fn from(game: T) -> Self {
+impl GameView {
+    fn from(id: GameId, game: impl Borrow<Game>) -> Self {
         let game = game.borrow();
         GameView {
-            id: game.id,
+            id,
             white: game.white,
             black: game.black,
             game: game.game.clone(),

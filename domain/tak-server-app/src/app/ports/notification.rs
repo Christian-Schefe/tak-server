@@ -1,4 +1,9 @@
-use crate::{app::matchmaking::SeekView, domain::ListenerId};
+use tak_core::TakActionRecord;
+
+use crate::{
+    app::matchmaking::SeekView,
+    domain::{GameId, ListenerId, PlayerId},
+};
 
 pub trait ListenerNotificationPort {
     fn notify_listener(&self, listener: ListenerId, message: ListenerMessage);
@@ -7,6 +12,17 @@ pub trait ListenerNotificationPort {
 }
 
 pub enum ListenerMessage {
-    SeekCreated { seek: SeekView },
-    SeekCanceled { seek: SeekView },
+    SeekCreated {
+        seek: SeekView,
+    },
+    SeekCanceled {
+        seek: SeekView,
+    },
+    PlayersOnline {
+        players: Vec<PlayerId>,
+    },
+    GameAction {
+        game_id: GameId,
+        action: TakActionRecord,
+    },
 }

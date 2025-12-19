@@ -1,20 +1,23 @@
 use std::sync::Arc;
 
 use crate::{
-    app::matchmaking::event::SeekEventDispatcher,
-    domain::{PlayerId, seek::SeekService},
+    app::event::EventDispatcher,
+    domain::{
+        PlayerId,
+        seek::{SeekEvent, SeekService},
+    },
 };
 
 pub trait CancelSeekUseCase {
     fn cancel_seek(&self, player: PlayerId);
 }
 
-pub struct CancelSeekUseCaseImpl<S: SeekService, SD: SeekEventDispatcher> {
+pub struct CancelSeekUseCaseImpl<S: SeekService, SD: EventDispatcher<SeekEvent>> {
     seek_service: Arc<S>,
     seek_event_dispatcher: Arc<SD>,
 }
 
-impl<S: SeekService, SD: SeekEventDispatcher> CancelSeekUseCaseImpl<S, SD> {
+impl<S: SeekService, SD: EventDispatcher<SeekEvent>> CancelSeekUseCaseImpl<S, SD> {
     pub fn new(seek_service: Arc<S>, seek_event_dispatcher: Arc<SD>) -> Self {
         Self {
             seek_service,
@@ -23,7 +26,9 @@ impl<S: SeekService, SD: SeekEventDispatcher> CancelSeekUseCaseImpl<S, SD> {
     }
 }
 
-impl<S: SeekService, SD: SeekEventDispatcher> CancelSeekUseCase for CancelSeekUseCaseImpl<S, SD> {
+impl<S: SeekService, SD: EventDispatcher<SeekEvent>> CancelSeekUseCase
+    for CancelSeekUseCaseImpl<S, SD>
+{
     fn cancel_seek(&self, player: PlayerId) {
         if let Some(seek_id) = self.seek_service.get_seek_by_player(player) {
             self.seek_service.cancel_seek(seek_id);

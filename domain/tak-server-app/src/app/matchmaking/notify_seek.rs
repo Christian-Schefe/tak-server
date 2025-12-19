@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     app::{
-        matchmaking::event::SeekEventListener,
+        event::EventListener,
         ports::notification::{ListenerMessage, ListenerNotificationPort},
     },
     domain::seek::SeekEvent,
@@ -18,8 +18,8 @@ impl<L: ListenerNotificationPort> SeekEventNotifier<L> {
     }
 }
 
-impl<L: ListenerNotificationPort> SeekEventListener for SeekEventNotifier<L> {
-    fn on_seek_event(&self, seek_event: &SeekEvent) {
+impl<L: ListenerNotificationPort> EventListener<SeekEvent> for SeekEventNotifier<L> {
+    fn on_event(&self, seek_event: &SeekEvent) {
         let message = match seek_event {
             SeekEvent::Created(seek) => ListenerMessage::SeekCreated { seek: seek.into() },
             SeekEvent::Canceled(seek) => ListenerMessage::SeekCanceled { seek: seek.into() },

@@ -1,21 +1,27 @@
 use std::sync::Arc;
 
 use crate::{
-    app::matchmaking::event::SeekEventDispatcher,
-    domain::{PlayerId, SeekId, game::GameService, seek::SeekService},
+    app::event::EventDispatcher,
+    domain::{
+        PlayerId, SeekId,
+        game::GameService,
+        seek::{SeekEvent, SeekService},
+    },
 };
 
 pub trait AcceptSeekUseCase {
     fn accept_seek(&self, player: PlayerId, seek_id: SeekId) -> Result<(), AcceptSeekError>;
 }
 
-pub struct AcceptSeekUseCaseImpl<S: SeekService, SD: SeekEventDispatcher, G: GameService> {
+pub struct AcceptSeekUseCaseImpl<S: SeekService, SD: EventDispatcher<SeekEvent>, G: GameService> {
     seek_service: Arc<S>,
     seek_event_dispatcher: Arc<SD>,
     game_service: Arc<G>,
 }
 
-impl<S: SeekService, SD: SeekEventDispatcher, G: GameService> AcceptSeekUseCaseImpl<S, SD, G> {
+impl<S: SeekService, SD: EventDispatcher<SeekEvent>, G: GameService>
+    AcceptSeekUseCaseImpl<S, SD, G>
+{
     pub fn new(seek_service: Arc<S>, seek_event_dispatcher: Arc<SD>, game_service: Arc<G>) -> Self {
         Self {
             seek_service,
@@ -31,7 +37,7 @@ pub enum AcceptSeekError {
     InvalidSeek,
 }
 
-impl<S: SeekService, SD: SeekEventDispatcher, G: GameService> AcceptSeekUseCase
+impl<S: SeekService, SD: EventDispatcher<SeekEvent>, G: GameService> AcceptSeekUseCase
     for AcceptSeekUseCaseImpl<S, SD, G>
 {
     fn accept_seek(&self, player: PlayerId, seek_id: SeekId) -> Result<(), AcceptSeekError> {

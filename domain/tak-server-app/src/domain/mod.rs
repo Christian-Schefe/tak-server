@@ -1,5 +1,7 @@
 pub mod game;
+pub mod player;
 pub mod seek;
+pub mod spectator;
 
 pub type PlayerId = uuid::Uuid;
 pub type SeekId = u32;

@@ -3,8 +3,11 @@ use std::sync::Arc;
 use tak_core::{TakGameSettings, TakPlayer};
 
 use crate::{
-    app::matchmaking::{GameType, event::SeekEventDispatcher},
-    domain::{PlayerId, seek::SeekService},
+    app::{event::EventDispatcher, matchmaking::GameType},
+    domain::{
+        PlayerId,
+        seek::{SeekEvent, SeekService},
+    },
 };
 
 pub trait CreateSeekUseCase {
@@ -18,12 +21,12 @@ pub trait CreateSeekUseCase {
     ) -> Result<(), CreateSeekError>;
 }
 
-pub struct CreateSeekUseCaseImpl<S: SeekService, SD: SeekEventDispatcher> {
+pub struct CreateSeekUseCaseImpl<S: SeekService, SD: EventDispatcher<SeekEvent>> {
     seek_service: Arc<S>,
     seek_event_dispatcher: Arc<SD>,
 }
 
-impl<S: SeekService, SD: SeekEventDispatcher> CreateSeekUseCaseImpl<S, SD> {
+impl<S: SeekService, SD: EventDispatcher<SeekEvent>> CreateSeekUseCaseImpl<S, SD> {
     pub fn new(seek_service: Arc<S>, seek_event_dispatcher: Arc<SD>) -> Self {
         Self {
             seek_service,
@@ -37,7 +40,9 @@ pub enum CreateSeekError {
     InvalidOpponent,
 }
 
-impl<S: SeekService, SD: SeekEventDispatcher> CreateSeekUseCase for CreateSeekUseCaseImpl<S, SD> {
+impl<S: SeekService, SD: EventDispatcher<SeekEvent>> CreateSeekUseCase
+    for CreateSeekUseCaseImpl<S, SD>
+{
     fn create_seek(
         &self,
         player: PlayerId,
