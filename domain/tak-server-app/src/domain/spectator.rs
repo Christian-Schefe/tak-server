@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
-use crate::{
-    domain::{GameId, ListenerId},
-    util::ManyManyDashMap,
-};
+use more_dashmap::many_many::ManyManyDashMap;
+
+use crate::domain::{GameId, ListenerId};
 
 pub trait SpectatorService {
     fn observe_game(&self, game_id: GameId, listener_id: ListenerId);

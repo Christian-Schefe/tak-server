@@ -25,4 +25,21 @@ pub enum ListenerMessage {
         game_id: GameId,
         action: TakActionRecord,
     },
+    GameDrawOffered {
+        game_id: GameId,
+    },
+    GameUndoRequested {
+        game_id: GameId,
+    },
+    ChatMessage {
+        from_player_id: PlayerId,
+        message: String,
+        source: ChatMessageSource,
+    },
+}
+
+pub enum ChatMessageSource {
+    Private,
+    Global,
+    Room(String),
 }

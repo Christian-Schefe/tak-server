@@ -67,7 +67,7 @@ impl SeekServiceImpl {
             seeks: Arc::new(DashMap::new()),
             seeks_by_player: Arc::new(DashMap::new()),
             rematch_seeks: Arc::new(DashMap::new()),
-            next_seek_id: Arc::new(Mutex::new(0)),
+            next_seek_id: Arc::new(Mutex::new(SeekId(0))),
             events: Arc::new(Mutex::new(Vec::new())),
         }
     }
@@ -75,7 +75,7 @@ impl SeekServiceImpl {
     fn increment_seek_id(&self) -> SeekId {
         let mut id_lock = self.next_seek_id.lock().unwrap();
         let seek_id = *id_lock;
-        *id_lock += 1;
+        id_lock.0 += 1;
         seek_id
     }
 

@@ -5,12 +5,10 @@ use tak_core::TakGame;
 use crate::domain::{GameId, GameType, PlayerId, game::Game};
 
 pub mod do_action;
+pub mod finalize_game;
 pub mod get;
 pub mod list;
 pub mod observe;
-pub mod offer_draw;
-pub mod request_undo;
-pub mod resign;
 
 #[derive(Clone, Debug)]
 pub struct GameView {

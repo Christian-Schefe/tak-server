@@ -10,7 +10,7 @@ members = [
     "api/tak-server-api",
     "api/tak-server-http-api",
     "domain/tak-core", "domain/tak-server-app",
-    "domain/tak-server-domain",
+    "domain/tak-server-domain", "more-dashmap",
     "persistence/tak-events-persistence",
     "persistence/tak-persistence-sea-orm",
     "tak-client",

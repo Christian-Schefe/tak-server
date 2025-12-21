@@ -1,6 +1,5 @@
 use std::sync::{Arc, Mutex};
 
-use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use tak_core::{TakAction, TakActionRecord, TakGame, TakGameSettings, TakGameState, TakPlayer};
 
@@ -14,6 +13,18 @@ pub struct Game {
     pub game_type: GameType,
 }
 
+impl Game {
+    pub fn get_opponent(&self, player: PlayerId) -> Option<PlayerId> {
+        if player == self.white {
+            Some(self.black)
+        } else if player == self.black {
+            Some(self.white)
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct FinishedGame {
     pub white: PlayerId,
@@ -24,24 +35,6 @@ pub struct FinishedGame {
     pub moves: Vec<TakActionRecord>,
 }
 
-pub struct GameRecord {
-    pub date: DateTime<Utc>,
-    pub white: PlayerId,
-    pub black: PlayerId,
-    pub rating_info: Option<GameRatingInfo>,
-    pub settings: TakGameSettings,
-    pub game_type: GameType,
-    pub result: TakGameState,
-    pub moves: Vec<TakActionRecord>,
-}
-
-pub struct GameRatingInfo {
-    pub white_rating: i32,
-    pub black_rating: i32,
-    pub rating_change_white: i32,
-    pub rating_change_black: i32,
-}
-
 pub trait GameService {
     fn create_game(
         &self,
@@ -50,10 +43,9 @@ pub trait GameService {
         color: Option<TakPlayer>,
         game_type: GameType,
         game_settings: TakGameSettings,
-    ) -> Result<GameId, CreateGameError>;
+    ) -> Result<(GameId, Game), CreateGameError>;
     fn get_game_by_id(&self, game_id: GameId) -> Option<Game>;
     fn get_games(&self) -> Vec<(GameId, Game)>;
-    fn get_game_of_player(&self, player: PlayerId) -> Option<GameId>;
     fn do_action(
         &self,
         game_id: GameId,
@@ -63,26 +55,19 @@ pub trait GameService {
     fn resign(&self, game_id: GameId, player: PlayerId) -> Result<(), ResignError>;
     fn request_undo(&self, game_id: GameId, player: PlayerId) -> Result<bool, RequestUndoError>;
     fn offer_draw(&self, game_id: GameId, player: PlayerId) -> Result<bool, OfferDrawError>;
-    fn finalize_game(&self, game_id: GameId, rating_info: GameRatingInfo);
     fn take_events(&self) -> Vec<GameEvent>;
 }
 
-pub trait GameRepository {
-    fn get_next_game_id(&self, game: GameRecord) -> GameId;
-    fn save_finished_game(&self, game_id: GameId, game: FinishedGame, rating_info: GameRatingInfo);
-}
-
 pub enum GameEvent {
-    Started(Game),
+    Started(GameId, Game),
     MovePlayed(GameId, TakActionRecord),
     MoveUndone(GameId),
-    Ended(Game),
+    Ended(GameId, FinishedGame),
 }
 
 pub enum CreateGameError {
     InvalidSettings,
     InvalidPlayers,
-    PlayerInGame,
 }
 
 pub enum DoActionError {
@@ -109,22 +94,18 @@ pub enum RequestUndoError {
     InvalidRequest,
 }
 
-pub struct GameServiceImpl<G: GameRepository> {
-    repository: Arc<G>,
+pub struct GameServiceImpl {
     games: Arc<DashMap<GameId, Game>>,
-    game_by_player: Arc<DashMap<PlayerId, GameId>>,
-    ended_games: Arc<DashMap<GameId, FinishedGame>>,
     events: Arc<Mutex<Vec<GameEvent>>>,
+    next_game_id: Arc<Mutex<GameId>>,
 }
 
-impl<G: GameRepository> GameServiceImpl<G> {
-    pub fn new(repository: Arc<G>) -> Self {
+impl GameServiceImpl {
+    pub fn new() -> Self {
         Self {
-            repository,
             games: Arc::new(DashMap::new()),
-            game_by_player: Arc::new(DashMap::new()),
-            ended_games: Arc::new(DashMap::new()),
             events: Arc::new(Mutex::new(Vec::new())),
+            next_game_id: Arc::new(Mutex::new(GameId(0))),
         }
     }
 
@@ -133,22 +114,25 @@ impl<G: GameRepository> GameServiceImpl<G> {
         events.push(event);
     }
 
+    fn increment_game_id(&self) -> GameId {
+        let mut id_lock = self.next_game_id.lock().unwrap();
+        let game_id = *id_lock;
+        id_lock.0 += 1;
+        game_id
+    }
+
     fn handle_maybe_game_over(&self, game_id: GameId) {
         if let Some(ended_game) = self
             .with_game(game_id, |game_entry| {
                 if !game_entry.game.is_ongoing() {
-                    self.add_event(GameEvent::Ended(game_entry.clone()));
-                    self.game_by_player.remove(&game_entry.white);
-                    self.game_by_player.remove(&game_entry.black);
-                    let ended_game = FinishedGame {
+                    Some(FinishedGame {
                         white: game_entry.white,
                         black: game_entry.black,
                         settings: game_entry.game.base.settings.clone(),
                         game_type: game_entry.game_type.clone(),
                         result: game_entry.game.base.game_state.clone(),
                         moves: game_entry.game.action_history.clone(),
-                    };
-                    Some(ended_game)
+                    })
                 } else {
                     None
                 }
@@ -156,7 +140,7 @@ impl<G: GameRepository> GameServiceImpl<G> {
             .flatten()
         {
             self.games.remove(&game_id);
-            self.ended_games.insert(game_id, ended_game);
+            self.add_event(GameEvent::Ended(game_id, ended_game));
         }
     }
 
@@ -168,7 +152,7 @@ impl<G: GameRepository> GameServiceImpl<G> {
     }
 }
 
-impl<G: GameRepository> GameService for GameServiceImpl<G> {
+impl GameService for GameServiceImpl {
     fn create_game(
         &self,
         player1: PlayerId,
@@ -176,18 +160,14 @@ impl<G: GameRepository> GameService for GameServiceImpl<G> {
         color: Option<TakPlayer>,
         game_type: GameType,
         game_settings: TakGameSettings,
-    ) -> Result<GameId, CreateGameError> {
+    ) -> Result<(GameId, Game), CreateGameError> {
         if !game_settings.is_valid() {
             return Err(CreateGameError::InvalidSettings);
         }
         if player1 == player2 {
             return Err(CreateGameError::InvalidPlayers);
         }
-        if self.game_by_player.contains_key(&player1) || self.game_by_player.contains_key(&player2)
-        {
-            return Err(CreateGameError::PlayerInGame);
-        }
-        let game = TakGame::new(game_settings.clone());
+
         let (white, black) = match color {
             Some(TakPlayer::White) => (player1, player2),
             Some(TakPlayer::Black) => (player2, player1),
@@ -199,31 +179,19 @@ impl<G: GameRepository> GameService for GameServiceImpl<G> {
                 }
             }
         };
-        let game_record = GameRecord {
-            date: Utc::now(),
-            white,
-            black,
-            rating_info: None,
-            settings: game_settings,
-            game_type: game_type.clone(),
-            result: TakGameState::Ongoing,
-            moves: vec![],
-        };
+        let game = TakGame::new(game_settings.clone());
 
-        let game_id = self.repository.get_next_game_id(game_record);
         let game_struct = Game {
             white,
             black,
             game,
             game_type,
         };
+        let game_id = self.increment_game_id();
         self.games.insert(game_id, game_struct.clone());
-        self.game_by_player.insert(white, game_id);
-        self.game_by_player.insert(black, game_id);
 
-        self.add_event(GameEvent::Started(game_struct));
-
-        Ok(game_id)
+        self.add_event(GameEvent::Started(game_id, game_struct.clone()));
+        Ok((game_id, game_struct))
     }
 
     fn get_game_by_id(&self, game_id: GameId) -> Option<Game> {
@@ -235,10 +203,6 @@ impl<G: GameRepository> GameService for GameServiceImpl<G> {
             .iter()
             .map(|entry| (*entry.key(), entry.clone()))
             .collect()
-    }
-
-    fn get_game_of_player(&self, player: PlayerId) -> Option<GameId> {
-        Some(self.game_by_player.get(&player)?.clone())
     }
 
     fn do_action(
@@ -346,13 +310,6 @@ impl<G: GameRepository> GameService for GameServiceImpl<G> {
         self.handle_maybe_game_over(game_id);
 
         Ok(did_undo)
-    }
-
-    fn finalize_game(&self, game_id: GameId, rating_info: GameRatingInfo) {
-        if let Some((_, ended_game)) = self.ended_games.remove(&game_id) {
-            self.repository
-                .save_finished_game(game_id, ended_game, rating_info);
-        }
     }
 
     fn take_events(&self) -> Vec<GameEvent> {

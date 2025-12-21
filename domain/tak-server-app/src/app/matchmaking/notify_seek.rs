@@ -1,11 +1,9 @@
 use std::sync::Arc;
 
 use crate::{
-    app::{
-        event::EventListener,
-        ports::notification::{ListenerMessage, ListenerNotificationPort},
-    },
+    app::event::EventListener,
     domain::seek::SeekEvent,
+    ports::notification::{ListenerMessage, ListenerNotificationPort},
 };
 
 pub struct SeekEventNotifier<L: ListenerNotificationPort> {
