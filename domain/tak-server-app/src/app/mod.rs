@@ -2,8 +2,14 @@ use std::sync::Arc;
 
 use crate::{
     app::{
+        account::{
+            ban::{BanAccountUseCase, BanAccountUseCaseImpl},
+            login::{LoginAccountUseCase, LoginAccountUseCaseImpl},
+            register::{RegisterAccountUseCase, RegisterAccountUseCaseImpl},
+        },
         chat::message::{ChatMessageUseCase, ChatMessageUseCaseImpl},
         event::{EventDispatcher, InMemoryEventDispatcher},
+        events::list::{ListEventsUseCase, ListEventsUseCaseImpl},
         gameplay::{
             do_action::{DoActionUseCase, DoActionUseCaseImpl},
             finalize_game::FinalizeGameListener,
@@ -24,8 +30,9 @@ use crate::{
         },
     },
     domain::{
-        account::AccountRepository,
+        account::{AccountFactoryImpl, AccountRepository},
         chat::{ChatRoomServiceImpl, RustrictContentPolicy},
+        event::EventRepository,
         game::GameServiceImpl,
         game_history::{GameHistoryServiceImpl, GameRepository},
         player::PlayerServiceImpl,
@@ -33,11 +40,16 @@ use crate::{
         seek::SeekServiceImpl,
         spectator::SpectatorServiceImpl,
     },
-    ports::{connection::PlayerConnectionPort, notification::ListenerNotificationPort},
+    ports::{
+        authentication::AuthenticationService, connection::PlayerConnectionPort,
+        contact::ContactRepository, email::EmailPort, notification::ListenerNotificationPort,
+    },
 };
 
+pub mod account;
 pub mod chat;
 mod event;
+pub mod events;
 pub mod gameplay;
 pub mod matchmaking;
 pub mod player;
@@ -56,6 +68,12 @@ pub struct Application {
     pub game_list_ongoing_use_case: Box<dyn ListOngoingGameUseCase>,
 
     pub chat_message_use_case: Box<dyn ChatMessageUseCase>,
+
+    pub account_register_use_case: Box<dyn RegisterAccountUseCase>,
+    pub account_login_use_case: Box<dyn LoginAccountUseCase>,
+    pub account_ban_use_case: Box<dyn BanAccountUseCase>,
+
+    pub event_list_use_case: Box<dyn ListEventsUseCase>,
 }
 
 pub fn build_application<
@@ -64,12 +82,20 @@ pub fn build_application<
     G: GameRepository + 'static,
     A: AccountRepository + 'static,
     R: RatingRepository + 'static,
+    AS: AuthenticationService + 'static,
+    CR: ContactRepository + 'static,
+    E: EmailPort + 'static,
+    ER: EventRepository + 'static,
 >(
     listener_notification_port: Arc<L>,
     player_connection_port: Arc<C>,
     game_repository: Arc<G>,
     account_repository: Arc<A>,
     rating_repository: Arc<R>,
+    authentication_service: Arc<AS>,
+    contact_repository: Arc<CR>,
+    email_port: Arc<E>,
+    event_repository: Arc<ER>,
 ) -> Application {
     let seek_service = Arc::new(SeekServiceImpl::new());
     let game_service = Arc::new(GameServiceImpl::new());
@@ -78,7 +104,7 @@ pub fn build_application<
     let chat_room_service = Arc::new(ChatRoomServiceImpl::new());
     let game_history_service = Arc::new(GameHistoryServiceImpl::new());
     let rating_service = Arc::new(RatingServiceImpl::new());
-
+    let account_factory = Arc::new(AccountFactoryImpl::new());
     let chat_content_policy = Arc::new(RustrictContentPolicy::new());
 
     let mut seek_event_dispatcher = InMemoryEventDispatcher::new();
@@ -126,6 +152,8 @@ pub fn build_application<
             player_service.clone(),
             player_event_dispatcher.clone(),
             spectator_service.clone(),
+            player_connection_port.clone(),
+            chat_room_service.clone(),
         )),
 
         game_do_action_use_case: Box::new(DoActionUseCaseImpl::new(
@@ -136,6 +164,7 @@ pub fn build_application<
         )),
         game_get_ongoing_use_case: Box::new(GetOngoingGameUseCaseImpl::new(game_service.clone())),
         game_list_ongoing_use_case: Box::new(ListOngoingGameUseCaseImpl::new(game_service.clone())),
+
         chat_message_use_case: Box::new(ChatMessageUseCaseImpl::new(
             listener_notification_port.clone(),
             player_connection_port.clone(),
@@ -143,6 +172,24 @@ pub fn build_application<
             chat_content_policy.clone(),
             account_repository.clone(),
         )),
+
+        account_register_use_case: Box::new(RegisterAccountUseCaseImpl::new(
+            account_factory.clone(),
+            account_repository.clone(),
+            authentication_service.clone(),
+            contact_repository.clone(),
+        )),
+        account_login_use_case: Box::new(LoginAccountUseCaseImpl::new(
+            authentication_service.clone(),
+            account_repository.clone(),
+        )),
+        account_ban_use_case: Box::new(BanAccountUseCaseImpl::new(
+            account_repository.clone(),
+            contact_repository.clone(),
+            email_port.clone(),
+        )),
+
+        event_list_use_case: Box::new(ListEventsUseCaseImpl::new(event_repository.clone())),
     };
 
     application

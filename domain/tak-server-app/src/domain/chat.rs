@@ -3,17 +3,17 @@ use std::sync::Arc;
 use more_dashmap::many_many::ManyManyDashMap;
 use rustrict::CensorStr;
 
-use crate::domain::PlayerId;
+use crate::domain::ListenerId;
 
 pub trait ChatRoomService {
-    fn add_player_to_room(&self, room_name: String, player_id: PlayerId);
-    fn remove_player_from_room(&self, room_name: String, player_id: PlayerId);
-    fn remove_player_from_all_rooms(&self, player_id: PlayerId);
-    fn get_players_in_room(&self, room_name: &String) -> Vec<PlayerId>;
+    fn join_room(&self, room_name: &String, listener_id: ListenerId);
+    fn leave_room(&self, room_name: &String, listener_id: ListenerId);
+    fn leave_all_rooms(&self, listener_id: ListenerId);
+    fn get_listeners_in_room(&self, room_name: &String) -> Vec<ListenerId>;
 }
 
 pub struct ChatRoomServiceImpl {
-    rooms: Arc<ManyManyDashMap<String, PlayerId>>,
+    rooms: Arc<ManyManyDashMap<String, ListenerId>>,
 }
 
 impl ChatRoomServiceImpl {
@@ -25,19 +25,19 @@ impl ChatRoomServiceImpl {
 }
 
 impl ChatRoomService for ChatRoomServiceImpl {
-    fn add_player_to_room(&self, room_name: String, player_id: PlayerId) {
-        self.rooms.insert(room_name, player_id);
+    fn join_room(&self, room_name: &String, listener_id: ListenerId) {
+        self.rooms.insert(room_name.to_string(), listener_id);
     }
 
-    fn remove_player_from_room(&self, room_name: String, player_id: PlayerId) {
-        self.rooms.remove(&room_name, &player_id);
+    fn leave_room(&self, room_name: &String, listener_id: ListenerId) {
+        self.rooms.remove(room_name, &listener_id);
     }
 
-    fn remove_player_from_all_rooms(&self, player_id: PlayerId) {
-        self.rooms.remove_value(&player_id);
+    fn leave_all_rooms(&self, listener_id: ListenerId) {
+        self.rooms.remove_value(&listener_id);
     }
 
-    fn get_players_in_room(&self, room_name: &String) -> Vec<PlayerId> {
+    fn get_listeners_in_room(&self, room_name: &String) -> Vec<ListenerId> {
         self.rooms.get_by_key(room_name)
     }
 }

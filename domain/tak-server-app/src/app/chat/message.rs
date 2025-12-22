@@ -62,7 +62,11 @@ impl<
     }
 
     fn filter_message(&self, player_id: PlayerId, message: String) -> Option<String> {
-        if self.account_repo.is_player_silenced(player_id) {
+        if self
+            .account_repo
+            .get_account(player_id)
+            .is_some_and(|acc| acc.is_silenced)
+        {
             return None;
         }
         let filtered_message = self.content_policy.filter_message(&message);
@@ -115,7 +119,7 @@ impl<
         let Some(filtered_message) = self.filter_message(from_player_id, message) else {
             return;
         };
-        let players_in_room = self.chat_room_service.get_players_in_room(&room_name);
+        let players_in_room = self.chat_room_service.get_listeners_in_room(&room_name);
         let msg = ListenerMessage::ChatMessage {
             from_player_id,
             message: filtered_message,
