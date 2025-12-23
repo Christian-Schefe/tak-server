@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
 use crate::{
-    app::event::EventDispatcher,
+    app::{event::EventDispatcher, matchmaking::create_game_from_match},
     domain::{
         PlayerId, SeekId,
         game::GameService,
         game_history::{GameHistoryService, GameRepository},
+        r#match::{MatchColorRule, MatchService},
         seek::{SeekEvent, SeekService},
     },
 };
@@ -20,12 +21,14 @@ pub struct AcceptSeekUseCaseImpl<
     G: GameService,
     GR: GameRepository,
     GH: GameHistoryService,
+    M: MatchService,
 > {
     seek_service: Arc<S>,
     seek_event_dispatcher: Arc<SD>,
     game_service: Arc<G>,
     game_repository: Arc<GR>,
     game_history_service: Arc<GH>,
+    match_service: Arc<M>,
 }
 
 impl<
@@ -34,7 +37,8 @@ impl<
     G: GameService,
     GR: GameRepository,
     GH: GameHistoryService,
-> AcceptSeekUseCaseImpl<S, SD, G, GR, GH>
+    M: MatchService,
+> AcceptSeekUseCaseImpl<S, SD, G, GR, GH, M>
 {
     pub fn new(
         seek_service: Arc<S>,
@@ -42,6 +46,7 @@ impl<
         game_service: Arc<G>,
         game_repository: Arc<GR>,
         game_history_service: Arc<GH>,
+        match_service: Arc<M>,
     ) -> Self {
         Self {
             seek_service,
@@ -49,6 +54,7 @@ impl<
             game_service,
             game_repository,
             game_history_service,
+            match_service,
         }
     }
 }
@@ -56,7 +62,6 @@ impl<
 pub enum AcceptSeekError {
     SeekNotFound,
     InvalidOpponent,
-    InvalidSeek,
 }
 
 impl<
@@ -65,7 +70,8 @@ impl<
     G: GameService,
     GR: GameRepository,
     GH: GameHistoryService,
-> AcceptSeekUseCase for AcceptSeekUseCaseImpl<S, SD, G, GR, GH>
+    M: MatchService,
+> AcceptSeekUseCase for AcceptSeekUseCaseImpl<S, SD, G, GR, GH, M>
 {
     fn accept_seek(&self, player: PlayerId, seek_id: SeekId) -> Result<(), AcceptSeekError> {
         let seek = self
@@ -83,27 +89,22 @@ impl<
             self.seek_service.cancel_seek(other_player_seek_id);
         }
 
-        let (game_id, game) = match self.game_service.create_game(
+        let match_entry = self.match_service.create_match(
             seek.creator,
             player,
             seek.color,
-            seek.game_type,
+            MatchColorRule::Alternate,
             seek.game_settings.clone(),
-        ) {
-            Ok(res) => res,
-            Err(_) => return Err(AcceptSeekError::InvalidSeek),
-        };
-
-        let game_record = self.game_history_service.get_ongoing_game_record(
-            game.white,
-            game.black,
-            seek.game_settings,
             seek.game_type,
         );
-        let finished_game_id = self.game_repository.save_ongoing_game(game_record);
 
-        self.game_history_service
-            .save_ongoing_game_id(game_id, finished_game_id);
+        create_game_from_match(
+            self.match_service.as_ref(),
+            self.game_history_service.as_ref(),
+            self.game_repository.as_ref(),
+            self.game_service.as_ref(),
+            &match_entry,
+        );
 
         let events = self.seek_service.take_events();
         self.seek_event_dispatcher.handle_events(events);

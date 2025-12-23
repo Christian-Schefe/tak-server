@@ -1,17 +1,21 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use passwords::PasswordGenerator;
 
 use crate::{
-    domain::account::{AccountFactory, AccountRepository, CreateAccountRepoError},
+    domain::{
+        account::{AccountFactory, AccountRepository, CreateAccountRepoError},
+        player::{Player, PlayerRepository},
+    },
     ports::{
-        authentication::{AuthRegisterError, AuthenticationService, ClientId},
+        authentication::{AuthRegisterError, AuthenticationService, SessionToken, SubjectId},
         contact::{ContactRepository, StoreEmailError},
     },
 };
 
 pub trait RegisterAccountUseCase {
     fn register_account(&self, username: String, email: String) -> Result<(), CreateAccountError>;
+    fn create_guest(&self) -> SessionToken;
 }
 
 pub enum CreateAccountError {
@@ -26,27 +30,36 @@ pub struct RegisterAccountUseCaseImpl<
     AR: AccountRepository,
     AS: AuthenticationService,
     C: ContactRepository,
+    PR: PlayerRepository,
 > {
-    account_service: Arc<A>,
+    account_factory: Arc<A>,
     account_repository: Arc<AR>,
     authentication_service: Arc<AS>,
     contact_repository: Arc<C>,
+    player_repository: Arc<PR>,
 }
 
-impl<A: AccountFactory, AR: AccountRepository, AS: AuthenticationService, C: ContactRepository>
-    RegisterAccountUseCaseImpl<A, AR, AS, C>
+impl<
+    A: AccountFactory,
+    AR: AccountRepository,
+    AS: AuthenticationService,
+    C: ContactRepository,
+    PR: PlayerRepository,
+> RegisterAccountUseCaseImpl<A, AR, AS, C, PR>
 {
     pub fn new(
         account_service: Arc<A>,
         account_repository: Arc<AR>,
         authentication_service: Arc<AS>,
         contact_repository: Arc<C>,
+        player_repository: Arc<PR>,
     ) -> Self {
         Self {
-            account_service,
+            account_factory: account_service,
             account_repository,
             authentication_service,
             contact_repository,
+            player_repository,
         }
     }
 
@@ -64,25 +77,35 @@ impl<A: AccountFactory, AR: AccountRepository, AS: AuthenticationService, C: Con
     }
 }
 
-impl<A: AccountFactory, AR: AccountRepository, AS: AuthenticationService, C: ContactRepository>
-    RegisterAccountUseCase for RegisterAccountUseCaseImpl<A, AR, AS, C>
+impl<
+    A: AccountFactory,
+    AR: AccountRepository,
+    AS: AuthenticationService,
+    C: ContactRepository,
+    PR: PlayerRepository,
+> RegisterAccountUseCase for RegisterAccountUseCaseImpl<A, AR, AS, C, PR>
 {
     fn register_account(&self, username: String, email: String) -> Result<(), CreateAccountError> {
-        let account = match self.account_service.create_account(&username) {
+        let account = match self.account_factory.create_account(&username) {
             Ok(acc) => acc,
             Err(crate::domain::account::CreateAccountError::InvalidUsername) => {
                 return Err(CreateAccountError::InvalidUsername);
             }
         };
 
-        let password = Self::generate_temporary_password();
-        let client_id = ClientId::new(&username);
-        let client_secret = password;
+        let player = Player::new();
+        let player_id = player.player_id;
+        self.player_repository.create_player(player);
+        self.player_repository
+            .link_account(player_id, account.account_id);
 
-        if let Err(e) = self
-            .authentication_service
-            .register_credentials(&client_id, &client_secret)
-        {
+        let password = Self::generate_temporary_password();
+        let subject_id = SubjectId::Account(account.account_id);
+        if let Err(e) = self.authentication_service.register_username_password(
+            &subject_id,
+            &username,
+            &password,
+        ) {
             return Err(match e {
                 AuthRegisterError::IdentifierTaken => CreateAccountError::UsernameTaken,
                 AuthRegisterError::StorageError => CreateAccountError::StorageError,
@@ -91,10 +114,11 @@ impl<A: AccountFactory, AR: AccountRepository, AS: AuthenticationService, C: Con
 
         if let Err(e) = self
             .contact_repository
-            .store_email_contact(&client_id, &email)
+            .store_email_contact(&subject_id, &email)
         {
             //TODO: log if rollback fails
-            self.authentication_service.remove_credentials(&client_id);
+            self.player_repository.delete_player(player_id);
+            self.authentication_service.revoke_credentials(&subject_id);
             return Err(match e {
                 StoreEmailError::InvalidEmail => CreateAccountError::InvalidEmail,
                 StoreEmailError::StorageError => CreateAccountError::StorageError,
@@ -103,13 +127,30 @@ impl<A: AccountFactory, AR: AccountRepository, AS: AuthenticationService, C: Con
 
         if let Err(e) = self.account_repository.create_account(account) {
             //TODO: log if rollback fails
-            self.authentication_service.remove_credentials(&client_id);
-            self.contact_repository.remove_email_contact(&client_id);
+            self.player_repository.delete_player(player_id);
+            self.authentication_service.revoke_credentials(&subject_id);
+            self.contact_repository.remove_email_contact(&subject_id);
             return Err(match e {
                 CreateAccountRepoError::UsernameTaken => CreateAccountError::UsernameTaken,
                 CreateAccountRepoError::StorageError => CreateAccountError::StorageError,
             });
         }
         Ok(())
+    }
+
+    fn create_guest(&self) -> SessionToken {
+        let account = self.account_factory.create_guest_account();
+        let subject_id = SubjectId::Account(account.account_id);
+
+        let session_token = self
+            .authentication_service
+            .issue_session_token(&subject_id, Duration::from_secs(60 * 60 * 5));
+
+        let player = Player::new();
+        let player_id = player.player_id;
+        self.player_repository.create_player(player);
+        self.player_repository
+            .link_account(player_id, account.account_id);
+        session_token
     }
 }

@@ -21,7 +21,7 @@ impl<G: GameService> ListOngoingGameUseCase for ListOngoingGameUseCaseImpl<G> {
         self.game_service
             .get_games()
             .into_iter()
-            .map(|(id, game)| GameView::from(id, game))
+            .map(|game| GameView::from(game))
             .collect()
     }
 }

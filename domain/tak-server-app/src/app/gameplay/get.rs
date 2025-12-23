@@ -23,6 +23,6 @@ impl<G: GameService> GetOngoingGameUseCase for GetOngoingGameUseCaseImpl<G> {
     fn get_game(&self, game_id: GameId) -> Option<GameView> {
         self.game_service
             .get_game_by_id(game_id)
-            .map(|game| GameView::from(game_id, game))
+            .map(|game| GameView::from(game))
     }
 }

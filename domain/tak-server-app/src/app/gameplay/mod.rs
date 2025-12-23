@@ -20,10 +20,10 @@ pub struct GameView {
 }
 
 impl GameView {
-    fn from(id: GameId, game: impl Borrow<Game>) -> Self {
+    fn from(game: impl Borrow<Game>) -> Self {
         let game = game.borrow();
         GameView {
-            id,
+            id: game.game_id,
             white: game.white,
             black: game.black,
             game: game.game.clone(),

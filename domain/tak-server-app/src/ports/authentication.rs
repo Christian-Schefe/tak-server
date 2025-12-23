@@ -1,11 +1,25 @@
+use std::time::Duration;
+
+use crate::domain::AccountId;
+
 pub trait AuthenticationService {
-    fn authenticate(&self, client_id: &ClientId, client_secret: &str) -> bool;
-    fn register_credentials(
+    fn register_username_password(
         &self,
-        client_id: &ClientId,
-        client_secret: &str,
-    ) -> Result<(), AuthRegisterError>;
-    fn remove_credentials(&self, client_id: &ClientId) -> bool;
+        subject_id: &SubjectId,
+        username: &str,
+        password: &str,
+    ) -> Result<SubjectId, AuthRegisterError>;
+    fn issue_session_token(&self, subject_id: &SubjectId, ttl: Duration) -> SessionToken;
+
+    fn authenticate_username_password(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<SubjectId, AuthError>;
+    fn authenticate_session_token(&self, token: &SessionToken) -> Result<SubjectId, AuthError>;
+
+    fn revoke_credentials(&self, subject_id: &SubjectId);
+    fn revoke_sessions(&self, subject_id: &SubjectId);
 }
 
 pub enum AuthRegisterError {
@@ -13,11 +27,12 @@ pub enum AuthRegisterError {
     StorageError,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ClientId(String);
+pub enum AuthError {
+    InvalidCredentials,
+}
 
-impl ClientId {
-    pub fn new(id: &str) -> Self {
-        Self(id.to_string())
-    }
+pub struct SessionToken(pub String);
+
+pub enum SubjectId {
+    Account(AccountId),
 }

@@ -3,6 +3,7 @@ pub mod chat;
 pub mod event;
 pub mod game;
 pub mod game_history;
+pub mod r#match;
 pub mod player;
 pub mod rating;
 pub mod seek;
@@ -10,6 +11,12 @@ pub mod spectator;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PlayerId(uuid::Uuid);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AccountId(uuid::Uuid);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct MatchId(u32);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SeekId(u32);

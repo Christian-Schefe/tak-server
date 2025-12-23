@@ -31,6 +31,9 @@ pub enum ListenerMessage {
     GameUndoRequested {
         game_id: GameId,
     },
+    GameRematchRequested {
+        game_id: GameId,
+    },
     ChatMessage {
         from_player_id: PlayerId,
         message: String,

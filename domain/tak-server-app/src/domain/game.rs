@@ -3,13 +3,16 @@ use std::sync::{Arc, Mutex};
 use dashmap::DashMap;
 use tak_core::{TakAction, TakActionRecord, TakGame, TakGameSettings, TakGameState, TakPlayer};
 
-use crate::domain::{GameId, GameType, PlayerId};
+use crate::domain::{GameId, GameType, MatchId, PlayerId};
 
 #[derive(Clone, Debug)]
 pub struct Game {
+    pub game_id: GameId,
+    pub match_id: MatchId,
     pub white: PlayerId,
     pub black: PlayerId,
     pub game: TakGame,
+    pub settings: TakGameSettings,
     pub game_type: GameType,
 }
 
@@ -27,6 +30,7 @@ impl Game {
 
 #[derive(Clone, Debug)]
 pub struct FinishedGame {
+    pub match_id: MatchId,
     pub white: PlayerId,
     pub black: PlayerId,
     pub settings: TakGameSettings,
@@ -43,9 +47,10 @@ pub trait GameService {
         color: Option<TakPlayer>,
         game_type: GameType,
         game_settings: TakGameSettings,
-    ) -> Result<(GameId, Game), CreateGameError>;
+        match_id: MatchId,
+    ) -> Game;
     fn get_game_by_id(&self, game_id: GameId) -> Option<Game>;
-    fn get_games(&self) -> Vec<(GameId, Game)>;
+    fn get_games(&self) -> Vec<Game>;
     fn do_action(
         &self,
         game_id: GameId,
@@ -63,11 +68,6 @@ pub enum GameEvent {
     MovePlayed(GameId, TakActionRecord),
     MoveUndone(GameId),
     Ended(GameId, FinishedGame),
-}
-
-pub enum CreateGameError {
-    InvalidSettings,
-    InvalidPlayers,
 }
 
 pub enum DoActionError {
@@ -126,9 +126,10 @@ impl GameServiceImpl {
             .with_game(game_id, |game_entry| {
                 if !game_entry.game.is_ongoing() {
                     Some(FinishedGame {
+                        match_id: game_entry.match_id,
                         white: game_entry.white,
                         black: game_entry.black,
-                        settings: game_entry.game.base.settings.clone(),
+                        settings: game_entry.settings.clone(),
                         game_type: game_entry.game_type.clone(),
                         result: game_entry.game.base.game_state.clone(),
                         moves: game_entry.game.action_history.clone(),
@@ -160,14 +161,8 @@ impl GameService for GameServiceImpl {
         color: Option<TakPlayer>,
         game_type: GameType,
         game_settings: TakGameSettings,
-    ) -> Result<(GameId, Game), CreateGameError> {
-        if !game_settings.is_valid() {
-            return Err(CreateGameError::InvalidSettings);
-        }
-        if player1 == player2 {
-            return Err(CreateGameError::InvalidPlayers);
-        }
-
+        match_id: MatchId,
+    ) -> Game {
         let (white, black) = match color {
             Some(TakPlayer::White) => (player1, player2),
             Some(TakPlayer::Black) => (player2, player1),
@@ -181,28 +176,28 @@ impl GameService for GameServiceImpl {
         };
         let game = TakGame::new(game_settings.clone());
 
+        let game_id = self.increment_game_id();
         let game_struct = Game {
             white,
             black,
             game,
             game_type,
+            settings: game_settings,
+            game_id,
+            match_id,
         };
-        let game_id = self.increment_game_id();
         self.games.insert(game_id, game_struct.clone());
 
         self.add_event(GameEvent::Started(game_id, game_struct.clone()));
-        Ok((game_id, game_struct))
+        game_struct
     }
 
     fn get_game_by_id(&self, game_id: GameId) -> Option<Game> {
         self.games.get(&game_id).map(|entry| entry.clone())
     }
 
-    fn get_games(&self) -> Vec<(GameId, Game)> {
-        self.games
-            .iter()
-            .map(|entry| (*entry.key(), entry.clone()))
-            .collect()
+    fn get_games(&self) -> Vec<Game> {
+        self.games.iter().map(|entry| entry.clone()).collect()
     }
 
     fn do_action(

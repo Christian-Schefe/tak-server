@@ -3,8 +3,8 @@ use std::sync::Arc;
 use crate::{
     domain::{
         PlayerId,
-        account::AccountRepository,
         chat::{ChatRoomService, ContentPolicy},
+        player::PlayerRepository,
     },
     ports::{
         connection::PlayerConnectionPort,
@@ -28,13 +28,13 @@ pub struct ChatMessageUseCaseImpl<
     P: PlayerConnectionPort,
     C: ChatRoomService,
     Co: ContentPolicy,
-    A: AccountRepository,
+    PR: PlayerRepository,
 > {
     listener_notification_port: Arc<L>,
     player_connection_port: Arc<P>,
     chat_room_service: Arc<C>,
     content_policy: Arc<Co>,
-    account_repo: Arc<A>,
+    player_repo: Arc<PR>,
 }
 
 impl<
@@ -42,30 +42,30 @@ impl<
     P: PlayerConnectionPort,
     C: ChatRoomService,
     Co: ContentPolicy,
-    A: AccountRepository,
-> ChatMessageUseCaseImpl<L, P, C, Co, A>
+    PR: PlayerRepository,
+> ChatMessageUseCaseImpl<L, P, C, Co, PR>
 {
     pub fn new(
         listener_notification_port: Arc<L>,
         player_connection_port: Arc<P>,
         chat_room_service: Arc<C>,
         content_policy: Arc<Co>,
-        account_repo: Arc<A>,
+        player_repo: Arc<PR>,
     ) -> Self {
         Self {
             listener_notification_port,
             player_connection_port,
             chat_room_service,
             content_policy,
-            account_repo,
+            player_repo,
         }
     }
 
     fn filter_message(&self, player_id: PlayerId, message: String) -> Option<String> {
         if self
-            .account_repo
-            .get_account(player_id)
-            .is_some_and(|acc| acc.is_silenced)
+            .player_repo
+            .get_player(player_id)
+            .is_some_and(|player| player.is_silenced)
         {
             return None;
         }
@@ -79,8 +79,8 @@ impl<
     P: PlayerConnectionPort,
     C: ChatRoomService,
     Co: ContentPolicy,
-    A: AccountRepository,
-> ChatMessageUseCase for ChatMessageUseCaseImpl<L, P, C, Co, A>
+    PR: PlayerRepository,
+> ChatMessageUseCase for ChatMessageUseCaseImpl<L, P, C, Co, PR>
 {
     fn send_private_message(
         &self,

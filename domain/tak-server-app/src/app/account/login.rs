@@ -1,52 +1,61 @@
 use std::sync::Arc;
 
 use crate::{
-    domain::{PlayerId, account::AccountRepository},
-    ports::authentication::{AuthenticationService, ClientId},
+    domain::{PlayerId, player::PlayerRepository},
+    ports::authentication::{AuthenticationService, SessionToken, SubjectId},
 };
 
 pub trait LoginAccountUseCase {
-    fn login(&self, username: String, password: String) -> Result<PlayerId, LoginError>;
+    fn login_password(&self, username: String, password: String) -> Result<PlayerId, LoginError>;
+    fn login_token(&self, token: &SessionToken) -> Result<PlayerId, LoginError>;
 }
 
 pub enum LoginError {
     InvalidCredentials,
-    AccountBanned,
 }
 
-pub struct LoginAccountUseCaseImpl<A: AuthenticationService, AR: AccountRepository> {
+pub struct LoginAccountUseCaseImpl<A: AuthenticationService, PR: PlayerRepository> {
     authentication_service: Arc<A>,
-    account_repository: Arc<AR>,
+    player_repository: Arc<PR>,
 }
 
-impl<A: AuthenticationService, AR: AccountRepository> LoginAccountUseCaseImpl<A, AR> {
-    pub fn new(authentication_service: Arc<A>, account_repository: Arc<AR>) -> Self {
+impl<A: AuthenticationService, PR: PlayerRepository> LoginAccountUseCaseImpl<A, PR> {
+    pub fn new(authentication_service: Arc<A>, player_repository: Arc<PR>) -> Self {
         Self {
             authentication_service,
-            account_repository,
+            player_repository,
         }
     }
 }
 
-impl<A: AuthenticationService, AR: AccountRepository> LoginAccountUseCase
-    for LoginAccountUseCaseImpl<A, AR>
+impl<A: AuthenticationService, PR: PlayerRepository> LoginAccountUseCase
+    for LoginAccountUseCaseImpl<A, PR>
 {
-    fn login(&self, username: String, password: String) -> Result<PlayerId, LoginError> {
-        let client_id = ClientId::new(&username);
-        let client_secret = password;
-
-        if !self
+    fn login_password(&self, username: String, password: String) -> Result<PlayerId, LoginError> {
+        let Ok(subject_id) = self
             .authentication_service
-            .authenticate(&client_id, &client_secret)
-        {
-            return Err(LoginError::InvalidCredentials);
-        }
-        let Some(account) = self.account_repository.get_account_by_client_id(client_id) else {
+            .authenticate_username_password(&username, &password)
+        else {
             return Err(LoginError::InvalidCredentials);
         };
-        if account.is_banned {
-            return Err(LoginError::AccountBanned);
-        }
-        Ok(account.player_id)
+        let SubjectId::Account(account_id) = subject_id;
+        let Some(player) = self.player_repository.get_player_by_account_id(account_id) else {
+            return Err(LoginError::InvalidCredentials);
+        };
+        Ok(player.player_id)
+    }
+
+    fn login_token(&self, token: &SessionToken) -> Result<PlayerId, LoginError> {
+        let Ok(subject_id) = self
+            .authentication_service
+            .authenticate_session_token(&token)
+        else {
+            return Err(LoginError::InvalidCredentials);
+        };
+        let SubjectId::Account(account_id) = subject_id;
+        let Some(player) = self.player_repository.get_player_by_account_id(account_id) else {
+            return Err(LoginError::InvalidCredentials);
+        };
+        Ok(player.player_id)
     }
 }

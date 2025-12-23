@@ -1,32 +1,27 @@
-use crate::{domain::PlayerId, ports::authentication::ClientId};
+use std::sync::{Arc, Mutex};
+
+use crate::domain::AccountId;
 
 use rustrict::CensorStr;
 use uuid::Uuid;
 
 pub trait AccountRepository {
-    fn set_player_silenced(&self, player_id: PlayerId, silenced: bool);
-    fn set_player_banned(&self, player_id: PlayerId, banned: bool);
-    fn set_player_role(&self, player_id: PlayerId, role: AccountRole);
-    fn set_player_is_bot(&self, player_id: PlayerId, is_bot: bool);
-    fn get_account_by_client_id(&self, client_id: ClientId) -> Option<Account>;
-    fn get_account(&self, player_id: PlayerId) -> Option<Account>;
+    fn set_account_role(&self, account_id: AccountId, role: AccountRole);
+    fn get_account(&self, account_id: AccountId) -> Option<Account>;
     fn get_account_by_username(&self, username: &str) -> Option<Account>;
     fn create_account(&self, account: Account) -> Result<(), CreateAccountRepoError>;
+}
+
+pub struct Account {
+    pub account_id: AccountId,
+    pub username: String,
+    pub role: AccountRole,
+    pub is_guest: bool,
 }
 
 pub enum CreateAccountRepoError {
     UsernameTaken,
     StorageError,
-}
-
-pub struct Account {
-    pub player_id: PlayerId,
-    pub username: String,
-    pub is_silenced: bool,
-    pub is_banned: bool,
-    pub role: AccountRole,
-    pub is_bot: bool,
-    pub is_guest: bool,
 }
 
 pub enum AccountRole {
@@ -41,13 +36,25 @@ pub enum CreateAccountError {
 
 pub trait AccountFactory {
     fn create_account(&self, username: &str) -> Result<Account, CreateAccountError>;
+    fn create_guest_account(&self) -> Account;
 }
 
-pub struct AccountFactoryImpl;
+pub struct AccountFactoryImpl {
+    next_guest_number: Arc<Mutex<u64>>,
+}
 
 impl AccountFactoryImpl {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            next_guest_number: Arc::new(Mutex::new(0)),
+        }
+    }
+
+    fn get_next_guest_number(&self) -> u64 {
+        let mut guard = self.next_guest_number.lock().unwrap();
+        let number = *guard;
+        *guard += 1;
+        number
     }
 }
 
@@ -64,16 +71,49 @@ impl AccountFactory for AccountFactoryImpl {
         if username.is_inappropriate() {
             return Err(CreateAccountError::InvalidUsername);
         }
-        let player_id = PlayerId(Uuid::new_v4());
+        if username.starts_with("Guest") {
+            return Err(CreateAccountError::InvalidUsername);
+        }
+        let account_id = AccountId(Uuid::new_v4());
         let acc = Account {
-            player_id,
+            account_id,
             username: username.to_string(),
-            is_silenced: false,
-            is_banned: false,
             role: AccountRole::User,
-            is_bot: false,
             is_guest: false,
         };
         Ok(acc)
+    }
+
+    fn create_guest_account(&self) -> Account {
+        let account_id = AccountId(Uuid::new_v4());
+        let guest_number = self.get_next_guest_number();
+        let username = format!("Guest{}", guest_number);
+        Account {
+            account_id,
+            username,
+            role: AccountRole::User,
+            is_guest: true,
+        }
+    }
+}
+
+pub trait PermissionPolicy {
+    fn has_permissions(&self, requester: &Account, target: &Account) -> bool;
+}
+
+pub struct AdminAccountPolicy;
+
+impl PermissionPolicy for AdminAccountPolicy {
+    fn has_permissions(&self, requester: &Account, target: &Account) -> bool {
+        matches!(requester.role, AccountRole::Admin) && !matches!(target.role, AccountRole::Admin)
+    }
+}
+
+pub struct ModeratorAccountPolicy;
+
+impl PermissionPolicy for ModeratorAccountPolicy {
+    fn has_permissions(&self, requester: &Account, target: &Account) -> bool {
+        matches!(requester.role, AccountRole::Admin | AccountRole::Moderator)
+            && !matches!(target.role, AccountRole::Admin | AccountRole::Moderator)
     }
 }

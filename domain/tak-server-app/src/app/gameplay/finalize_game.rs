@@ -5,6 +5,7 @@ use crate::{
     domain::{
         game::GameEvent,
         game_history::{GameHistoryService, GameRepository},
+        r#match::MatchService,
         rating::{RatingRepository, RatingService},
     },
 };
@@ -14,33 +15,47 @@ pub struct FinalizeGameListener<
     R: RatingService,
     RP: RatingRepository,
     GH: GameHistoryService,
+    M: MatchService,
 > {
     game_repository: Arc<G>,
     rating_service: Arc<R>,
     rating_repository: Arc<RP>,
     game_history_service: Arc<GH>,
+    match_service: Arc<M>,
 }
 
-impl<G: GameRepository, R: RatingService, RP: RatingRepository, GH: GameHistoryService>
-    FinalizeGameListener<G, R, RP, GH>
+impl<
+    G: GameRepository,
+    R: RatingService,
+    RP: RatingRepository,
+    GH: GameHistoryService,
+    M: MatchService,
+> FinalizeGameListener<G, R, RP, GH, M>
 {
     pub fn new(
         game_repository: Arc<G>,
         rating_service: Arc<R>,
         rating_repository: Arc<RP>,
         game_history_service: Arc<GH>,
+        match_service: Arc<M>,
     ) -> Self {
         Self {
             game_repository,
             rating_service,
             rating_repository,
             game_history_service,
+            match_service,
         }
     }
 }
 
-impl<G: GameRepository, R: RatingService, RP: RatingRepository, GH: GameHistoryService>
-    EventListener<GameEvent> for FinalizeGameListener<G, R, RP, GH>
+impl<
+    G: GameRepository,
+    R: RatingService,
+    RP: RatingRepository,
+    GH: GameHistoryService,
+    M: MatchService,
+> EventListener<GameEvent> for FinalizeGameListener<G, R, RP, GH, M>
 {
     fn on_event(&self, event: &GameEvent) {
         if let GameEvent::Ended(game_id, ended_game) = event {
@@ -69,6 +84,9 @@ impl<G: GameRepository, R: RatingService, RP: RatingRepository, GH: GameHistoryS
 
             self.game_repository
                 .update_finished_game(finished_game_id, game_record);
+
+            self.match_service
+                .end_game_in_match(ended_game.match_id, finished_game_id);
         }
     }
 }
