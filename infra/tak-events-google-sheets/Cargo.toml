@@ -1,0 +1,9 @@
+[package]
+name = "tak-events-google-sheets"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-trait = "0.1.89"
+google-sheets4 = "5"
+tak-server-app = { path = "../../tak-server-app" }

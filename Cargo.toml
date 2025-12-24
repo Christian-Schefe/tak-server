@@ -9,11 +9,13 @@ resolver = "3"
 members = [
     "api/tak-server-api",
     "api/tak-server-http-api",
-    "domain/tak-core", "domain/tak-server-app",
-    "domain/tak-server-domain", "more-dashmap",
+    "domain/tak-core",
+    "tak-server-app",
+    "domain/tak-server-domain",
+    "more-dashmap",
     "persistence/tak-events-persistence",
     "persistence/tak-persistence-sea-orm",
-    "tak-client",
+    "tak-client", "infra/tak-email-lettre", "infra/tak-events-google-sheets",
 ]
 
 [dependencies]

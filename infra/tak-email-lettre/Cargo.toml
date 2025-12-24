@@ -1,0 +1,8 @@
+[package]
+name = "tak-email-lettre"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tak-server-app = { path = "../../tak-server-app" }
+lettre = "0.11.18"

@@ -3624,6 +3624,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "tak-email-lettre"
+version = "0.1.0"
+dependencies = [
+ "lettre",
+ "tak-server-app",
+]
+
+[[package]]
+name = "tak-events-google-sheets"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "google-sheets4",
+ "tak-server-app",
+]
+
+[[package]]
 name = "tak-events-persistence"
 version = "0.1.0"
 dependencies = [

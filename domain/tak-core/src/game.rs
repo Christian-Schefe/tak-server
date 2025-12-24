@@ -145,11 +145,11 @@ impl TakBaseGame {
 
 #[derive(Clone, Debug)]
 pub struct TakGame {
-    pub base: TakBaseGame,
-    pub action_history: Vec<TakActionRecord>,
-    pub draw_offered: (bool, bool),
-    pub undo_requested: (bool, bool),
-    pub clock: TakClock,
+    base: TakBaseGame,
+    action_history: Vec<TakActionRecord>,
+    draw_offered: (bool, bool),
+    undo_requested: (bool, bool),
+    clock: TakClock,
 }
 
 #[derive(Clone, Debug)]
@@ -178,6 +178,14 @@ impl TakGame {
                 is_ticking: false,
             },
         }
+    }
+
+    pub fn game_state(&self) -> TakGameState {
+        self.base.game_state.clone()
+    }
+
+    pub fn action_history(&self) -> &Vec<TakActionRecord> {
+        &self.action_history
     }
 
     pub fn current_player(&self) -> TakPlayer {
