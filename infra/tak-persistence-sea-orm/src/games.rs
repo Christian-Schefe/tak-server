@@ -1,23 +1,21 @@
 use std::time::Duration;
 
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, DbErr, EntityTrait, PaginatorTrait,
-    QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, Set,
 };
 use serde::Deserialize;
 use tak_core::{
     TakAction, TakActionRecord, TakGameSettings, TakGameState, TakReserve, TakTimeControl,
     ptn::{action_from_ptn, action_to_ptn, game_state_from_string, game_state_to_string},
 };
-use tak_server_domain::{
-    ServiceError, ServiceResult,
-    app::SortOrder,
-    game::{GameId, GameRatingUpdate, GameRecord, GameRepository, GameResultUpdate, GameType},
+use tak_server_app::domain::{
+    FinishedGameId, GameType, PlayerId, SortOrder,
     game_history::{
-        DateSelector, GameFilter, GameFilterResult, GameIdSelector, GamePlayerFilter, GameSortBy,
+        DateSelector, GameFilter, GameFilterResult, GameFinishedUpdate, GameIdSelector,
+        GamePlayerFilter, GameRatingInfo, GameRecord, GameRepoError, GameRepository, GameSortBy,
+        PlayerSnapshot, ReadGameError,
     },
-    player::Player,
-    rating::GameRatingInfo,
 };
 
 use crate::{create_games_db_pool, entity::game};
@@ -60,17 +58,16 @@ impl GameRepositoryImpl {
     }
 
     fn model_to_game(model: &game::Model) -> GameRecord {
-        let rating_info = Some(GameRatingInfo {
-            rating_white: model.rating_white,
-            rating_black: model.rating_black,
-            rating_change: if let Some(rating_change_white) = model.rating_change_white
-                && let Some(rating_change_black) = model.rating_change_black
-            {
-                Some((rating_change_white, rating_change_black))
-            } else {
-                None
-            },
-        });
+        let rating_info = if let Some(rating_change_white) = model.rating_change_white
+            && let Some(rating_change_black) = model.rating_change_black
+        {
+            Some(GameRatingInfo {
+                rating_change_white: rating_change_white,
+                rating_change_black: rating_change_black,
+            })
+        } else {
+            None
+        };
         let time_control = TakTimeControl {
             contingent: Duration::from_secs(model.clock_contingent as u64),
             increment: Duration::from_secs(model.clock_increment as u64),
@@ -85,6 +82,19 @@ impl GameRepositoryImpl {
         };
         let json_moves: Vec<JsonMoveRecord> =
             serde_json::from_str(&model.notation).unwrap_or_default();
+
+        let white_snapshot = PlayerSnapshot::new(
+            PlayerId(model.player_white_id),
+            model.player_white_username.clone(),
+            model.player_white_rating,
+        );
+
+        let black_snapshot = PlayerSnapshot::new(
+            PlayerId(model.player_black_id),
+            model.player_black_username.clone(),
+            model.player_black_rating,
+        );
+
         GameRecord {
             date: model.date.clone(),
             settings: TakGameSettings {
@@ -93,8 +103,8 @@ impl GameRepositoryImpl {
                 half_komi: model.half_komi as u32,
                 reserve: TakReserve::new(model.pieces as u32, model.capstones as u32),
             },
-            white: model.player_white.clone(),
-            black: model.player_black.clone(),
+            white: white_snapshot,
+            black: black_snapshot,
             game_type: if model.is_unrated {
                 GameType::Unrated
             } else if model.is_tournament {
@@ -120,24 +130,21 @@ impl GameRepositoryImpl {
 
 #[async_trait::async_trait]
 impl GameRepository for GameRepositoryImpl {
-    async fn create_game(
-        &self,
-        game: &GameRecord,
-        player_white: &Player,
-        player_black: &Player,
-    ) -> ServiceResult<GameId> {
+    async fn save_ongoing_game(&self, game: GameRecord) -> Result<FinishedGameId, GameRepoError> {
         let new_game = game::ActiveModel {
             id: Default::default(), // Auto-increment
             date: Set(game.date.clone()),
             size: Set(game.settings.board_size as i32),
-            player_white: Set(game.white.clone()),
-            player_black: Set(game.black.clone()),
+            player_white_id: Set(game.white.player_id.0),
+            player_black_id: Set(game.black.player_id.0),
+            player_white_username: Set(game.white.username.clone()),
+            player_black_username: Set(game.black.username.clone()),
+            player_white_rating: Set(game.white.rating),
+            player_black_rating: Set(game.black.rating),
             notation: Set(String::new()),
             result: Set("0-0".to_string()),
             clock_contingent: Set(game.settings.time_control.contingent.as_secs() as i32),
             clock_increment: Set(game.settings.time_control.increment.as_secs() as i32),
-            rating_white: Set(player_white.rating.rating),
-            rating_black: Set(player_black.rating.rating),
             is_unrated: Set(game.game_type == GameType::Unrated),
             is_tournament: Set(game.game_type == GameType::Tournament),
             half_komi: Set(game.settings.half_komi as i32),
@@ -162,12 +169,16 @@ impl GameRepository for GameRepositoryImpl {
         let result = new_game
             .insert(&self.db)
             .await
-            .map_err(|e| ServiceError::Internal(e.to_string()))?;
+            .map_err(|e| GameRepoError::StorageError(e.to_string()))?;
 
-        Ok(result.id)
+        Ok(FinishedGameId(result.id))
     }
 
-    async fn update_game_result(&self, id: GameId, update: &GameResultUpdate) -> ServiceResult<()> {
+    async fn update_finished_game(
+        &self,
+        game_id: FinishedGameId,
+        update: GameFinishedUpdate,
+    ) -> Result<(), GameRepoError> {
         let notation_val = update
             .moves
             .iter()
@@ -178,77 +189,60 @@ impl GameRepository for GameRepositoryImpl {
             })
             .collect::<Vec<_>>();
         let notation_str = serde_json::to_string(&notation_val)
-            .map_err(|e| ServiceError::Internal(e.to_string()))?;
+            .map_err(|e| GameRepoError::StorageError(e.to_string()))?;
 
         let result_val = game_state_to_string(&update.result);
 
-        let game = game::Entity::find_by_id(id)
+        let game = game::Entity::find_by_id(game_id.0)
             .one(&self.db)
             .await
-            .map_err(|e| ServiceError::Internal(e.to_string()))?
-            .ok_or_else(|| ServiceError::Internal("Game not found".to_string()))?;
+            .map_err(|e| GameRepoError::StorageError(e.to_string()))?
+            .ok_or_else(|| GameRepoError::StorageError("Game not found".to_string()))?;
 
         let mut game: game::ActiveModel = game.into();
         game.notation = Set(notation_str);
         game.result = Set(result_val);
+        game.player_white_rating = Set(update.player_white.rating);
+        game.player_black_rating = Set(update.player_black.rating);
+        game.rating_change_white = Set(update
+            .rating_info
+            .as_ref()
+            .map(|info| info.rating_change_white));
+        game.rating_change_black = Set(update
+            .rating_info
+            .as_ref()
+            .map(|info| info.rating_change_black));
 
         game.update(&self.db)
             .await
-            .map_err(|e| ServiceError::Internal(e.to_string()))?;
+            .map_err(|e| GameRepoError::StorageError(e.to_string()))?;
 
         Ok(())
     }
 
-    async fn update_game_ratings(
-        &self,
-        items: Vec<(GameId, GameRatingUpdate)>,
-    ) -> ServiceResult<()> {
-        self.db
-            .transaction::<_, _, DbErr>(|tx| {
-                Box::pin(async move {
-                    for (id, update) in items {
-                        let game = game::Entity::find_by_id(id)
-                            .one(tx)
-                            .await?
-                            .ok_or_else(|| DbErr::Custom("Game not found".to_string()))?;
-
-                        let mut game: game::ActiveModel = game.into();
-                        game.rating_white = Set(update.rating_info.rating_white);
-                        game.rating_black = Set(update.rating_info.rating_black);
-                        game.rating_change_white =
-                            Set(update.rating_info.rating_change.map(|(white, _)| white));
-                        game.rating_change_black =
-                            Set(update.rating_info.rating_change.map(|(_, black)| black));
-
-                        game.update(tx).await?;
-                    }
-                    Ok(())
-                })
-            })
-            .await
-            .map_err(|e| ServiceError::Internal(e.to_string()))?;
-        Ok(())
-    }
-
-    async fn get_game_record(&self, id: GameId) -> ServiceResult<Option<GameRecord>> {
-        let model = game::Entity::find_by_id(id)
+    async fn get_game_record(&self, id: FinishedGameId) -> Result<GameRecord, ReadGameError> {
+        let model = game::Entity::find_by_id(id.0)
             .one(&self.db)
             .await
-            .map_err(|e| ServiceError::Internal(e.to_string()))?;
-
-        Ok(model.map(|m| Self::model_to_game(&m)))
+            .map_err(|e| ReadGameError::StorageError(e.to_string()))?
+            .ok_or(ReadGameError::NotFound)?;
+        Ok(Self::model_to_game(&model))
     }
 
-    async fn get_games(&self, filter: GameFilter) -> ServiceResult<GameFilterResult> {
+    async fn get_games(&self, filter: GameFilter) -> Result<GameFilterResult, GameRepoError> {
         let mut query = game::Entity::find();
         if let Some(game_id_selector) = filter.id_selector {
             query = match game_id_selector {
                 GameIdSelector::Range(start_id, end_id) => {
-                    query.filter(game::Column::Id.between(start_id, end_id))
+                    query.filter(game::Column::Id.between(start_id.0, end_id.0))
                 }
-                GameIdSelector::AndBefore(end_id) => query.filter(game::Column::Id.lte(end_id)),
-                GameIdSelector::AndAfter(start_id) => query.filter(game::Column::Id.gte(start_id)),
-                GameIdSelector::List(id_list) => query.filter(game::Column::Id.is_in(id_list)),
+                GameIdSelector::AndBefore(end_id) => query.filter(game::Column::Id.lte(end_id.0)),
+                GameIdSelector::AndAfter(start_id) => {
+                    query.filter(game::Column::Id.gte(start_id.0))
+                }
+                GameIdSelector::List(id_list) => {
+                    query.filter(game::Column::Id.is_in(id_list.iter().map(|id| id.0)))
+                }
             }
         }
         if let Some(date_selector) = filter.date_selector {
@@ -267,17 +261,21 @@ impl GameRepository for GameRepositoryImpl {
         if let Some(player_white) = filter.player_white {
             query = match player_white {
                 GamePlayerFilter::Contains(name_part) => {
-                    query.filter(game::Column::PlayerWhite.contains(&name_part))
+                    query.filter(game::Column::PlayerWhiteUsername.contains(&name_part))
                 }
-                GamePlayerFilter::Equals(name) => query.filter(game::Column::PlayerWhite.eq(name)),
+                GamePlayerFilter::Equals(name) => {
+                    query.filter(game::Column::PlayerWhiteUsername.eq(name))
+                }
             };
         }
         if let Some(player_black) = filter.player_black {
             query = match player_black {
                 GamePlayerFilter::Contains(name_part) => {
-                    query.filter(game::Column::PlayerBlack.contains(&name_part))
+                    query.filter(game::Column::PlayerBlackUsername.contains(&name_part))
                 }
-                GamePlayerFilter::Equals(name) => query.filter(game::Column::PlayerBlack.eq(name)),
+                GamePlayerFilter::Equals(name) => {
+                    query.filter(game::Column::PlayerBlackUsername.eq(name))
+                }
             };
         }
         if let Some(game_type) = filter.game_type {
@@ -322,7 +320,7 @@ impl GameRepository for GameRepositoryImpl {
             .clone()
             .count(&self.db)
             .await
-            .map_err(|e| ServiceError::Internal(e.to_string()))?;
+            .map_err(|e| GameRepoError::StorageError(e.to_string()))?;
 
         if let Some((sort_order, sort_by)) = filter.sort {
             query = match (sort_by, sort_order) {
@@ -347,12 +345,12 @@ impl GameRepository for GameRepositoryImpl {
         let models = query
             .all(&self.db)
             .await
-            .map_err(|e| ServiceError::Internal(e.to_string()))?;
+            .map_err(|e| GameRepoError::StorageError(e.to_string()))?;
 
         let mut results = Vec::new();
         for model in models {
             let game_record = Self::model_to_game(&model);
-            results.push((model.id, game_record));
+            results.push((FinishedGameId(model.id), game_record));
         }
 
         Ok(GameFilterResult {

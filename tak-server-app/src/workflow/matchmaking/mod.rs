@@ -1,22 +1,14 @@
-use std::{borrow::Borrow, sync::Arc};
+use std::borrow::Borrow;
 
 use tak_core::{TakGameSettings, TakPlayer};
 
-use crate::{
-    domain::{
-        GameType, PlayerId, SeekId,
-        game::GameService,
-        game_history::{GameHistoryService, GameRepository},
-        r#match::{Match, MatchService},
-        seek::Seek,
-    },
-    processes::game_timeout_runner::GameTimeoutRunner,
-};
+use crate::domain::{GameType, PlayerId, SeekId, seek::Seek};
 
 pub mod accept;
 pub mod cancel;
 pub mod cleanup;
 pub mod create;
+pub mod create_game;
 pub mod get;
 pub mod list;
 pub mod rematch;
@@ -43,40 +35,4 @@ impl<T: Borrow<Seek>> From<T> for SeekView {
             game_type: seek.game_type,
         }
     }
-}
-
-fn create_game_from_match<
-    M: MatchService,
-    GH: GameHistoryService,
-    GR: GameRepository,
-    G: GameService,
-    GT: GameTimeoutRunner,
->(
-    match_service: &Arc<M>,
-    game_history_service: &Arc<GH>,
-    game_repository: &Arc<GR>,
-    game_service: &Arc<G>,
-    game_timeout_runner: &Arc<GT>,
-    match_entry: &Match,
-) {
-    let game = game_service.create_game(
-        match_entry.player1,
-        match_entry.player2,
-        match_entry.inital_color,
-        match_entry.game_type,
-        match_entry.game_settings.clone(),
-        match_entry.id,
-    );
-    match_service.start_game_in_match(match_entry.id, game.game_id);
-
-    let game_record = game_history_service.get_ongoing_game_record(
-        game.white,
-        game.black,
-        game.settings.clone(),
-        game.game_type,
-    );
-    let finished_game_id = game_repository.save_ongoing_game(game_record);
-
-    game_history_service.save_ongoing_game_id(game.game_id, finished_game_id);
-    GameTimeoutRunner::schedule_game_timeout_check(game_timeout_runner.clone(), game.game_id);
 }

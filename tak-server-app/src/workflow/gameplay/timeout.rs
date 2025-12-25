@@ -13,8 +13,9 @@ pub enum ObserveOutcome {
     Continue(std::time::Duration),
 }
 
+#[async_trait::async_trait]
 pub trait ObserveGameTimeoutUseCase {
-    fn tick(&self, game_id: GameId, now: Instant) -> ObserveOutcome;
+    async fn tick(&self, game_id: GameId, now: Instant) -> ObserveOutcome;
 }
 
 pub struct ObserveGameTimeoutUseCaseImpl<G: GameService, F: FinalizeGameWorkflow> {
@@ -31,13 +32,14 @@ impl<G: GameService, F: FinalizeGameWorkflow> ObserveGameTimeoutUseCaseImpl<G, F
     }
 }
 
-impl<G: GameService, F: FinalizeGameWorkflow> ObserveGameTimeoutUseCase
-    for ObserveGameTimeoutUseCaseImpl<G, F>
+#[async_trait::async_trait]
+impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sync + 'static>
+    ObserveGameTimeoutUseCase for ObserveGameTimeoutUseCaseImpl<G, F>
 {
-    fn tick(&self, game_id: GameId, now: Instant) -> ObserveOutcome {
+    async fn tick(&self, game_id: GameId, now: Instant) -> ObserveOutcome {
         match self.game_service.check_timeout(game_id, now) {
             CheckTimoutResult::GameTimedOut(game) => {
-                self.finalize_game_workflow.finalize_game(game);
+                self.finalize_game_workflow.finalize_game(game).await;
                 ObserveOutcome::Finished
             }
             CheckTimoutResult::NoTimeout {

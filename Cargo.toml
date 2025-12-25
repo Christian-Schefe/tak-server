@@ -9,22 +9,23 @@ resolver = "3"
 members = [
     "api/tak-server-api",
     "api/tak-server-http-api",
-    "domain/tak-core",
+    "tak-core",
     "tak-server-app",
-    "domain/tak-server-domain",
     "more-dashmap",
-    "persistence/tak-events-persistence",
-    "persistence/tak-persistence-sea-orm",
-    "tak-client", "infra/tak-email-lettre", "infra/tak-events-google-sheets",
+    "tak-client",
+    "infra/tak-persistence-sea-orm",
+    "infra/tak-email-lettre",
+    "infra/tak-events-google-sheets",
 ]
 
 [dependencies]
 dotenvy = "0.15.7"
 log = "0.4.28"
 log4rs = { version = "1.4.0", features = ["gzip"] }
-tak-events-persistence = { path = "./persistence/tak-events-persistence" }
-tak-persistence-sea-orm = { path = "./persistence/tak-persistence-sea-orm" }
+tak-events-google-sheets = { path = "./infra/tak-events-google-sheets" }
+tak-persistence-sea-orm = { path = "./infra/tak-persistence-sea-orm" }
+tak-email-lettre = { path = "./infra/tak-email-lettre" }
 tak-server-api = { path = "./api/tak-server-api" }
-tak-server-domain = { path = "./domain/tak-server-domain" }
+tak-server-app = { path = "./tak-server-app" }
 tak-server-http-api = { path = "./api/tak-server-http-api" }
 tokio = { version = "1.47.1", features = ["full"] }

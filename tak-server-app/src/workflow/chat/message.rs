@@ -12,19 +12,20 @@ use crate::{
     },
 };
 
+#[async_trait::async_trait]
 pub trait ChatMessageUseCase {
-    fn send_private_message(
+    async fn send_private_message(
         &self,
         from_player_id: PlayerId,
         to_player_id: PlayerId,
         message: String,
     ) -> Result<(), ChatMessageError>;
-    fn send_global_message(
+    async fn send_global_message(
         &self,
         from_player_id: PlayerId,
         message: String,
     ) -> Result<(), ChatMessageError>;
-    fn send_room_message(
+    async fn send_room_message(
         &self,
         from_player_id: PlayerId,
         room_name: String,
@@ -33,6 +34,7 @@ pub trait ChatMessageUseCase {
 }
 
 pub enum ChatMessageError {
+    FailedToRetrievePlayer,
     PlayerSilenced,
 }
 
@@ -74,39 +76,42 @@ impl<
         }
     }
 
-    fn filter_message(
+    async fn filter_message(
         &self,
         player_id: PlayerId,
         message: String,
     ) -> Result<String, ChatMessageError> {
-        if self
-            .player_repo
-            .get_player(player_id)
-            .is_some_and(|player| player.is_silenced)
-        {
-            return Err(ChatMessageError::PlayerSilenced);
+        match self.player_repo.get_player(player_id).await {
+            Ok(Some(player)) => {
+                if player.is_silenced {
+                    return Err(ChatMessageError::PlayerSilenced);
+                }
+            }
+            Ok(None) => return Err(ChatMessageError::FailedToRetrievePlayer),
+            Err(_) => return Err(ChatMessageError::FailedToRetrievePlayer),
         }
         let filtered_message = self.content_policy.filter_message(&message);
         Ok(filtered_message)
     }
 }
 
+#[async_trait::async_trait]
 impl<
-    L: ListenerNotificationPort,
-    P: PlayerConnectionPort,
-    C: ChatRoomService,
-    Co: ContentPolicy,
-    PR: PlayerRepository,
+    L: ListenerNotificationPort + Send + Sync + 'static,
+    P: PlayerConnectionPort + Send + Sync + 'static,
+    C: ChatRoomService + Send + Sync + 'static,
+    Co: ContentPolicy + Send + Sync + 'static,
+    PR: PlayerRepository + Send + Sync + 'static,
 > ChatMessageUseCase for ChatMessageUseCaseImpl<L, P, C, Co, PR>
 {
-    fn send_private_message(
+    async fn send_private_message(
         &self,
         from_player_id: PlayerId,
         to_player_id: PlayerId,
         message: String,
     ) -> Result<(), ChatMessageError> {
         let to_player_connection = self.player_connection_port.get_connection_id(to_player_id);
-        let filtered_message = self.filter_message(from_player_id, message)?;
+        let filtered_message = self.filter_message(from_player_id, message).await?;
         if let Some(connection_id) = to_player_connection {
             let msg = ListenerMessage::ChatMessage {
                 from_player_id,
@@ -119,12 +124,12 @@ impl<
         Ok(())
     }
 
-    fn send_global_message(
+    async fn send_global_message(
         &self,
         from_player_id: PlayerId,
         message: String,
     ) -> Result<(), ChatMessageError> {
-        let filtered_message = self.filter_message(from_player_id, message)?;
+        let filtered_message = self.filter_message(from_player_id, message).await?;
         let msg = ListenerMessage::ChatMessage {
             from_player_id,
             message: filtered_message,
@@ -134,13 +139,13 @@ impl<
         Ok(())
     }
 
-    fn send_room_message(
+    async fn send_room_message(
         &self,
         from_player_id: PlayerId,
         room_name: String,
         message: String,
     ) -> Result<(), ChatMessageError> {
-        let filtered_message = self.filter_message(from_player_id, message)?;
+        let filtered_message = self.filter_message(from_player_id, message).await?;
         let players_in_room = self.chat_room_service.get_listeners_in_room(&room_name);
         let msg = ListenerMessage::ChatMessage {
             from_player_id,

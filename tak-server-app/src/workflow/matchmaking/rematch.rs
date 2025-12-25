@@ -1,58 +1,29 @@
 use std::sync::Arc;
 
 use crate::{
-    domain::{
-        MatchId, PlayerId,
-        game::GameService,
-        game_history::{GameHistoryService, GameRepository},
-        r#match::MatchService,
-    },
-    processes::game_timeout_runner::GameTimeoutRunner,
-    workflow::matchmaking::create_game_from_match,
+    domain::{MatchId, PlayerId, r#match::MatchService},
+    workflow::matchmaking::create_game::CreateGameFromMatchWorkflow,
 };
 
+#[async_trait::async_trait]
 pub trait RematchUseCase {
-    fn request_or_accept_rematch(
+    async fn request_or_accept_rematch(
         &self,
         match_id: MatchId,
         player: PlayerId,
     ) -> Result<(), RematchError>;
 }
-pub struct RematchUseCaseImpl<
-    M: MatchService,
-    G: GameService,
-    GH: GameHistoryService,
-    GR: GameRepository,
-    GT: GameTimeoutRunner,
-> {
+
+pub struct RematchUseCaseImpl<M: MatchService, C: CreateGameFromMatchWorkflow> {
     match_service: Arc<M>,
-    game_service: Arc<G>,
-    game_history_service: Arc<GH>,
-    game_repository: Arc<GR>,
-    game_timeout_runner: Arc<GT>,
+    create_game_workflow: Arc<C>,
 }
 
-impl<
-    M: MatchService,
-    G: GameService,
-    GH: GameHistoryService,
-    GR: GameRepository,
-    GT: GameTimeoutRunner,
-> RematchUseCaseImpl<M, G, GH, GR, GT>
-{
-    pub fn new(
-        match_service: Arc<M>,
-        game_service: Arc<G>,
-        game_history_service: Arc<GH>,
-        game_repository: Arc<GR>,
-        game_timeout_runner: Arc<GT>,
-    ) -> Self {
+impl<M: MatchService, C: CreateGameFromMatchWorkflow> RematchUseCaseImpl<M, C> {
+    pub fn new(match_service: Arc<M>, create_game_workflow: Arc<C>) -> Self {
         Self {
             match_service,
-            game_service,
-            game_history_service,
-            game_repository,
-            game_timeout_runner,
+            create_game_workflow,
         }
     }
 }
@@ -63,15 +34,13 @@ pub enum RematchError {
     RematchAlreadyAccepted,
 }
 
+#[async_trait::async_trait]
 impl<
-    M: MatchService,
-    G: GameService,
-    GH: GameHistoryService,
-    GR: GameRepository,
-    GT: GameTimeoutRunner,
-> RematchUseCase for RematchUseCaseImpl<M, G, GH, GR, GT>
+    M: MatchService + Send + Sync + 'static,
+    C: CreateGameFromMatchWorkflow + Send + Sync + 'static,
+> RematchUseCase for RematchUseCaseImpl<M, C>
 {
-    fn request_or_accept_rematch(
+    async fn request_or_accept_rematch(
         &self,
         match_id: MatchId,
         player: PlayerId,
@@ -92,14 +61,9 @@ impl<
             let Some(match_entry) = self.match_service.get_match(match_id) else {
                 return Err(RematchError::MatchNotFound);
             };
-            create_game_from_match(
-                &self.match_service,
-                &self.game_history_service,
-                &self.game_repository,
-                &self.game_service,
-                &self.game_timeout_runner,
-                &match_entry,
-            );
+            self.create_game_workflow
+                .create_game_from_match(&match_entry)
+                .await;
         }
         Ok(())
     }

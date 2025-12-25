@@ -8,14 +8,15 @@ use crate::{
     },
 };
 
+#[async_trait::async_trait]
 pub trait ModeratePlayerUseCase {
-    fn ban_player(
+    async fn ban_player(
         &self,
         player_id: PlayerId,
         target_player_id: PlayerId,
         reason: &str,
     ) -> Result<(), ModerationError>;
-    fn silence_player(
+    async fn silence_player(
         &self,
         player_id: PlayerId,
         target_player_id: PlayerId,
@@ -67,27 +68,32 @@ impl<
     }
 }
 
+#[async_trait::async_trait]
 impl<
-    E: EmailPort,
-    BPP: PermissionPolicy,
-    SPP: PermissionPolicy,
-    PR: PlayerRepository,
-    A: AuthenticationService,
+    E: EmailPort + Send + Sync + 'static,
+    BPP: PermissionPolicy + Send + Sync + 'static,
+    SPP: PermissionPolicy + Send + Sync + 'static,
+    PR: PlayerRepository + Send + Sync + 'static,
+    A: AuthenticationService + Send + Sync + 'static,
 > ModeratePlayerUseCase for ModeratePlayerUseCaseImpl<E, BPP, SPP, PR, A>
 {
-    fn ban_player(
+    async fn ban_player(
         &self,
         player_id: PlayerId,
         target_player_id: PlayerId,
         reason: &str,
     ) -> Result<(), ModerationError> {
-        let Some(executing_account_id) = self.player_repository.get_account_for_player(player_id)
+        let Some(executing_account_id) = self
+            .player_repository
+            .get_account_id_for_player(player_id)
+            .await
         else {
             return Err(ModerationError::PlayerNotFound);
         };
         let Some(target_account_id) = self
             .player_repository
-            .get_account_for_player(target_player_id)
+            .get_account_id_for_player(target_player_id)
+            .await
         else {
             return Err(ModerationError::PlayerNotFound);
         };
@@ -110,7 +116,9 @@ impl<
             return Err(ModerationError::InsufficientPermissions);
         }
 
-        self.player_repository.set_player_banned(player_id, true);
+        self.player_repository
+            .set_player_banned(player_id, true)
+            .await;
 
         if let AuthSubject::Player { username, email } = target_account.subject_type {
             let subject = "Playtak Account Banned";
@@ -134,18 +142,22 @@ impl<
         Ok(())
     }
 
-    fn silence_player(
+    async fn silence_player(
         &self,
         player_id: PlayerId,
         target_player_id: PlayerId,
     ) -> Result<(), ModerationError> {
-        let Some(executing_account_id) = self.player_repository.get_account_for_player(player_id)
+        let Some(executing_account_id) = self
+            .player_repository
+            .get_account_id_for_player(player_id)
+            .await
         else {
             return Err(ModerationError::PlayerNotFound);
         };
         let Some(target_account_id) = self
             .player_repository
-            .get_account_for_player(target_player_id)
+            .get_account_id_for_player(target_player_id)
+            .await
         else {
             return Err(ModerationError::PlayerNotFound);
         };
@@ -169,7 +181,8 @@ impl<
         }
 
         self.player_repository
-            .set_player_silenced(target_player_id, true);
+            .set_player_silenced(target_player_id, true)
+            .await;
         Ok(())
     }
 }

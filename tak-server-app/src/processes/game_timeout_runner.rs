@@ -31,7 +31,7 @@ impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> GameTimeoutRunnerImpl
     async fn run(this: Arc<Self>, game_id: GameId) {
         loop {
             let now = Instant::now();
-            match this.observer.tick(game_id, now) {
+            match this.observer.tick(game_id, now).await {
                 ObserveOutcome::Finished => return,
                 ObserveOutcome::Continue(delay) => {
                     tokio::time::sleep(delay).await;

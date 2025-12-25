@@ -3,65 +3,44 @@ use std::sync::Arc;
 use crate::{
     domain::{
         PlayerId, SeekId,
-        game::GameService,
-        game_history::{GameHistoryService, GameRepository},
         r#match::{MatchColorRule, MatchService},
         seek::SeekService,
     },
     ports::notification::{ListenerMessage, ListenerNotificationPort},
-    processes::game_timeout_runner::GameTimeoutRunner,
-    workflow::matchmaking::create_game_from_match,
+    workflow::matchmaking::create_game::CreateGameFromMatchWorkflow,
 };
 
+#[async_trait::async_trait]
 pub trait AcceptSeekUseCase {
-    fn accept_seek(&self, player: PlayerId, seek_id: SeekId) -> Result<(), AcceptSeekError>;
+    async fn accept_seek(&self, player: PlayerId, seek_id: SeekId) -> Result<(), AcceptSeekError>;
 }
 
 pub struct AcceptSeekUseCaseImpl<
     S: SeekService,
-    G: GameService,
-    GR: GameRepository,
-    GH: GameHistoryService,
     M: MatchService,
     L: ListenerNotificationPort,
-    GT: GameTimeoutRunner,
+    C: CreateGameFromMatchWorkflow,
 > {
     seek_service: Arc<S>,
-    game_service: Arc<G>,
-    game_repository: Arc<GR>,
-    game_history_service: Arc<GH>,
     match_service: Arc<M>,
     notification_port: Arc<L>,
-    game_timeout_scheduler: Arc<GT>,
+    create_game_workflow: Arc<C>,
 }
 
-impl<
-    S: SeekService,
-    G: GameService,
-    GR: GameRepository,
-    GH: GameHistoryService,
-    M: MatchService,
-    L: ListenerNotificationPort,
-    GT: GameTimeoutRunner,
-> AcceptSeekUseCaseImpl<S, G, GR, GH, M, L, GT>
+impl<S: SeekService, M: MatchService, L: ListenerNotificationPort, C: CreateGameFromMatchWorkflow>
+    AcceptSeekUseCaseImpl<S, M, L, C>
 {
     pub fn new(
         seek_service: Arc<S>,
-        game_service: Arc<G>,
-        game_repository: Arc<GR>,
-        game_history_service: Arc<GH>,
         match_service: Arc<M>,
         notification_port: Arc<L>,
-        game_timeout_scheduler: Arc<GT>,
+        create_game_workflow: Arc<C>,
     ) -> Self {
         Self {
             seek_service,
-            game_service,
-            game_repository,
-            game_history_service,
             match_service,
             notification_port,
-            game_timeout_scheduler,
+            create_game_workflow,
         }
     }
 }
@@ -71,17 +50,15 @@ pub enum AcceptSeekError {
     InvalidOpponent,
 }
 
+#[async_trait::async_trait]
 impl<
-    S: SeekService,
-    G: GameService,
-    GR: GameRepository,
-    GH: GameHistoryService,
-    M: MatchService,
-    L: ListenerNotificationPort,
-    GT: GameTimeoutRunner,
-> AcceptSeekUseCase for AcceptSeekUseCaseImpl<S, G, GR, GH, M, L, GT>
+    S: SeekService + Send + Sync + 'static,
+    M: MatchService + Send + Sync + 'static,
+    L: ListenerNotificationPort + Send + Sync + 'static,
+    C: CreateGameFromMatchWorkflow + Send + Sync + 'static,
+> AcceptSeekUseCase for AcceptSeekUseCaseImpl<S, M, L, C>
 {
-    fn accept_seek(&self, player: PlayerId, seek_id: SeekId) -> Result<(), AcceptSeekError> {
+    async fn accept_seek(&self, player: PlayerId, seek_id: SeekId) -> Result<(), AcceptSeekError> {
         let seek = self
             .seek_service
             .cancel_seek(seek_id)
@@ -113,14 +90,9 @@ impl<
             seek.game_type,
         );
 
-        create_game_from_match(
-            &self.match_service,
-            &self.game_history_service,
-            &self.game_repository,
-            &self.game_service,
-            &self.game_timeout_scheduler,
-            &match_entry,
-        );
+        self.create_game_workflow
+            .create_game_from_match(&match_entry)
+            .await;
 
         Ok(())
     }

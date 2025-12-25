@@ -8,6 +8,6 @@ axum = { version = "0.8.4", features = ["ws", "macros"] }
 log = "0.4.28"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"
-tak-core = { path = "../../domain/tak-core" }
-tak-server-domain = { path = "../../domain/tak-server-domain" }
+tak-core = { path = "../../tak-core" }
+tak-server-app = { path = "../../tak-server-app" }
 tokio = { version = "1.47.1", features = ["full"] }

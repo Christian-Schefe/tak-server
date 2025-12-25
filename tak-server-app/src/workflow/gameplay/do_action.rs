@@ -14,16 +14,17 @@ use crate::{
     workflow::gameplay::finalize_game::FinalizeGameWorkflow,
 };
 
+#[async_trait::async_trait]
 pub trait DoActionUseCase {
-    fn do_action(
+    async fn do_action(
         &self,
         game_id: GameId,
         player_id: PlayerId,
         action: TakAction,
     ) -> Result<(), DoActionError>;
-    fn offer_draw(&self, game_id: GameId, player_id: PlayerId) -> Result<(), OfferDrawError>;
+    async fn offer_draw(&self, game_id: GameId, player_id: PlayerId) -> Result<(), OfferDrawError>;
     fn request_undo(&self, game_id: GameId, player_id: PlayerId) -> Result<(), RequestUndoError>;
-    fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), ResignError>;
+    async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), ResignError>;
 }
 
 pub enum DoActionError {
@@ -76,10 +77,15 @@ impl<G: GameService, L: ListenerNotificationPort, C: PlayerConnectionPort, F: Fi
     }
 }
 
-impl<G: GameService, L: ListenerNotificationPort, C: PlayerConnectionPort, F: FinalizeGameWorkflow>
-    DoActionUseCase for DoActionUseCaseImpl<G, L, C, F>
+#[async_trait::async_trait]
+impl<
+    G: GameService + Send + Sync + 'static,
+    L: ListenerNotificationPort + Send + Sync + 'static,
+    C: PlayerConnectionPort + Send + Sync + 'static,
+    F: FinalizeGameWorkflow + Send + Sync + 'static,
+> DoActionUseCase for DoActionUseCaseImpl<G, L, C, F>
 {
-    fn do_action(
+    async fn do_action(
         &self,
         game_id: GameId,
         player_id: PlayerId,
@@ -121,13 +127,13 @@ impl<G: GameService, L: ListenerNotificationPort, C: PlayerConnectionPort, F: Fi
         }
 
         if let Some(ended_game) = maybe_ended_game {
-            self.finalize_game_workflow.finalize_game(ended_game);
+            self.finalize_game_workflow.finalize_game(ended_game).await;
         }
 
         Ok(())
     }
 
-    fn offer_draw(&self, game_id: GameId, player_id: PlayerId) -> Result<(), OfferDrawError> {
+    async fn offer_draw(&self, game_id: GameId, player_id: PlayerId) -> Result<(), OfferDrawError> {
         let Some(game) = self.game_service.get_game_by_id(game_id) else {
             return Err(OfferDrawError::GameNotFound);
         };
@@ -151,7 +157,7 @@ impl<G: GameService, L: ListenerNotificationPort, C: PlayerConnectionPort, F: Fi
                 }
             }
             OfferDrawSuccess::GameDrawn(ended_game) => {
-                self.finalize_game_workflow.finalize_game(ended_game);
+                self.finalize_game_workflow.finalize_game(ended_game).await;
             }
         }
 
@@ -184,13 +190,13 @@ impl<G: GameService, L: ListenerNotificationPort, C: PlayerConnectionPort, F: Fi
         Ok(())
     }
 
-    fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), ResignError> {
+    async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), ResignError> {
         let ended_game = self
             .game_service
             .resign(game_id, player_id)
             .map_err(|_| ResignError::GameNotFound)?;
 
-        self.finalize_game_workflow.finalize_game(ended_game);
+        self.finalize_game_workflow.finalize_game(ended_game).await;
 
         Ok(())
     }

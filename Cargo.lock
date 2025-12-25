@@ -2246,6 +2246,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
+name = "pluralizer"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b3eba432a00a1f6c16f39147847a870e94e2e9b992759b503e330efec778cbe"
+dependencies = [
+ "once_cell",
+ "regex",
+]
+
+[[package]]
 name = "portable-atomic"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2867,9 +2877,9 @@ dependencies = [
 
 [[package]]
 name = "sea-orm"
-version = "2.0.0-rc.18"
+version = "2.0.0-rc.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd92b1f5f1a6bee6f51523dbd030c5f617e65da6caf312f166dabb404806db86"
+checksum = "38cb08645b287dde889794834dedbcb706cfabb2c5e4239b2828ddc8cd32f84d"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -2899,11 +2909,12 @@ dependencies = [
 
 [[package]]
 name = "sea-orm-macros"
-version = "2.0.0-rc.18"
+version = "2.0.0-rc.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07e65b4d10f02744f19c203f2e02fac65bc718efdd98636ea445f0a8f1ee0c1d"
+checksum = "d51b5590506f1fc2eeed63966f8d9ab28c0bd7c25853a1fa5e427560af4b1cce"
 dependencies = [
  "heck 0.5.0",
+ "pluralizer",
  "proc-macro2",
  "quote",
  "sea-bae",
@@ -2913,9 +2924,9 @@ dependencies = [
 
 [[package]]
 name = "sea-query"
-version = "1.0.0-rc.17"
+version = "1.0.0-rc.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30d190945ff6b2914ef0631c1933ef67ee142b15f00b72d40bf241147d24b522"
+checksum = "8edd21d591f27a3b6dda2093cc27b324eda2f8b34906bcbe534621188b60e96a"
 dependencies = [
  "bigdecimal",
  "chrono",
@@ -2960,9 +2971,9 @@ dependencies = [
 
 [[package]]
 name = "sea-schema"
-version = "0.17.0-rc.12"
+version = "0.17.0-rc.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09cb79f2d0fe3a3ca7852eb1c61590452674700fdeb9f07656b9eb16f8d1990b"
+checksum = "b363dd21c20fe4d1488819cb2bc7f8d4696c62dd9f39554f97639f54d57dd0ab"
 dependencies = [
  "async-trait",
  "sea-query",
@@ -3641,15 +3652,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tak-events-persistence"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "google-sheets4",
- "tak-server-domain",
-]
-
-[[package]]
 name = "tak-persistence-sea-orm"
 version = "0.1.0"
 dependencies = [
@@ -3663,8 +3665,9 @@ dependencies = [
  "serde",
  "serde_json",
  "tak-core",
- "tak-server-domain",
+ "tak-server-app",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -3674,10 +3677,11 @@ dependencies = [
  "dotenvy",
  "log",
  "log4rs",
- "tak-events-persistence",
+ "tak-email-lettre",
+ "tak-events-google-sheets",
  "tak-persistence-sea-orm",
  "tak-server-api",
- "tak-server-domain",
+ "tak-server-app",
  "tak-server-http-api",
  "tokio",
 ]
@@ -3698,7 +3702,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tak-core",
- "tak-server-domain",
+ "tak-server-app",
  "tokio",
  "tokio-util",
  "uuid",
@@ -3729,29 +3733,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tak-server-domain"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "bcrypt",
- "chrono",
- "dashmap",
- "futures",
- "lettre",
- "log",
- "moka",
- "passwords",
- "rand 0.9.2",
- "rustrict",
- "tak-core",
- "thiserror",
- "tokio",
- "tokio-util",
- "uuid",
- "validator",
-]
-
-[[package]]
 name = "tak-server-http-api"
 version = "0.1.0"
 dependencies = [
@@ -3760,7 +3741,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tak-core",
- "tak-server-domain",
+ "tak-server-app",
  "tokio",
 ]
 

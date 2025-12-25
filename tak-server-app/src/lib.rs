@@ -22,6 +22,7 @@ use crate::{
     processes::game_timeout_runner::GameTimeoutRunnerImpl,
     workflow::{
         account::{
+            get_snapshot::GetSnapshotWorkflowImpl,
             moderate::{ModeratePlayerUseCase, ModeratePlayerUseCaseImpl},
             register::{RegisterAccountUseCase, RegisterAccountUseCaseImpl},
         },
@@ -43,6 +44,7 @@ use crate::{
             cancel::{CancelSeekUseCase, CancelSeekUseCaseImpl},
             cleanup::MatchCleanupJob,
             create::{CreateSeekUseCase, CreateSeekUseCaseImpl},
+            create_game::CreateGameFromMatchWorkflowImpl,
             get::{GetSeekUseCase, GetSeekUseCaseImpl},
             list::{ListSeeksUseCase, ListSeeksUseCaseImpl},
             rematch::{RematchUseCase, RematchUseCaseImpl},
@@ -114,12 +116,20 @@ pub async fn build_core_application<
     let ban_policy = Arc::new(AdminAccountPolicy);
     let silence_policy = Arc::new(ModeratorAccountPolicy);
 
+    let get_snapshot_workflow = Arc::new(GetSnapshotWorkflowImpl::new(
+        authentication_service.clone(),
+        player_repository.clone(),
+        rating_repository.clone(),
+        rating_service.clone(),
+    ));
+
     let finalize_game_workflow = Arc::new(FinalizeGameWorkflowImpl::new(
         game_repository.clone(),
         rating_service.clone(),
         rating_repository.clone(),
         game_history_service.clone(),
         match_service.clone(),
+        get_snapshot_workflow.clone(),
     ));
     let observe_game_timeout_use_case = Arc::new(ObserveGameTimeoutUseCaseImpl::new(
         game_service.clone(),
@@ -127,6 +137,14 @@ pub async fn build_core_application<
     ));
     let game_timeout_scheduler = Arc::new(GameTimeoutRunnerImpl::new(
         observe_game_timeout_use_case.clone(),
+    ));
+
+    let create_game_from_match_workflow = Arc::new(CreateGameFromMatchWorkflowImpl::new(
+        match_service.clone(),
+        game_history_service.clone(),
+        game_repository.clone(),
+        game_service.clone(),
+        game_timeout_scheduler.clone(),
     ));
 
     let match_cleanup_job = MatchCleanupJob::new(match_service.clone());
@@ -138,12 +156,9 @@ pub async fn build_core_application<
         jobs,
         seek_accept_use_case: Box::new(AcceptSeekUseCaseImpl::new(
             seek_service.clone(),
-            game_service.clone(),
-            game_repository.clone(),
-            game_history_service.clone(),
             match_service.clone(),
             listener_notification_port.clone(),
-            game_timeout_scheduler.clone(),
+            create_game_from_match_workflow.clone(),
         )),
         seek_cancel_use_case: Box::new(CancelSeekUseCaseImpl::new(
             seek_service.clone(),
@@ -158,10 +173,7 @@ pub async fn build_core_application<
 
         match_rematch_use_case: Box::new(RematchUseCaseImpl::new(
             match_service.clone(),
-            game_service.clone(),
-            game_history_service.clone(),
-            game_repository.clone(),
-            game_timeout_scheduler.clone(),
+            create_game_from_match_workflow.clone(),
         )),
 
         player_set_online_use_case: Box::new(SetPlayerOnlineUseCaseImpl::new(

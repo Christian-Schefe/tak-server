@@ -32,30 +32,39 @@ impl PlayerRating {
     }
 }
 
-pub struct RatingResult {
-    pub white_rating: PlayerRating,
-    pub black_rating: PlayerRating,
-    pub game_rating_info: GameRatingInfo,
-}
-
+#[async_trait::async_trait]
 pub trait RatingRepository {
-    fn get_player_rating(&self, player_id: PlayerId) -> PlayerRating;
-    fn save_player_rating(&self, player_id: PlayerId, rating: &PlayerRating);
+    async fn get_player_rating(&self, player_id: PlayerId) -> PlayerRating;
+    async fn update_player_ratings<R>(
+        &self,
+        white: PlayerId,
+        black: PlayerId,
+        calc_fn: impl FnOnce(&mut PlayerRating, &mut PlayerRating) -> R + Send,
+    ) -> R;
 }
 
 pub trait RatingService {
+    fn get_current_rating(&self, player_rating: &PlayerRating, date: DateTime<Utc>) -> f64;
     fn calculate_ratings(
         &self,
         date: DateTime<Utc>,
         game: &Game,
-        white_rating: PlayerRating,
-        black_rating: PlayerRating,
-    ) -> Option<RatingResult>;
+        white_rating: &mut PlayerRating,
+        black_rating: &mut PlayerRating,
+    ) -> Option<GameRatingInfo>;
 }
 
 pub struct RatingServiceImpl;
 
 impl RatingServiceImpl {
+    const INITIAL_RATING: f64 = 1000.0;
+    const BONUS_RATING: f64 = 750.0;
+    const BONUS_FACTOR: f64 = 60.0;
+    const PARTICIPATION_LIMIT: f64 = 10.0;
+    const PARTICIPATION_CUTOFF: f64 = 1500.0;
+    const MAX_DROP: f64 = 200.0;
+    const RATING_RETENTION: f64 = 1000.0 * 60.0 * 60.0 * 24.0 * 240.0;
+
     pub fn new() -> Self {
         Self {}
     }
@@ -188,24 +197,49 @@ impl RatingServiceImpl {
             .and_modify(|f| *f += game_factor)
             .or_insert(game_factor);
     }
+
+    fn update_rating_and_fatigue(
+        player: &mut PlayerRating,
+        opponent_id: PlayerId,
+        amount: f64,
+        fairness: f64,
+        fatigue_factor: f64,
+        date: DateTime<Utc>,
+    ) {
+        Self::update_rating(
+            player,
+            amount,
+            fairness,
+            fatigue_factor,
+            date.timestamp() as f64,
+            Self::BONUS_FACTOR,
+            Self::BONUS_RATING,
+            Self::RATING_RETENTION,
+            Self::INITIAL_RATING,
+        );
+        Self::update_fatigue(player, opponent_id, fairness * fatigue_factor);
+    }
 }
 
 impl RatingService for RatingServiceImpl {
+    fn get_current_rating(&self, player_rating: &PlayerRating, date: DateTime<Utc>) -> f64 {
+        Self::calc_decayed_rating(
+            player_rating,
+            date.timestamp(),
+            Self::PARTICIPATION_CUTOFF,
+            Self::RATING_RETENTION,
+            Self::MAX_DROP,
+            Self::PARTICIPATION_LIMIT,
+        )
+    }
+
     fn calculate_ratings(
         &self,
         date: DateTime<Utc>,
         game: &Game,
-        mut white_rating: PlayerRating,
-        mut black_rating: PlayerRating,
-    ) -> Option<RatingResult> {
-        const INITIAL_RATING: f64 = 1000.0;
-        const BONUS_RATING: f64 = 750.0;
-        const BONUS_FACTOR: f64 = 60.0;
-        const PARTICIPATION_LIMIT: f64 = 10.0;
-        const PARTICIPATION_CUTOFF: f64 = 1500.0;
-        const MAX_DROP: f64 = 200.0;
-        const RATING_RETENTION: f64 = 1000.0 * 60.0 * 60.0 * 24.0 * 240.0;
-
+        white_rating: &mut PlayerRating,
+        black_rating: &mut PlayerRating,
+    ) -> Option<GameRatingInfo> {
         let white_id = game.white;
         let black_id = game.black;
         let result = game.game.game_state();
@@ -228,22 +262,8 @@ impl RatingService for RatingServiceImpl {
             _ => return None,
         };
 
-        let old_white_rating_decayed = Self::calc_decayed_rating(
-            &white_rating,
-            date.timestamp(),
-            PARTICIPATION_CUTOFF,
-            RATING_RETENTION,
-            MAX_DROP,
-            PARTICIPATION_LIMIT,
-        );
-        let old_black_rating_decayed = Self::calc_decayed_rating(
-            &black_rating,
-            date.timestamp(),
-            PARTICIPATION_CUTOFF,
-            RATING_RETENTION,
-            MAX_DROP,
-            PARTICIPATION_LIMIT,
-        );
+        let old_white_rating_decayed = self.get_current_rating(&white_rating, date);
+        let old_black_rating_decayed = self.get_current_rating(&black_rating, date);
 
         let sw = 10f64.powf(white_rating.rating / 400.0);
         let sb = 10f64.powf(black_rating.rating / 400.0);
@@ -252,59 +272,29 @@ impl RatingService for RatingServiceImpl {
         let fatigue_factor = (1.0 - white_rating.fatigue.get(&black_id).unwrap_or(&0.0) * 0.4)
             * (1.0 - black_rating.fatigue.get(&white_id).unwrap_or(&0.0) * 0.4);
         let adjustment = result - expected;
-        Self::update_rating(
-            &mut white_rating,
+        Self::update_rating_and_fatigue(
+            white_rating,
+            black_id,
             adjustment,
             fairness,
             fatigue_factor,
-            date.timestamp() as f64,
-            BONUS_FACTOR,
-            BONUS_RATING,
-            RATING_RETENTION,
-            INITIAL_RATING,
+            date,
         );
-        Self::update_rating(
-            &mut black_rating,
+        Self::update_rating_and_fatigue(
+            black_rating,
+            white_id,
             -adjustment,
             fairness,
             fatigue_factor,
-            date.timestamp() as f64,
-            BONUS_FACTOR,
-            BONUS_RATING,
-            RATING_RETENTION,
-            INITIAL_RATING,
-        );
-        Self::update_fatigue(&mut white_rating, black_id, fairness * fatigue_factor);
-        Self::update_fatigue(&mut black_rating, white_id, fairness * fatigue_factor);
-        let new_white_rating_decayed = Self::calc_decayed_rating(
-            &white_rating,
-            date.timestamp(),
-            PARTICIPATION_CUTOFF,
-            RATING_RETENTION,
-            MAX_DROP,
-            PARTICIPATION_LIMIT,
-        );
-        let new_black_rating_decayed = Self::calc_decayed_rating(
-            &black_rating,
-            date.timestamp(),
-            PARTICIPATION_CUTOFF,
-            RATING_RETENTION,
-            MAX_DROP,
-            PARTICIPATION_LIMIT,
+            date,
         );
 
-        let game_rating_info = GameRatingInfo {
-            rating_white: old_white_rating_decayed,
-            rating_black: old_black_rating_decayed,
-            rating_change: Some((
-                ((new_white_rating_decayed - old_white_rating_decayed) * 10.0).round(),
-                ((new_black_rating_decayed - old_black_rating_decayed) * 10.0).round(),
-            )),
-        };
-        Some(RatingResult {
-            white_rating,
-            black_rating,
-            game_rating_info,
+        let new_white_rating_decayed = self.get_current_rating(&white_rating, date);
+        let new_black_rating_decayed = self.get_current_rating(&black_rating, date);
+
+        Some(GameRatingInfo {
+            rating_change_white: new_white_rating_decayed - old_white_rating_decayed,
+            rating_change_black: new_black_rating_decayed - old_black_rating_decayed,
         })
     }
 }

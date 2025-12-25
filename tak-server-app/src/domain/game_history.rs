@@ -1,15 +1,17 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use tak_core::{TakActionRecord, TakGameSettings, TakGameState};
 
-use crate::domain::{FinishedGameId, GameId, GameType, PlayerId, game::Game};
+use crate::domain::{
+    FinishedGameId, GameId, GameType, Pagination, PlayerId, SortOrder, game::Game,
+};
 
 pub struct GameRecord {
     pub date: DateTime<Utc>,
-    pub white: PlayerId,
-    pub black: PlayerId,
+    pub white: PlayerSnapshot,
+    pub black: PlayerSnapshot,
     pub rating_info: Option<GameRatingInfo>,
     pub settings: TakGameSettings,
     pub game_type: GameType,
@@ -17,17 +19,104 @@ pub struct GameRecord {
     pub moves: Vec<TakActionRecord>,
 }
 
-#[derive(Clone, Debug)]
-pub struct GameRatingInfo {
-    pub rating_white: f64,
-    pub rating_black: f64,
-    pub rating_change: Option<(f64, f64)>,
+pub struct PlayerSnapshot {
+    pub player_id: PlayerId,
+    pub username: Option<String>,
+    pub rating: Option<f64>,
 }
 
+impl PlayerSnapshot {
+    pub fn new(player_id: PlayerId, username: Option<String>, rating: Option<f64>) -> Self {
+        Self {
+            player_id,
+            username,
+            rating,
+        }
+    }
+}
+
+pub struct GameRatingInfo {
+    pub rating_change_white: f64,
+    pub rating_change_black: f64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct GameFilter {
+    pub id_selector: Option<GameIdSelector>,
+    pub date_selector: Option<DateSelector>,
+    pub player_white: Option<GamePlayerFilter>,
+    pub player_black: Option<GamePlayerFilter>,
+    pub game_states: Option<Vec<TakGameState>>,
+    pub half_komi: Option<usize>,
+    pub board_size: Option<usize>,
+    pub game_type: Option<GameType>,
+    pub clock_contingent: Option<Duration>,
+    pub clock_increment: Option<Duration>,
+    pub clock_extra_trigger: Option<usize>,
+    pub clock_extra_time: Option<Duration>,
+    pub pagination: Pagination,
+    pub sort: Option<(SortOrder, GameSortBy)>,
+}
+
+#[derive(Debug, Clone)]
+pub enum GameSortBy {
+    Date,
+    GameId,
+}
+
+#[derive(Debug, Clone)]
+pub enum DateSelector {
+    Range(DateTime<Utc>, DateTime<Utc>),
+    Before(DateTime<Utc>),
+    After(DateTime<Utc>),
+}
+
+#[derive(Debug, Clone)]
+pub enum GameIdSelector {
+    Range(FinishedGameId, FinishedGameId),
+    AndBefore(FinishedGameId),
+    AndAfter(FinishedGameId),
+    List(Vec<FinishedGameId>),
+}
+
+#[derive(Debug, Clone)]
+pub enum GamePlayerFilter {
+    Contains(String),
+    Equals(String),
+}
+
+pub struct GameFinishedUpdate {
+    pub result: TakGameState,
+    pub moves: Vec<TakActionRecord>,
+    pub player_white: PlayerSnapshot,
+    pub player_black: PlayerSnapshot,
+    pub rating_info: Option<GameRatingInfo>,
+}
+
+#[async_trait::async_trait]
 pub trait GameRepository {
-    fn save_ongoing_game(&self, game: GameRecord) -> FinishedGameId;
-    fn update_finished_game(&self, game_id: FinishedGameId, game: GameRecord);
-    fn get_game_record(&self, game_id: FinishedGameId) -> Option<GameRecord>;
+    async fn save_ongoing_game(&self, game: GameRecord) -> Result<FinishedGameId, GameRepoError>;
+    async fn update_finished_game(
+        &self,
+        game_id: FinishedGameId,
+        update: GameFinishedUpdate,
+    ) -> Result<(), GameRepoError>;
+    async fn get_game_record(&self, game_id: FinishedGameId) -> Result<GameRecord, ReadGameError>;
+    async fn get_games(&self, filter: GameFilter) -> Result<GameFilterResult, GameRepoError>;
+}
+
+pub enum ReadGameError {
+    NotFound,
+    StorageError(String),
+}
+
+pub enum GameRepoError {
+    StorageError(String),
+}
+
+pub struct GameFilterResult {
+    pub total_count: usize,
+    pub games: Vec<(FinishedGameId, GameRecord)>,
 }
 
 pub trait GameHistoryService {
@@ -35,16 +124,19 @@ pub trait GameHistoryService {
     fn remove_ongoing_game_id(&self, game_id: GameId) -> Option<FinishedGameId>;
     fn get_ongoing_game_record(
         &self,
-        white: PlayerId,
-        black: PlayerId,
+        date: DateTime<Utc>,
+        white_id: PlayerId,
+        black_id: PlayerId,
         settings: TakGameSettings,
         game_type: GameType,
     ) -> GameRecord;
-    fn get_finished_game_record(
+    fn get_finished_game_record_update(
         &self,
         game: Game,
+        white: PlayerSnapshot,
+        black: PlayerSnapshot,
         rating_info: Option<GameRatingInfo>,
-    ) -> GameRecord;
+    ) -> GameFinishedUpdate;
 }
 
 pub struct GameHistoryServiceImpl {
@@ -70,15 +162,16 @@ impl GameHistoryService for GameHistoryServiceImpl {
 
     fn get_ongoing_game_record(
         &self,
-        white: PlayerId,
-        black: PlayerId,
+        date: DateTime<Utc>,
+        white_id: PlayerId,
+        black_id: PlayerId,
         settings: TakGameSettings,
         game_type: GameType,
     ) -> GameRecord {
         GameRecord {
-            date: Utc::now(),
-            white,
-            black,
+            date,
+            white: PlayerSnapshot::new(white_id, None, None),
+            black: PlayerSnapshot::new(black_id, None, None),
             rating_info: None,
             settings,
             game_type,
@@ -87,20 +180,19 @@ impl GameHistoryService for GameHistoryServiceImpl {
         }
     }
 
-    fn get_finished_game_record(
+    fn get_finished_game_record_update(
         &self,
         game: Game,
+        white: PlayerSnapshot,
+        black: PlayerSnapshot,
         rating_info: Option<GameRatingInfo>,
-    ) -> GameRecord {
-        GameRecord {
-            date: Utc::now(),
-            white: game.white,
-            black: game.black,
-            rating_info,
-            settings: game.settings,
-            game_type: game.game_type,
+    ) -> GameFinishedUpdate {
+        GameFinishedUpdate {
             result: game.game.game_state(),
             moves: game.game.action_history().clone(),
+            player_white: white,
+            player_black: black,
+            rating_info,
         }
     }
 }

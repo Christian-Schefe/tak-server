@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
 use crate::{
-    domain::player::{Player, PlayerRepository},
+    domain::player::{CreatePlayerError, Player, PlayerRepository},
     ports::authentication::AuthContext,
 };
 
+#[async_trait::async_trait]
 pub trait RegisterAccountUseCase {
-    fn create_player_if_not_exists(&self, auth_context: &AuthContext) -> bool;
+    async fn create_player_if_not_exists(&self, auth_context: &AuthContext) -> bool;
 }
 
 pub struct RegisterAccountUseCaseImpl<PR: PlayerRepository> {
@@ -19,24 +20,23 @@ impl<PR: PlayerRepository> RegisterAccountUseCaseImpl<PR> {
     }
 }
 
-impl<PR: PlayerRepository> RegisterAccountUseCase for RegisterAccountUseCaseImpl<PR> {
-    fn create_player_if_not_exists(&self, auth_context: &AuthContext) -> bool {
-        if self
+#[async_trait::async_trait]
+impl<PR: PlayerRepository + Send + Sync + 'static> RegisterAccountUseCase
+    for RegisterAccountUseCaseImpl<PR>
+{
+    async fn create_player_if_not_exists(&self, auth_context: &AuthContext) -> bool {
+        let player = Player::new();
+        match self
             .player_repository
-            .get_player_by_account_id(auth_context.account_id)
-            .is_none()
+            .create_player(player, Some(auth_context.account_id))
+            .await
         {
-            let player = Player::new();
-            if let Err(_) = self
-                .player_repository
-                .create_player(player, Some(auth_context.account_id))
-            {
-                //TODO: log error
-                return false;
+            Ok(()) => true,
+            Err(CreatePlayerError::PlayerAlreadyExists) => false,
+            Err(CreatePlayerError::StorageError(e)) => {
+                log::error!("Failed to create player: {}", e);
+                false
             }
-            true
-        } else {
-            false
         }
     }
 }

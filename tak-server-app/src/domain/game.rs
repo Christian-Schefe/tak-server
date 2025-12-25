@@ -11,6 +11,7 @@ use tak_core::{TakAction, TakActionRecord, TakGame, TakGameSettings, TakPlayer};
 pub struct Game {
     pub game_id: GameId,
     pub match_id: MatchId,
+    pub date: chrono::DateTime<chrono::Utc>,
     pub white: PlayerId,
     pub black: PlayerId,
     pub game: TakGame,
@@ -33,6 +34,7 @@ impl Game {
 pub trait GameService {
     fn create_game(
         &self,
+        date: chrono::DateTime<chrono::Utc>,
         player1: PlayerId,
         player2: PlayerId,
         color: Option<TakPlayer>,
@@ -138,6 +140,7 @@ impl GameServiceImpl {
 impl GameService for GameServiceImpl {
     fn create_game(
         &self,
+        date: chrono::DateTime<chrono::Utc>,
         player1: PlayerId,
         player2: PlayerId,
         color: Option<TakPlayer>,
@@ -160,6 +163,7 @@ impl GameService for GameServiceImpl {
 
         let game_id = self.increment_game_id();
         let game_struct = Game {
+            date,
             white,
             black,
             game,

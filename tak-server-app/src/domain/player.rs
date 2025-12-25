@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 use crate::domain::{AccountId, PlayerId};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Player {
     pub player_id: PlayerId,
     pub is_silenced: bool,
@@ -23,26 +24,38 @@ impl Player {
     }
 }
 
+#[async_trait::async_trait]
 pub trait PlayerRepository {
-    fn create_player(
+    async fn create_player(
         &self,
         player: Player,
         account_id: Option<AccountId>,
     ) -> Result<(), CreatePlayerError>;
-    fn delete_player(&self, player_id: PlayerId);
-    fn get_player(&self, player_id: PlayerId) -> Option<Player>;
-    fn link_account(&self, player_id: PlayerId, account_id: AccountId);
-    fn unlink_account(&self, player_id: PlayerId);
-    fn get_player_by_account_id(&self, account_id: AccountId) -> Option<Player>;
-    fn get_account_for_player(&self, player_id: PlayerId) -> Option<AccountId>;
-    fn set_player_silenced(&self, player_id: PlayerId, silenced: bool);
-    fn set_player_banned(&self, player_id: PlayerId, banned: bool);
-    fn set_player_is_bot(&self, player_id: PlayerId, is_bot: bool);
+    async fn delete_player(&self, player_id: PlayerId) -> Result<bool, PlayerRepoError>;
+    async fn get_player(&self, player_id: PlayerId) -> Result<Option<Player>, PlayerRepoError>;
+    async fn link_account(
+        &self,
+        player_id: PlayerId,
+        account_id: AccountId,
+    ) -> Result<(), PlayerRepoError>;
+    async fn unlink_account(&self, player_id: PlayerId) -> Result<(), PlayerRepoError>;
+    async fn get_player_by_account_id(
+        &self,
+        account_id: AccountId,
+    ) -> Result<Option<Player>, PlayerRepoError>;
+    async fn get_account_id_for_player(&self, player_id: PlayerId) -> Option<AccountId>;
+    async fn set_player_silenced(&self, player_id: PlayerId, silenced: bool);
+    async fn set_player_banned(&self, player_id: PlayerId, banned: bool);
+    async fn set_player_is_bot(&self, player_id: PlayerId, is_bot: bool);
 }
 
 pub enum CreatePlayerError {
     PlayerAlreadyExists,
-    StorageError,
+    StorageError(String),
+}
+
+pub enum PlayerRepoError {
+    StorageError(String),
 }
 
 pub trait PlayerService {

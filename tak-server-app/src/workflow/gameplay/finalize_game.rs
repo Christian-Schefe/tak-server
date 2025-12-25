@@ -1,14 +1,18 @@
 use std::sync::Arc;
 
-use crate::domain::{
-    game::Game,
-    game_history::{GameHistoryService, GameRepository},
-    r#match::MatchService,
-    rating::{RatingRepository, RatingService},
+use crate::{
+    domain::{
+        game::Game,
+        game_history::{GameHistoryService, GameRepository},
+        r#match::MatchService,
+        rating::{RatingRepository, RatingService},
+    },
+    workflow::account::get_snapshot::GetSnapshotWorkflow,
 };
 
+#[async_trait::async_trait]
 pub trait FinalizeGameWorkflow {
-    fn finalize_game(&self, ended_game: Game);
+    async fn finalize_game(&self, ended_game: Game);
 }
 
 pub struct FinalizeGameWorkflowImpl<
@@ -17,12 +21,14 @@ pub struct FinalizeGameWorkflowImpl<
     RP: RatingRepository,
     GH: GameHistoryService,
     M: MatchService,
+    S: GetSnapshotWorkflow,
 > {
     game_repository: Arc<G>,
     rating_service: Arc<R>,
     rating_repository: Arc<RP>,
     game_history_service: Arc<GH>,
     match_service: Arc<M>,
+    get_snapshot_workflow: Arc<S>,
 }
 
 impl<
@@ -31,7 +37,8 @@ impl<
     RP: RatingRepository,
     GH: GameHistoryService,
     M: MatchService,
-> FinalizeGameWorkflowImpl<G, R, RP, GH, M>
+    S: GetSnapshotWorkflow,
+> FinalizeGameWorkflowImpl<G, R, RP, GH, M, S>
 {
     pub fn new(
         game_repository: Arc<G>,
@@ -39,6 +46,7 @@ impl<
         rating_repository: Arc<RP>,
         game_history_service: Arc<GH>,
         match_service: Arc<M>,
+        get_snapshot_workflow: Arc<S>,
     ) -> Self {
         Self {
             game_repository,
@@ -46,48 +54,67 @@ impl<
             rating_repository,
             game_history_service,
             match_service,
+            get_snapshot_workflow,
         }
     }
 }
 
+#[async_trait::async_trait]
 impl<
-    G: GameRepository,
-    R: RatingService,
-    RP: RatingRepository,
-    GH: GameHistoryService,
-    M: MatchService,
-> FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, GH, M>
+    G: GameRepository + Send + Sync + 'static,
+    R: RatingService + Send + Sync + 'static,
+    RP: RatingRepository + Send + Sync + 'static,
+    GH: GameHistoryService + Send + Sync + 'static,
+    M: MatchService + Send + Sync + 'static,
+    S: GetSnapshotWorkflow + Send + Sync + 'static,
+> FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, GH, M, S>
 {
-    fn finalize_game(&self, ended_game: Game) {
+    async fn finalize_game(&self, ended_game: Game) {
         let Some(finished_game_id) = self
             .game_history_service
             .remove_ongoing_game_id(ended_game.game_id)
         else {
             return;
         };
-        let now = chrono::Utc::now();
-        let white_rating = self.rating_repository.get_player_rating(ended_game.white);
-        let black_rating = self.rating_repository.get_player_rating(ended_game.black);
-        let game_rating_info = if let Some(rating_result) =
-            self.rating_service
-                .calculate_ratings(now, &ended_game, white_rating, black_rating)
-        {
-            self.rating_repository
-                .save_player_rating(ended_game.white, &rating_result.white_rating);
-            self.rating_repository
-                .save_player_rating(ended_game.black, &rating_result.black_rating);
-            Some(rating_result.game_rating_info)
-        } else {
-            None
-        };
-        let game_record = self
-            .game_history_service
-            .get_finished_game_record(ended_game.clone(), game_rating_info.clone());
 
-        self.game_repository
-            .update_finished_game(finished_game_id, game_record);
+        let snapshot_white = self
+            .get_snapshot_workflow
+            .get_snapshot(ended_game.white, ended_game.date)
+            .await;
+        let snapshot_black = self
+            .get_snapshot_workflow
+            .get_snapshot(ended_game.black, ended_game.date)
+            .await;
+
+        let game_rating_info = self
+            .rating_repository
+            .update_player_ratings(ended_game.white, ended_game.black, |w_rating, b_rating| {
+                self.rating_service.calculate_ratings(
+                    ended_game.date,
+                    &ended_game,
+                    w_rating,
+                    b_rating,
+                )
+            })
+            .await;
+
+        let match_id = ended_game.match_id;
+        let game_record_update = self.game_history_service.get_finished_game_record_update(
+            ended_game,
+            snapshot_white,
+            snapshot_black,
+            game_rating_info,
+        );
 
         self.match_service
-            .end_game_in_match(ended_game.match_id, finished_game_id);
+            .end_game_in_match(match_id, finished_game_id);
+
+        if let Err(_) = self
+            .game_repository
+            .update_finished_game(finished_game_id, game_record_update)
+            .await
+        {
+            //TODO: log error
+        }
     }
 }

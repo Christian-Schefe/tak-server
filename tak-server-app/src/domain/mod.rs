@@ -10,10 +10,22 @@ pub mod seek;
 pub mod spectator;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct PlayerId(uuid::Uuid);
+pub struct PlayerId(pub uuid::Uuid);
+
+impl PlayerId {
+    pub fn to_string(&self) -> String {
+        self.0.as_hyphenated().to_string()
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct AccountId(uuid::Uuid);
+pub struct AccountId(pub uuid::Uuid);
+
+impl AccountId {
+    pub fn to_string(&self) -> String {
+        self.0.as_hyphenated().to_string()
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MatchId(u32);
@@ -25,7 +37,7 @@ pub struct SeekId(u32);
 pub struct GameId(u32);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct FinishedGameId(u32);
+pub struct FinishedGameId(pub i64);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ListenerId(uuid::Uuid);
@@ -35,4 +47,16 @@ pub enum GameType {
     Unrated,
     Rated,
     Tournament,
+}
+
+#[derive(Debug, Clone)]
+pub enum SortOrder {
+    Ascending,
+    Descending,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Pagination {
+    pub offset: Option<usize>,
+    pub limit: Option<usize>,
 }
