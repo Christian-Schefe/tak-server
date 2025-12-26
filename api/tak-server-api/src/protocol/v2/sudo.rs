@@ -88,7 +88,7 @@ impl ProtocolV2Handler {
         }
         let target_username = parts[2].to_string();
         if let Some(silenced) = silenced {
-            self.app_state
+            self.app
                 .player_service
                 .set_silenced(username, &target_username, silenced)
                 .await?;
@@ -99,7 +99,7 @@ impl ProtocolV2Handler {
                 if silenced { "gagged" } else { "ungagged" }
             )));
         } else if let Some(modded) = modded {
-            self.app_state
+            self.app
                 .player_service
                 .set_modded(username, &target_username, modded)
                 .await?;
@@ -110,7 +110,7 @@ impl ProtocolV2Handler {
                 target_username
             )));
         } else if let Some(admin) = admin {
-            self.app_state
+            self.app
                 .player_service
                 .set_admin(username, &target_username, admin)
                 .await?;
@@ -121,7 +121,7 @@ impl ProtocolV2Handler {
                 target_username
             )));
         } else if let Some(bot) = bot {
-            self.app_state
+            self.app
                 .player_service
                 .set_bot(username, &target_username, bot)
                 .await?;
@@ -145,7 +145,7 @@ impl ProtocolV2Handler {
             return ServiceError::bad_request("Invalid Sudo kick command format");
         }
         let target_username = parts[2].to_string();
-        self.app_state
+        self.app
             .player_service
             .try_kick(username, &target_username)
             .await?;
@@ -165,7 +165,7 @@ impl ProtocolV2Handler {
         let target_username = parts[2].to_string();
         let ban_msg = if ban { Some(msg.to_string()) } else { None };
 
-        self.app_state
+        self.app
             .player_service
             .set_banned(username, &target_username, ban_msg)
             .await?;
@@ -182,7 +182,7 @@ impl ProtocolV2Handler {
         }
         let list_type = parts[2];
 
-        let player_service = &self.app_state.player_service;
+        let player_service = &self.app.player_service;
 
         let player_filter = match list_type {
             "ban" => PlayerFilter {
@@ -236,7 +236,7 @@ impl ProtocolV2Handler {
 
         match setting {
             "password" => {
-                self.app_state
+                self.app
                     .player_service
                     .set_password(username, &target_username, value)
                     .await?;

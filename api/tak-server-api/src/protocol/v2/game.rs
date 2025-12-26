@@ -101,7 +101,7 @@ impl ProtocolV2Handler {
             return ServiceError::bad_request("Invalid Game ID in Game message");
         };
 
-        let game_service = &self.app_state.game_service;
+        let game_service = &self.app.game_service;
 
         match parts[1] {
             "P" => {
@@ -167,7 +167,7 @@ impl ProtocolV2Handler {
             variant,
         };
 
-        self.app_state
+        self.app
             .game_service
             .try_do_action(username, &game_id, action)
             .await?;
@@ -223,7 +223,7 @@ impl ProtocolV2Handler {
             dir,
             drops,
         };
-        self.app_state
+        self.app
             .game_service
             .try_do_action(username, &game_id, action)
             .await?;

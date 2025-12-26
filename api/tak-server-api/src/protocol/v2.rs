@@ -1,14 +1,16 @@
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 use log::info;
-use tak_server_domain::{
-    ServiceError, ServiceResult,
-    app::AppState,
-    player::PlayerUsername,
-    transport::{DisconnectReason, ListenerId, ServerGameMessage, ServerMessage},
+use tak_server_app::{
+    domain::{ListenerId, PlayerId},
+    ports::notification::ListenerMessage,
 };
 
-use crate::client::TransportServiceImpl;
+use crate::{
+    app::ServiceError,
+    client::{DisconnectReason, ServerMessage, TransportServiceImpl},
+    protocol::Application,
+};
 
 mod auth;
 mod chat;
@@ -18,22 +20,21 @@ mod seek;
 mod sudo;
 
 pub struct ProtocolV2Handler {
-    app_state: AppState,
+    app: Arc<Application>,
     transport: TransportServiceImpl,
 }
-
-pub type ProtocolV2Result = ServiceResult<V2Response>;
 
 pub enum V2Response {
     OK,
     Message(String),
     ErrorMessage(ServiceError, String),
+    ErrorNOK(ServiceError),
 }
 
 impl ProtocolV2Handler {
-    pub fn new(app: &AppState, transport: &TransportServiceImpl) -> Self {
+    pub fn new(app: &Arc<Application>, transport: &TransportServiceImpl) -> Self {
         Self {
-            app_state: app.clone(),
+            app: app.clone(),
             transport: transport.clone(),
         }
     }
@@ -44,15 +45,15 @@ impl ProtocolV2Handler {
             info!("Received empty message");
             return;
         }
-        let res: ProtocolV2Result = match parts[0].to_ascii_lowercase().as_str() {
-            "ping" => Ok(V2Response::OK),
-            "protocol" => Ok(V2Response::OK), // Noop, ignore
-            "client" => Ok(V2Response::OK),   // Noop, ignore
+        let res: V2Response = match parts[0].to_ascii_lowercase().as_str() {
+            "ping" => V2Response::OK,
+            "protocol" => V2Response::OK, // Noop, ignore
+            "client" => V2Response::OK,   // Noop, ignore
             "quit" | "exit" => {
                 self.transport
                     .close_with_reason(id, DisconnectReason::ClientQuit)
                     .await;
-                Ok(V2Response::OK)
+                V2Response::OK
             }
             "login" => self.handle_login_message(id, &parts).await,
             "register" => self.handle_register_message(id, &parts).await,
@@ -61,48 +62,24 @@ impl ProtocolV2Handler {
             _ => self.handle_logged_in_client_message(id, &parts, &msg).await,
         };
         match res {
-            Ok(V2Response::Message(msg)) => {
+            V2Response::Message(msg) => {
                 self.send_to(id, msg);
             }
-            Ok(V2Response::OK) => {
+            V2Response::OK => {
                 self.send_to(id, "OK");
             }
-            Ok(V2Response::ErrorMessage(err, msg)) => {
+            V2Response::ErrorMessage(err, msg) => {
                 info!("Error handling message {:?}: {}", parts, err);
                 self.send_to(id, msg);
             }
-            Err(e) => {
-                info!("Error handling message {:?}: {}", parts, e);
+            V2Response::ErrorNOK(err) => {
+                info!("Error handling message {:?}: {}", parts, err);
                 self.send_to(id, "NOK");
             }
         }
     }
-
     pub async fn handle_server_message(&self, id: ListenerId, msg: &ServerMessage) {
         match msg {
-            ServerMessage::SeekList { add, seek } => {
-                self.handle_server_seek_list_message(id, seek, *add).await;
-            }
-            ServerMessage::GameMessage { game_id, message } => {
-                self.handle_server_game_message(id, game_id, message);
-            }
-            ServerMessage::PlayersOnline { players } => {
-                let online_message = format!("Online {}", players.len());
-                let players_message =
-                    format!("OnlinePlayers {}", serde_json::to_string(players).unwrap());
-                self.send_to(id, online_message);
-                self.send_to(id, players_message);
-            }
-            ServerMessage::AcceptRematch { seek_id } => {
-                let rematch_message = format!("Accept Rematch {}", seek_id);
-                self.send_to(id, rematch_message);
-            }
-            ServerMessage::GameList { .. } | ServerMessage::GameStart { .. } => {
-                self.handle_server_game_list_message(id, msg).await;
-            }
-            ServerMessage::ChatMessage { .. } | ServerMessage::RoomMembership { .. } => {
-                self.handle_server_chat_message(id, msg);
-            }
             ServerMessage::ConnectionClosed { reason } => {
                 let reason_str = match reason {
                     DisconnectReason::NewSession => {
@@ -117,25 +94,53 @@ impl ProtocolV2Handler {
                 let disconnect_message = format!("Message {}", reason_str);
                 self.send_to(id, disconnect_message);
             }
+            notif => self.handle_notification_message(id, notif).await,
         }
     }
 
-    pub async fn on_authenticated(&self, id: ListenerId, username: &PlayerUsername) {
-        let seeks = self.app_state.seek_service.get_seeks();
+    async fn handle_notification_message(&self, id: ListenerId, msg: &ListenerMessage) {
+        match msg {
+            ListenerMessage::SeekCreated { seek } => {
+                self.handle_server_seek_list_message(id, seek, true).await;
+            }
+            ListenerMessage::SeekCanceled { seek } => {
+                self.handle_server_seek_list_message(id, seek, false).await;
+            }
+            ListenerMessage::GameMessage { game_id, message } => {
+                self.handle_server_game_message(id, game_id, message);
+            }
+            ListenerMessage::PlayersOnline { players } => {
+                let online_message = format!("Online {}", players.len());
+                let players_message =
+                    format!("OnlinePlayers {}", serde_json::to_string(players).unwrap());
+                self.send_to(id, online_message);
+                self.send_to(id, players_message);
+            }
+            ListenerMessage::AcceptRematch { seek_id } => {
+                let rematch_message = format!("Accept Rematch {}", seek_id);
+                self.send_to(id, rematch_message);
+            }
+            ListenerMessage::GameList { .. } | ListenerMessage::GameStart { .. } => {
+                self.handle_server_game_list_message(id, msg).await;
+            }
+            ListenerMessage::ChatMessage { .. } => {
+                self.handle_server_chat_message(id, msg);
+            }
+        }
+    }
+
+    pub async fn on_authenticated(&self, id: ListenerId, player_id: PlayerId) {
+        let seeks = self.app.seek_service.get_seeks();
         for seek in seeks {
-            let seek_msg = ServerMessage::SeekList { add: true, seek };
+            let seek_msg = ServerMessage::Notification(ListenerMessage::SeekCreated { seek });
             self.handle_server_message(id, &seek_msg).await;
         }
-        let games = self.app_state.game_service.get_games();
+        let games = self.app.game_service.get_games();
         for game in games {
             let game_msg = ServerMessage::GameList { add: true, game };
             self.handle_server_message(id, &game_msg).await;
         }
-        if let Some(active_game) = self
-            .app_state
-            .game_service
-            .get_active_game_of_player(username)
-        {
+        if let Some(active_game) = self.app.game_service.get_active_game_of_player(player_id) {
             let start_msg = ServerMessage::GameStart {
                 game_id: active_game.id,
             };
@@ -172,28 +177,33 @@ impl ProtocolV2Handler {
         id: ListenerId,
         parts: &[&str],
         msg: &str,
-    ) -> ProtocolV2Result {
-        let Some(username) = self.transport.get_associated_player(id) else {
-            return ServiceError::unauthorized("Client is not logged in");
+    ) -> V2Response {
+        let Some(player_id) = self.transport.get_associated_player(id) else {
+            return V2Response::ErrorNOK(ServiceError::Unauthorized(
+                "Client is not logged in".to_string(),
+            ));
         };
 
         match parts[0].to_ascii_lowercase().as_str() {
-            "changepassword" => self.handle_change_password_message(&username, &parts).await,
-            "seek" => self.handle_seek_message(&username, &parts).await,
-            "rematch" => self.handle_rematch_message(&username, &parts).await,
+            "changepassword" => {
+                self.handle_change_password_message(&player_id, &parts)
+                    .await
+            }
+            "seek" => self.handle_seek_message(player_id, &parts).await,
+            "rematch" => self.handle_rematch_message(player_id, &parts).await,
             "list" => self.handle_seek_list_message(id).await,
             "gamelist" => self.handle_game_list_message(id),
-            "accept" => self.handle_accept_message(&username, &parts).await,
+            "accept" => self.handle_accept_message(player_id, &parts).await,
             "observe" => self.handle_observe_message(id, &parts, true),
             "unobserve" => self.handle_observe_message(id, &parts, false),
-            "shout" => self.handle_shout_message(&username, &msg).await,
-            "shoutroom" => self.handle_shout_room_message(&username, &msg).await,
-            "tell" => self.handle_tell_message(&username, &msg).await,
+            "shout" => self.handle_shout_message(player_id, &msg).await,
+            "shoutroom" => self.handle_shout_room_message(player_id, &msg).await,
+            "tell" => self.handle_tell_message(player_id, &msg).await,
             "joinroom" => self.handle_room_membership_message(id, &parts, true).await,
             "leaveroom" => self.handle_room_membership_message(id, &parts, false).await,
-            "sudo" => self.handle_sudo_message(id, &username, msg, &parts).await,
-            s if s.starts_with("game#") => self.handle_game_message(&username, &parts).await,
-            _ => ServiceError::bad_request(format!("Unknown V2 message type: {}", parts[0])),
+            "sudo" => self.handle_sudo_message(id, player_id, msg, &parts).await,
+            s if s.starts_with("game#") => self.handle_game_message(player_id, &parts).await,
+            _ => ServiceError::BadRequest(format!("Unknown V2 message type: {}", parts[0])),
         }
     }
 

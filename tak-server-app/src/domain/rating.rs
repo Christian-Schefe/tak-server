@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use tak_core::{TakActionRecord, TakGameSettings, TakGameState, TakPlayer};
 
-use crate::domain::{GameType, PlayerId, game::Game, game_history::GameRatingInfo};
+use crate::domain::{
+    GameType, PlayerId, RepoError, RepoUpdateError, game::Game, game_history::GameRatingInfo,
+};
 
 #[derive(Clone, Debug)]
 pub struct PlayerRating {
@@ -34,20 +36,25 @@ impl PlayerRating {
 
 #[async_trait::async_trait]
 pub trait RatingRepository {
-    async fn get_player_rating(&self, player_id: PlayerId) -> PlayerRating;
-    async fn update_player_ratings<R>(
+    async fn get_or_create_player_rating(
+        &self,
+        player_id: PlayerId,
+        create_fn: impl Fn() -> PlayerRating + Send + 'static,
+    ) -> Result<PlayerRating, RepoError>;
+    async fn update_player_ratings<R: Send + 'static>(
         &self,
         white: PlayerId,
         black: PlayerId,
-        calc_fn: impl FnOnce(&mut PlayerRating, &mut PlayerRating) -> R + Send,
-    ) -> R;
+        calc_fn: impl FnOnce(PlayerRating, PlayerRating) -> (PlayerRating, PlayerRating, R)
+        + Send
+        + 'static,
+    ) -> Result<R, RepoUpdateError>;
 }
 
 pub trait RatingService {
     fn get_current_rating(&self, player_rating: &PlayerRating, date: DateTime<Utc>) -> f64;
     fn calculate_ratings(
         &self,
-        date: DateTime<Utc>,
         game: &Game,
         white_rating: &mut PlayerRating,
         black_rating: &mut PlayerRating,
@@ -235,7 +242,6 @@ impl RatingService for RatingServiceImpl {
 
     fn calculate_ratings(
         &self,
-        date: DateTime<Utc>,
         game: &Game,
         white_rating: &mut PlayerRating,
         black_rating: &mut PlayerRating,
@@ -262,8 +268,8 @@ impl RatingService for RatingServiceImpl {
             _ => return None,
         };
 
-        let old_white_rating_decayed = self.get_current_rating(&white_rating, date);
-        let old_black_rating_decayed = self.get_current_rating(&black_rating, date);
+        let old_white_rating_decayed = self.get_current_rating(&white_rating, game.date);
+        let old_black_rating_decayed = self.get_current_rating(&black_rating, game.date);
 
         let sw = 10f64.powf(white_rating.rating / 400.0);
         let sb = 10f64.powf(black_rating.rating / 400.0);
@@ -278,7 +284,7 @@ impl RatingService for RatingServiceImpl {
             adjustment,
             fairness,
             fatigue_factor,
-            date,
+            game.date,
         );
         Self::update_rating_and_fatigue(
             black_rating,
@@ -286,11 +292,11 @@ impl RatingService for RatingServiceImpl {
             -adjustment,
             fairness,
             fatigue_factor,
-            date,
+            game.date,
         );
 
-        let new_white_rating_decayed = self.get_current_rating(&white_rating, date);
-        let new_black_rating_decayed = self.get_current_rating(&black_rating, date);
+        let new_white_rating_decayed = self.get_current_rating(&white_rating, game.date);
+        let new_black_rating_decayed = self.get_current_rating(&black_rating, game.date);
 
         Some(GameRatingInfo {
             rating_change_white: new_white_rating_decayed - old_white_rating_decayed,

@@ -13,7 +13,7 @@ pub mod get;
 pub mod list;
 pub mod rematch;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SeekView {
     pub id: SeekId,
     pub creator: PlayerId,

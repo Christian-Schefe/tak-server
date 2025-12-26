@@ -13,17 +13,13 @@ use log4rs::{
     encode::pattern::PatternEncoder,
     filter::threshold::ThresholdFilter,
 };
-use tak_events_persistence::NoopEventRepository;
-use tak_persistence_sea_orm::{games::GameRepositoryImpl, players::PlayerRepositoryImpl};
-use tak_server_api::{JwtServiceImpl, TransportServiceImpl};
-use tak_server_domain::{
-    app::{LazyAppState, construct_app},
-    event::ArcEventRepository,
-    game::ArcGameRepository,
-    jwt::ArcJwtService,
-    player::ArcPlayerRepository,
-    transport::ArcTransportService,
+use tak_email_lettre::LettreEmailAdapter;
+use tak_events_google_sheets::NoopEventRepository;
+use tak_persistence_sea_orm::{
+    games::GameRepositoryImpl, players::PlayerRepositoryImpl, ratings::RatingRepositoryImpl,
 };
+use tak_server_api::{JwtServiceImpl, TransportServiceImpl, client::TransportServiceImpl};
+use tak_server_app::build_application;
 
 const LOG_SIZE_LIMIT: u64 = 10 * 1024 * 1024; // 10 MB
 
@@ -104,24 +100,28 @@ async fn main() {
 
     init_logger();
 
-    let app = LazyAppState::new();
-    let transport_service_impl = TransportServiceImpl::new(app.clone());
+    let transport_service_impl = Arc::new(TransportServiceImpl::new());
 
-    let game_repo: ArcGameRepository = Arc::new(Box::new(GameRepositoryImpl::new().await));
-    let player_repo: ArcPlayerRepository = Arc::new(Box::new(PlayerRepositoryImpl::new().await));
-    let events_repo: ArcEventRepository = Arc::new(Box::new(NoopEventRepository {}));
+    let game_repo = Arc::new(GameRepositoryImpl::new().await);
+    let player_repo = Arc::new(PlayerRepositoryImpl::new().await);
+    let rating_repo = Arc::new(RatingRepositoryImpl::new().await);
+    let event_repo = Arc::new(NoopEventRepository);
+    let email_adapter = Arc::new(LettreEmailAdapter::new());
+    let player_connection_adapter = transport_service_impl.clone();
+    let listener_notification_adapter = transport_service_impl.clone();
+    let authentication_service = todo!();
 
-    let transport_service: ArcTransportService = Arc::new(Box::new(transport_service_impl.clone()));
-    let jwt_service: ArcJwtService = Arc::new(Box::new(JwtServiceImpl {}));
-
-    construct_app(
-        app.clone(),
+    build_application(
         game_repo,
         player_repo,
-        events_repo,
-        jwt_service,
-        transport_service,
-    );
+        rating_repo,
+        event_repo,
+        email_adapter,
+        listener_notification_adapter,
+        player_connection_adapter,
+        authentication_service,
+    )
+    .await;
 
     info!("Starting application");
 

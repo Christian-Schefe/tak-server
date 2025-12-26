@@ -10,26 +10,32 @@ use axum::{
         ws::{Message, WebSocket},
     },
     response::Response,
-    routing::{any, post},
+    routing::any,
 };
 use dashmap::DashMap;
 use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
-use tak_server_domain::{
-    ServiceError, ServiceResult,
-    app::LazyAppState,
-    player::PlayerUsername,
-    transport::{DisconnectReason, ListenerId, TransportService},
-    util::OneOneDashMap,
+
+use more_dashmap::one_one::OneOneDashMap;
+use tak_server_app::{
+    Application,
+    domain::{ListenerId, PlayerId},
+    ports::{
+        connection::PlayerConnectionPort,
+        notification::{ListenerMessage, ListenerNotificationPort},
+    },
 };
-use tokio::{net::TcpStream, select, sync::mpsc::UnboundedSender};
+use tokio::{
+    net::TcpStream,
+    select,
+    sync::mpsc::{UnboundedReceiver, UnboundedSender},
+};
 use tokio_util::{
     codec::{Framed, LinesCodec},
     sync::CancellationToken,
 };
 
 use crate::protocol::Protocol;
-use tak_server_domain::transport::ServerMessage;
 
 pub enum ClientMessage {
     Text(String),
@@ -37,18 +43,26 @@ pub enum ClientMessage {
 }
 
 #[derive(Clone)]
+pub enum ServerMessage {
+    Notification(ListenerMessage),
+    ConnectionClosed { reason: DisconnectReason },
+}
+
+static APPLICATION: OnceLock<Arc<Application>> = OnceLock::new();
+
+#[derive(Clone)]
 pub struct TransportServiceImpl {
-    app_state: LazyAppState,
+    notification_listeners: Arc<DashMap<ListenerId, UnboundedSender<ServerMessage>>>,
     client_senders: Arc<DashMap<ListenerId, (UnboundedSender<String>, CancellationToken)>>,
     client_handlers: Arc<DashMap<ListenerId, Protocol>>,
-    player_associations: Arc<OneOneDashMap<ListenerId, PlayerUsername>>,
+    player_associations: Arc<OneOneDashMap<ListenerId, PlayerId>>,
     last_activity: Arc<DashMap<ListenerId, Instant>>,
 }
 
 impl TransportServiceImpl {
-    pub fn new(app_state: LazyAppState) -> Self {
+    pub fn new() -> Self {
         Self {
-            app_state,
+            notification_listeners: Arc::new(DashMap::new()),
             client_senders: Arc::new(DashMap::new()),
             client_handlers: Arc::new(DashMap::new()),
             player_associations: Arc::new(OneOneDashMap::new()),
@@ -61,18 +75,25 @@ impl TransportServiceImpl {
         self.client_handlers.remove(&id);
         self.last_activity.remove(&id);
         let player = self.player_associations.remove_by_key(&id);
-        self.app_state
+        if let Some(player_id) = player {
+            APPLICATION
+                .get()
+                .unwrap()
+                .player_set_online_use_case
+                .set_offline(player_id);
+        }
+        /*self.application
             .player_connection_service()
             .on_listener_disconnected(id);
         if let Some(username) = player {
-            self.app_state
+            self.application
                 .player_connection_service()
                 .on_player_disconnected(id, &username)
                 .await;
             info!("Player {} disconnected (client {})", username, id);
         } else {
             info!("Client {} disconnected", id);
-        }
+        }*/
     }
 
     async fn handle_client<M, S, E>(
@@ -115,8 +136,47 @@ impl TransportServiceImpl {
                 .await;
         });
 
-        let _ = tokio::join!(receive_task, send_task);
+        let (notification_tx, notification_rx) = tokio::sync::mpsc::unbounded_channel();
+        self.notification_listeners
+            .insert(client_id, notification_tx);
+
+        let client_service = self.clone();
+        let cancellation_token_clone = cancellation_token.clone();
+        let notification_task = tokio::spawn(async move {
+            client_service
+                .handle_notification(notification_rx, cancellation_token_clone, client_id)
+                .await;
+        });
+
+        let _ = tokio::join!(receive_task, send_task, notification_task);
         self.on_disconnect(client_id).await;
+    }
+
+    async fn handle_notification(
+        &self,
+        mut rx: UnboundedReceiver<ServerMessage>,
+        cancellation_token: CancellationToken,
+        id: ListenerId,
+    ) {
+        while let Some(msg) = select! {
+            msg = rx.recv() => msg,
+            _ = cancellation_token.cancelled() => None,
+        } {
+            if let Some(handler) = self.client_handlers.get(&id) {
+                let protocol = handler.clone();
+                drop(handler);
+
+                crate::protocol::handle_server_message(
+                    APPLICATION.get().unwrap(),
+                    self,
+                    &protocol,
+                    id,
+                    &msg,
+                )
+                .await;
+            }
+        }
+        info!("Client {} notification ended", id);
     }
 
     async fn handle_send<S, M>(
@@ -186,7 +246,7 @@ impl TransportServiceImpl {
                         let protocol = handler.clone();
                         drop(handler);
                         crate::protocol::handle_client_message(
-                            self.app_state.unwrap(),
+                            APPLICATION.get().unwrap(),
                             self,
                             &protocol,
                             id,
@@ -229,7 +289,7 @@ impl TransportServiceImpl {
         if let Some(handler) = self.client_handlers.get(&id) {
             let protocol = handler.clone();
             drop(handler);
-            crate::protocol::on_connected(self.app_state.unwrap(), self, &protocol, id);
+            crate::protocol::on_connected(APPLICATION.get().unwrap(), self, &protocol, id);
         }
     }
 
@@ -247,54 +307,60 @@ impl TransportServiceImpl {
     pub async fn associate_player(
         &self,
         id: ListenerId,
-        username: &PlayerUsername,
-    ) -> ServiceResult<()> {
+        player_id: PlayerId,
+    ) -> Result<(), String> {
         if self.player_associations.contains_key(&id) {
-            return ServiceError::not_possible(format!("Player {} already logged in", username));
+            return Err(format!("Player {} already logged in", player_id));
         }
-        if let Some(prev_client_id) = self.player_associations.get_by_value(username) {
+        if let Some(prev_client_id) = self.player_associations.get_by_value(&player_id) {
             self.close_with_reason(prev_client_id, DisconnectReason::NewSession)
                 .await;
             // call on_disconnect directly to clean up immediately
             self.on_disconnect(prev_client_id).await;
             info!(
                 "Disconnected previous session of player {} (client {})",
-                username, prev_client_id
+                player_id, prev_client_id
             );
         }
         if !self
             .player_associations
-            .try_insert(id.clone(), username.clone())
+            .try_insert(id.clone(), player_id.clone())
         {
-            return ServiceError::internal(format!(
+            return Err(format!(
                 "Failed to associate player {} with client {}",
-                username, id
+                player_id, id
             ));
         }
         if let Some(handler) = self.client_handlers.get(&id) {
             crate::protocol::on_authenticated(
-                self.app_state.unwrap(),
+                APPLICATION.get().unwrap(),
                 self,
                 &handler,
                 id,
-                username,
+                player_id,
             )
             .await;
         }
-        self.app_state
-            .player_connection_service()
-            .on_player_connected(id, username)
-            .await;
+        APPLICATION
+            .get()
+            .unwrap()
+            .player_set_online_use_case
+            .set_online(player_id);
         Ok(())
     }
 
-    pub fn get_associated_player(&self, id: ListenerId) -> Option<PlayerUsername> {
+    pub fn get_associated_player(&self, id: ListenerId) -> Option<PlayerId> {
         self.player_associations.get_by_key(&id)
     }
 
     pub async fn close_with_reason(&self, id: ListenerId, reason: DisconnectReason) {
-        self.try_listener_send(id, &ServerMessage::ConnectionClosed { reason })
-            .await;
+        if let Some(sender) = self.notification_listeners.get(&id) {
+            if let Err(e) = sender.send(ServerMessage::ConnectionClosed { reason }) {
+                error!("Failed to notify listener {}: {}", id, e.to_string());
+            }
+        }
+        //self.try_listener_send(id, &ServerMessage::ConnectionClosed { reason })
+        //    .await;
         //wait a moment to allow message to be sent
         tokio::time::sleep(Duration::from_millis(100)).await;
         self.close_client(id);
@@ -385,15 +451,15 @@ impl TransportServiceImpl {
 
     pub async fn run(
         self,
-        app: LazyAppState,
+        app: Arc<Application>,
         shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
     ) {
+        APPLICATION.set(app.clone()).ok().unwrap();
         TRANSPORT_IMPL.set(Arc::new(self.clone())).ok().unwrap();
 
         let router = Router::new()
             .route("/", any(ws_handler))
-            .route("/ws", any(ws_handler))
-            .route("/auth/login", post(crate::jwt::handle_login));
+            .route("/ws", any(ws_handler));
 
         let router = crate::protocol::register_http_endpoints(router);
 
@@ -428,7 +494,7 @@ impl TransportServiceImpl {
         };
 
         info!("WebSocket server listening on port {}", ws_port);
-        axum::serve(listener, router.with_state(app.unwrap().clone()))
+        axum::serve(listener, router.with_state(app.clone()))
             .with_graceful_shutdown(on_shutdown)
             .await
             .unwrap();
@@ -445,25 +511,51 @@ impl TransportServiceImpl {
     }
 }
 
-#[async_trait::async_trait]
-impl TransportService for TransportServiceImpl {
-    async fn disconnect_listener(&self, id: ListenerId, reason: DisconnectReason) {
-        self.close_with_reason(id, reason).await;
-    }
-    async fn try_listener_send(&self, id: ListenerId, msg: &ServerMessage) {
-        if let Some(handler) = self.client_handlers.get(&id) {
-            let protocol = handler.clone();
-            drop(handler);
+#[derive(Clone, Debug)]
+pub enum DisconnectReason {
+    ClientQuit,
+    Inactivity,
+    NewSession,
+    ServerShutdown,
+    Ban(String),
+    Kick,
+}
 
-            crate::protocol::handle_server_message(
-                self.app_state.unwrap(),
-                self,
-                &protocol,
-                id,
-                msg,
-            )
-            .await;
+#[async_trait::async_trait]
+impl ListenerNotificationPort for TransportServiceImpl {
+    fn notify_listener(&self, listener: ListenerId, message: ListenerMessage) {
+        if let Some(sender) = self.notification_listeners.get(&listener) {
+            if let Err(e) = sender.send(ServerMessage::Notification(message)) {
+                error!("Failed to notify listener {}: {}", listener, e.to_string());
+            }
         }
+    }
+
+    fn notify_listeners(&self, listeners: &[ListenerId], message: ListenerMessage) {
+        for &listener in listeners {
+            self.notify_listener(listener, message.clone());
+        }
+    }
+
+    fn notify_all(&self, message: ListenerMessage) {
+        let message = ServerMessage::Notification(message);
+        for entry in self.notification_listeners.iter() {
+            let listener_id = *entry.key();
+            let sender = entry.value();
+            if let Err(e) = sender.send(message.clone()) {
+                error!(
+                    "Failed to notify listener {}: {}",
+                    listener_id,
+                    e.to_string()
+                );
+            }
+        }
+    }
+}
+
+impl PlayerConnectionPort for TransportServiceImpl {
+    fn get_connection_id(&self, player_id: PlayerId) -> Option<ListenerId> {
+        self.player_associations.get_by_value(&player_id)
     }
 }
 

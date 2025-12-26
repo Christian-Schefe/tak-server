@@ -2,17 +2,15 @@ use std::sync::Arc;
 
 use crate::{
     domain::{
-        PlayerId,
+        PlayerId, RepoError,
         game_history::PlayerSnapshot,
-        player::PlayerRepository,
-        rating::{RatingRepository, RatingService},
+        rating::{PlayerRating, RatingRepository, RatingService},
     },
-    ports::authentication::{AuthSubject, AuthenticationService},
+    workflow::account::get_username::GetUsernameWorkflow,
 };
 
 #[async_trait::async_trait]
 pub trait GetSnapshotWorkflow {
-    async fn get_username(&self, player_id: PlayerId) -> Option<String>;
     async fn get_snapshot(
         &self,
         player_id: PlayerId,
@@ -20,30 +18,22 @@ pub trait GetSnapshotWorkflow {
     ) -> PlayerSnapshot;
 }
 
-pub struct GetSnapshotWorkflowImpl<
-    A: AuthenticationService,
-    P: PlayerRepository,
-    R: RatingRepository,
-    RS: RatingService,
-> {
-    authentication_service: Arc<A>,
-    player_repository: Arc<P>,
+pub struct GetSnapshotWorkflowImpl<U: GetUsernameWorkflow, R: RatingRepository, RS: RatingService> {
+    get_username_workflow: Arc<U>,
     rating_repository: Arc<R>,
     rating_service: Arc<RS>,
 }
 
-impl<A: AuthenticationService, P: PlayerRepository, R: RatingRepository, RS: RatingService>
-    GetSnapshotWorkflowImpl<A, P, R, RS>
+impl<U: GetUsernameWorkflow, R: RatingRepository, RS: RatingService>
+    GetSnapshotWorkflowImpl<U, R, RS>
 {
     pub fn new(
-        authentication_service: Arc<A>,
-        player_repository: Arc<P>,
+        get_username_workflow: Arc<U>,
         rating_repository: Arc<R>,
         rating_service: Arc<RS>,
     ) -> Self {
         Self {
-            authentication_service,
-            player_repository,
+            get_username_workflow,
             rating_repository,
             rating_service,
         }
@@ -52,33 +42,32 @@ impl<A: AuthenticationService, P: PlayerRepository, R: RatingRepository, RS: Rat
 
 #[async_trait::async_trait]
 impl<
-    A: AuthenticationService + Send + Sync + 'static,
-    P: PlayerRepository + Send + Sync + 'static,
+    U: GetUsernameWorkflow + Send + Sync + 'static,
     R: RatingRepository + Send + Sync + 'static,
     RS: RatingService + Send + Sync + 'static,
-> GetSnapshotWorkflow for GetSnapshotWorkflowImpl<A, P, R, RS>
+> GetSnapshotWorkflow for GetSnapshotWorkflowImpl<U, R, RS>
 {
-    async fn get_username(&self, player_id: PlayerId) -> Option<String> {
-        let account_id = self
-            .player_repository
-            .get_account_id_for_player(player_id)
-            .await?;
-        let subject = self.authentication_service.get_subject(account_id)?;
-        match subject.subject_type {
-            AuthSubject::Player { username, .. } => Some(username),
-            AuthSubject::Bot { username } => Some(username),
-            AuthSubject::Guest { guest_number } => Some(format!("Guest{}", guest_number)),
-        }
-    }
-
     async fn get_snapshot(
         &self,
         player_id: PlayerId,
         date: chrono::DateTime<chrono::Utc>,
     ) -> PlayerSnapshot {
-        let username = self.get_username(player_id).await;
-        let rating = self.rating_repository.get_player_rating(player_id).await;
-        let current_rating = self.rating_service.get_current_rating(&rating, date);
-        PlayerSnapshot::new(player_id, username, Some(current_rating))
+        let username = self.get_username_workflow.get_username(player_id).await;
+        let current_rating = match self
+            .rating_repository
+            .get_or_create_player_rating(player_id, || PlayerRating::new())
+            .await
+        {
+            Ok(rating) => Some(self.rating_service.get_current_rating(&rating, date)),
+            Err(RepoError::StorageError(e)) => {
+                log::error!(
+                    "Failed to retrieve rating for player {}: {}",
+                    player_id.to_string(),
+                    e
+                );
+                None
+            }
+        };
+        PlayerSnapshot::new(player_id, username, current_rating)
     }
 }

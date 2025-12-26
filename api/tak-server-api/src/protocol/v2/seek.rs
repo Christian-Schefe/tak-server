@@ -1,41 +1,40 @@
 use std::time::Duration;
 
-use crate::protocol::v2::{ProtocolV2Handler, ProtocolV2Result, V2Response};
-
-use tak_core::{TakGameSettings, TakPlayer, TakReserve, TakTimeControl};
-use tak_server_domain::{
-    ServiceError,
-    game::{GameId, GameType},
-    player::PlayerUsername,
-    seek::Seek,
-    transport::ListenerId,
+use crate::{
+    acl::get_player_id_by_username,
+    app::ServiceError,
+    protocol::v2::{ProtocolV2Handler, V2Response},
 };
 
+use tak_core::{TakGameSettings, TakPlayer, TakReserve, TakTimeControl};
+use tak_server_app::domain::{GameId, GameType, ListenerId, PlayerId};
+use tak_server_app::workflow::matchmaking::create::CreateSeekError;
+
 impl ProtocolV2Handler {
-    pub async fn handle_seek_message(
-        &self,
-        username: &PlayerUsername,
-        parts: &[&str],
-    ) -> ProtocolV2Result {
-        self.handle_add_seek_message(username, parts, None).await
+    pub async fn handle_seek_message(&self, player_id: PlayerId, parts: &[&str]) -> V2Response {
+        match self.handle_add_seek_message(player_id, parts).await {
+            Ok(()) => V2Response::OK,
+            Err(e) => V2Response::ErrorNOK(e),
+        }
     }
 
-    pub async fn handle_seek_list_message(&self, id: ListenerId) -> ProtocolV2Result {
-        for seek in self.app_state.seek_service.get_seeks() {
+    pub async fn handle_seek_list_message(&self, id: ListenerId) -> V2Response {
+        for seek in self.app.seek_list_use_case.list_seeks() {
             self.handle_server_seek_list_message(id, &seek, true).await;
         }
-        Ok(V2Response::OK)
+        V2Response::OK
     }
 
     // TODO: Support V0 seek messages
-    pub async fn handle_add_seek_message(
+    async fn handle_add_seek_message(
         &self,
-        username: &PlayerUsername,
+        player_id: PlayerId,
         parts: &[&str],
-        rematch: Option<GameId>,
-    ) -> ProtocolV2Result {
+    ) -> Result<(), ServiceError> {
         if parts.len() != 13 && parts.len() != 12 && parts.len() != 11 && parts.len() != 10 {
-            return ServiceError::bad_request("Invalid Seek message format");
+            return Err(ServiceError::BadRequest(
+                "Invalid Seek message format".to_string(),
+            ));
         }
         let board_size = parts[1]
             .parse::<u32>()
@@ -123,60 +122,73 @@ impl ProtocolV2Handler {
         };
 
         if !game_settings.is_valid() {
-            self.app_state
-                .seek_service
-                .remove_seek_of_player(&username)
-                .await?;
-        } else if let Some(from_game) = rematch {
-            let Some(opponent) = opponent else {
-                return Err(ServiceError::BadRequest(
-                    "Rematch seek must specify opponent".into(),
-                ));
-            };
-            if let Some(new_seek_id) = self
-                .app_state
-                .seek_service
-                .request_rematch(
-                    username.to_string(),
-                    opponent,
-                    color,
-                    game_settings,
-                    game_type,
-                    from_game,
-                )
-                .await?
-            {
-                return Ok(V2Response::Message(format!(
-                    "Rematch seek created with ID: {}",
-                    new_seek_id
-                )));
-            }
+            self.app.seek_cancel_use_case.cancel_seek(player_id);
         } else {
-            self.app_state
-                .seek_service
-                .add_seek(
-                    username.to_string(),
-                    opponent,
-                    color,
-                    game_settings,
-                    game_type,
-                )
-                .await?;
+            let opponent_id = match opponent {
+                Some(ref name) => match get_player_id_by_username(name) {
+                    Some(id) => Some(id),
+                    None => {
+                        return Err(ServiceError::BadRequest(format!("No such user: {}", name)));
+                    }
+                },
+                None => None,
+            };
+            if let Err(e) = self.app.seek_create_use_case.create_seek(
+                player_id,
+                opponent_id,
+                color,
+                game_settings,
+                game_type,
+            ) {
+                match e {
+                    CreateSeekError::InvalidGameSettings => {
+                        return Err(ServiceError::BadRequest(
+                            "Invalid game settings for seek".into(),
+                        ));
+                    }
+                    CreateSeekError::InvalidOpponent => {
+                        return Err(ServiceError::BadRequest("Invalid opponent for seek".into()));
+                    }
+                }
+            }
         }
-
-        Ok(V2Response::OK)
+        Ok(())
     }
-
-    pub async fn handle_rematch_message(
-        &self,
-        username: &PlayerUsername,
-        parts: &[&str],
-    ) -> ProtocolV2Result {
+    /*
+    } else if let Some(from_game) = rematch {
+        let Some(opponent) = opponent else {
+            return Err(ServiceError::BadRequest(
+                "Rematch seek must specify opponent".into(),
+            ));
+        };
+        if let Some(new_seek_id) = self
+            .app
+            .match_rematch_use_case
+            .request_rematch(
+                username.to_string(),
+                opponent,
+                color,
+                game_settings,
+                game_type,
+                from_game,
+            )
+            .await?
+        {
+            return Ok(V2Response::Message(format!(
+                "Rematch seek created with ID: {}",
+                new_seek_id
+            )));
+        } */
+    pub async fn handle_rematch_message(&self, player_id: &PlayerId, parts: &[&str]) -> V2Response {
         if parts.len() < 2 {
-            return ServiceError::bad_request("Invalid Rematch message format");
+            return V2Response::ErrorNOK(ServiceError::BadRequest(
+                "Invalid Rematch message format".to_string(),
+            ));
         }
         let Ok(game_id) = parts[1].parse::<GameId>() else {
-            return ServiceError::bad_request("Invalid Game ID in Rematch message");
+            return V2Response::ErrorNOK(ServiceError::BadRequest(
+                "Invalid Game ID in Rematch message".to_string(),
+            ));
         };
         self.handle_add_seek_message(username, &parts[1..], Some(game_id))
             .await
@@ -193,7 +205,7 @@ impl ProtocolV2Handler {
         let Ok(seek_id) = parts[1].parse::<u32>() else {
             return ServiceError::bad_request("Invalid Seek ID in Accept message");
         };
-        self.app_state
+        self.app
             .seek_service
             .accept_seek(username, &seek_id)
             .await?;
@@ -240,7 +252,7 @@ impl ProtocolV2Handler {
                     .as_secs()
                     .to_string()),
             seek.opponent.as_deref().unwrap_or(""),
-            self.app_state
+            self.app
                 .player_service
                 .get_player(&seek.creator)
                 .await

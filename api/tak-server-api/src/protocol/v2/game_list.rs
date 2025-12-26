@@ -36,7 +36,7 @@ impl ProtocolV2Handler {
     }
 
     pub fn handle_game_list_message(&self, id: ListenerId) -> ProtocolV2Result {
-        for game in self.app_state.game_service.get_games() {
+        for game in self.app.game_service.get_games() {
             self.send_game_string_message(id, &game, "GameList Add");
         }
         Ok(V2Response::OK)
@@ -55,8 +55,8 @@ impl ProtocolV2Handler {
             return ServiceError::bad_request("Invalid Game ID in Observe message");
         };
         if observe {
-            self.app_state.game_service.observe_game(id, &game_id)?;
-            let Some(game) = self.app_state.game_service.get_game(&game_id) else {
+            self.app.game_service.observe_game(id, &game_id)?;
+            let Some(game) = self.app.game_service.get_game(&game_id) else {
                 return ServiceError::not_found("Game ID not found");
             };
             self.send_game_string_message(id, &game, "Observe");
@@ -74,7 +74,7 @@ impl ProtocolV2Handler {
                 },
             );
         } else {
-            self.app_state.game_service.unobserve_game(id, &game_id)?;
+            self.app.game_service.unobserve_game(id, &game_id)?;
         }
         Ok(V2Response::OK)
     }
@@ -121,7 +121,7 @@ impl ProtocolV2Handler {
     }
 
     pub async fn send_game_start_message(&self, id: ListenerId, game_id: &GameId) {
-        let Some(game) = self.app_state.game_service.get_game(game_id) else {
+        let Some(game) = self.app.game_service.get_game(game_id) else {
             warn!("GameStart message for unknown game ID: {}", game_id);
             return;
         };
@@ -130,13 +130,13 @@ impl ProtocolV2Handler {
             return;
         };
         let is_bot_game = self
-            .app_state
+            .app
             .player_service
             .get_player(&game.white)
             .await
             .map_or(false, |p| p.flags.is_bot)
             || self
-                .app_state
+                .app
                 .player_service
                 .get_player(&game.black)
                 .await

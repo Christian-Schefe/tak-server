@@ -86,17 +86,34 @@ impl<
             .get_snapshot(ended_game.black, ended_game.date)
             .await;
 
-        let game_rating_info = self
+        let ended_game_clone = ended_game.clone();
+        let rating_service = self.rating_service.clone();
+        let game_rating_info = match self
             .rating_repository
-            .update_player_ratings(ended_game.white, ended_game.black, |w_rating, b_rating| {
-                self.rating_service.calculate_ratings(
-                    ended_game.date,
-                    &ended_game,
-                    w_rating,
-                    b_rating,
-                )
-            })
-            .await;
+            .update_player_ratings(
+                ended_game.white,
+                ended_game.black,
+                move |mut w_rating, mut b_rating| {
+                    let res = rating_service.calculate_ratings(
+                        &ended_game_clone,
+                        &mut w_rating,
+                        &mut b_rating,
+                    );
+                    (w_rating, b_rating, res)
+                },
+            )
+            .await
+        {
+            Ok(info) => info,
+            Err(e) => {
+                log::error!(
+                    "Failed to update player ratings for game {}: {}",
+                    ended_game.game_id,
+                    e
+                );
+                None
+            }
+        };
 
         let match_id = ended_game.match_id;
         let game_record_update = self.game_history_service.get_finished_game_record_update(

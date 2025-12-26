@@ -1,22 +1,21 @@
-mod json;
 mod v2;
 
-use tak_server_domain::{
-    app::AppState,
-    player::PlayerUsername,
-    transport::{ListenerId, ServerMessage},
+use std::sync::Arc;
+
+use tak_server_app::{
+    Application,
+    domain::{ListenerId, PlayerId},
 };
 
 use crate::{
-    client::TransportServiceImpl,
-    protocol::{json::ProtocolJsonHandler, v2::ProtocolV2Handler},
+    client::{ServerMessage, TransportServiceImpl},
+    protocol::v2::ProtocolV2Handler,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Protocol {
     V0,
     V2,
-    JSON,
 }
 
 impl Protocol {
@@ -24,14 +23,13 @@ impl Protocol {
         match id {
             "0" => Some(Protocol::V0),
             "2" => Some(Protocol::V2),
-            "3" => Some(Protocol::JSON),
             _ => None,
         }
     }
 }
 
 pub async fn handle_client_message(
-    app_state: &AppState,
+    app: &Arc<Application>,
     transport: &TransportServiceImpl,
     protocol: &Protocol,
     id: ListenerId,
@@ -39,12 +37,7 @@ pub async fn handle_client_message(
 ) {
     match protocol {
         Protocol::V0 | Protocol::V2 => {
-            ProtocolV2Handler::new(app_state, transport)
-                .handle_client_message(id, msg)
-                .await
-        }
-        Protocol::JSON => {
-            ProtocolJsonHandler::new(app_state, transport)
+            ProtocolV2Handler::new(app, transport)
                 .handle_client_message(id, msg)
                 .await
         }
@@ -52,7 +45,7 @@ pub async fn handle_client_message(
 }
 
 pub async fn handle_server_message(
-    app_state: &AppState,
+    app: &Arc<Application>,
     transport: &TransportServiceImpl,
     protocol: &Protocol,
     id: ListenerId,
@@ -60,47 +53,43 @@ pub async fn handle_server_message(
 ) {
     match protocol {
         Protocol::V0 | Protocol::V2 => {
-            ProtocolV2Handler::new(app_state, transport)
+            ProtocolV2Handler::new(app, transport)
                 .handle_server_message(id, msg)
                 .await
-        }
-        Protocol::JSON => {
-            ProtocolJsonHandler::new(app_state, transport).handle_server_message(id, msg)
         }
     }
 }
 
 pub async fn on_authenticated(
-    app_state: &AppState,
+    app: &Arc<Application>,
     transport: &TransportServiceImpl,
     protocol: &Protocol,
     id: ListenerId,
-    username: &PlayerUsername,
+    player_id: PlayerId,
 ) {
     match protocol {
         Protocol::V0 | Protocol::V2 => {
-            ProtocolV2Handler::new(app_state, transport)
-                .on_authenticated(id, username)
+            ProtocolV2Handler::new(app, transport)
+                .on_authenticated(id, player_id)
                 .await
         }
-        Protocol::JSON => {}
     }
 }
 
 pub fn on_connected(
-    app_state: &AppState,
+    app: &Arc<Application>,
     transport: &TransportServiceImpl,
     protocol: &Protocol,
     id: ListenerId,
 ) {
     match protocol {
-        Protocol::V0 | Protocol::V2 => {
-            ProtocolV2Handler::new(app_state, transport).on_connected(id)
-        }
-        Protocol::JSON => {}
+        Protocol::V0 | Protocol::V2 => ProtocolV2Handler::new(app, transport).on_connected(id),
     }
 }
 
-pub fn register_http_endpoints(router: axum::Router<AppState>) -> axum::Router<AppState> {
-    router.nest("/v3", json::register_http_endpoints())
+pub fn register_http_endpoints(
+    router: axum::Router<Arc<Application>>,
+) -> axum::Router<Arc<Application>> {
+    //no HTTP endpoints yet
+    router
 }

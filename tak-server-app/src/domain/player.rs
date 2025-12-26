@@ -3,20 +3,24 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use uuid::Uuid;
 
-use crate::domain::{AccountId, PlayerId};
+use crate::domain::{
+    AccountId, PlayerId, RepoCreateError, RepoError, RepoRetrieveError, RepoUpdateError,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Player {
     pub player_id: PlayerId,
+    pub account_id: Option<AccountId>,
     pub is_silenced: bool,
     pub is_banned: bool,
     pub is_bot: bool,
 }
 
 impl Player {
-    pub fn new() -> Self {
+    pub fn new(account_id: Option<AccountId>) -> Self {
         Self {
             player_id: PlayerId(Uuid::new_v4()),
+            account_id,
             is_silenced: false,
             is_banned: false,
             is_bot: false,
@@ -26,36 +30,42 @@ impl Player {
 
 #[async_trait::async_trait]
 pub trait PlayerRepository {
-    async fn create_player(
+    // Create opration
+    async fn create_player(&self, player: Player) -> Result<(), RepoCreateError>;
+
+    // Delete operation
+    async fn delete_player(&self, player_id: PlayerId) -> Result<(), RepoRetrieveError>;
+
+    // Read operations
+    async fn get_player(&self, player_id: PlayerId) -> Result<Player, RepoRetrieveError>;
+    async fn get_or_create_player_by_account_id(
         &self,
-        player: Player,
-        account_id: Option<AccountId>,
-    ) -> Result<(), CreatePlayerError>;
-    async fn delete_player(&self, player_id: PlayerId) -> Result<bool, PlayerRepoError>;
-    async fn get_player(&self, player_id: PlayerId) -> Result<Option<Player>, PlayerRepoError>;
+        account_id: AccountId,
+        create_fn: impl Fn() -> Player + Send + 'static,
+    ) -> Result<Player, RepoError>;
+
+    //Write operations
     async fn link_account(
         &self,
         player_id: PlayerId,
         account_id: AccountId,
-    ) -> Result<(), PlayerRepoError>;
-    async fn unlink_account(&self, player_id: PlayerId) -> Result<(), PlayerRepoError>;
-    async fn get_player_by_account_id(
+    ) -> Result<(), RepoUpdateError>;
+    async fn unlink_account(&self, player_id: PlayerId) -> Result<(), RepoUpdateError>;
+    async fn set_player_silenced(
         &self,
-        account_id: AccountId,
-    ) -> Result<Option<Player>, PlayerRepoError>;
-    async fn get_account_id_for_player(&self, player_id: PlayerId) -> Option<AccountId>;
-    async fn set_player_silenced(&self, player_id: PlayerId, silenced: bool);
-    async fn set_player_banned(&self, player_id: PlayerId, banned: bool);
-    async fn set_player_is_bot(&self, player_id: PlayerId, is_bot: bool);
-}
-
-pub enum CreatePlayerError {
-    PlayerAlreadyExists,
-    StorageError(String),
-}
-
-pub enum PlayerRepoError {
-    StorageError(String),
+        player_id: PlayerId,
+        silenced: bool,
+    ) -> Result<(), RepoUpdateError>;
+    async fn set_player_banned(
+        &self,
+        player_id: PlayerId,
+        banned: bool,
+    ) -> Result<(), RepoUpdateError>;
+    async fn set_player_is_bot(
+        &self,
+        player_id: PlayerId,
+        is_bot: bool,
+    ) -> Result<(), RepoUpdateError>;
 }
 
 pub trait PlayerService {

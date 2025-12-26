@@ -1,8 +1,8 @@
 use std::sync::LazyLock;
 
 use axum::{
-    Json, RequestPartsExt, debug_handler,
-    extract::{FromRequestParts, State},
+    Json, RequestPartsExt,
+    extract::FromRequestParts,
     http::{StatusCode, request::Parts},
     response::{IntoResponse, Response},
 };
@@ -10,7 +10,7 @@ use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode}
 use log::info;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tak_server_domain::{ServiceError, app::AppState, jwt::JwtService, player::PlayerUsername};
+use tak_server_app::domain::AccountId;
 use uuid::Uuid;
 
 use axum_extra::{
@@ -93,9 +93,9 @@ fn read_or_generate_secret() -> Vec<u8> {
     }
 }
 
-pub fn generate_jwt(username: &PlayerUsername) -> Result<String, AuthError> {
+pub fn generate_jwt(account_id: &AccountId) -> Result<String, AuthError> {
     let claims = Claims {
-        sub: username.clone(),
+        sub: account_id.to_string(),
         exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp() as usize,
     };
     let token =
@@ -103,37 +103,17 @@ pub fn generate_jwt(username: &PlayerUsername) -> Result<String, AuthError> {
     Ok(token)
 }
 
-#[derive(Deserialize)]
-pub struct AuthPayload {
-    pub username: PlayerUsername,
-    pub password: String,
-}
-
 #[derive(Serialize)]
 pub struct AuthBody {
     pub token: String,
 }
 
-#[debug_handler]
-pub async fn handle_login(
-    State(app): State<AppState>,
-    Json(payload): Json<AuthPayload>,
-) -> Result<Json<AuthBody>, AuthError> {
-    app.player_service
-        .validate_login(&payload.username, &payload.password)
-        .await
-        .map_err(|_| AuthError::WrongCredentials)?;
-    let token = generate_jwt(&payload.username)?;
-    Ok(Json(AuthBody { token }))
-}
-
-pub struct JwtServiceImpl {}
-
-impl JwtService for JwtServiceImpl {
-    fn validate_jwt(&self, token: &str) -> tak_server_domain::ServiceResult<PlayerUsername> {
-        match decode::<Claims>(token, &KEYS.decoding, &Validation::default()) {
-            Ok(data) => Ok(data.claims.sub),
-            Err(_) => ServiceError::unauthorized("Invalid token"),
+fn validate_jwt(token: &str) -> Option<AccountId> {
+    match decode::<Claims>(token, &KEYS.decoding, &Validation::default()) {
+        Ok(data) => {
+            let uuid = Uuid::parse_str(&data.claims.sub).ok()?;
+            Some(AccountId(uuid))
         }
+        Err(_) => None,
     }
 }

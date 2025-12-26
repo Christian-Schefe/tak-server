@@ -6,12 +6,12 @@ use lettre::{
 };
 use tak_server_app::ports::email::EmailPort;
 
-pub struct EmailServiceImpl {
+pub struct LettreEmailAdapter {
     transport: SmtpTransport,
     from: Mailbox,
 }
 
-impl EmailServiceImpl {
+impl LettreEmailAdapter {
     pub fn new() -> Self {
         let host = std::env::var("TAK_EMAIL_HOST").expect("TAK_EMAIL_HOST env var not set");
         let user = std::env::var("TAK_EMAIL_USER").expect("TAK_EMAIL_USER env var not set");
@@ -27,7 +27,7 @@ impl EmailServiceImpl {
     }
 }
 
-impl EmailPort for EmailServiceImpl {
+impl EmailPort for LettreEmailAdapter {
     fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<(), String> {
         let email = Message::builder()
             .from(self.from.clone())

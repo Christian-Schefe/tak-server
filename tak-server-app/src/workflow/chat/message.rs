@@ -18,18 +18,18 @@ pub trait ChatMessageUseCase {
         &self,
         from_player_id: PlayerId,
         to_player_id: PlayerId,
-        message: String,
-    ) -> Result<(), ChatMessageError>;
+        message: &str,
+    ) -> Result<String, ChatMessageError>;
     async fn send_global_message(
         &self,
         from_player_id: PlayerId,
-        message: String,
+        message: &str,
     ) -> Result<(), ChatMessageError>;
     async fn send_room_message(
         &self,
         from_player_id: PlayerId,
-        room_name: String,
-        message: String,
+        room_name: &String,
+        message: &str,
     ) -> Result<(), ChatMessageError>;
 }
 
@@ -79,15 +79,14 @@ impl<
     async fn filter_message(
         &self,
         player_id: PlayerId,
-        message: String,
+        message: &str,
     ) -> Result<String, ChatMessageError> {
         match self.player_repo.get_player(player_id).await {
-            Ok(Some(player)) => {
+            Ok(player) => {
                 if player.is_silenced {
                     return Err(ChatMessageError::PlayerSilenced);
                 }
             }
-            Ok(None) => return Err(ChatMessageError::FailedToRetrievePlayer),
             Err(_) => return Err(ChatMessageError::FailedToRetrievePlayer),
         }
         let filtered_message = self.content_policy.filter_message(&message);
@@ -108,26 +107,26 @@ impl<
         &self,
         from_player_id: PlayerId,
         to_player_id: PlayerId,
-        message: String,
-    ) -> Result<(), ChatMessageError> {
+        message: &str,
+    ) -> Result<String, ChatMessageError> {
         let to_player_connection = self.player_connection_port.get_connection_id(to_player_id);
         let filtered_message = self.filter_message(from_player_id, message).await?;
         if let Some(connection_id) = to_player_connection {
             let msg = ListenerMessage::ChatMessage {
                 from_player_id,
-                message: filtered_message,
+                message: filtered_message.clone(),
                 source: ChatMessageSource::Private,
             };
             self.listener_notification_port
                 .notify_listener(connection_id, msg);
         }
-        Ok(())
+        Ok(filtered_message)
     }
 
     async fn send_global_message(
         &self,
         from_player_id: PlayerId,
-        message: String,
+        message: &str,
     ) -> Result<(), ChatMessageError> {
         let filtered_message = self.filter_message(from_player_id, message).await?;
         let msg = ListenerMessage::ChatMessage {
@@ -142,15 +141,15 @@ impl<
     async fn send_room_message(
         &self,
         from_player_id: PlayerId,
-        room_name: String,
-        message: String,
+        room_name: &String,
+        message: &str,
     ) -> Result<(), ChatMessageError> {
         let filtered_message = self.filter_message(from_player_id, message).await?;
-        let players_in_room = self.chat_room_service.get_listeners_in_room(&room_name);
+        let players_in_room = self.chat_room_service.get_listeners_in_room(room_name);
         let msg = ListenerMessage::ChatMessage {
             from_player_id,
             message: filtered_message,
-            source: ChatMessageSource::Room(room_name),
+            source: ChatMessageSource::Room(room_name.to_string()),
         };
         self.listener_notification_port
             .notify_listeners(&players_in_room, msg);

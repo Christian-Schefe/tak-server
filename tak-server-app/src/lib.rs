@@ -22,9 +22,9 @@ use crate::{
     processes::game_timeout_runner::GameTimeoutRunnerImpl,
     workflow::{
         account::{
-            get_snapshot::GetSnapshotWorkflowImpl,
+            get_snapshot::{GetSnapshotWorkflow, GetSnapshotWorkflowImpl},
+            get_username::{GetUsernameWorkflow, GetUsernameWorkflowImpl},
             moderate::{ModeratePlayerUseCase, ModeratePlayerUseCaseImpl},
-            register::{RegisterAccountUseCase, RegisterAccountUseCaseImpl},
         },
         chat::{
             message::{ChatMessageUseCase, ChatMessageUseCaseImpl},
@@ -55,37 +55,39 @@ use crate::{
 
 pub mod domain;
 pub mod ports;
-mod processes;
-mod workflow;
+pub mod processes;
+pub mod services;
+pub mod workflow;
 
 pub struct Application {
     pub jobs: JoinHandle<()>,
 
-    pub seek_accept_use_case: Box<dyn AcceptSeekUseCase>,
-    pub seek_cancel_use_case: Box<dyn CancelSeekUseCase>,
-    pub seek_create_use_case: Box<dyn CreateSeekUseCase>,
-    pub seek_get_use_case: Box<dyn GetSeekUseCase>,
-    pub seek_list_use_case: Box<dyn ListSeeksUseCase>,
+    pub seek_accept_use_case: Box<dyn AcceptSeekUseCase + Send + Sync + 'static>,
+    pub seek_cancel_use_case: Box<dyn CancelSeekUseCase + Send + Sync + 'static>,
+    pub seek_create_use_case: Box<dyn CreateSeekUseCase + Send + Sync + 'static>,
+    pub seek_get_use_case: Box<dyn GetSeekUseCase + Send + Sync + 'static>,
+    pub seek_list_use_case: Box<dyn ListSeeksUseCase + Send + Sync + 'static>,
+    pub match_rematch_use_case: Box<dyn RematchUseCase + Send + Sync + 'static>,
 
-    pub match_rematch_use_case: Box<dyn RematchUseCase>,
+    pub player_set_online_use_case: Box<dyn SetPlayerOnlineUseCase + Send + Sync + 'static>,
 
-    pub player_set_online_use_case: Box<dyn SetPlayerOnlineUseCase>,
+    pub game_do_action_use_case: Box<dyn DoActionUseCase + Send + Sync + 'static>,
+    pub game_get_ongoing_use_case: Box<dyn GetOngoingGameUseCase + Send + Sync + 'static>,
+    pub game_list_ongoing_use_case: Box<dyn ListOngoingGameUseCase + Send + Sync + 'static>,
+    pub game_observe_use_case: Box<dyn ObserveGameUseCase + Send + Sync + 'static>,
 
-    pub game_do_action_use_case: Box<dyn DoActionUseCase>,
-    pub game_get_ongoing_use_case: Box<dyn GetOngoingGameUseCase>,
-    pub game_list_ongoing_use_case: Box<dyn ListOngoingGameUseCase>,
-    pub game_observe_use_case: Box<dyn ObserveGameUseCase>,
+    pub chat_message_use_case: Box<dyn ChatMessageUseCase + Send + Sync + 'static>,
+    pub chat_room_use_case: Box<dyn ChatRoomUseCase + Send + Sync + 'static>,
 
-    pub chat_message_use_case: Box<dyn ChatMessageUseCase>,
-    pub chat_room_use_case: Box<dyn ChatRoomUseCase>,
+    pub account_ban_use_case: Box<dyn ModeratePlayerUseCase + Send + Sync + 'static>,
 
-    pub account_register_use_case: Box<dyn RegisterAccountUseCase>,
-    pub account_ban_use_case: Box<dyn ModeratePlayerUseCase>,
+    pub event_list_use_case: Box<dyn ListEventsUseCase + Send + Sync + 'static>,
 
-    pub event_list_use_case: Box<dyn ListEventsUseCase>,
+    pub get_snapshot_workflow: Arc<dyn GetSnapshotWorkflow + Send + Sync + 'static>,
+    pub get_username_workflow: Arc<dyn GetUsernameWorkflow + Send + Sync + 'static>,
 }
 
-pub async fn build_core_application<
+pub async fn build_application<
     L: ListenerNotificationPort + Send + Sync + 'static,
     C: PlayerConnectionPort + Send + Sync + 'static,
     G: GameRepository + Send + Sync + 'static,
@@ -95,14 +97,14 @@ pub async fn build_core_application<
     ER: EventRepository + Send + Sync + 'static,
     PR: PlayerRepository + Send + Sync + 'static,
 >(
+    game_repository: Arc<G>,
+    player_repository: Arc<PR>,
+    rating_repository: Arc<R>,
+    event_repository: Arc<ER>,
+    email_port: Arc<E>,
     listener_notification_port: Arc<L>,
     player_connection_port: Arc<C>,
-    game_repository: Arc<G>,
-    rating_repository: Arc<R>,
     authentication_service: Arc<AS>,
-    email_port: Arc<E>,
-    event_repository: Arc<ER>,
-    player_repository: Arc<PR>,
 ) -> Application {
     let seek_service = Arc::new(SeekServiceImpl::new());
     let game_service = Arc::new(GameServiceImpl::new());
@@ -116,9 +118,13 @@ pub async fn build_core_application<
     let ban_policy = Arc::new(AdminAccountPolicy);
     let silence_policy = Arc::new(ModeratorAccountPolicy);
 
-    let get_snapshot_workflow = Arc::new(GetSnapshotWorkflowImpl::new(
+    let get_username_workflow = Arc::new(GetUsernameWorkflowImpl::new(
         authentication_service.clone(),
         player_repository.clone(),
+    ));
+
+    let get_snapshot_workflow = Arc::new(GetSnapshotWorkflowImpl::new(
+        get_username_workflow.clone(),
         rating_repository.clone(),
         rating_service.clone(),
     ));
@@ -203,9 +209,6 @@ pub async fn build_core_application<
         )),
         chat_room_use_case: Box::new(ChatRoomUseCaseImpl::new(chat_room_service.clone())),
 
-        account_register_use_case: Box::new(RegisterAccountUseCaseImpl::new(
-            player_repository.clone(),
-        )),
         account_ban_use_case: Box::new(ModeratePlayerUseCaseImpl::new(
             email_port.clone(),
             ban_policy.clone(),
@@ -215,6 +218,9 @@ pub async fn build_core_application<
         )),
 
         event_list_use_case: Box::new(ListEventsUseCaseImpl::new(event_repository.clone())),
+
+        get_snapshot_workflow,
+        get_username_workflow,
     };
 
     application

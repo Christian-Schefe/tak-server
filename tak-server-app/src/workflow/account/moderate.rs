@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     domain::{PlayerId, account::PermissionPolicy, player::PlayerRepository},
     ports::{
-        authentication::{AuthSubject, AuthenticationService},
+        authentication::{AuthContext, AuthSubject, AuthenticationService},
         email::EmailPort,
     },
 };
@@ -66,6 +66,20 @@ impl<
             authentication_service,
         }
     }
+
+    async fn get_account(&self, player_id: PlayerId) -> Result<AuthContext, ModerationError> {
+        let account_id = match self.player_repository.get_player(player_id).await {
+            Ok(player) => player.account_id,
+            _ => return Err(ModerationError::PlayerNotFound),
+        };
+        if let Some(account_id) = account_id
+            && let Some(account) = self.authentication_service.get_subject(account_id)
+        {
+            Ok(account)
+        } else {
+            Err(ModerationError::AccountNotFound)
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -83,31 +97,8 @@ impl<
         target_player_id: PlayerId,
         reason: &str,
     ) -> Result<(), ModerationError> {
-        let Some(executing_account_id) = self
-            .player_repository
-            .get_account_id_for_player(player_id)
-            .await
-        else {
-            return Err(ModerationError::PlayerNotFound);
-        };
-        let Some(target_account_id) = self
-            .player_repository
-            .get_account_id_for_player(target_player_id)
-            .await
-        else {
-            return Err(ModerationError::PlayerNotFound);
-        };
-
-        let Some(executing_account) = self
-            .authentication_service
-            .get_subject(executing_account_id)
-        else {
-            return Err(ModerationError::AccountNotFound);
-        };
-        let Some(target_account) = self.authentication_service.get_subject(target_account_id)
-        else {
-            return Err(ModerationError::AccountNotFound);
-        };
+        let executing_account = self.get_account(player_id).await?;
+        let target_account = self.get_account(target_player_id).await?;
 
         if !self
             .ban_policy
@@ -116,9 +107,14 @@ impl<
             return Err(ModerationError::InsufficientPermissions);
         }
 
-        self.player_repository
+        if let Err(e) = self
+            .player_repository
             .set_player_banned(player_id, true)
-            .await;
+            .await
+        {
+            log::error!("Failed to ban player: {}", e);
+            return Err(ModerationError::PlayerNotFound);
+        }
 
         if let AuthSubject::Player { username, email } = target_account.subject_type {
             let subject = "Playtak Account Banned";
@@ -147,31 +143,8 @@ impl<
         player_id: PlayerId,
         target_player_id: PlayerId,
     ) -> Result<(), ModerationError> {
-        let Some(executing_account_id) = self
-            .player_repository
-            .get_account_id_for_player(player_id)
-            .await
-        else {
-            return Err(ModerationError::PlayerNotFound);
-        };
-        let Some(target_account_id) = self
-            .player_repository
-            .get_account_id_for_player(target_player_id)
-            .await
-        else {
-            return Err(ModerationError::PlayerNotFound);
-        };
-
-        let Some(executing_account) = self
-            .authentication_service
-            .get_subject(executing_account_id)
-        else {
-            return Err(ModerationError::AccountNotFound);
-        };
-        let Some(target_account) = self.authentication_service.get_subject(target_account_id)
-        else {
-            return Err(ModerationError::AccountNotFound);
-        };
+        let executing_account = self.get_account(player_id).await?;
+        let target_account = self.get_account(target_player_id).await?;
 
         if !self
             .silence_policy
@@ -180,9 +153,17 @@ impl<
             return Err(ModerationError::InsufficientPermissions);
         }
 
-        self.player_repository
+        match self
+            .player_repository
             .set_player_silenced(target_player_id, true)
-            .await;
+            .await
+        {
+            Ok(_) => {}
+            Err(e) => {
+                log::error!("Failed to silence player: {}", e);
+                return Err(ModerationError::PlayerNotFound);
+            }
+        }
         Ok(())
     }
 }

@@ -18,7 +18,7 @@ use tak_server_app::domain::{
     },
 };
 
-use crate::{create_games_db_pool, entity::game};
+use crate::{create_db_pool, entity::game};
 
 pub struct GameRepositoryImpl {
     db: DatabaseConnection,
@@ -53,7 +53,7 @@ where
 
 impl GameRepositoryImpl {
     pub async fn new() -> Self {
-        let db = create_games_db_pool().await;
+        let db = create_db_pool().await;
         Self { db }
     }
 

@@ -1,44 +1,44 @@
 use log::error;
-use tak_server_domain::{
-    ServiceError,
-    player::PlayerUsername,
-    transport::{ChatMessageSource, ListenerId, do_player_send},
+use tak_server_app::{
+    domain::{ListenerId, PlayerId},
+    ports::notification::ChatMessageSource,
+    workflow::chat::message::ChatMessageError,
 };
 
-use crate::protocol::{
-    ServerMessage,
-    v2::{ProtocolV2Handler, ProtocolV2Result, V2Response, split_n_and_rest},
+use crate::{
+    acl::get_player_id_by_username,
+    app::ServiceError,
+    protocol::v2::{ProtocolV2Handler, V2Response, split_n_and_rest},
 };
 
 impl ProtocolV2Handler {
-    pub fn handle_server_chat_message(&self, id: ListenerId, msg: &ServerMessage) {
-        match msg {
-            ServerMessage::ChatMessage {
-                from,
-                message,
-                source,
-            } => {
-                let msg = match source {
-                    ChatMessageSource::Global => format!("Shout <{}> {}", from, message),
-                    ChatMessageSource::Room { name } => {
-                        format!("ShoutRoom {} <{}> {}", name, from, message)
-                    }
-                    ChatMessageSource::Private => format!("Tell <{}> {}", from, message),
-                };
-                self.send_to(id, msg);
+    pub async fn handle_chat_message(
+        &self,
+        id: ListenerId,
+        from_player_id: PlayerId,
+        message: &str,
+        source: ChatMessageSource,
+    ) {
+        let Some(username) = self
+            .app
+            .get_username_workflow
+            .get_username(from_player_id)
+            .await
+        else {
+            error!(
+                "Failed to get username for player ID {} when handling chat message",
+                from_player_id
+            );
+            return;
+        };
+        let msg = match source {
+            ChatMessageSource::Global => format!("Shout <{}> {}", username, message),
+            ChatMessageSource::Room(name) => {
+                format!("ShoutRoom {} <{}> {}", name, username, message)
             }
-            ServerMessage::RoomMembership { room, joined } => {
-                let msg = if *joined {
-                    format!("Joined room {}", room)
-                } else {
-                    format!("Left room {}", room)
-                };
-                self.send_to(id, msg);
-            }
-            _ => {
-                error!("Unhandled server chat message: {:?}", msg);
-            }
-        }
+            ChatMessageSource::Private => format!("Tell <{}> {}", username, message),
+        };
+        self.send_to(id, msg);
     }
 
     pub async fn handle_room_membership_message(
@@ -46,119 +46,142 @@ impl ProtocolV2Handler {
         id: ListenerId,
         parts: &[&str],
         join: bool,
-    ) -> ProtocolV2Result {
+    ) -> V2Response {
         if parts.len() != 2 {
-            return ServiceError::bad_request("Invalid JoinRoom/LeaveRoom message format");
+            return V2Response::ErrorNOK(ServiceError::BadRequest(
+                "Invalid JoinRoom/LeaveRoom message format".to_string(),
+            ));
         }
         let room = parts[1].to_string();
         if join {
-            self.app_state.chat_service.join_room(id, &room).await?;
+            self.app.chat_room_use_case.join_room(&room, id);
+            self.send_to(id, format!("Joined room {}", room));
         } else {
-            self.app_state.chat_service.leave_room(id, &room).await?;
+            self.app.chat_room_use_case.leave_room(&room, id);
+            self.send_to(id, format!("Left room {}", room));
         }
-        Ok(V2Response::OK)
+        V2Response::OK
     }
 
     pub async fn handle_shout_message(
         &self,
-        username: &PlayerUsername,
+        id: ListenerId,
+        player_id: PlayerId,
         orig_msg: &str,
-    ) -> ProtocolV2Result {
+    ) -> V2Response {
         let (parts, msg) = split_n_and_rest(orig_msg, 1);
         if parts.len() != 1 || msg.is_empty() {
-            return ServiceError::bad_request("Invalid Shout message format");
+            return V2Response::ErrorNOK(ServiceError::BadRequest(
+                "Invalid Shout message format".to_string(),
+            ));
         }
+        let username = match self.app.get_username_workflow.get_username(player_id).await {
+            Some(name) => name,
+            None => {
+                return V2Response::ErrorNOK(ServiceError::Internal(
+                    "Failed to retrieve username".to_string(),
+                ));
+            }
+        };
         match self
-            .app_state
-            .chat_service
-            .send_message_to_all(username, &msg)
+            .app
+            .chat_message_use_case
+            .send_global_message(player_id, &msg)
             .await
         {
-            Ok(_) => Ok(V2Response::OK),
-            Err(ServiceError::Forbidden(_)) => {
-                do_player_send(
-                    &self.app_state.player_connection_service,
-                    &self.app_state.transport_service,
-                    username,
-                    &ServerMessage::ChatMessage {
-                        from: username.clone(),
-                        message:
-                            "<Server: You have been silenced for inappropriate chat behavior.>"
-                                .to_string(),
-                        source: ChatMessageSource::Global,
-                    },
-                )
-                .await;
-                Ok(V2Response::OK)
+            Ok(_) => V2Response::OK,
+            Err(ChatMessageError::PlayerSilenced) => {
+                let msg = format!(
+                    "Shout <{}> {}",
+                    username, "<Server: You have been silenced for inappropriate chat behavior.>"
+                );
+                self.send_to(id, msg);
+                V2Response::OK
             }
-            Err(e) => Err(e),
+            Err(ChatMessageError::FailedToRetrievePlayer) => V2Response::ErrorNOK(
+                ServiceError::Internal("Failed to retrieve player information".to_string()),
+            ),
         }
     }
 
     pub async fn handle_shout_room_message(
         &self,
-        username: &PlayerUsername,
+        id: ListenerId,
+        player_id: PlayerId,
         orig_msg: &str,
-    ) -> ProtocolV2Result {
+    ) -> V2Response {
         let (parts, msg) = split_n_and_rest(orig_msg, 2);
         if parts.len() != 2 || msg.is_empty() {
-            return ServiceError::bad_request("Invalid ShoutRoom message format");
+            return V2Response::ErrorNOK(ServiceError::BadRequest(
+                "Invalid ShoutRoom message format".to_string(),
+            ));
         }
         let room = parts[1].to_string();
 
+        let username = match self.app.get_username_workflow.get_username(player_id).await {
+            Some(name) => name,
+            None => {
+                return V2Response::ErrorNOK(ServiceError::Internal(
+                    "Failed to retrieve username".to_string(),
+                ));
+            }
+        };
+
         match self
-            .app_state
-            .chat_service
-            .send_message_to_room(username, &room, &msg)
+            .app
+            .chat_message_use_case
+            .send_room_message(player_id, &room, &msg)
             .await
         {
-            Ok(_) => Ok(V2Response::OK),
-            Err(ServiceError::Forbidden(_)) => {
-                do_player_send(
-                    &self.app_state.player_connection_service,
-                    &self.app_state.transport_service,
+            Ok(_) => V2Response::OK,
+            Err(ChatMessageError::PlayerSilenced) => {
+                let msg = format!(
+                    "ShoutRoom {} <{}> {}",
+                    room,
                     username,
-                    &ServerMessage::ChatMessage {
-                        from: username.clone(),
-                        message:
-                            "<Server: You have been silenced for inappropriate chat behavior.>"
-                                .to_string(),
-                        source: ChatMessageSource::Room { name: room },
-                    },
-                )
-                .await;
-                Ok(V2Response::OK)
+                    "<Server: You have been silenced for inappropriate chat behavior.>"
+                );
+                self.send_to(id, msg);
+                V2Response::OK
             }
-            Err(e) => Err(e),
+            Err(ChatMessageError::FailedToRetrievePlayer) => V2Response::ErrorNOK(
+                ServiceError::Internal("Failed to retrieve player information".to_string()),
+            ),
         }
     }
 
-    pub async fn handle_tell_message(
-        &self,
-        username: &PlayerUsername,
-        orig_msg: &str,
-    ) -> ProtocolV2Result {
+    pub async fn handle_tell_message(&self, player_id: PlayerId, orig_msg: &str) -> V2Response {
         let (parts, msg) = split_n_and_rest(orig_msg, 2);
         if parts.len() != 2 || msg.is_empty() {
-            return ServiceError::bad_request("Invalid Tell message format");
+            return V2Response::ErrorNOK(ServiceError::BadRequest(
+                "Invalid Tell message format".to_string(),
+            ));
         }
         let target_username = parts[1];
+        let Some(target_player_id) = get_player_id_by_username(target_username) else {
+            return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
+                "No such user: {}",
+                target_username
+            )));
+        };
 
         match self
-            .app_state
-            .chat_service
-            .send_message_to_player(username, &target_username.to_string(), &msg)
+            .app
+            .chat_message_use_case
+            .send_private_message(player_id, target_player_id, &msg)
             .await
         {
-            Ok(sent_msg) => Ok(V2Response::Message(format!(
-                "Told <{}> {}",
-                target_username, sent_msg
-            ))),
-            Err(ServiceError::Forbidden(_)) => Ok(V2Response::Message(format!(
+            Ok(sent_msg) => V2Response::Message(format!("Told <{}> {}", target_username, sent_msg)),
+            Err(ChatMessageError::PlayerSilenced) => V2Response::Message(format!(
                 "Told <{}> <Server: You have been silenced for inappropriate chat behavior.>",
                 target_username
-            ))),
-            Err(e) => Err(e),
+            )),
+            Err(ChatMessageError::FailedToRetrievePlayer) => {
+                V2Response::ErrorNOK(ServiceError::Internal(format!(
+                    "Failed to retrieve player information for ID {}",
+                    player_id
+                )))
+            }
         }
     }
 }
