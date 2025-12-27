@@ -31,9 +31,6 @@ impl PlayerRepositoryImpl {
         Player {
             player_id: PlayerId(model.id),
             account_id: model.account_id.map(AccountId),
-            is_bot: model.is_bot,
-            is_silenced: model.is_silenced,
-            is_banned: model.is_banned,
         }
     }
 
@@ -59,9 +56,6 @@ impl PlayerRepository for PlayerRepositoryImpl {
         let new_player = player::ActiveModel {
             id: Set(player.player_id.0),
             account_id: Set(player.account_id.map(|aid| aid.0)),
-            is_bot: Set(player.is_bot),
-            is_silenced: Set(player.is_silenced),
-            is_banned: Set(player.is_banned),
         };
 
         new_player
@@ -135,9 +129,6 @@ impl PlayerRepository for PlayerRepositoryImpl {
                         let active_model = player::ActiveModel {
                             id: Set(new_player.player_id.0),
                             account_id: Set(Some(account_id.0)),
-                            is_bot: Set(new_player.is_bot),
-                            is_silenced: Set(new_player.is_silenced),
-                            is_banned: Set(new_player.is_banned),
                         };
                         let inserted_model = active_model
                             .insert(c)
@@ -183,60 +174,6 @@ impl PlayerRepository for PlayerRepositoryImpl {
         let player: player::ActiveModel = player::ActiveModel {
             id: Set(player_id.0),
             account_id: Set(None),
-            ..Default::default()
-        };
-        player
-            .update(&self.db)
-            .await
-            .map_err(Self::db_error_to_repo_error)?;
-        self.player_cache.invalidate(&player_id).await;
-        Ok(())
-    }
-
-    async fn set_player_silenced(
-        &self,
-        player_id: PlayerId,
-        silenced: bool,
-    ) -> Result<(), RepoUpdateError> {
-        let player: player::ActiveModel = player::ActiveModel {
-            id: Set(player_id.0),
-            is_silenced: Set(silenced),
-            ..Default::default()
-        };
-        player
-            .update(&self.db)
-            .await
-            .map_err(Self::db_error_to_repo_error)?;
-        self.player_cache.invalidate(&player_id).await;
-        Ok(())
-    }
-
-    async fn set_player_banned(
-        &self,
-        player_id: PlayerId,
-        banned: bool,
-    ) -> Result<(), RepoUpdateError> {
-        let player: player::ActiveModel = player::ActiveModel {
-            id: Set(player_id.0),
-            is_banned: Set(banned),
-            ..Default::default()
-        };
-        player
-            .update(&self.db)
-            .await
-            .map_err(Self::db_error_to_repo_error)?;
-        self.player_cache.invalidate(&player_id).await;
-        Ok(())
-    }
-
-    async fn set_player_is_bot(
-        &self,
-        player_id: PlayerId,
-        is_bot: bool,
-    ) -> Result<(), RepoUpdateError> {
-        let player: player::ActiveModel = player::ActiveModel {
-            id: Set(player_id.0),
-            is_bot: Set(is_bot),
             ..Default::default()
         };
         player

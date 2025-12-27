@@ -52,11 +52,18 @@ pub trait GameService {
     ) -> Result<DoActionSuccess, DoActionError>;
     fn resign(&self, game_id: GameId, player: PlayerId) -> Result<Game, ResignError>;
     fn request_undo(&self, game_id: GameId, player: PlayerId) -> Result<bool, RequestUndoError>;
+    fn retract_undo_request(
+        &self,
+        game_id: GameId,
+        player: PlayerId,
+    ) -> Result<bool, RequestUndoError>;
     fn offer_draw(
         &self,
         game_id: GameId,
         player: PlayerId,
     ) -> Result<OfferDrawSuccess, OfferDrawError>;
+    fn retract_draw_offer(&self, game_id: GameId, player: PlayerId)
+    -> Result<bool, OfferDrawError>;
     fn check_timeout(&self, game_id: GameId, now: Instant) -> CheckTimoutResult;
 }
 
@@ -84,7 +91,7 @@ pub enum OfferDrawError {
 }
 
 pub enum OfferDrawSuccess {
-    DrawOffered,
+    DrawOffered(bool),
     GameDrawn(Game),
 }
 
@@ -247,7 +254,7 @@ impl GameService for GameServiceImpl {
         game_id: GameId,
         player: PlayerId,
     ) -> Result<OfferDrawSuccess, OfferDrawError> {
-        let did_draw = self
+        let (did_draw, changed) = self
             .with_game(game_id, |game_entry| {
                 let current_player = match player {
                     id if id == game_entry.white => TakPlayer::White,
@@ -255,12 +262,14 @@ impl GameService for GameServiceImpl {
                     _ => return Err(OfferDrawError::NotAPlayerInGame),
                 };
 
+                let changed = !game_entry.game.get_draw_offer(&current_player);
+
                 let did_draw = match game_entry.game.offer_draw(&current_player, true) {
                     Ok(did_draw) => did_draw,
                     Err(_) => return Err(OfferDrawError::InvalidOffer),
                 };
 
-                Ok(did_draw)
+                Ok((did_draw, changed))
             })
             .unwrap_or(Err(OfferDrawError::GameNotFound))?;
         if did_draw {
@@ -269,8 +278,32 @@ impl GameService for GameServiceImpl {
             };
             Ok(OfferDrawSuccess::GameDrawn(ended_game))
         } else {
-            Ok(OfferDrawSuccess::DrawOffered)
+            Ok(OfferDrawSuccess::DrawOffered(changed))
         }
+    }
+
+    fn retract_draw_offer(
+        &self,
+        game_id: GameId,
+        player: PlayerId,
+    ) -> Result<bool, OfferDrawError> {
+        let did_retract = self
+            .with_game(game_id, |game_entry| {
+                let current_player = match player {
+                    id if id == game_entry.white => TakPlayer::White,
+                    id if id == game_entry.black => TakPlayer::Black,
+                    _ => return Err(OfferDrawError::NotAPlayerInGame),
+                };
+
+                let did_retract = match game_entry.game.offer_draw(&current_player, false) {
+                    Ok(did_retract) => did_retract,
+                    Err(_) => return Err(OfferDrawError::InvalidOffer),
+                };
+
+                Ok(did_retract)
+            })
+            .unwrap_or(Err(OfferDrawError::GameNotFound))?;
+        Ok(did_retract)
     }
 
     fn request_undo(&self, game_id: GameId, player: PlayerId) -> Result<bool, RequestUndoError> {
@@ -292,6 +325,28 @@ impl GameService for GameServiceImpl {
         self.handle_maybe_game_over(game_id);
 
         Ok(did_undo)
+    }
+
+    fn retract_undo_request(
+        &self,
+        game_id: GameId,
+        player: PlayerId,
+    ) -> Result<bool, RequestUndoError> {
+        let did_retract = self
+            .with_game(game_id, |game_entry| {
+                let current_player = match player {
+                    id if id == game_entry.white => TakPlayer::White,
+                    id if id == game_entry.black => TakPlayer::Black,
+                    _ => return Err(RequestUndoError::NotAPlayerInGame),
+                };
+
+                match game_entry.game.request_undo(&current_player, false) {
+                    Ok(did_retract) => Ok(did_retract),
+                    Err(_) => return Err(RequestUndoError::InvalidRequest),
+                }
+            })
+            .unwrap_or(Err(RequestUndoError::GameNotFound))?;
+        Ok(did_retract)
     }
 
     fn check_timeout(&self, game_id: GameId, now: Instant) -> CheckTimoutResult {

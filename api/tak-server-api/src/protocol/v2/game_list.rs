@@ -1,45 +1,37 @@
 use std::time::Instant;
 
-use log::{error, warn};
-use tak_server_domain::{
-    ServiceError,
-    game::{Game, GameId, GameType},
-    transport::{ListenerId, ServerGameMessage},
+use log::warn;
+use tak_server_app::{
+    domain::{GameId, GameType, ListenerId, account::AccountFlag},
+    workflow::gameplay::{GameView, observe::ObserveGameError},
 };
 
-use crate::protocol::{
-    Protocol, ServerMessage,
-    v2::{ProtocolV2Handler, ProtocolV2Result, V2Response},
+use crate::{
+    app::ServiceError,
+    protocol::{
+        Protocol,
+        v2::{ProtocolV2Handler, V2Response},
+    },
 };
 
 impl ProtocolV2Handler {
-    pub async fn handle_server_game_list_message(&self, id: ListenerId, msg: &ServerMessage) {
-        match msg {
-            ServerMessage::GameList { add, game } => {
-                self.send_game_string_message(
-                    id,
-                    &game,
-                    if *add {
-                        "GameList Add"
-                    } else {
-                        "GameList Remove"
-                    },
-                );
-            }
-            ServerMessage::GameStart { game_id } => {
-                self.send_game_start_message(id, game_id).await;
-            }
-            _ => {
-                error!("Unhandled server game list message: {:?}", msg);
-            }
-        }
+    pub async fn send_game_list_message(&self, id: ListenerId, game: &GameView, add: bool) {
+        self.send_game_string_message(
+            id,
+            game,
+            if add {
+                "GameList Add"
+            } else {
+                "GameList Remove"
+            },
+        );
     }
 
-    pub fn handle_game_list_message(&self, id: ListenerId) -> ProtocolV2Result {
-        for game in self.app.game_service.get_games() {
+    pub fn handle_game_list_message(&self, id: ListenerId) -> V2Response {
+        for game in self.app.game_list_ongoing_use_case.list_games() {
             self.send_game_string_message(id, &game, "GameList Add");
         }
-        Ok(V2Response::OK)
+        V2Response::OK
     }
 
     pub fn handle_observe_message(
@@ -47,40 +39,46 @@ impl ProtocolV2Handler {
         id: ListenerId,
         parts: &[&str],
         observe: bool,
-    ) -> ProtocolV2Result {
+    ) -> V2Response {
         if parts.len() != 2 {
-            return ServiceError::bad_request("Invalid Observe/Unobserve message format");
+            return V2Response::ErrorNOK(ServiceError::BadRequest(
+                "Invalid Observe/Unobserve message format".to_string(),
+            ));
         }
-        let Ok(game_id) = parts[1].parse::<GameId>() else {
-            return ServiceError::bad_request("Invalid Game ID in Observe message");
+        let Ok(game_id) = parts[1].parse::<u32>() else {
+            return V2Response::ErrorNOK(ServiceError::BadRequest(
+                "Invalid Game ID in Observe message".to_string(),
+            ));
         };
+        let game_id = GameId::new(game_id);
         if observe {
-            self.app.game_service.observe_game(id, &game_id)?;
-            let Some(game) = self.app.game_service.get_game(&game_id) else {
-                return ServiceError::not_found("Game ID not found");
+            if let Err(e) = self.app.game_observe_use_case.observe_game(game_id, id) {
+                return match e {
+                    ObserveGameError::GameNotFound => V2Response::ErrorNOK(ServiceError::NotFound(
+                        "Game ID not found".to_string(),
+                    )),
+                };
+            }
+            let Some(game) = self.app.game_get_ongoing_use_case.get_game(game_id) else {
+                return V2Response::ErrorNOK(ServiceError::NotFound(
+                    "Game ID not found".to_string(),
+                ));
             };
             self.send_game_string_message(id, &game, "Observe");
-            for action in game.game.action_history.iter() {
+            for action in game.game.action_history() {
                 self.send_game_action_message(id, &game.id, action);
             }
             let now = Instant::now();
             let (remaining_white, remaining_black) = game.game.get_time_remaining_both(now);
-            self.handle_server_game_message(
-                id,
-                &game.id,
-                &ServerGameMessage::TimeUpdate {
-                    remaining_white,
-                    remaining_black,
-                },
-            );
+            self.send_time_update_message(id, game_id, remaining_white, remaining_black);
         } else {
-            self.app.game_service.unobserve_game(id, &game_id)?;
+            self.app.game_observe_use_case.unobserve_game(game_id, id);
         }
-        Ok(V2Response::OK)
+        V2Response::OK
     }
 
-    pub fn send_game_string_message(&self, id: ListenerId, game: &Game, operation: &str) {
-        let settings = &game.game.base.settings;
+    pub fn send_game_string_message(&self, id: ListenerId, game: &GameView, operation: &str) {
+        let settings = &game.settings;
         let message = format!(
             "{} {} {} {} {} {} {} {} {} {} {} {} {} {}",
             operation,
@@ -120,28 +118,42 @@ impl ProtocolV2Handler {
         self.send_to(id, message);
     }
 
-    pub async fn send_game_start_message(&self, id: ListenerId, game_id: &GameId) {
-        let Some(game) = self.app.game_service.get_game(game_id) else {
-            warn!("GameStart message for unknown game ID: {}", game_id);
-            return;
-        };
+    pub async fn send_game_start_message(&self, id: ListenerId, game: &GameView) {
         let Some(player) = self.transport.get_associated_player(id) else {
             warn!("Client {} not associated with any player", id);
             return;
         };
-        let is_bot_game = self
+        let white_account_id = self
             .app
-            .player_service
-            .get_player(&game.white)
+            .player_resolver_service
+            .resolve_account_id_by_player_id(game.white)
             .await
-            .map_or(false, |p| p.flags.is_bot)
-            || self
-                .app
-                .player_service
-                .get_player(&game.black)
+            .ok();
+        let black_account_id = self
+            .app
+            .player_resolver_service
+            .resolve_account_id_by_player_id(game.black)
+            .await
+            .ok();
+        let is_white_bot = if let Some(aid) = white_account_id {
+            self.auth
+                .get_account(aid)
                 .await
-                .map_or(false, |p| p.flags.is_bot);
-        let settings = &game.game.base.settings;
+                .is_some_and(|a| a.flags.contains(&AccountFlag::Bot))
+        } else {
+            false
+        };
+        let is_black_bot = if let Some(aid) = black_account_id {
+            self.auth
+                .get_account(aid)
+                .await
+                .is_some_and(|a| a.flags.contains(&AccountFlag::Bot))
+        } else {
+            false
+        };
+
+        let is_bot_game = is_white_bot || is_black_bot;
+        let settings = &game.settings;
         let protocol = self.transport.get_protocol(id);
         let message = if protocol == Protocol::V0 {
             format!(
@@ -150,7 +162,7 @@ impl ProtocolV2Handler {
                 settings.board_size,
                 game.white,
                 game.black,
-                if *player == game.white {
+                if player == game.white {
                     "white"
                 } else {
                     "black"
@@ -166,7 +178,7 @@ impl ProtocolV2Handler {
                 game.id,
                 game.white,
                 game.black,
-                if *player == game.white {
+                if player == game.white {
                     "white"
                 } else {
                     "black"

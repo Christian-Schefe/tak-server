@@ -370,6 +370,13 @@ impl TakGame {
         Ok(())
     }
 
+    pub fn get_draw_offer(&self, player: &TakPlayer) -> bool {
+        match player {
+            TakPlayer::White => self.draw_offered.0,
+            TakPlayer::Black => self.draw_offered.1,
+        }
+    }
+
     pub fn offer_draw(&mut self, player: &TakPlayer, offer: bool) -> Result<bool, String> {
         let now = Instant::now();
         self.check_is_ongoing(now)?;

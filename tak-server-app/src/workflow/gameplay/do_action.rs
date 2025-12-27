@@ -5,7 +5,10 @@ use tak_core::TakAction;
 use crate::{
     domain::{
         GameId, PlayerId,
-        game::{DoActionSuccess, GameService, OfferDrawSuccess},
+        game::{
+            DoActionError, DoActionSuccess, GameService, OfferDrawError, OfferDrawSuccess,
+            RequestUndoError, ResignError,
+        },
     },
     ports::{
         connection::PlayerConnectionPort,
@@ -23,27 +26,18 @@ pub trait DoActionUseCase {
         action: TakAction,
     ) -> Result<(), DoActionError>;
     async fn offer_draw(&self, game_id: GameId, player_id: PlayerId) -> Result<(), OfferDrawError>;
+    fn retract_draw_offer(
+        &self,
+        game_id: GameId,
+        player_id: PlayerId,
+    ) -> Result<(), OfferDrawError>;
     fn request_undo(&self, game_id: GameId, player_id: PlayerId) -> Result<(), RequestUndoError>;
+    fn retract_undo_request(
+        &self,
+        game_id: GameId,
+        player_id: PlayerId,
+    ) -> Result<(), RequestUndoError>;
     async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), ResignError>;
-}
-
-pub enum DoActionError {
-    GameNotFound,
-    NotPlayersTurn,
-    InvalidAction,
-}
-
-pub enum OfferDrawError {
-    GameNotFound,
-}
-
-pub enum RequestUndoError {
-    GameNotFound,
-    CantUndo,
-}
-
-pub enum ResignError {
-    GameNotFound,
 }
 
 pub struct DoActionUseCaseImpl<
@@ -99,19 +93,10 @@ impl<
         };
 
         let (action_record, maybe_ended_game) =
-            match self.game_service.do_action(game_id, player_id, action) {
-                Ok(DoActionSuccess::ActionPerformed(action_record)) => (action_record, None),
-                Ok(DoActionSuccess::GameOver(action_record, ended_game)) => {
+            match self.game_service.do_action(game_id, player_id, action)? {
+                DoActionSuccess::ActionPerformed(action_record) => (action_record, None),
+                DoActionSuccess::GameOver(action_record, ended_game) => {
                     (action_record, Some(ended_game))
-                }
-                Err(crate::domain::game::DoActionError::GameNotFound) => {
-                    return Err(DoActionError::GameNotFound);
-                }
-                Err(crate::domain::game::DoActionError::NotPlayersTurn) => {
-                    return Err(DoActionError::NotPlayersTurn);
-                }
-                Err(crate::domain::game::DoActionError::InvalidAction) => {
-                    return Err(DoActionError::InvalidAction);
                 }
             };
 
@@ -142,14 +127,11 @@ impl<
             return Err(OfferDrawError::GameNotFound);
         };
 
-        match self
-            .game_service
-            .offer_draw(game_id, player_id)
-            .map_err(|_| OfferDrawError::GameNotFound)?
-        {
-            OfferDrawSuccess::DrawOffered => {
-                if let Some(opponent_connection) =
-                    self.player_connection_port.get_connection_id(opponent_id)
+        match self.game_service.offer_draw(game_id, player_id)? {
+            OfferDrawSuccess::DrawOffered(changed) => {
+                if changed
+                    && let Some(opponent_connection) =
+                        self.player_connection_port.get_connection_id(opponent_id)
                 {
                     let msg = ListenerMessage::GameDrawOffered { game_id };
                     self.listener_notification_port
@@ -164,6 +146,33 @@ impl<
         Ok(())
     }
 
+    fn retract_draw_offer(
+        &self,
+        game_id: GameId,
+        player_id: PlayerId,
+    ) -> Result<(), OfferDrawError> {
+        let Some(game) = self.game_service.get_game_by_id(game_id) else {
+            return Err(OfferDrawError::GameNotFound);
+        };
+
+        let Some(opponent_id) = game.get_opponent(player_id) else {
+            return Err(OfferDrawError::GameNotFound);
+        };
+
+        let did_retract = self.game_service.retract_draw_offer(game_id, player_id)?;
+
+        if did_retract {
+            if let Some(opponent_connection) =
+                self.player_connection_port.get_connection_id(opponent_id)
+            {
+                let msg = ListenerMessage::GameDrawOfferRetracted { game_id };
+                self.listener_notification_port
+                    .notify_listener(opponent_connection, msg);
+            }
+        }
+        Ok(())
+    }
+
     fn request_undo(&self, game_id: GameId, player_id: PlayerId) -> Result<(), RequestUndoError> {
         let Some(game) = self.game_service.get_game_by_id(game_id) else {
             return Err(RequestUndoError::GameNotFound);
@@ -173,10 +182,7 @@ impl<
             return Err(RequestUndoError::GameNotFound);
         };
 
-        let did_undo = self
-            .game_service
-            .request_undo(game_id, player_id)
-            .map_err(|_| RequestUndoError::GameNotFound)?;
+        let did_undo = self.game_service.request_undo(game_id, player_id)?;
 
         if !did_undo {
             if let Some(opponent_connection) =
@@ -190,11 +196,35 @@ impl<
         Ok(())
     }
 
+    fn retract_undo_request(
+        &self,
+        game_id: GameId,
+        player_id: PlayerId,
+    ) -> Result<(), RequestUndoError> {
+        let Some(game) = self.game_service.get_game_by_id(game_id) else {
+            return Err(RequestUndoError::GameNotFound);
+        };
+
+        let Some(opponent_id) = game.get_opponent(player_id) else {
+            return Err(RequestUndoError::GameNotFound);
+        };
+
+        let did_retract = self.game_service.retract_undo_request(game_id, player_id)?;
+
+        if did_retract {
+            if let Some(opponent_connection) =
+                self.player_connection_port.get_connection_id(opponent_id)
+            {
+                let msg = ListenerMessage::GameUndoRequestRetracted { game_id };
+                self.listener_notification_port
+                    .notify_listener(opponent_connection, msg);
+            }
+        }
+        Ok(())
+    }
+
     async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), ResignError> {
-        let ended_game = self
-            .game_service
-            .resign(game_id, player_id)
-            .map_err(|_| ResignError::GameNotFound)?;
+        let ended_game = self.game_service.resign(game_id, player_id)?;
 
         self.finalize_game_workflow.finalize_game(ended_game).await;
 

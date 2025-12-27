@@ -21,6 +21,7 @@ use tak_server_app::{
     Application,
     domain::{ListenerId, PlayerId},
     ports::{
+        authentication::AuthenticationPort,
         connection::PlayerConnectionPort,
         notification::{ListenerMessage, ListenerNotificationPort},
     },
@@ -35,7 +36,7 @@ use tokio_util::{
     sync::CancellationToken,
 };
 
-use crate::protocol::Protocol;
+use crate::protocol::{Protocol, ProtocolService};
 
 pub enum ClientMessage {
     Text(String),
@@ -49,6 +50,7 @@ pub enum ServerMessage {
 }
 
 static APPLICATION: OnceLock<Arc<Application>> = OnceLock::new();
+static PROTOCOL_SERVICE: OnceLock<Arc<ProtocolService>> = OnceLock::new();
 
 #[derive(Clone)]
 pub struct TransportServiceImpl {
@@ -166,14 +168,11 @@ impl TransportServiceImpl {
                 let protocol = handler.clone();
                 drop(handler);
 
-                crate::protocol::handle_server_message(
-                    APPLICATION.get().unwrap(),
-                    self,
-                    &protocol,
-                    id,
-                    &msg,
-                )
-                .await;
+                PROTOCOL_SERVICE
+                    .get()
+                    .unwrap()
+                    .handle_server_message(&protocol, id, &msg)
+                    .await;
             }
         }
         info!("Client {} notification ended", id);
@@ -245,14 +244,11 @@ impl TransportServiceImpl {
                     if let Some(handler) = self.client_handlers.get(&id) {
                         let protocol = handler.clone();
                         drop(handler);
-                        crate::protocol::handle_client_message(
-                            APPLICATION.get().unwrap(),
-                            self,
-                            &protocol,
-                            id,
-                            text,
-                        )
-                        .await;
+                        PROTOCOL_SERVICE
+                            .get()
+                            .unwrap()
+                            .handle_client_message(&protocol, id, text)
+                            .await;
                     } else {
                         error!("Client {} has no protocol handler", id);
                     }
@@ -289,7 +285,7 @@ impl TransportServiceImpl {
         if let Some(handler) = self.client_handlers.get(&id) {
             let protocol = handler.clone();
             drop(handler);
-            crate::protocol::on_connected(APPLICATION.get().unwrap(), self, &protocol, id);
+            PROTOCOL_SERVICE.get().unwrap().on_connected(&protocol, id);
         }
     }
 
@@ -332,14 +328,10 @@ impl TransportServiceImpl {
             ));
         }
         if let Some(handler) = self.client_handlers.get(&id) {
-            crate::protocol::on_authenticated(
-                APPLICATION.get().unwrap(),
-                self,
-                &handler,
-                id,
-                player_id,
-            )
-            .await;
+            PROTOCOL_SERVICE
+                .get()
+                .unwrap()
+                .on_authenticated(&handler, id, player_id);
         }
         APPLICATION
             .get()
@@ -452,10 +444,19 @@ impl TransportServiceImpl {
     pub async fn run(
         self,
         app: Arc<Application>,
+        auth: Arc<dyn AuthenticationPort + Send + Sync + 'static>,
         shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
     ) {
+        let transport_impl = Arc::new(self.clone());
+        let protocol_service = Arc::new(ProtocolService::new(
+            app.clone(),
+            transport_impl.clone(),
+            auth.clone(),
+        ));
+
         APPLICATION.set(app.clone()).ok().unwrap();
-        TRANSPORT_IMPL.set(Arc::new(self.clone())).ok().unwrap();
+        TRANSPORT_IMPL.set(transport_impl.clone()).ok().unwrap();
+        PROTOCOL_SERVICE.set(protocol_service.clone()).ok().unwrap();
 
         let router = Router::new()
             .route("/", any(ws_handler))

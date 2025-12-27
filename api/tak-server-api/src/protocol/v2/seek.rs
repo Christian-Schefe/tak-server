@@ -7,8 +7,14 @@ use crate::{
 };
 
 use tak_core::{TakGameSettings, TakPlayer, TakReserve, TakTimeControl};
-use tak_server_app::domain::{GameId, GameType, ListenerId, PlayerId};
-use tak_server_app::workflow::matchmaking::create::CreateSeekError;
+use tak_server_app::{
+    domain::account::AccountFlag,
+    workflow::matchmaking::{SeekView, create::CreateSeekError},
+};
+use tak_server_app::{
+    domain::{GameId, GameType, ListenerId, PlayerId, SeekId},
+    workflow::matchmaking::accept::AcceptSeekError,
+};
 
 impl ProtocolV2Handler {
     pub async fn handle_seek_message(&self, player_id: PlayerId, parts: &[&str]) -> V2Response {
@@ -20,17 +26,15 @@ impl ProtocolV2Handler {
 
     pub async fn handle_seek_list_message(&self, id: ListenerId) -> V2Response {
         for seek in self.app.seek_list_use_case.list_seeks() {
-            self.handle_server_seek_list_message(id, &seek, true).await;
+            self.send_seek_list_message(id, &seek, true).await;
         }
         V2Response::OK
     }
 
-    // TODO: Support V0 seek messages
-    async fn handle_add_seek_message(
+    fn parse_seek_from_parts(
         &self,
-        player_id: PlayerId,
         parts: &[&str],
-    ) -> Result<(), ServiceError> {
+    ) -> Result<(Option<TakPlayer>, GameType, Option<String>, TakGameSettings), ServiceError> {
         if parts.len() != 13 && parts.len() != 12 && parts.len() != 11 && parts.len() != 10 {
             return Err(ServiceError::BadRequest(
                 "Invalid Seek message format".to_string(),
@@ -120,6 +124,16 @@ impl ProtocolV2Handler {
                 extra: time_extra,
             },
         };
+        Ok((color, game_type, opponent, game_settings))
+    }
+
+    // TODO: Support V0 seek messages
+    async fn handle_add_seek_message(
+        &self,
+        player_id: PlayerId,
+        parts: &[&str],
+    ) -> Result<(), ServiceError> {
+        let (color, game_type, opponent, game_settings) = self.parse_seek_from_parts(parts)?;
 
         if !game_settings.is_valid() {
             self.app.seek_cancel_use_case.cancel_seek(player_id);
@@ -179,40 +193,83 @@ impl ProtocolV2Handler {
                 new_seek_id
             )));
         } */
-    pub async fn handle_rematch_message(&self, player_id: &PlayerId, parts: &[&str]) -> V2Response {
+    pub async fn handle_rematch_message(&self, player_id: PlayerId, parts: &[&str]) -> V2Response {
         if parts.len() < 2 {
             return V2Response::ErrorNOK(ServiceError::BadRequest(
                 "Invalid Rematch message format".to_string(),
             ));
         }
-        let Ok(game_id) = parts[1].parse::<GameId>() else {
+        let Ok(game_id) = parts[1].parse::<u32>() else {
             return V2Response::ErrorNOK(ServiceError::BadRequest(
                 "Invalid Game ID in Rematch message".to_string(),
             ));
         };
-        self.handle_add_seek_message(username, &parts[1..], Some(game_id))
-            .await
-    }
+        let game_id = GameId::new(game_id);
 
-    pub async fn handle_accept_message(
-        &self,
-        username: &PlayerUsername,
-        parts: &[&str],
-    ) -> ProtocolV2Result {
-        if parts.len() != 2 {
-            return ServiceError::bad_request("Invalid Accept message format");
-        }
-        let Ok(seek_id) = parts[1].parse::<u32>() else {
-            return ServiceError::bad_request("Invalid Seek ID in Accept message");
+        let Some(game) = self.app.game_get_ongoing_use_case.get_game(game_id) else {
+            return V2Response::ErrorNOK(ServiceError::NotFound("Game ID not found".to_string()));
         };
         self.app
-            .seek_service
-            .accept_seek(username, &seek_id)
-            .await?;
-        Ok(V2Response::OK)
+            .match_rematch_use_case
+            .request_or_accept_rematch(game.match_id, player_id);
+        V2Response::OK
     }
 
-    pub async fn handle_server_seek_list_message(&self, id: ListenerId, seek: &Seek, add: bool) {
+    pub async fn handle_accept_message(&self, player_id: PlayerId, parts: &[&str]) -> V2Response {
+        if parts.len() != 2 {
+            return V2Response::ErrorNOK(ServiceError::BadRequest(
+                "Invalid Accept message format".to_string(),
+            ));
+        }
+        let Ok(seek_id) = parts[1].parse::<u32>() else {
+            return V2Response::ErrorNOK(ServiceError::BadRequest(
+                "Invalid Seek ID in Accept message".to_string(),
+            ));
+        };
+        match self
+            .app
+            .seek_accept_use_case
+            .accept_seek(player_id, SeekId::new(seek_id))
+            .await
+        {
+            Ok(()) => V2Response::OK,
+            Err(AcceptSeekError::SeekNotFound) => {
+                V2Response::ErrorNOK(ServiceError::NotFound("Seek ID not found".to_string()))
+            }
+            Err(AcceptSeekError::InvalidOpponent) => {
+                V2Response::ErrorNOK(ServiceError::BadRequest(
+                    "You are not the intended opponent for this seek".to_string(),
+                ))
+            }
+        }
+    }
+
+    pub async fn send_seek_list_message(&self, id: ListenerId, seek: &SeekView, add: bool) {
+        let opponent_username = if let Some(opponent_id) = seek.opponent {
+            match self
+                .app
+                .get_username_workflow
+                .get_username(opponent_id)
+                .await
+            {
+                Some(name) => Some(name),
+                None => None,
+            }
+        } else {
+            None
+        };
+        let creator_account_id = self
+            .app
+            .player_resolver_service
+            .resolve_account_id_by_player_id(seek.creator)
+            .await
+            .ok();
+        let creator_account = if let Some(account_id) = creator_account_id {
+            self.auth.get_account(account_id).await
+        } else {
+            None
+        };
+        let is_bot = creator_account.map_or(false, |a| a.flags.contains(&AccountFlag::Bot));
         let message = format!(
             "Seek {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
             if add { "new" } else { "remove" },
@@ -251,12 +308,8 @@ impl ProtocolV2Handler {
                 .map_or("0".to_string(), |(_, extra_time)| extra_time
                     .as_secs()
                     .to_string()),
-            seek.opponent.as_deref().unwrap_or(""),
-            self.app
-                .player_service
-                .get_player(&seek.creator)
-                .await
-                .map_or("0", |p| if p.flags.is_bot { "1" } else { "0" })
+            opponent_username.as_deref().unwrap_or(""),
+            is_bot
         );
         self.send_to(id, message);
     }

@@ -33,8 +33,26 @@ pub struct MatchId(u32);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SeekId(u32);
 
+impl SeekId {
+    pub fn new(id: u32) -> Self {
+        SeekId(id)
+    }
+}
+
+impl std::fmt::Display for SeekId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct GameId(u32);
+
+impl GameId {
+    pub fn new(id: u32) -> Self {
+        GameId(id)
+    }
+}
 
 impl std::fmt::Display for GameId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

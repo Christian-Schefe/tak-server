@@ -3,7 +3,10 @@ use std::{sync::Arc, time::Instant};
 use log::info;
 use tak_server_app::{
     domain::{ListenerId, PlayerId},
-    ports::notification::ListenerMessage,
+    ports::{
+        authentication::AuthenticationPort,
+        notification::{ListenerMessage, ServerAlertMessage},
+    },
 };
 
 use crate::{
@@ -21,7 +24,8 @@ mod sudo;
 
 pub struct ProtocolV2Handler {
     app: Arc<Application>,
-    transport: TransportServiceImpl,
+    transport: Arc<TransportServiceImpl>,
+    auth: Arc<dyn AuthenticationPort + Send + Sync + 'static>,
 }
 
 pub enum V2Response {
@@ -32,10 +36,15 @@ pub enum V2Response {
 }
 
 impl ProtocolV2Handler {
-    pub fn new(app: &Arc<Application>, transport: &TransportServiceImpl) -> Self {
+    pub fn new(
+        app: Arc<Application>,
+        transport: Arc<TransportServiceImpl>,
+        auth: Arc<dyn AuthenticationPort + Send + Sync + 'static>,
+    ) -> Self {
         Self {
-            app: app.clone(),
-            transport: transport.clone(),
+            app,
+            transport,
+            auth,
         }
     }
 
@@ -94,38 +103,86 @@ impl ProtocolV2Handler {
                 let disconnect_message = format!("Message {}", reason_str);
                 self.send_to(id, disconnect_message);
             }
-            notif => self.handle_notification_message(id, notif).await,
+            ServerMessage::Notification(notif) => self.handle_notification_message(id, notif).await,
         }
     }
 
     async fn handle_notification_message(&self, id: ListenerId, msg: &ListenerMessage) {
+        let player_id = self.transport.get_associated_player(id);
         match msg {
             ListenerMessage::SeekCreated { seek } => {
-                self.handle_server_seek_list_message(id, seek, true).await;
+                self.send_seek_list_message(id, seek, true).await;
             }
             ListenerMessage::SeekCanceled { seek } => {
-                self.handle_server_seek_list_message(id, seek, false).await;
+                self.send_seek_list_message(id, seek, false).await;
             }
-            ListenerMessage::GameMessage { game_id, message } => {
-                self.handle_server_game_message(id, game_id, message);
+            ListenerMessage::GameStarted { game } => {
+                self.send_game_list_message(id, game, true).await;
+                if player_id.is_some_and(|x| game.white == x || game.black == x) {
+                    self.send_game_start_message(id, game).await;
+                }
+            }
+            ListenerMessage::GameEnded { game } => {
+                self.send_game_list_message(id, game, false).await;
+            }
+            ListenerMessage::GameAction { game_id, action } => {
+                self.send_game_action_message(id, game_id, action);
+            }
+            ListenerMessage::GameDrawOffered { game_id } => {
+                self.send_draw_offer_message(id, game_id, true);
+            }
+            ListenerMessage::GameDrawOfferRetracted { game_id } => {
+                self.send_draw_offer_message(id, game_id, false);
+            }
+            ListenerMessage::GameUndoRequested { game_id } => {
+                self.send_undo_request_message(id, game_id, true);
+            }
+            ListenerMessage::GameUndoRequestRetracted { game_id } => {
+                self.send_undo_request_message(id, game_id, false);
+            }
+            ListenerMessage::GameActionUndone { game_id } => {
+                self.send_undo_message(id, game_id);
             }
             ListenerMessage::PlayersOnline { players } => {
                 let online_message = format!("Online {}", players.len());
-                let players_message =
-                    format!("OnlinePlayers {}", serde_json::to_string(players).unwrap());
+                let mut username_futures = Vec::new();
+                for pid in players {
+                    let username = self.app.get_username_workflow.get_username(*pid);
+                    username_futures.push(username);
+                }
+                let usernames = futures::future::join_all(username_futures)
+                    .await
+                    .into_iter()
+                    .filter_map(|x| x)
+                    .collect::<Vec<_>>();
+                let players_message = format!(
+                    "OnlinePlayers {}",
+                    serde_json::to_string(&usernames).unwrap()
+                );
                 self.send_to(id, online_message);
                 self.send_to(id, players_message);
             }
-            ListenerMessage::AcceptRematch { seek_id } => {
-                let rematch_message = format!("Accept Rematch {}", seek_id);
-                self.send_to(id, rematch_message);
+            ListenerMessage::ChatMessage {
+                from_player_id,
+                message,
+                source,
+            } => {
+                self.send_chat_message(id, *from_player_id, message, source)
+                    .await
             }
-            ListenerMessage::GameList { .. } | ListenerMessage::GameStart { .. } => {
-                self.handle_server_game_list_message(id, msg).await;
-            }
-            ListenerMessage::ChatMessage { .. } => {
-                self.handle_server_chat_message(id, msg);
-            }
+            ListenerMessage::GameRematchRequested { .. } => {} //legacy api does not support rematch messages
+            ListenerMessage::GameRematchRequestRetracted { .. } => {} //legacy api does not support rematch messages
+            ListenerMessage::ServerAlert { message } => match message {
+                ServerAlertMessage::Shutdown => {
+                    self.send_to(
+                        id,
+                        "Server is shutting down soon. Please finish your games.",
+                    );
+                }
+                ServerAlertMessage::Custom(msg) => {
+                    self.send_to(id, msg); // This is a legacy hack, anything without a known prefix is interpreted as a server alert
+                }
+            },
         }
     }
 

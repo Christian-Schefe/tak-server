@@ -4,7 +4,7 @@ use tokio::task::JoinHandle;
 
 use crate::{
     domain::{
-        account::{AdminAccountPolicy, ModeratorAccountPolicy},
+        account::{AdminAccountPolicy, HigherRoleAccountPolicy, ModeratorAccountPolicy},
         chat::{ChatRoomServiceImpl, RustrictContentPolicy},
         event::EventRepository,
         game::GameServiceImpl,
@@ -16,10 +16,11 @@ use crate::{
         spectator::SpectatorServiceImpl,
     },
     ports::{
-        authentication::AuthenticationService, connection::PlayerConnectionPort, email::EmailPort,
+        authentication::AuthenticationPort, connection::PlayerConnectionPort, email::EmailPort,
         notification::ListenerNotificationPort,
     },
     processes::game_timeout_runner::GameTimeoutRunnerImpl,
+    services::player_resolver::{PlayerResolverService, PlayerResolverServiceImpl},
     workflow::{
         account::{
             get_snapshot::{GetSnapshotWorkflow, GetSnapshotWorkflowImpl},
@@ -70,6 +71,7 @@ pub struct Application {
     pub match_rematch_use_case: Box<dyn RematchUseCase + Send + Sync + 'static>,
 
     pub player_set_online_use_case: Box<dyn SetPlayerOnlineUseCase + Send + Sync + 'static>,
+    pub player_resolver_service: Arc<dyn PlayerResolverService + Send + Sync + 'static>,
 
     pub game_do_action_use_case: Box<dyn DoActionUseCase + Send + Sync + 'static>,
     pub game_get_ongoing_use_case: Box<dyn GetOngoingGameUseCase + Send + Sync + 'static>,
@@ -79,7 +81,7 @@ pub struct Application {
     pub chat_message_use_case: Box<dyn ChatMessageUseCase + Send + Sync + 'static>,
     pub chat_room_use_case: Box<dyn ChatRoomUseCase + Send + Sync + 'static>,
 
-    pub account_ban_use_case: Box<dyn ModeratePlayerUseCase + Send + Sync + 'static>,
+    pub account_moderate_use_case: Box<dyn ModeratePlayerUseCase + Send + Sync + 'static>,
 
     pub event_list_use_case: Box<dyn ListEventsUseCase + Send + Sync + 'static>,
 
@@ -92,7 +94,7 @@ pub async fn build_application<
     C: PlayerConnectionPort + Send + Sync + 'static,
     G: GameRepository + Send + Sync + 'static,
     R: RatingRepository + Send + Sync + 'static,
-    AS: AuthenticationService + Send + Sync + 'static,
+    AS: AuthenticationPort + Send + Sync + 'static,
     E: EmailPort + Send + Sync + 'static,
     ER: EventRepository + Send + Sync + 'static,
     PR: PlayerRepository + Send + Sync + 'static,
@@ -115,8 +117,14 @@ pub async fn build_application<
     let rating_service = Arc::new(RatingServiceImpl::new());
     let chat_content_policy = Arc::new(RustrictContentPolicy::new());
     let match_service = Arc::new(MatchServiceImpl::new());
+
     let ban_policy = Arc::new(AdminAccountPolicy);
+    let kick_policy = Arc::new(ModeratorAccountPolicy);
     let silence_policy = Arc::new(ModeratorAccountPolicy);
+    let set_bot_policy = Arc::new(AdminAccountPolicy);
+    let set_moderator_policy = Arc::new(HigherRoleAccountPolicy);
+    let set_admin_policy = Arc::new(HigherRoleAccountPolicy);
+    let set_user_policy = Arc::new(HigherRoleAccountPolicy);
 
     let get_username_workflow = Arc::new(GetUsernameWorkflowImpl::new(
         authentication_service.clone(),
@@ -186,6 +194,9 @@ pub async fn build_application<
             player_service.clone(),
             listener_notification_port.clone(),
         )),
+        player_resolver_service: Arc::new(PlayerResolverServiceImpl::new(
+            player_repository.clone(),
+        )),
 
         game_do_action_use_case: Box::new(DoActionUseCaseImpl::new(
             game_service.clone(),
@@ -205,14 +216,18 @@ pub async fn build_application<
             player_connection_port.clone(),
             chat_room_service.clone(),
             chat_content_policy.clone(),
-            player_repository.clone(),
         )),
         chat_room_use_case: Box::new(ChatRoomUseCaseImpl::new(chat_room_service.clone())),
 
-        account_ban_use_case: Box::new(ModeratePlayerUseCaseImpl::new(
+        account_moderate_use_case: Box::new(ModeratePlayerUseCaseImpl::new(
             email_port.clone(),
+            kick_policy.clone(),
             ban_policy.clone(),
             silence_policy.clone(),
+            set_bot_policy.clone(),
+            set_moderator_policy.clone(),
+            set_admin_policy.clone(),
+            set_user_policy.clone(),
             player_repository.clone(),
             authentication_service.clone(),
         )),

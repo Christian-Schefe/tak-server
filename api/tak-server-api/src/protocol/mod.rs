@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tak_server_app::{
     Application,
     domain::{ListenerId, PlayerId},
+    ports::authentication::AuthenticationPort,
 };
 
 use crate::{
@@ -28,62 +29,48 @@ impl Protocol {
     }
 }
 
-pub async fn handle_client_message(
-    app: &Arc<Application>,
-    transport: &TransportServiceImpl,
-    protocol: &Protocol,
-    id: ListenerId,
-    msg: String,
-) {
-    match protocol {
-        Protocol::V0 | Protocol::V2 => {
-            ProtocolV2Handler::new(app, transport)
-                .handle_client_message(id, msg)
-                .await
-        }
-    }
+pub struct ProtocolService {
+    handler_v2: Arc<ProtocolV2Handler>,
 }
 
-pub async fn handle_server_message(
-    app: &Arc<Application>,
-    transport: &TransportServiceImpl,
-    protocol: &Protocol,
-    id: ListenerId,
-    msg: &ServerMessage,
-) {
-    match protocol {
-        Protocol::V0 | Protocol::V2 => {
-            ProtocolV2Handler::new(app, transport)
-                .handle_server_message(id, msg)
-                .await
+impl ProtocolService {
+    pub fn new(
+        app: Arc<Application>,
+        transport: Arc<TransportServiceImpl>,
+        auth: Arc<dyn AuthenticationPort + Send + Sync + 'static>,
+    ) -> Self {
+        Self {
+            handler_v2: Arc::new(ProtocolV2Handler::new(app, transport, auth)),
         }
     }
-}
 
-pub async fn on_authenticated(
-    app: &Arc<Application>,
-    transport: &TransportServiceImpl,
-    protocol: &Protocol,
-    id: ListenerId,
-    player_id: PlayerId,
-) {
-    match protocol {
-        Protocol::V0 | Protocol::V2 => {
-            ProtocolV2Handler::new(app, transport)
-                .on_authenticated(id, player_id)
-                .await
+    pub async fn handle_client_message(&self, protocol: &Protocol, id: ListenerId, msg: String) {
+        match protocol {
+            Protocol::V0 | Protocol::V2 => self.handler_v2.handle_client_message(id, msg).await,
         }
     }
-}
 
-pub fn on_connected(
-    app: &Arc<Application>,
-    transport: &TransportServiceImpl,
-    protocol: &Protocol,
-    id: ListenerId,
-) {
-    match protocol {
-        Protocol::V0 | Protocol::V2 => ProtocolV2Handler::new(app, transport).on_connected(id),
+    pub async fn handle_server_message(
+        &self,
+        protocol: &Protocol,
+        id: ListenerId,
+        msg: &ServerMessage,
+    ) {
+        match protocol {
+            Protocol::V0 | Protocol::V2 => self.handler_v2.handle_server_message(id, msg).await,
+        }
+    }
+
+    pub async fn on_authenticated(&self, protocol: &Protocol, id: ListenerId, player_id: PlayerId) {
+        match protocol {
+            Protocol::V0 | Protocol::V2 => self.handler_v2.on_authenticated(id, player_id).await,
+        }
+    }
+
+    pub fn on_connected(&self, protocol: &Protocol, id: ListenerId) {
+        match protocol {
+            Protocol::V0 | Protocol::V2 => self.handler_v2.on_connected(id),
+        }
     }
 }
 

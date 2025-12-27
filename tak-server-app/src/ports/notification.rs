@@ -32,13 +32,25 @@ pub enum ListenerMessage {
         game_id: GameId,
         action: TakActionRecord,
     },
+    GameActionUndone {
+        game_id: GameId,
+    },
     GameDrawOffered {
+        game_id: GameId,
+    },
+    GameDrawOfferRetracted {
         game_id: GameId,
     },
     GameUndoRequested {
         game_id: GameId,
     },
+    GameUndoRequestRetracted {
+        game_id: GameId,
+    },
     GameRematchRequested {
+        game_id: GameId,
+    },
+    GameRematchRequestRetracted {
         game_id: GameId,
     },
     ChatMessage {
@@ -46,6 +58,15 @@ pub enum ListenerMessage {
         message: String,
         source: ChatMessageSource,
     },
+    ServerAlert {
+        message: ServerAlertMessage,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub enum ServerAlertMessage {
+    Shutdown,
+    Custom(String),
 }
 
 #[derive(Clone, Debug)]

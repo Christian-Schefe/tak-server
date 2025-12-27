@@ -1,79 +1,69 @@
-use crate::protocol::{
-    Protocol,
-    v2::{ProtocolV2Handler, ProtocolV2Result, V2Response},
+use std::time::Duration;
+
+use crate::{
+    app::ServiceError,
+    protocol::{
+        Protocol,
+        v2::{ProtocolV2Handler, V2Response},
+    },
 };
 use tak_core::{
     TakAction, TakActionRecord, TakDir, TakGameState, TakPos, TakVariant, ptn::game_state_to_string,
 };
-use tak_server_domain::{
-    ServiceError, ServiceResult,
-    game::GameId,
-    player::PlayerUsername,
-    transport::{ListenerId, ServerGameMessage},
+use tak_server_app::domain::{
+    GameId, ListenerId, PlayerId,
+    game::{DoActionError, OfferDrawError, RequestUndoError, ResignError},
 };
 
 impl ProtocolV2Handler {
-    pub fn handle_server_game_message(
+    pub fn send_draw_offer_message(&self, id: ListenerId, game_id: &GameId, offer: bool) {
+        let message = format!(
+            "Game#{} {}",
+            game_id,
+            if offer { "OfferDraw" } else { "RemoveDraw" }
+        );
+        self.send_to(id, message);
+    }
+
+    pub fn send_undo_request_message(&self, id: ListenerId, game_id: &GameId, offer: bool) {
+        let message = format!(
+            "Game#{} {}",
+            game_id,
+            if offer { "RequestUndo" } else { "RemoveUndo" }
+        );
+        self.send_to(id, message);
+    }
+
+    pub fn send_undo_message(&self, id: ListenerId, game_id: &GameId) {
+        let message = format!("Game#{} Undo", game_id);
+        self.send_to(id, message);
+    }
+
+    pub fn send_time_update_message(
         &self,
         id: ListenerId,
-        game_id: &GameId,
-        msg: &ServerGameMessage,
+        game_id: GameId,
+        remaining_white: Duration,
+        remaining_black: Duration,
     ) {
-        match msg {
-            ServerGameMessage::Action { action } => {
-                self.send_game_action_message(id, game_id, action);
-            }
-            ServerGameMessage::GameOver { game_state } => {
-                self.send_game_over_message(id, game_id, game_state);
-            }
-            ServerGameMessage::DrawOffer { offer } => {
-                let message = format!(
-                    "Game#{} {}",
-                    game_id,
-                    if *offer { "OfferDraw" } else { "RemoveDraw" }
-                );
-                self.send_to(id, message);
-            }
-            ServerGameMessage::UndoRequest { request } => {
-                let message = format!(
-                    "Game#{} {}",
-                    game_id,
-                    if *request {
-                        "RequestUndo"
-                    } else {
-                        "RemoveUndo"
-                    }
-                );
-                self.send_to(id, message);
-            }
-            ServerGameMessage::Undo => {
-                let message = format!("Game#{} Undo", game_id);
-                self.send_to(id, message);
-            }
-            ServerGameMessage::TimeUpdate {
-                remaining_white,
-                remaining_black,
-            } => {
-                let protocol = self.transport.get_protocol(id);
+        let protocol = self.transport.get_protocol(id);
 
-                let message = if protocol == Protocol::V0 {
-                    format!(
-                        "Game#{} Time {} {}",
-                        game_id,
-                        remaining_white.as_secs(),
-                        remaining_black.as_secs()
-                    )
-                } else {
-                    format!(
-                        "Game#{} Timems {} {}",
-                        game_id,
-                        remaining_white.as_millis(),
-                        remaining_black.as_millis()
-                    )
-                };
-                self.send_to(id, message);
-            }
-        }
+        let message = if protocol == Protocol::V0 {
+            format!(
+                "Game#{} Time {} {}",
+                game_id,
+                remaining_white.as_secs(),
+                remaining_black.as_secs()
+            )
+        } else {
+            format!(
+                "Game#{} Timems {} {}",
+                game_id,
+                remaining_white.as_millis(),
+                remaining_black.as_millis()
+            )
+        };
+        self.send_to(id, message);
     }
 
     pub fn send_game_over_message(
@@ -89,66 +79,210 @@ impl ProtocolV2Handler {
         self.send_to(id, message);
     }
 
-    pub async fn handle_game_message(
-        &self,
-        username: &PlayerUsername,
-        parts: &[&str],
-    ) -> ProtocolV2Result {
+    pub async fn handle_game_message(&self, player_id: PlayerId, parts: &[&str]) -> V2Response {
         if parts.len() < 2 {
-            return ServiceError::bad_request("Invalid Game message format");
+            return V2Response::ErrorNOK(ServiceError::BadRequest(
+                "Invalid Game message format".to_string(),
+            ));
         }
-        let Some(Ok(game_id)) = parts[0].split("#").nth(1).map(|s| s.parse::<GameId>()) else {
-            return ServiceError::bad_request("Invalid Game ID in Game message");
+        let Some(Ok(game_id)) = parts[0]
+            .split("#")
+            .nth(1)
+            .map(|s| s.parse::<u32>().map(GameId::new))
+        else {
+            return V2Response::ErrorNOK(ServiceError::BadRequest(
+                "Invalid Game ID in Game message".to_string(),
+            ));
         };
-
-        let game_service = &self.app.game_service;
 
         match parts[1] {
             "P" => {
                 if let Err(e) = self
-                    .handle_game_place_message(&username, game_id, &parts[2..])
+                    .handle_game_place_message(player_id, game_id, &parts[2..])
                     .await
                 {
                     let err_str = format!("Error: {}", e);
-                    return Ok(V2Response::ErrorMessage(e, err_str));
+                    return V2Response::ErrorMessage(e, err_str);
                 }
             }
             "M" => {
                 if let Err(e) = self
-                    .handle_game_move_message(&username, game_id, &parts[2..])
+                    .handle_game_move_message(player_id, game_id, &parts[2..])
                     .await
                 {
                     let err_str = format!("Error: {}", e);
-                    return Ok(V2Response::ErrorMessage(e, err_str));
+                    return V2Response::ErrorMessage(e, err_str);
                 }
             }
-            "Resign" => game_service.resign_game(&username, &game_id).await?,
-            "OfferDraw" => game_service.offer_draw(&username, &game_id, true).await?,
-            "RemoveDraw" => game_service.offer_draw(&username, &game_id, false).await?,
-            "RequestUndo" => game_service.request_undo(&username, &game_id, true).await?,
-            "RemoveUndo" => {
-                game_service
-                    .request_undo(&username, &game_id, false)
-                    .await?
+            "Resign" => match self
+                .app
+                .game_do_action_use_case
+                .resign(game_id, player_id)
+                .await
+            {
+                Ok(_) => {}
+                Err(ResignError::GameNotFound) => {
+                    let err_str = format!("Error: Game not found");
+                    return V2Response::ErrorMessage(
+                        ServiceError::NotFound("Game not found".to_string()),
+                        err_str,
+                    );
+                }
+                Err(ResignError::InvalidResign) => {
+                    let err_str = format!("Error: Invalid resign");
+                    return V2Response::ErrorMessage(
+                        ServiceError::BadRequest("Invalid resign".to_string()),
+                        err_str,
+                    );
+                }
+                Err(ResignError::NotPlayersTurn) => {
+                    let err_str = format!("Error: Not player's turn");
+                    return V2Response::ErrorMessage(
+                        ServiceError::BadRequest("Not player's turn".to_string()),
+                        err_str,
+                    );
+                }
+            },
+            "OfferDraw" => match self
+                .app
+                .game_do_action_use_case
+                .offer_draw(game_id, player_id)
+                .await
+            {
+                Ok(_) => {}
+                Err(OfferDrawError::GameNotFound) => {
+                    let err_str = format!("Error: Game not found");
+                    return V2Response::ErrorMessage(
+                        ServiceError::NotFound("Game not found".to_string()),
+                        err_str,
+                    );
+                }
+                Err(OfferDrawError::InvalidOffer) => {
+                    let err_str = format!("Error: Invalid draw offer");
+                    return V2Response::ErrorMessage(
+                        ServiceError::BadRequest("Invalid draw offer".to_string()),
+                        err_str,
+                    );
+                }
+                Err(OfferDrawError::NotAPlayerInGame) => {
+                    let err_str = format!("Error: Not a player in game");
+                    return V2Response::ErrorMessage(
+                        ServiceError::BadRequest("Not a player in game".to_string()),
+                        err_str,
+                    );
+                }
+            },
+            "RemoveDraw" => match self
+                .app
+                .game_do_action_use_case
+                .offer_draw(game_id, player_id)
+                .await
+            {
+                Ok(_) => {}
+                Err(OfferDrawError::GameNotFound) => {
+                    let err_str = format!("Error: Game not found");
+                    return V2Response::ErrorMessage(
+                        ServiceError::NotFound("Game not found".to_string()),
+                        err_str,
+                    );
+                }
+                Err(OfferDrawError::InvalidOffer) => {
+                    let err_str = format!("Error: Invalid draw removal");
+                    return V2Response::ErrorMessage(
+                        ServiceError::BadRequest("Invalid draw removal".to_string()),
+                        err_str,
+                    );
+                }
+                Err(OfferDrawError::NotAPlayerInGame) => {
+                    let err_str = format!("Error: Not a player in game");
+                    return V2Response::ErrorMessage(
+                        ServiceError::BadRequest("Not a player in game".to_string()),
+                        err_str,
+                    );
+                }
+            },
+            "RequestUndo" => match self
+                .app
+                .game_do_action_use_case
+                .request_undo(game_id, player_id)
+            {
+                Ok(_) => {}
+                Err(RequestUndoError::GameNotFound) => {
+                    let err_str = format!("Error: Game not found");
+                    return V2Response::ErrorMessage(
+                        ServiceError::NotFound("Game not found".to_string()),
+                        err_str,
+                    );
+                }
+                Err(RequestUndoError::InvalidRequest) => {
+                    let err_str = format!("Error: Invalid undo request");
+                    return V2Response::ErrorMessage(
+                        ServiceError::BadRequest("Invalid undo request".to_string()),
+                        err_str,
+                    );
+                }
+                Err(RequestUndoError::NotAPlayerInGame) => {
+                    let err_str = format!("Error: Not a player in game");
+                    return V2Response::ErrorMessage(
+                        ServiceError::BadRequest("Not a player in game".to_string()),
+                        err_str,
+                    );
+                }
+            },
+            "RemoveUndo" => match self
+                .app
+                .game_do_action_use_case
+                .retract_undo_request(game_id, player_id)
+            {
+                Ok(_) => {}
+                Err(RequestUndoError::GameNotFound) => {
+                    let err_str = format!("Error: Game not found");
+                    return V2Response::ErrorMessage(
+                        ServiceError::NotFound("Game not found".to_string()),
+                        err_str,
+                    );
+                }
+                Err(RequestUndoError::InvalidRequest) => {
+                    let err_str = format!("Error: Invalid undo retraction");
+                    return V2Response::ErrorMessage(
+                        ServiceError::BadRequest("Invalid undo retraction".to_string()),
+                        err_str,
+                    );
+                }
+                Err(RequestUndoError::NotAPlayerInGame) => {
+                    let err_str = format!("Error: Not a player in game");
+                    return V2Response::ErrorMessage(
+                        ServiceError::BadRequest("Not a player in game".to_string()),
+                        err_str,
+                    );
+                }
+            },
+            _ => {
+                return V2Response::ErrorNOK(ServiceError::BadRequest(
+                    "Unknown Game command".to_string(),
+                ));
             }
-            _ => return ServiceError::not_found("Unknown Game action"),
         };
 
-        Ok(V2Response::OK)
+        V2Response::OK
     }
 
     pub async fn handle_game_place_message(
         &self,
-        username: &PlayerUsername,
+        player_id: PlayerId,
         game_id: GameId,
         parts: &[&str],
-    ) -> ServiceResult<()> {
+    ) -> Result<(), ServiceError> {
         if parts.len() != 1 && parts.len() != 2 {
-            return ServiceError::bad_request("Invalid Game Place message format");
+            return Err(ServiceError::BadRequest(
+                "Invalid Game Place message format".to_string(),
+            ));
         }
         let square = parts[0].chars().collect::<Vec<_>>();
         if square.len() != 2 {
-            return ServiceError::bad_request("Invalid square format");
+            return Err(ServiceError::BadRequest(
+                "Invalid square format".to_string(),
+            ));
         }
         let x = (square[0] as u8).wrapping_sub(b'A') as u32;
         let y = (square[1] as u8).wrapping_sub(b'1') as u32;
@@ -158,7 +292,11 @@ impl ProtocolV2Handler {
             match parts[1] {
                 "W" => TakVariant::Standing,
                 "C" => TakVariant::Capstone,
-                _ => return ServiceError::bad_request("Invalid piece variant"),
+                _ => {
+                    return Err(ServiceError::BadRequest(
+                        "Invalid piece variant".to_string(),
+                    ));
+                }
             }
         };
 
@@ -167,32 +305,51 @@ impl ProtocolV2Handler {
             variant,
         };
 
-        self.app
-            .game_service
-            .try_do_action(username, &game_id, action)
-            .await?;
+        match self
+            .app
+            .game_do_action_use_case
+            .do_action(game_id, player_id, action)
+            .await
+        {
+            Ok(_) => {}
+            Err(DoActionError::GameNotFound) => {
+                return Err(ServiceError::NotFound("Game not found".to_string()));
+            }
+            Err(DoActionError::InvalidAction) => {
+                return Err(ServiceError::BadRequest("Invalid action".to_string()));
+            }
+            Err(DoActionError::NotPlayersTurn) => {
+                return Err(ServiceError::BadRequest("Not player's turn".to_string()));
+            }
+        }
 
         Ok(())
     }
 
     pub async fn handle_game_move_message(
         &self,
-        username: &PlayerUsername,
+        player_id: PlayerId,
         game_id: GameId,
         parts: &[&str],
-    ) -> ServiceResult<()> {
+    ) -> Result<(), ServiceError> {
         if parts.len() < 3 {
-            return ServiceError::bad_request("Invalid Game Move message format");
+            return Err(ServiceError::BadRequest(
+                "Invalid Game Move message format".to_string(),
+            ));
         }
         let from_square = parts[0].chars().collect::<Vec<_>>();
         if from_square.len() != 2 {
-            return ServiceError::bad_request("Invalid square format");
+            return Err(ServiceError::BadRequest(
+                "Invalid square format".to_string(),
+            ));
         }
         let from_x = (from_square[0] as u8).wrapping_sub(b'A') as u32;
         let from_y = (from_square[1] as u8).wrapping_sub(b'1') as u32;
         let to_square = parts[1].chars().collect::<Vec<_>>();
         if to_square.len() != 2 {
-            return ServiceError::bad_request("Invalid square format");
+            return Err(ServiceError::BadRequest(
+                "Invalid square format".to_string(),
+            ));
         }
         let to_x = (to_square[0] as u8).wrapping_sub(b'A') as u32;
         let to_y = (to_square[1] as u8).wrapping_sub(b'1') as u32;
@@ -209,7 +366,9 @@ impl ProtocolV2Handler {
                 TakDir::Left
             }
         } else {
-            return ServiceError::bad_request("Invalid move direction");
+            return Err(ServiceError::BadRequest(
+                "Invalid move direction".to_string(),
+            ));
         };
         let drops = parts[2..]
             .iter()
@@ -223,10 +382,23 @@ impl ProtocolV2Handler {
             dir,
             drops,
         };
-        self.app
-            .game_service
-            .try_do_action(username, &game_id, action)
-            .await?;
+        match self
+            .app
+            .game_do_action_use_case
+            .do_action(game_id, player_id, action)
+            .await
+        {
+            Ok(_) => {}
+            Err(DoActionError::GameNotFound) => {
+                return Err(ServiceError::NotFound("Game not found".to_string()));
+            }
+            Err(DoActionError::InvalidAction) => {
+                return Err(ServiceError::BadRequest("Invalid action".to_string()));
+            }
+            Err(DoActionError::NotPlayersTurn) => {
+                return Err(ServiceError::BadRequest("Not player's turn".to_string()));
+            }
+        };
 
         Ok(())
     }

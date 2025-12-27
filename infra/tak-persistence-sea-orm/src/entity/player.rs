@@ -7,9 +7,6 @@ pub struct Model {
     pub id: Uuid,
     #[sea_orm(unique)]
     pub account_id: Option<Uuid>,
-    pub is_bot: bool,
-    pub is_silenced: bool,
-    pub is_banned: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -11,9 +11,6 @@ use crate::domain::{
 pub struct Player {
     pub player_id: PlayerId,
     pub account_id: Option<AccountId>,
-    pub is_silenced: bool,
-    pub is_banned: bool,
-    pub is_bot: bool,
 }
 
 impl Player {
@@ -21,51 +18,26 @@ impl Player {
         Self {
             player_id: PlayerId(Uuid::new_v4()),
             account_id,
-            is_silenced: false,
-            is_banned: false,
-            is_bot: false,
         }
     }
 }
 
 #[async_trait::async_trait]
 pub trait PlayerRepository {
-    // Create opration
     async fn create_player(&self, player: Player) -> Result<(), RepoCreateError>;
-
-    // Delete operation
     async fn delete_player(&self, player_id: PlayerId) -> Result<(), RepoRetrieveError>;
-
-    // Read operations
     async fn get_player(&self, player_id: PlayerId) -> Result<Player, RepoRetrieveError>;
     async fn get_or_create_player_by_account_id(
         &self,
         account_id: AccountId,
         create_fn: impl Fn() -> Player + Send + 'static,
     ) -> Result<Player, RepoError>;
-
-    //Write operations
     async fn link_account(
         &self,
         player_id: PlayerId,
         account_id: AccountId,
     ) -> Result<(), RepoUpdateError>;
     async fn unlink_account(&self, player_id: PlayerId) -> Result<(), RepoUpdateError>;
-    async fn set_player_silenced(
-        &self,
-        player_id: PlayerId,
-        silenced: bool,
-    ) -> Result<(), RepoUpdateError>;
-    async fn set_player_banned(
-        &self,
-        player_id: PlayerId,
-        banned: bool,
-    ) -> Result<(), RepoUpdateError>;
-    async fn set_player_is_bot(
-        &self,
-        player_id: PlayerId,
-        is_bot: bool,
-    ) -> Result<(), RepoUpdateError>;
 }
 
 pub trait PlayerService {
