@@ -5,7 +5,8 @@ use dashmap::DashMap;
 use tak_core::{TakActionRecord, TakGameSettings, TakGameState};
 
 use crate::domain::{
-    FinishedGameId, GameId, GameType, Pagination, PlayerId, SortOrder, game::Game,
+    FinishedGameId, GameId, GameType, Pagination, PlayerId, RepoError, RepoRetrieveError,
+    RepoUpdateError, SortOrder, game::Game,
 };
 
 pub struct GameRecord {
@@ -95,23 +96,17 @@ pub struct GameFinishedUpdate {
 
 #[async_trait::async_trait]
 pub trait GameRepository {
-    async fn save_ongoing_game(&self, game: GameRecord) -> Result<FinishedGameId, GameRepoError>;
+    async fn save_ongoing_game(&self, game: GameRecord) -> Result<FinishedGameId, RepoError>;
     async fn update_finished_game(
         &self,
         game_id: FinishedGameId,
         update: GameFinishedUpdate,
-    ) -> Result<(), GameRepoError>;
-    async fn get_game_record(&self, game_id: FinishedGameId) -> Result<GameRecord, ReadGameError>;
-    async fn get_games(&self, filter: GameFilter) -> Result<GameFilterResult, GameRepoError>;
-}
-
-pub enum ReadGameError {
-    NotFound,
-    StorageError(String),
-}
-
-pub enum GameRepoError {
-    StorageError(String),
+    ) -> Result<(), RepoUpdateError>;
+    async fn get_game_record(
+        &self,
+        game_id: FinishedGameId,
+    ) -> Result<GameRecord, RepoRetrieveError>;
+    async fn get_games(&self, filter: GameFilter) -> Result<GameFilterResult, RepoError>;
 }
 
 pub struct GameFilterResult {

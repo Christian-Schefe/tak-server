@@ -8,7 +8,6 @@ default-run = "tak-server"
 resolver = "3"
 members = [
     "api/tak-server-api",
-    # "api/tak-server-http-api",
     "tak-core",
     "tak-server-app",
     "more-dashmap",
@@ -27,5 +26,4 @@ tak-persistence-sea-orm = { path = "./infra/tak-persistence-sea-orm" }
 tak-email-lettre = { path = "./infra/tak-email-lettre" }
 tak-server-api = { path = "./api/tak-server-api" }
 tak-server-app = { path = "./tak-server-app" }
-# tak-server-http-api = { path = "./api/tak-server-http-api" }
 tokio = { version = "1.47.1", features = ["full"] }

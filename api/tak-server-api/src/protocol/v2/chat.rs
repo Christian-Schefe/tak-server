@@ -1,11 +1,10 @@
 use log::error;
 use tak_server_app::{
-    domain::{AccountId, ListenerId, PlayerId, account::AccountFlag},
+    domain::{AccountId, ListenerId, PlayerId, moderation::ModerationFlag},
     ports::notification::ChatMessageSource,
 };
 
 use crate::{
-    acl::get_player_id_by_username,
     app::ServiceError,
     protocol::v2::{ProtocolV2Handler, V2Response, split_n_and_rest},
 };
@@ -80,7 +79,7 @@ impl ProtocolV2Handler {
                 "Failed to retrieve account information".to_string(),
             ));
         };
-        if account.flags.contains(&AccountFlag::Silenced) {
+        if account.is_flagged(ModerationFlag::Silenced) {
             let username = match self.app.get_username_workflow.get_username(player_id).await {
                 Some(name) => name,
                 None => {
@@ -124,7 +123,7 @@ impl ProtocolV2Handler {
                 "Failed to retrieve account information".to_string(),
             ));
         };
-        if account.flags.contains(&AccountFlag::Silenced) {
+        if account.is_flagged(ModerationFlag::Silenced) {
             let username = match self.app.get_username_workflow.get_username(player_id).await {
                 Some(name) => name,
                 None => {
@@ -161,7 +160,8 @@ impl ProtocolV2Handler {
             ));
         }
         let target_username = parts[1];
-        let Some(target_player_id) = get_player_id_by_username(target_username) else {
+        let Some(target_player_id) = self.acl.get_player_id_by_username(target_username).await
+        else {
             return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
                 "No such user: {}",
                 target_username
@@ -172,7 +172,7 @@ impl ProtocolV2Handler {
                 "Failed to retrieve account information".to_string(),
             ));
         };
-        if account.flags.contains(&AccountFlag::Silenced) {
+        if account.is_flagged(ModerationFlag::Silenced) {
             return V2Response::Message(format!(
                 "Told <{}> <Server: You have been silenced for inappropriate chat behavior.>",
                 target_username

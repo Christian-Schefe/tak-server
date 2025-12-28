@@ -1,8 +1,7 @@
 use std::time::Instant;
 
-use log::warn;
 use tak_server_app::{
-    domain::{GameId, GameType, ListenerId, account::AccountFlag},
+    domain::{GameId, GameType, ListenerId, PlayerId},
     workflow::gameplay::{GameView, observe::ObserveGameError},
 };
 
@@ -66,7 +65,7 @@ impl ProtocolV2Handler {
             };
             self.send_game_string_message(id, &game, "Observe");
             for action in game.game.action_history() {
-                self.send_game_action_message(id, &game.id, action);
+                self.send_game_action_message(id, game.id, action);
             }
             let now = Instant::now();
             let (remaining_white, remaining_black) = game.game.get_time_remaining_both(now);
@@ -118,11 +117,12 @@ impl ProtocolV2Handler {
         self.send_to(id, message);
     }
 
-    pub async fn send_game_start_message(&self, id: ListenerId, game: &GameView) {
-        let Some(player) = self.transport.get_associated_player(id) else {
-            warn!("Client {} not associated with any player", id);
-            return;
-        };
+    pub async fn send_game_start_message(
+        &self,
+        id: ListenerId,
+        player_id: PlayerId,
+        game: &GameView,
+    ) {
         let white_account_id = self
             .app
             .player_resolver_service
@@ -136,18 +136,12 @@ impl ProtocolV2Handler {
             .await
             .ok();
         let is_white_bot = if let Some(aid) = white_account_id {
-            self.auth
-                .get_account(aid)
-                .await
-                .is_some_and(|a| a.flags.contains(&AccountFlag::Bot))
+            self.auth.get_account(aid).await.is_some_and(|a| a.is_bot())
         } else {
             false
         };
         let is_black_bot = if let Some(aid) = black_account_id {
-            self.auth
-                .get_account(aid)
-                .await
-                .is_some_and(|a| a.flags.contains(&AccountFlag::Bot))
+            self.auth.get_account(aid).await.is_some_and(|a| a.is_bot())
         } else {
             false
         };
@@ -162,7 +156,7 @@ impl ProtocolV2Handler {
                 settings.board_size,
                 game.white,
                 game.black,
-                if player == game.white {
+                if player_id == game.white {
                     "white"
                 } else {
                     "black"
@@ -178,7 +172,7 @@ impl ProtocolV2Handler {
                 game.id,
                 game.white,
                 game.black,
-                if player == game.white {
+                if player_id == game.white {
                     "white"
                 } else {
                     "black"

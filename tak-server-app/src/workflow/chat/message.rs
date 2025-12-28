@@ -67,7 +67,10 @@ impl<
         to_player_id: PlayerId,
         message: &str,
     ) -> String {
-        let to_player_connection = self.player_connection_port.get_connection_id(to_player_id);
+        let to_player_connection = self
+            .player_connection_port
+            .get_connection_id(to_player_id)
+            .await;
         let filtered_message = self.content_policy.filter_message(&message);
         if let Some(connection_id) = to_player_connection {
             let msg = ListenerMessage::ChatMessage {

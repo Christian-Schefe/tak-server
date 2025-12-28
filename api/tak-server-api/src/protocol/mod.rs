@@ -4,11 +4,12 @@ use std::sync::Arc;
 
 use tak_server_app::{
     Application,
-    domain::{ListenerId, PlayerId},
+    domain::{AccountId, ListenerId},
     ports::authentication::AuthenticationPort,
 };
 
 use crate::{
+    acl::LegacyAPIAntiCorruptionLayer,
     client::{ServerMessage, TransportServiceImpl},
     protocol::v2::ProtocolV2Handler,
 };
@@ -38,9 +39,10 @@ impl ProtocolService {
         app: Arc<Application>,
         transport: Arc<TransportServiceImpl>,
         auth: Arc<dyn AuthenticationPort + Send + Sync + 'static>,
+        acl: Arc<LegacyAPIAntiCorruptionLayer>,
     ) -> Self {
         Self {
-            handler_v2: Arc::new(ProtocolV2Handler::new(app, transport, auth)),
+            handler_v2: Arc::new(ProtocolV2Handler::new(app, transport, auth, acl)),
         }
     }
 
@@ -57,13 +59,18 @@ impl ProtocolService {
         msg: &ServerMessage,
     ) {
         match protocol {
-            Protocol::V0 | Protocol::V2 => self.handler_v2.handle_server_message(id, msg).await,
+            Protocol::V0 | Protocol::V2 => self.handler_v2.send_server_message(id, msg).await,
         }
     }
 
-    pub async fn on_authenticated(&self, protocol: &Protocol, id: ListenerId, player_id: PlayerId) {
+    pub async fn on_authenticated(
+        &self,
+        protocol: &Protocol,
+        id: ListenerId,
+        account_id: AccountId,
+    ) {
         match protocol {
-            Protocol::V0 | Protocol::V2 => self.handler_v2.on_authenticated(id, player_id).await,
+            Protocol::V0 | Protocol::V2 => self.handler_v2.on_authenticated(id, account_id).await,
         }
     }
 

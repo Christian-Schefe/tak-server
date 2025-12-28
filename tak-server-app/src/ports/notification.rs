@@ -1,4 +1,4 @@
-use tak_core::TakActionRecord;
+use tak_core::{TakActionRecord, TakGameState};
 
 use crate::{
     domain::{GameId, ListenerId, PlayerId},
@@ -27,6 +27,10 @@ pub enum ListenerMessage {
     },
     PlayersOnline {
         players: Vec<PlayerId>,
+    },
+    GameOver {
+        game_id: GameId,
+        game_state: TakGameState,
     },
     GameAction {
         game_id: GameId,

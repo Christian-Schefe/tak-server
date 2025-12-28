@@ -19,7 +19,7 @@ use log::{debug, error, info, warn};
 use more_dashmap::one_one::OneOneDashMap;
 use tak_server_app::{
     Application,
-    domain::{ListenerId, PlayerId},
+    domain::{AccountId, ListenerId, PlayerId},
     ports::{
         authentication::AuthenticationPort,
         connection::PlayerConnectionPort,
@@ -36,7 +36,10 @@ use tokio_util::{
     sync::CancellationToken,
 };
 
-use crate::protocol::{Protocol, ProtocolService};
+use crate::{
+    acl::LegacyAPIAntiCorruptionLayer,
+    protocol::{Protocol, ProtocolService},
+};
 
 pub enum ClientMessage {
     Text(String),
@@ -57,7 +60,7 @@ pub struct TransportServiceImpl {
     notification_listeners: Arc<DashMap<ListenerId, UnboundedSender<ServerMessage>>>,
     client_senders: Arc<DashMap<ListenerId, (UnboundedSender<String>, CancellationToken)>>,
     client_handlers: Arc<DashMap<ListenerId, Protocol>>,
-    player_associations: Arc<OneOneDashMap<ListenerId, PlayerId>>,
+    account_associations: Arc<OneOneDashMap<ListenerId, AccountId>>,
     last_activity: Arc<DashMap<ListenerId, Instant>>,
 }
 
@@ -67,7 +70,7 @@ impl TransportServiceImpl {
             notification_listeners: Arc::new(DashMap::new()),
             client_senders: Arc::new(DashMap::new()),
             client_handlers: Arc::new(DashMap::new()),
-            player_associations: Arc::new(OneOneDashMap::new()),
+            account_associations: Arc::new(OneOneDashMap::new()),
             last_activity: Arc::new(DashMap::new()),
         }
     }
@@ -76,13 +79,16 @@ impl TransportServiceImpl {
         self.client_senders.remove(&id);
         self.client_handlers.remove(&id);
         self.last_activity.remove(&id);
-        let player = self.player_associations.remove_by_key(&id);
-        if let Some(player_id) = player {
-            APPLICATION
-                .get()
-                .unwrap()
-                .player_set_online_use_case
-                .set_offline(player_id);
+        let account_id = self.account_associations.remove_by_key(&id);
+        if let Some(account_id) = account_id {
+            let app = APPLICATION.get().unwrap();
+            if let Ok(player_id) = app
+                .player_resolver_service
+                .resolve_player_id_by_account_id(account_id)
+                .await
+            {
+                app.player_set_online_use_case.set_offline(player_id);
+            }
         }
         /*self.application
             .player_connection_service()
@@ -300,49 +306,64 @@ impl TransportServiceImpl {
         }
     }
 
-    pub async fn associate_player(
+    pub async fn associate_account(
         &self,
         id: ListenerId,
-        player_id: PlayerId,
+        account_id: AccountId,
     ) -> Result<(), String> {
-        if self.player_associations.contains_key(&id) {
-            return Err(format!("Player {} already logged in", player_id));
+        if self.account_associations.contains_key(&id) {
+            return Err(format!("Account {} already logged in", account_id));
         }
-        if let Some(prev_client_id) = self.player_associations.get_by_value(&player_id) {
+        if let Some(prev_client_id) = self.account_associations.get_by_value(&account_id) {
             self.close_with_reason(prev_client_id, DisconnectReason::NewSession)
                 .await;
             // call on_disconnect directly to clean up immediately
             self.on_disconnect(prev_client_id).await;
             info!(
-                "Disconnected previous session of player {} (client {})",
-                player_id, prev_client_id
+                "Disconnected previous session of account {} (client {})",
+                account_id, prev_client_id
             );
         }
-        if !self
-            .player_associations
-            .try_insert(id.clone(), player_id.clone())
-        {
+        if !self.account_associations.try_insert(id, account_id) {
             return Err(format!(
-                "Failed to associate player {} with client {}",
-                player_id, id
+                "Failed to associate account_id {} with client {}",
+                account_id, id
             ));
         }
         if let Some(handler) = self.client_handlers.get(&id) {
             PROTOCOL_SERVICE
                 .get()
                 .unwrap()
-                .on_authenticated(&handler, id, player_id);
+                .on_authenticated(&handler, id, account_id)
+                .await;
         }
-        APPLICATION
-            .get()
-            .unwrap()
-            .player_set_online_use_case
-            .set_online(player_id);
+        let app = APPLICATION.get().unwrap();
+        if let Ok(player_id) = app
+            .player_resolver_service
+            .resolve_player_id_by_account_id(account_id)
+            .await
+        {
+            app.player_set_online_use_case.set_online(player_id);
+        }
         Ok(())
     }
 
-    pub fn get_associated_player(&self, id: ListenerId) -> Option<PlayerId> {
-        self.player_associations.get_by_key(&id)
+    pub fn get_associated_account(&self, id: ListenerId) -> Option<AccountId> {
+        self.account_associations.get_by_key(&id)
+    }
+
+    pub async fn get_associated_player_and_account(
+        &self,
+        id: ListenerId,
+    ) -> Option<(PlayerId, AccountId)> {
+        let app = APPLICATION.get().unwrap();
+        let account_id = self.account_associations.get_by_key(&id)?;
+        let player_id = app
+            .player_resolver_service
+            .resolve_player_id_by_account_id(account_id)
+            .await
+            .ok()?;
+        Some((player_id, account_id))
     }
 
     pub async fn close_with_reason(&self, id: ListenerId, reason: DisconnectReason) {
@@ -445,6 +466,7 @@ impl TransportServiceImpl {
         self,
         app: Arc<Application>,
         auth: Arc<dyn AuthenticationPort + Send + Sync + 'static>,
+        acl: Arc<LegacyAPIAntiCorruptionLayer>,
         shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
     ) {
         let transport_impl = Arc::new(self.clone());
@@ -452,6 +474,7 @@ impl TransportServiceImpl {
             app.clone(),
             transport_impl.clone(),
             auth.clone(),
+            acl,
         ));
 
         APPLICATION.set(app.clone()).ok().unwrap();
@@ -554,9 +577,19 @@ impl ListenerNotificationPort for TransportServiceImpl {
     }
 }
 
+#[async_trait::async_trait]
 impl PlayerConnectionPort for TransportServiceImpl {
-    fn get_connection_id(&self, player_id: PlayerId) -> Option<ListenerId> {
-        self.player_associations.get_by_value(&player_id)
+    async fn get_connection_id(&self, player_id: PlayerId) -> Option<ListenerId> {
+        let Ok(account_id) = APPLICATION
+            .get()
+            .unwrap()
+            .player_resolver_service
+            .resolve_account_id_by_player_id(player_id)
+            .await
+        else {
+            return None;
+        };
+        self.account_associations.get_by_value(&account_id)
     }
 }
 

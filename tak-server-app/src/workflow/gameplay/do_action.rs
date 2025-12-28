@@ -26,13 +26,17 @@ pub trait DoActionUseCase {
         action: TakAction,
     ) -> Result<(), DoActionError>;
     async fn offer_draw(&self, game_id: GameId, player_id: PlayerId) -> Result<(), OfferDrawError>;
-    fn retract_draw_offer(
+    async fn retract_draw_offer(
         &self,
         game_id: GameId,
         player_id: PlayerId,
     ) -> Result<(), OfferDrawError>;
-    fn request_undo(&self, game_id: GameId, player_id: PlayerId) -> Result<(), RequestUndoError>;
-    fn retract_undo_request(
+    async fn request_undo(
+        &self,
+        game_id: GameId,
+        player_id: PlayerId,
+    ) -> Result<(), RequestUndoError>;
+    async fn retract_undo_request(
         &self,
         game_id: GameId,
         player_id: PlayerId,
@@ -100,8 +104,10 @@ impl<
                 }
             };
 
-        if let Some(opponent_connection) =
-            self.player_connection_port.get_connection_id(opponent_id)
+        if let Some(opponent_connection) = self
+            .player_connection_port
+            .get_connection_id(opponent_id)
+            .await
         {
             let msg = ListenerMessage::GameAction {
                 game_id,
@@ -130,8 +136,10 @@ impl<
         match self.game_service.offer_draw(game_id, player_id)? {
             OfferDrawSuccess::DrawOffered(changed) => {
                 if changed
-                    && let Some(opponent_connection) =
-                        self.player_connection_port.get_connection_id(opponent_id)
+                    && let Some(opponent_connection) = self
+                        .player_connection_port
+                        .get_connection_id(opponent_id)
+                        .await
                 {
                     let msg = ListenerMessage::GameDrawOffered { game_id };
                     self.listener_notification_port
@@ -146,7 +154,7 @@ impl<
         Ok(())
     }
 
-    fn retract_draw_offer(
+    async fn retract_draw_offer(
         &self,
         game_id: GameId,
         player_id: PlayerId,
@@ -162,8 +170,10 @@ impl<
         let did_retract = self.game_service.retract_draw_offer(game_id, player_id)?;
 
         if did_retract {
-            if let Some(opponent_connection) =
-                self.player_connection_port.get_connection_id(opponent_id)
+            if let Some(opponent_connection) = self
+                .player_connection_port
+                .get_connection_id(opponent_id)
+                .await
             {
                 let msg = ListenerMessage::GameDrawOfferRetracted { game_id };
                 self.listener_notification_port
@@ -173,7 +183,11 @@ impl<
         Ok(())
     }
 
-    fn request_undo(&self, game_id: GameId, player_id: PlayerId) -> Result<(), RequestUndoError> {
+    async fn request_undo(
+        &self,
+        game_id: GameId,
+        player_id: PlayerId,
+    ) -> Result<(), RequestUndoError> {
         let Some(game) = self.game_service.get_game_by_id(game_id) else {
             return Err(RequestUndoError::GameNotFound);
         };
@@ -185,8 +199,10 @@ impl<
         let did_undo = self.game_service.request_undo(game_id, player_id)?;
 
         if !did_undo {
-            if let Some(opponent_connection) =
-                self.player_connection_port.get_connection_id(opponent_id)
+            if let Some(opponent_connection) = self
+                .player_connection_port
+                .get_connection_id(opponent_id)
+                .await
             {
                 let msg = ListenerMessage::GameUndoRequested { game_id };
                 self.listener_notification_port
@@ -196,7 +212,7 @@ impl<
         Ok(())
     }
 
-    fn retract_undo_request(
+    async fn retract_undo_request(
         &self,
         game_id: GameId,
         player_id: PlayerId,
@@ -212,8 +228,10 @@ impl<
         let did_retract = self.game_service.retract_undo_request(game_id, player_id)?;
 
         if did_retract {
-            if let Some(opponent_connection) =
-                self.player_connection_port.get_connection_id(opponent_id)
+            if let Some(opponent_connection) = self
+                .player_connection_port
+                .get_connection_id(opponent_id)
+                .await
             {
                 let msg = ListenerMessage::GameUndoRequestRetracted { game_id };
                 self.listener_notification_port

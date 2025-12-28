@@ -1,5 +1,5 @@
 use sea_orm::{ConnectionTrait, Database, DatabaseBackend, Schema};
-use tak_persistence_sea_orm::entity::{game, player};
+use tak_persistence_sea_orm::entity::{game, player_account_mapping};
 
 #[tokio::main]
 async fn main() {
@@ -39,7 +39,7 @@ async fn main() {
         .await
         .expect("Failed to connect to players database");
 
-    let stmt = schema.create_table_from_entity(player::Entity);
+    let stmt = schema.create_table_from_entity(player_account_mapping::Entity);
 
     players_db
         .execute(&stmt)

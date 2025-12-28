@@ -16,10 +16,11 @@ use log4rs::{
 use tak_email_lettre::LettreEmailAdapter;
 use tak_events_google_sheets::NoopEventRepository;
 use tak_persistence_sea_orm::{
-    games::GameRepositoryImpl, players::PlayerRepositoryImpl, ratings::RatingRepositoryImpl,
+    games::GameRepositoryImpl, player_account_mapping::PlayerAccountMappingRepositoryImpl,
+    ratings::RatingRepositoryImpl,
 };
-use tak_server_api::{JwtServiceImpl, TransportServiceImpl, client::TransportServiceImpl};
-use tak_server_app::build_application;
+use tak_server_api::{acl::LegacyAPIAntiCorruptionLayer, client::TransportServiceImpl};
+use tak_server_app::{build_application, ports::authentication::AuthenticationPort};
 
 const LOG_SIZE_LIMIT: u64 = 10 * 1024 * 1024; // 10 MB
 
@@ -103,13 +104,13 @@ async fn main() {
     let transport_service_impl = Arc::new(TransportServiceImpl::new());
 
     let game_repo = Arc::new(GameRepositoryImpl::new().await);
-    let player_repo = Arc::new(PlayerRepositoryImpl::new().await);
+    let player_repo = Arc::new(PlayerAccountMappingRepositoryImpl::new().await);
     let rating_repo = Arc::new(RatingRepositoryImpl::new().await);
     let event_repo = Arc::new(NoopEventRepository);
     let email_adapter = Arc::new(LettreEmailAdapter::new());
     let player_connection_adapter = transport_service_impl.clone();
     let listener_notification_adapter = transport_service_impl.clone();
-    let authentication_service = todo!();
+    let authentication_service: Arc<AuthenticationPort> = todo!();
 
     build_application(
         game_repo,
@@ -123,6 +124,11 @@ async fn main() {
     )
     .await;
 
+    let acl = Arc::new(LegacyAPIAntiCorruptionLayer::new(
+        app,
+        email_adapter.clone(),
+    ));
+
     info!("Starting application");
 
     let app_clone = app.clone();
@@ -131,7 +137,9 @@ async fn main() {
     });
 
     let transport_app = tokio::spawn(async move {
-        transport_service_impl.run(app, shutdown_signal()).await;
+        transport_service_impl
+            .run(app, authentication_service.clone(), acl, shutdown_signal())
+            .await;
     });
 
     let (r1, r2) = tokio::join!(http_app, transport_app);

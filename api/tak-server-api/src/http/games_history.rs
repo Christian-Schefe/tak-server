@@ -8,21 +8,26 @@ use tak_core::{
     TakAction, TakActionRecord, TakGameState, TakPlayer, TakPos, TakVariant, TakWinReason,
     ptn::game_state_to_string,
 };
-use tak_server_domain::{
-    ServiceError,
-    app::{AppState, Pagination, SortOrder},
-    game::{GameId, GameRecord},
-    game_history::{
-        DateSelector, GameFilter, GameFilterResult, GameIdSelector, GamePlayerFilter, GameSortBy,
+use tak_server_app::{
+    domain::{
+        FinishedGameId, GameType, Pagination, SortOrder,
+        game_history::{
+            DateSelector, GameFilter, GameFilterResult, GameIdSelector, GamePlayerFilter,
+            GameRecord, GameSortBy,
+        },
     },
+    workflow::history::query::GameQueryError,
 };
 
-use crate::{MyServiceError, PaginatedResponse};
+use crate::{
+    app::ServiceError,
+    http::{AppState, PaginatedResponse},
+};
 
 pub async fn get_all(
     State(app_state): State<AppState>,
     Query(filter): Query<JsonGameRecordFilter>,
-) -> Result<Json<PaginatedResponse<JsonGameRecord>>, MyServiceError> {
+) -> Result<Json<PaginatedResponse<JsonGameRecord>>, ServiceError> {
     let id_selector = filter
         .id
         .as_ref()
@@ -36,14 +41,20 @@ pub async fn get_all(
                 if parts.len() == 2
                     && let (Ok(start), Ok(end)) = (parts[0].parse(), parts[1].parse())
                 {
-                    return Some(Ok(GameIdSelector::Range(start, end)));
+                    return Some(Ok(GameIdSelector::Range(
+                        FinishedGameId(start),
+                        FinishedGameId(end),
+                    )));
                 } else {
-                    return Some(Err(MyServiceError(ServiceError::BadRequest(
+                    return Some(Err(ServiceError::BadRequest(
                         "Invalid ID range format".to_string(),
-                    ))));
+                    )));
                 }
             } else {
-                let ids: Vec<GameId> = id_str.split(',').filter_map(|s| s.parse().ok()).collect();
+                let ids: Vec<FinishedGameId> = id_str
+                    .split(',')
+                    .filter_map(|s| s.parse().ok().map(FinishedGameId))
+                    .collect();
                 Some(Ok(GameIdSelector::List(ids)))
             }
         })
@@ -63,9 +74,9 @@ pub async fn get_all(
                 {
                     return Some(Ok(DateSelector::Range(start, end)));
                 } else {
-                    return Some(Err(MyServiceError(ServiceError::BadRequest(
+                    return Some(Err(ServiceError::BadRequest(
                         "Invalid ID range format".to_string(),
-                    ))));
+                    )));
                 }
             } else {
                 let is_after = if date_str.starts_with('<') {
@@ -73,9 +84,9 @@ pub async fn get_all(
                 } else if date_str.starts_with('>') {
                     true
                 } else {
-                    return Some(Err(MyServiceError(ServiceError::BadRequest(
+                    return Some(Err(ServiceError::BadRequest(
                         "Invalid date selector format".to_string(),
-                    ))));
+                    )));
                 };
                 let date_part = &date_str[1..];
                 match date_part.parse() {
@@ -86,9 +97,9 @@ pub async fn get_all(
                             Some(Ok(DateSelector::Before(date)))
                         }
                     }
-                    Err(_) => Some(Err(MyServiceError(ServiceError::BadRequest(
+                    Err(_) => Some(Err(ServiceError::BadRequest(
                         "Invalid date format".to_string(),
-                    )))),
+                    ))),
                 }
             }
         })
@@ -138,9 +149,9 @@ pub async fn get_all(
                     reason: TakWinReason::Default,
                 }]),
                 "1/2-1/2" => Ok(vec![TakGameState::Draw]),
-                _ => Err(MyServiceError(ServiceError::BadRequest(
+                _ => Err(ServiceError::BadRequest(
                     "Invalid game result filter".to_string(),
-                ))),
+                )),
             }
         })
         .transpose()?;
@@ -151,12 +162,12 @@ pub async fn get_all(
             let type_str = type_str.trim().to_lowercase();
             match type_str.as_str() {
                 "" => None,
-                "normal" => Some(Ok(tak_server_domain::game::GameType::Rated)),
-                "unrated" => Some(Ok(tak_server_domain::game::GameType::Unrated)),
-                "tournament" => Some(Ok(tak_server_domain::game::GameType::Tournament)),
-                _ => Some(Err(MyServiceError(ServiceError::BadRequest(
+                "normal" => Some(Ok(GameType::Rated)),
+                "unrated" => Some(Ok(GameType::Unrated)),
+                "tournament" => Some(Ok(GameType::Tournament)),
+                _ => Some(Err(ServiceError::BadRequest(
                     "Invalid game type filter".to_string(),
-                )))),
+                ))),
             }
         })
         .transpose()?;
@@ -177,9 +188,9 @@ pub async fn get_all(
                 "" => None,
                 "date" => Some(Ok(GameSortBy::Date)),
                 "id" => Some(Ok(GameSortBy::GameId)),
-                _ => Some(Err(MyServiceError(ServiceError::BadRequest(
+                _ => Some(Err(ServiceError::BadRequest(
                     "Invalid sort order".to_string(),
-                )))),
+                ))),
             }
         })
         .transpose()?
@@ -192,9 +203,9 @@ pub async fn get_all(
             "asc" => Some(Ok(SortOrder::Ascending)),
             "desc" => Some(Ok(SortOrder::Descending)),
             "" => None,
-            _ => Some(Err(MyServiceError(ServiceError::BadRequest(
+            _ => Some(Err(ServiceError::BadRequest(
                 "Invalid sort order".to_string(),
-            )))),
+            ))),
         })
         .transpose()?
         .unwrap_or(SortOrder::Descending);
@@ -237,10 +248,18 @@ pub async fn get_all(
         });
     }
 
-    let res: GameFilterResult = app_state
-        .game_history_service
-        .get_games(game_filter)
-        .await?;
+    let res: GameFilterResult = match app_state
+        .app
+        .game_history_query_use_case
+        .query_games(game_filter)
+        .await
+    {
+        Ok(result) => result,
+        Err(GameQueryError::RepositoryError) => {
+            return Err(ServiceError::Internal(format!("Error querying games")));
+        }
+    };
+
     let total = res.total_count;
     Ok(Json(PaginatedResponse {
         items: res
@@ -286,65 +305,90 @@ pub struct JsonGameRecordFilter {
 pub async fn get_by_id(
     Path(game_id): Path<String>,
     State(app_state): State<AppState>,
-) -> Result<Json<JsonGameRecord>, MyServiceError> {
-    let game_id = game_id
-        .parse()
-        .map_err(|e| MyServiceError(ServiceError::BadRequest(format!("Invalid game ID: {}", e))))?;
-    let res: Option<GameRecord> = app_state
-        .game_history_service
-        .get_game_record(game_id)
-        .await?;
+) -> Result<Json<JsonGameRecord>, ServiceError> {
+    let game_id = FinishedGameId(
+        game_id
+            .parse()
+            .map_err(|e| ServiceError::BadRequest(format!("Invalid game ID: {}", e)))?,
+    );
+    let res: Option<GameRecord> = match app_state
+        .app
+        .game_history_query_use_case
+        .get_game(game_id)
+        .await
+    {
+        Ok(record) => record,
+        Err(GameQueryError::RepositoryError) => {
+            return Err(ServiceError::Internal(format!("Error retrieving game")));
+        }
+    };
     if let Some(record) = res {
         let json_record = JsonGameRecord::from_game_record(game_id, &record);
         let json = serde_json::to_string(&json_record).map_err(|e| {
-            MyServiceError(ServiceError::Internal(format!(
-                "Failed to serialize game record: {}",
-                e
-            )))
+            ServiceError::Internal(format!("Failed to serialize game record: {}", e))
         })?;
         println!("{}", json);
         Ok(Json(json_record))
     } else {
-        Err(MyServiceError(ServiceError::NotFound(format!(
+        Err(ServiceError::NotFound(format!(
             "Game with ID {} not found",
-            game_id
-        ))))
+            game_id.0
+        )))
     }
 }
 
 pub async fn get_ptn_by_id(
     Path(game_id): Path<String>,
     State(app_state): State<AppState>,
-) -> Result<String, MyServiceError> {
-    let game_id = game_id
-        .parse()
-        .map_err(|e| MyServiceError(ServiceError::BadRequest(format!("Invalid game ID: {}", e))))?;
-    let res: Option<GameRecord> = app_state
-        .game_history_service
-        .get_game_record(game_id)
-        .await?;
+) -> Result<String, ServiceError> {
+    let game_id = FinishedGameId(
+        game_id
+            .parse()
+            .map_err(|e| ServiceError::BadRequest(format!("Invalid game ID: {}", e)))?,
+    );
+    let res: Option<GameRecord> = match app_state
+        .app
+        .game_history_query_use_case
+        .get_game(game_id)
+        .await
+    {
+        Ok(record) => record,
+        Err(GameQueryError::RepositoryError) => {
+            return Err(ServiceError::Internal(format!("Error retrieving game")));
+        }
+    };
     if let Some(record) = res {
         let ptn = tak_core::ptn::game_to_ptn(
             &record.settings,
             record.result,
             record.moves.into_iter().map(|mv| mv.action).collect(),
             (
-                record.white.clone(),
-                record.rating_info.as_ref().map(|x| x.rating_white),
+                record
+                    .white
+                    .username
+                    .as_deref()
+                    .unwrap_or("Anonymous")
+                    .to_string(),
+                record.white.rating,
             ),
             (
-                record.black.clone(),
-                record.rating_info.as_ref().map(|x| x.rating_black),
+                record
+                    .black
+                    .username
+                    .as_deref()
+                    .unwrap_or("Anonymous")
+                    .to_string(),
+                record.black.rating,
             ),
             record.date,
         )
         .to_string();
         Ok(ptn)
     } else {
-        Err(MyServiceError(ServiceError::NotFound(format!(
+        Err(ServiceError::NotFound(format!(
             "Game with ID {} not found",
-            game_id
-        ))))
+            game_id.0
+        )))
     }
 }
 
@@ -408,13 +452,23 @@ fn action_record_to_database_string(record: &TakActionRecord) -> String {
 }
 
 impl JsonGameRecord {
-    fn from_game_record(id: GameId, record: &GameRecord) -> Self {
+    fn from_game_record(id: FinishedGameId, record: &GameRecord) -> Self {
         Self {
-            id: id,
+            id: id.0,
             date: record.date.timestamp(),
             size: record.settings.board_size,
-            player_white: record.white.clone(),
-            player_black: record.black.clone(),
+            player_white: record
+                .white
+                .username
+                .as_deref()
+                .unwrap_or("Anonymous")
+                .to_string(),
+            player_black: record
+                .black
+                .username
+                .as_deref()
+                .unwrap_or("Anonymous")
+                .to_string(),
             notation: record
                 .moves
                 .iter()
@@ -424,32 +478,21 @@ impl JsonGameRecord {
             result: game_state_to_string(&record.result),
             timer_time: record.settings.time_control.contingent.as_secs() as u32,
             timer_inc: record.settings.time_control.increment.as_secs() as u32,
-            rating_white: record
-                .rating_info
-                .as_ref()
-                .map_or(0.0, |info| info.rating_white),
-            rating_black: record
-                .rating_info
-                .as_ref()
-                .map_or(0.0, |info| info.rating_black),
-            unrated: matches!(record.game_type, tak_server_domain::game::GameType::Unrated),
-            tournament: matches!(
-                record.game_type,
-                tak_server_domain::game::GameType::Tournament
-            ),
+            rating_white: record.white.rating.unwrap_or(0.0),
+            rating_black: record.black.rating.unwrap_or(0.0),
+            unrated: matches!(record.game_type, GameType::Unrated),
+            tournament: matches!(record.game_type, GameType::Tournament),
             komi: record.settings.half_komi,
             pieces: record.settings.reserve.pieces as i32,
             capstones: record.settings.reserve.capstones as i32,
             rating_change_white: record
                 .rating_info
                 .as_ref()
-                .and_then(|x| x.rating_change.as_ref())
-                .map_or(0.0, |(white, _)| *white),
+                .map_or(0.0, |x| x.rating_change_white),
             rating_change_black: record
                 .rating_info
                 .as_ref()
-                .and_then(|x| x.rating_change.as_ref())
-                .map_or(0.0, |(_, black)| *black),
+                .map_or(0.0, |x| x.rating_change_black),
             extra_time_amount: record
                 .settings
                 .time_control

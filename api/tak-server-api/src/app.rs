@@ -1,11 +1,11 @@
 use axum::response::IntoResponse;
 
+#[allow(unused)]
 pub enum ServiceError {
     NotFound(String),
     Unauthorized(String),
     BadRequest(String),
     NotPossible(String),
-    Other(String),
     Internal(String),
     Forbidden(String),
 }
@@ -17,7 +17,6 @@ impl std::fmt::Display for ServiceError {
             ServiceError::Unauthorized(msg) => write!(f, "Unauthorized: {}", msg),
             ServiceError::BadRequest(msg) => write!(f, "Bad request: {}", msg),
             ServiceError::NotPossible(msg) => write!(f, "Not possible: {}", msg),
-            ServiceError::Other(msg) => write!(f, "Other error: {}", msg),
             ServiceError::Internal(msg) => write!(f, "Internal error: {}", msg),
             ServiceError::Forbidden(msg) => write!(f, "Forbidden: {}", msg),
         }
@@ -31,7 +30,6 @@ impl IntoResponse for ServiceError {
             ServiceError::Unauthorized(msg) => (axum::http::StatusCode::UNAUTHORIZED, msg),
             ServiceError::BadRequest(msg) => (axum::http::StatusCode::BAD_REQUEST, msg),
             ServiceError::NotPossible(msg) => (axum::http::StatusCode::BAD_REQUEST, msg),
-            ServiceError::Other(msg) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, msg),
             ServiceError::Internal(msg) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, msg),
             ServiceError::Forbidden(msg) => (axum::http::StatusCode::FORBIDDEN, msg),
         };

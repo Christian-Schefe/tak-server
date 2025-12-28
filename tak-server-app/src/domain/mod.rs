@@ -1,9 +1,9 @@
-pub mod account;
 pub mod chat;
 pub mod event;
 pub mod game;
 pub mod game_history;
 pub mod r#match;
+pub mod moderation;
 pub mod player;
 pub mod rating;
 pub mod seek;
@@ -21,9 +21,9 @@ impl std::fmt::Display for PlayerId {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AccountId(pub uuid::Uuid);
 
-impl AccountId {
-    pub fn to_string(&self) -> String {
-        self.0.as_hyphenated().to_string()
+impl std::fmt::Display for AccountId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.as_hyphenated())
     }
 }
 

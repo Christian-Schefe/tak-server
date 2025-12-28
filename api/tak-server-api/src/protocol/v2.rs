@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Instant};
 
 use log::info;
 use tak_server_app::{
-    domain::{ListenerId, PlayerId},
+    domain::{AccountId, ListenerId},
     ports::{
         authentication::AuthenticationPort,
         notification::{ListenerMessage, ServerAlertMessage},
@@ -10,6 +10,7 @@ use tak_server_app::{
 };
 
 use crate::{
+    acl::LegacyAPIAntiCorruptionLayer,
     app::ServiceError,
     client::{DisconnectReason, ServerMessage, TransportServiceImpl},
     protocol::Application,
@@ -26,6 +27,7 @@ pub struct ProtocolV2Handler {
     app: Arc<Application>,
     transport: Arc<TransportServiceImpl>,
     auth: Arc<dyn AuthenticationPort + Send + Sync + 'static>,
+    acl: Arc<LegacyAPIAntiCorruptionLayer>,
 }
 
 pub enum V2Response {
@@ -40,11 +42,13 @@ impl ProtocolV2Handler {
         app: Arc<Application>,
         transport: Arc<TransportServiceImpl>,
         auth: Arc<dyn AuthenticationPort + Send + Sync + 'static>,
+        acl: Arc<LegacyAPIAntiCorruptionLayer>,
     ) -> Self {
         Self {
             app,
             transport,
             auth,
+            acl,
         }
     }
 
@@ -65,8 +69,8 @@ impl ProtocolV2Handler {
                 V2Response::OK
             }
             "login" => self.handle_login_message(id, &parts).await,
-            "register" => self.handle_register_message(id, &parts).await,
-            "sendresettoken" => self.handle_reset_token_message(id, &parts).await,
+            "register" => self.handle_register_message(&parts).await,
+            "sendresettoken" => self.handle_reset_token_message(&parts).await,
             "resetpassword" => self.handle_reset_password_message(&parts).await,
             _ => self.handle_logged_in_client_message(id, &parts, &msg).await,
         };
@@ -87,7 +91,7 @@ impl ProtocolV2Handler {
             }
         }
     }
-    pub async fn handle_server_message(&self, id: ListenerId, msg: &ServerMessage) {
+    pub async fn send_server_message(&self, id: ListenerId, msg: &ServerMessage) {
         match msg {
             ServerMessage::ConnectionClosed { reason } => {
                 let reason_str = match reason {
@@ -103,12 +107,16 @@ impl ProtocolV2Handler {
                 let disconnect_message = format!("Message {}", reason_str);
                 self.send_to(id, disconnect_message);
             }
-            ServerMessage::Notification(notif) => self.handle_notification_message(id, notif).await,
+            ServerMessage::Notification(notif) => self.send_notification_message(id, notif).await,
         }
     }
 
-    async fn handle_notification_message(&self, id: ListenerId, msg: &ListenerMessage) {
-        let player_id = self.transport.get_associated_player(id);
+    async fn send_notification_message(&self, id: ListenerId, msg: &ListenerMessage) {
+        let (player_id, _) = self
+            .transport
+            .get_associated_player_and_account(id)
+            .await
+            .unzip();
         match msg {
             ListenerMessage::SeekCreated { seek } => {
                 self.send_seek_list_message(id, seek, true).await;
@@ -118,30 +126,38 @@ impl ProtocolV2Handler {
             }
             ListenerMessage::GameStarted { game } => {
                 self.send_game_list_message(id, game, true).await;
-                if player_id.is_some_and(|x| game.white == x || game.black == x) {
-                    self.send_game_start_message(id, game).await;
+                if let Some(player_id) = player_id
+                    && (game.white == player_id || game.black == player_id)
+                {
+                    self.send_game_start_message(id, player_id, &game).await;
                 }
             }
             ListenerMessage::GameEnded { game } => {
                 self.send_game_list_message(id, game, false).await;
             }
+            ListenerMessage::GameOver {
+                game_id,
+                game_state,
+            } => {
+                self.send_game_over_message(id, *game_id, game_state);
+            }
             ListenerMessage::GameAction { game_id, action } => {
-                self.send_game_action_message(id, game_id, action);
+                self.send_game_action_message(id, *game_id, action);
             }
             ListenerMessage::GameDrawOffered { game_id } => {
-                self.send_draw_offer_message(id, game_id, true);
+                self.send_draw_offer_message(id, *game_id, true);
             }
             ListenerMessage::GameDrawOfferRetracted { game_id } => {
-                self.send_draw_offer_message(id, game_id, false);
+                self.send_draw_offer_message(id, *game_id, false);
             }
             ListenerMessage::GameUndoRequested { game_id } => {
-                self.send_undo_request_message(id, game_id, true);
+                self.send_undo_request_message(id, *game_id, true);
             }
             ListenerMessage::GameUndoRequestRetracted { game_id } => {
-                self.send_undo_request_message(id, game_id, false);
+                self.send_undo_request_message(id, *game_id, false);
             }
             ListenerMessage::GameActionUndone { game_id } => {
-                self.send_undo_message(id, game_id);
+                self.send_undo_message(id, *game_id);
             }
             ListenerMessage::PlayersOnline { players } => {
                 let online_message = format!("Online {}", players.len());
@@ -186,41 +202,33 @@ impl ProtocolV2Handler {
         }
     }
 
-    pub async fn on_authenticated(&self, id: ListenerId, player_id: PlayerId) {
-        let seeks = self.app.seek_service.get_seeks();
+    pub async fn on_authenticated(&self, id: ListenerId, account_id: AccountId) {
+        let player_id = self
+            .app
+            .player_resolver_service
+            .resolve_player_id_by_account_id(account_id)
+            .await
+            .ok();
+
+        let seeks = self.app.seek_list_use_case.list_seeks();
         for seek in seeks {
-            let seek_msg = ServerMessage::Notification(ListenerMessage::SeekCreated { seek });
-            self.handle_server_message(id, &seek_msg).await;
+            self.send_seek_list_message(id, &seek, true).await;
         }
-        let games = self.app.game_service.get_games();
+        let games = self.app.game_list_ongoing_use_case.list_games();
         for game in games {
-            let game_msg = ServerMessage::GameList { add: true, game };
-            self.handle_server_message(id, &game_msg).await;
-        }
-        if let Some(active_game) = self.app.game_service.get_active_game_of_player(player_id) {
-            let start_msg = ServerMessage::GameStart {
-                game_id: active_game.id,
-            };
-            self.handle_server_message(id, &start_msg).await;
-            for action in &active_game.game.action_history {
-                let action_msg = ServerMessage::GameMessage {
-                    game_id: active_game.id,
-                    message: ServerGameMessage::Action {
-                        action: action.clone(),
-                    },
-                };
-                self.handle_server_message(id, &action_msg).await;
+            self.send_game_list_message(id, &game, true).await;
+            if let Some(player_id) = player_id
+                && (game.white == player_id || game.black == player_id)
+            {
+                self.send_game_start_message(id, player_id, &game).await;
+
+                for action in game.game.action_history() {
+                    self.send_game_action_message(id, game.id, action);
+                }
+                let now = Instant::now();
+                let (remaining_white, remaining_black) = game.game.get_time_remaining_both(now);
+                self.send_time_update_message(id, game.id, remaining_white, remaining_black);
             }
-            let now = Instant::now();
-            let (remaining_white, remaining_black) = active_game.game.get_time_remaining_both(now);
-            let time_msg = ServerMessage::GameMessage {
-                game_id: active_game.id,
-                message: ServerGameMessage::TimeUpdate {
-                    remaining_white,
-                    remaining_black,
-                },
-            };
-            self.handle_server_message(id, &time_msg).await;
         }
     }
 
@@ -235,7 +243,9 @@ impl ProtocolV2Handler {
         parts: &[&str],
         msg: &str,
     ) -> V2Response {
-        let Some(player_id) = self.transport.get_associated_player(id) else {
+        let Some((player_id, account_id)) =
+            self.transport.get_associated_player_and_account(id).await
+        else {
             return V2Response::ErrorNOK(ServiceError::Unauthorized(
                 "Client is not logged in".to_string(),
             ));
@@ -243,7 +253,7 @@ impl ProtocolV2Handler {
 
         match parts[0].to_ascii_lowercase().as_str() {
             "changepassword" => {
-                self.handle_change_password_message(&player_id, &parts)
+                self.handle_change_password_message(account_id, &parts)
                     .await
             }
             "seek" => self.handle_seek_message(player_id, &parts).await,
@@ -253,14 +263,23 @@ impl ProtocolV2Handler {
             "accept" => self.handle_accept_message(player_id, &parts).await,
             "observe" => self.handle_observe_message(id, &parts, true),
             "unobserve" => self.handle_observe_message(id, &parts, false),
-            "shout" => self.handle_shout_message(player_id, &msg).await,
-            "shoutroom" => self.handle_shout_room_message(player_id, &msg).await,
-            "tell" => self.handle_tell_message(player_id, &msg).await,
+            "shout" => {
+                self.handle_shout_message(id, account_id, player_id, &msg)
+                    .await
+            }
+            "shoutroom" => {
+                self.handle_shout_room_message(id, account_id, player_id, &msg)
+                    .await
+            }
+            "tell" => self.handle_tell_message(account_id, player_id, &msg).await,
             "joinroom" => self.handle_room_membership_message(id, &parts, true).await,
             "leaveroom" => self.handle_room_membership_message(id, &parts, false).await,
             "sudo" => self.handle_sudo_message(id, player_id, msg, &parts).await,
             s if s.starts_with("game#") => self.handle_game_message(player_id, &parts).await,
-            _ => ServiceError::BadRequest(format!("Unknown V2 message type: {}", parts[0])),
+            _ => V2Response::ErrorNOK(ServiceError::BadRequest(format!(
+                "Unknown V2 message type: {}",
+                parts[0]
+            ))),
         }
     }
 

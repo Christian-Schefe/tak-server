@@ -1,14 +1,13 @@
 use std::time::Duration;
 
 use crate::{
-    acl::get_player_id_by_username,
     app::ServiceError,
     protocol::v2::{ProtocolV2Handler, V2Response},
 };
 
 use tak_core::{TakGameSettings, TakPlayer, TakReserve, TakTimeControl};
 use tak_server_app::{
-    domain::account::AccountFlag,
+    domain::r#match::RequestRematchError,
     workflow::matchmaking::{SeekView, create::CreateSeekError},
 };
 use tak_server_app::{
@@ -139,7 +138,7 @@ impl ProtocolV2Handler {
             self.app.seek_cancel_use_case.cancel_seek(player_id);
         } else {
             let opponent_id = match opponent {
-                Some(ref name) => match get_player_id_by_username(name) {
+                Some(ref name) => match self.acl.get_player_id_by_username(name).await {
                     Some(id) => Some(id),
                     None => {
                         return Err(ServiceError::BadRequest(format!("No such user: {}", name)));
@@ -209,10 +208,20 @@ impl ProtocolV2Handler {
         let Some(game) = self.app.game_get_ongoing_use_case.get_game(game_id) else {
             return V2Response::ErrorNOK(ServiceError::NotFound("Game ID not found".to_string()));
         };
-        self.app
+        match self
+            .app
             .match_rematch_use_case
-            .request_or_accept_rematch(game.match_id, player_id);
-        V2Response::OK
+            .request_or_accept_rematch(game.match_id, player_id)
+            .await
+        {
+            Ok(_) => V2Response::OK,
+            Err(RequestRematchError::InvalidPlayer) => V2Response::ErrorNOK(
+                ServiceError::BadRequest("You are not a participant in this match".to_string()),
+            ),
+            Err(RequestRematchError::MatchNotFound) => {
+                V2Response::ErrorNOK(ServiceError::NotFound("Match not found".to_string()))
+            }
+        }
     }
 
     pub async fn handle_accept_message(&self, player_id: PlayerId, parts: &[&str]) -> V2Response {
@@ -269,7 +278,7 @@ impl ProtocolV2Handler {
         } else {
             None
         };
-        let is_bot = creator_account.map_or(false, |a| a.flags.contains(&AccountFlag::Bot));
+        let is_bot = creator_account.map_or(false, |a| a.is_bot());
         let message = format!(
             "Seek {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
             if add { "new" } else { "remove" },

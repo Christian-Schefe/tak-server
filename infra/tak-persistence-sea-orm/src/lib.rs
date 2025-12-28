@@ -3,7 +3,7 @@ use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 
 pub mod entity;
 pub mod games;
-pub mod players;
+pub mod player_account_mapping;
 pub mod ratings;
 
 static DB_POOL: OnceCell<DatabaseConnection> = OnceCell::new();

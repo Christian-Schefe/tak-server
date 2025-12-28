@@ -1,10 +1,10 @@
 use tak_server_app::{
     domain::{
         ListenerId, PlayerId,
-        account::{AccountFlag, AccountRole},
+        moderation::{AccountRole, ModerationFlag},
     },
     ports::{
-        authentication::{AccountQuery, AuthSubject},
+        authentication::{AccountQuery, AccountType},
         connection::PlayerConnectionPort,
         notification::{ListenerMessage, ListenerNotificationPort, ServerAlertMessage},
     },
@@ -12,7 +12,6 @@ use tak_server_app::{
 };
 
 use crate::{
-    acl::get_player_id_by_username,
     app::ServiceError,
     client::DisconnectReason,
     protocol::v2::{ProtocolV2Handler, V2Response, split_n_and_rest},
@@ -103,7 +102,8 @@ impl ProtocolV2Handler {
             ));
         }
         let target_username = parts[2].to_string();
-        let Some(target_player_id) = get_player_id_by_username(&target_username) else {
+        let Some(target_player_id) = self.acl.get_player_id_by_username(&target_username).await
+        else {
             return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
                 "No such user: {}",
                 target_username
@@ -124,12 +124,6 @@ impl ProtocolV2Handler {
             };
             match res {
                 Ok(()) => {}
-                Err(ModerationError::PlayerNotFound) => {
-                    return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
-                        "No such user: {}",
-                        target_username
-                    )));
-                }
                 Err(ModerationError::AccountNotFound) => {
                     return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
                         "No account found for user: {}",
@@ -163,12 +157,7 @@ impl ProtocolV2Handler {
 
             match res {
                 Ok(()) => {}
-                Err(ModerationError::PlayerNotFound) => {
-                    return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
-                        "No such user: {}",
-                        target_username
-                    )));
-                }
+
                 Err(ModerationError::AccountNotFound) => {
                     return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
                         "No account found for user: {}",
@@ -202,12 +191,6 @@ impl ProtocolV2Handler {
 
             match res {
                 Ok(()) => {}
-                Err(ModerationError::PlayerNotFound) => {
-                    return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
-                        "No such user: {}",
-                        target_username
-                    )));
-                }
                 Err(ModerationError::AccountNotFound) => {
                     return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
                         "No account found for user: {}",
@@ -226,33 +209,8 @@ impl ProtocolV2Handler {
                 if admin { "Added" } else { "Removed" },
                 target_username
             ))
-        } else if let Some(bot) = bot {
-            let account_id = match self
-                .app
-                .player_resolver_service
-                .resolve_account_id_by_player_id(target_player_id)
-                .await
-            {
-                Ok(acc) => acc,
-                Err(_) => {
-                    return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
-                        "No account found for user: {}",
-                        target_username
-                    )));
-                }
-            };
-            let res = if bot {
-                self.auth.add_flag(account_id, AccountFlag::Bot).await
-            } else {
-                self.auth.remove_flag(account_id, AccountFlag::Bot).await
-            };
-            match res {
-                Ok(_) => V2Response::OK,
-                Err(_) => V2Response::ErrorNOK(ServiceError::BadRequest(format!(
-                    "Failed to update bot status for user: {}",
-                    target_username
-                ))),
-            }
+        } else if let Some(_) = bot {
+            V2Response::ErrorNOK(ServiceError::NotPossible("No longer supported".to_string()))
         } else {
             V2Response::ErrorNOK(ServiceError::BadRequest(
                 "No valid player update specified".to_string(),
@@ -267,7 +225,7 @@ impl ProtocolV2Handler {
             ));
         }
         let target_username = parts[2].to_string();
-        let target_player_id = match get_player_id_by_username(&target_username) {
+        let target_player_id = match self.acl.get_player_id_by_username(&target_username).await {
             Some(pid) => pid,
             None => {
                 return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
@@ -284,12 +242,6 @@ impl ProtocolV2Handler {
             .await
         {
             Ok(()) => {}
-            Err(ModerationError::PlayerNotFound) => {
-                return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
-                    "No such user: {}",
-                    target_username
-                )));
-            }
             Err(ModerationError::AccountNotFound) => {
                 return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
                     "No account found for user: {}",
@@ -303,7 +255,7 @@ impl ProtocolV2Handler {
             }
         }
 
-        let target_listener_id = match self.transport.get_connection_id(target_player_id) {
+        let target_listener_id = match self.transport.get_connection_id(target_player_id).await {
             Some(lid) => lid,
             None => {
                 return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
@@ -314,7 +266,8 @@ impl ProtocolV2Handler {
         };
 
         self.transport
-            .close_with_reason(target_listener_id, DisconnectReason::Kick);
+            .close_with_reason(target_listener_id, DisconnectReason::Kick)
+            .await;
         V2Response::Message(format!("{} kicked", target_username))
     }
 
@@ -331,7 +284,8 @@ impl ProtocolV2Handler {
             ));
         }
         let target_username = parts[2].to_string();
-        let Some(target_player_id) = get_player_id_by_username(&target_username) else {
+        let Some(target_player_id) = self.acl.get_player_id_by_username(&target_username).await
+        else {
             return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
                 "No such user: {}",
                 target_username
@@ -351,12 +305,6 @@ impl ProtocolV2Handler {
         };
         match res {
             Ok(()) => {}
-            Err(ModerationError::PlayerNotFound) => {
-                return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
-                    "No such user: {}",
-                    target_username
-                )));
-            }
             Err(ModerationError::AccountNotFound) => {
                 return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
                     "No account found for user: {}",
@@ -388,11 +336,11 @@ impl ProtocolV2Handler {
         let mut query = AccountQuery::new();
 
         match list_type {
-            "ban" => query = query.with_flag(AccountFlag::Banned),
-            "gag" => query = query.with_flag(AccountFlag::Silenced),
+            "ban" => query = query.with_flag(ModerationFlag::Banned),
+            "gag" => query = query.with_flag(ModerationFlag::Silenced),
             "mod" => query = query.with_role(AccountRole::Moderator),
             "admin" => query = query.with_role(AccountRole::Admin),
-            "bot" => query = query.with_flag(AccountFlag::Bot),
+            "bot" => query = query.with_account_type(AccountType::Bot),
             _ => {
                 return V2Response::ErrorNOK(ServiceError::BadRequest(
                     "Unknown Sudo list command".to_string(),
@@ -405,10 +353,7 @@ impl ProtocolV2Handler {
             "[{}]",
             accounts
                 .into_iter()
-                .map(|account| match account.subject_type {
-                    AuthSubject::Player { username, .. } => username,
-                    AuthSubject::Guest { guest_number } => format!("Guest{}", guest_number),
-                })
+                .map(|account| account.username)
                 .collect::<Vec<_>>()
                 .join(", ")
         );

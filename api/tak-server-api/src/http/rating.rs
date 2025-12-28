@@ -2,13 +2,12 @@ use axum::{
     Json,
     extract::{Path, State},
 };
-use tak_server_domain::{
-    ServiceError,
-    app::{AppState, Pagination, SortOrder},
-    player::{Player, PlayerFilter, PlayerFilterResult, PlayerSortBy},
-};
+use tak_server_app::domain::{Pagination, SortOrder};
 
-use crate::{MyServiceError, PaginatedResponse};
+use crate::{
+    app::ServiceError,
+    http::{AppState, PaginatedResponse},
+};
 
 #[derive(serde::Serialize, Clone)]
 pub struct JsonPlayerRatingResponse {
@@ -23,15 +22,57 @@ pub struct JsonPlayerRatingResponse {
 pub async fn get_rating_by_name(
     Path(name): Path<String>,
     State(app_state): State<AppState>,
-) -> Result<Json<JsonPlayerRatingResponse>, MyServiceError> {
-    let player: Player = app_state.player_service.get_player(&name).await?;
+) -> Result<Json<JsonPlayerRatingResponse>, ServiceError> {
+    let player_id = match app_state.acl.get_player_id_by_username(&name).await {
+        Some(id) => id,
+        None => {
+            return Err(ServiceError::NotFound(format!(
+                "Player with name '{}' not found",
+                name
+            )));
+        }
+    };
+    let rating = match app_state
+        .app
+        .player_get_rating_use_case
+        .get_rating(player_id)
+        .await
+    {
+        Some(rating) => rating,
+        None => {
+            return Err(ServiceError::NotFound(format!(
+                "Rating for player '{}' not found",
+                name
+            )));
+        }
+    };
+    let account_id = match app_state
+        .app
+        .player_resolver_service
+        .resolve_account_id_by_player_id(player_id)
+        .await
+    {
+        Ok(account) => account,
+        Err(()) => {
+            return Err(ServiceError::NotFound(format!(
+                "Account for player '{}' not found",
+                name
+            )));
+        }
+    };
+    let Some(account) = app_state.auth.get_account(account_id).await else {
+        return Err(ServiceError::NotFound(format!(
+            "Account for player '{}' not found",
+            name
+        )));
+    };
     let rating = JsonPlayerRatingResponse {
         name: name.clone(),
-        rating: player.rating.rating,
-        ratedgames: player.rating.rated_games_played as i32,
-        maxrating: player.rating.max_rating,
-        participation_rating: player.rating.participation_rating,
-        isbot: player.flags.is_bot,
+        rating: rating.rating,
+        ratedgames: rating.rated_games_played as i32,
+        maxrating: rating.max_rating,
+        participation_rating: rating.participation_rating,
+        isbot: account.is_bot(),
     };
 
     Ok(Json(rating))
@@ -40,7 +81,7 @@ pub async fn get_rating_by_name(
 pub async fn get_ratings(
     State(app_state): State<AppState>,
     Json(filter): Json<JsonRatingsFilter>,
-) -> Result<Json<PaginatedResponse<JsonPlayerRatingResponse>>, MyServiceError> {
+) -> Result<Json<PaginatedResponse<JsonPlayerRatingResponse>>, ServiceError> {
     let page = filter.page.unwrap_or(0);
     let limit = filter.limit.filter(|&l| l > 0).unwrap_or(50);
     let skip = filter.skip.unwrap_or(0);
@@ -59,9 +100,9 @@ pub async fn get_ratings(
                 "rating" => Some(Ok(PlayerSortBy::Rating)),
                 "participation_rating" => Some(Ok(PlayerSortBy::ParticipationRating)),
                 "id" => Some(Ok(PlayerSortBy::PlayerId)),
-                _ => Some(Err(MyServiceError(ServiceError::BadRequest(
+                _ => Some(Err(ServiceError::BadRequest(
                     "Invalid sort order".to_string(),
-                )))),
+                ))),
             }
         })
         .transpose()?
@@ -74,9 +115,9 @@ pub async fn get_ratings(
             "asc" => Some(Ok(SortOrder::Ascending)),
             "desc" => Some(Ok(SortOrder::Descending)),
             "" => None,
-            _ => Some(Err(MyServiceError(ServiceError::BadRequest(
+            _ => Some(Err(ServiceError::BadRequest(
                 "Invalid sort order".to_string(),
-            )))),
+            ))),
         })
         .transpose()?
         .unwrap_or(SortOrder::Descending);

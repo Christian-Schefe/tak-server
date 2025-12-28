@@ -10,11 +10,10 @@ use tak_core::{
     ptn::{action_from_ptn, action_to_ptn, game_state_from_string, game_state_to_string},
 };
 use tak_server_app::domain::{
-    FinishedGameId, GameType, PlayerId, SortOrder,
+    FinishedGameId, GameType, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError, SortOrder,
     game_history::{
         DateSelector, GameFilter, GameFilterResult, GameFinishedUpdate, GameIdSelector,
-        GamePlayerFilter, GameRatingInfo, GameRecord, GameRepoError, GameRepository, GameSortBy,
-        PlayerSnapshot, ReadGameError,
+        GamePlayerFilter, GameRatingInfo, GameRecord, GameRepository, GameSortBy, PlayerSnapshot,
     },
 };
 
@@ -55,6 +54,21 @@ impl GameRepositoryImpl {
     pub async fn new() -> Self {
         let db = create_db_pool().await;
         Self { db }
+    }
+
+    fn db_error_to_repo_error(e: sea_orm::DbErr) -> RepoUpdateError {
+        match e {
+            sea_orm::DbErr::RecordNotFound(_) | sea_orm::DbErr::RecordNotUpdated => {
+                RepoUpdateError::NotFound
+            }
+            e => match e.sql_err() {
+                Some(
+                    sea_orm::SqlErr::UniqueConstraintViolation(_)
+                    | sea_orm::SqlErr::ForeignKeyConstraintViolation(_),
+                ) => RepoUpdateError::Conflict,
+                _ => RepoUpdateError::StorageError(e.to_string()),
+            },
+        }
     }
 
     fn model_to_game(model: &game::Model) -> GameRecord {
@@ -130,7 +144,7 @@ impl GameRepositoryImpl {
 
 #[async_trait::async_trait]
 impl GameRepository for GameRepositoryImpl {
-    async fn save_ongoing_game(&self, game: GameRecord) -> Result<FinishedGameId, GameRepoError> {
+    async fn save_ongoing_game(&self, game: GameRecord) -> Result<FinishedGameId, RepoError> {
         let new_game = game::ActiveModel {
             id: Default::default(), // Auto-increment
             date: Set(game.date.clone()),
@@ -169,7 +183,7 @@ impl GameRepository for GameRepositoryImpl {
         let result = new_game
             .insert(&self.db)
             .await
-            .map_err(|e| GameRepoError::StorageError(e.to_string()))?;
+            .map_err(|e| RepoError::StorageError(e.to_string()))?;
 
         Ok(FinishedGameId(result.id))
     }
@@ -178,7 +192,7 @@ impl GameRepository for GameRepositoryImpl {
         &self,
         game_id: FinishedGameId,
         update: GameFinishedUpdate,
-    ) -> Result<(), GameRepoError> {
+    ) -> Result<(), RepoUpdateError> {
         let notation_val = update
             .moves
             .iter()
@@ -189,47 +203,46 @@ impl GameRepository for GameRepositoryImpl {
             })
             .collect::<Vec<_>>();
         let notation_str = serde_json::to_string(&notation_val)
-            .map_err(|e| GameRepoError::StorageError(e.to_string()))?;
+            .map_err(|e| RepoUpdateError::StorageError(e.to_string()))?;
 
         let result_val = game_state_to_string(&update.result);
 
-        let game = game::Entity::find_by_id(game_id.0)
-            .one(&self.db)
-            .await
-            .map_err(|e| GameRepoError::StorageError(e.to_string()))?
-            .ok_or_else(|| GameRepoError::StorageError("Game not found".to_string()))?;
+        let model = game::ActiveModel {
+            id: Set(game_id.0),
+            notation: Set(notation_str),
+            result: Set(result_val),
+            player_white_rating: Set(update.player_white.rating),
+            player_black_rating: Set(update.player_black.rating),
+            rating_change_white: Set(update
+                .rating_info
+                .as_ref()
+                .map(|info| info.rating_change_white)),
+            rating_change_black: Set(update
+                .rating_info
+                .as_ref()
+                .map(|info| info.rating_change_black)),
 
-        let mut game: game::ActiveModel = game.into();
-        game.notation = Set(notation_str);
-        game.result = Set(result_val);
-        game.player_white_rating = Set(update.player_white.rating);
-        game.player_black_rating = Set(update.player_black.rating);
-        game.rating_change_white = Set(update
-            .rating_info
-            .as_ref()
-            .map(|info| info.rating_change_white));
-        game.rating_change_black = Set(update
-            .rating_info
-            .as_ref()
-            .map(|info| info.rating_change_black));
+            ..Default::default()
+        };
 
-        game.update(&self.db)
+        model
+            .update(&self.db)
             .await
-            .map_err(|e| GameRepoError::StorageError(e.to_string()))?;
+            .map_err(Self::db_error_to_repo_error)?;
 
         Ok(())
     }
 
-    async fn get_game_record(&self, id: FinishedGameId) -> Result<GameRecord, ReadGameError> {
+    async fn get_game_record(&self, id: FinishedGameId) -> Result<GameRecord, RepoRetrieveError> {
         let model = game::Entity::find_by_id(id.0)
             .one(&self.db)
             .await
-            .map_err(|e| ReadGameError::StorageError(e.to_string()))?
-            .ok_or(ReadGameError::NotFound)?;
+            .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?
+            .ok_or(RepoRetrieveError::NotFound)?;
         Ok(Self::model_to_game(&model))
     }
 
-    async fn get_games(&self, filter: GameFilter) -> Result<GameFilterResult, GameRepoError> {
+    async fn get_games(&self, filter: GameFilter) -> Result<GameFilterResult, RepoError> {
         let mut query = game::Entity::find();
         if let Some(game_id_selector) = filter.id_selector {
             query = match game_id_selector {
@@ -320,7 +333,7 @@ impl GameRepository for GameRepositoryImpl {
             .clone()
             .count(&self.db)
             .await
-            .map_err(|e| GameRepoError::StorageError(e.to_string()))?;
+            .map_err(|e| RepoError::StorageError(e.to_string()))?;
 
         if let Some((sort_order, sort_by)) = filter.sort {
             query = match (sort_by, sort_order) {
@@ -345,7 +358,7 @@ impl GameRepository for GameRepositoryImpl {
         let models = query
             .all(&self.db)
             .await
-            .map_err(|e| GameRepoError::StorageError(e.to_string()))?;
+            .map_err(|e| RepoError::StorageError(e.to_string()))?;
 
         let mut results = Vec::new();
         for model in models {

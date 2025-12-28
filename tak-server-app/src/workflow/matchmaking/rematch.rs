@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use crate::{
-    domain::{MatchId, PlayerId, r#match::MatchService},
+    domain::{
+        MatchId, PlayerId,
+        r#match::{MatchService, RequestRematchError},
+    },
     workflow::matchmaking::create_game::CreateGameFromMatchWorkflow,
 };
 
@@ -11,7 +14,7 @@ pub trait RematchUseCase {
         &self,
         match_id: MatchId,
         player: PlayerId,
-    ) -> Result<(), RematchError>;
+    ) -> Result<(), RequestRematchError>;
 }
 
 pub struct RematchUseCaseImpl<M: MatchService, C: CreateGameFromMatchWorkflow> {
@@ -28,12 +31,6 @@ impl<M: MatchService, C: CreateGameFromMatchWorkflow> RematchUseCaseImpl<M, C> {
     }
 }
 
-pub enum RematchError {
-    MatchNotFound,
-    NotParticipant,
-    RematchAlreadyAccepted,
-}
-
 #[async_trait::async_trait]
 impl<
     M: MatchService + Send + Sync + 'static,
@@ -44,22 +41,13 @@ impl<
         &self,
         match_id: MatchId,
         player: PlayerId,
-    ) -> Result<(), RematchError> {
-        let should_create_game = match self
+    ) -> Result<(), RequestRematchError> {
+        let should_create_game = self
             .match_service
-            .request_or_accept_rematch(match_id, player)
-        {
-            Ok(s) => s,
-            Err(crate::domain::r#match::RematchError::MatchNotFound) => {
-                return Err(RematchError::MatchNotFound);
-            }
-            Err(crate::domain::r#match::RematchError::InvalidPlayer) => {
-                return Err(RematchError::NotParticipant);
-            }
-        };
+            .request_or_accept_rematch(match_id, player)?;
         if should_create_game {
             let Some(match_entry) = self.match_service.get_match(match_id) else {
-                return Err(RematchError::MatchNotFound);
+                return Err(RequestRematchError::MatchNotFound);
             };
             self.create_game_workflow
                 .create_game_from_match(&match_entry)

@@ -3727,6 +3727,7 @@ dependencies = [
  "jsonwebtoken",
  "log",
  "more-dashmap",
+ "passwords",
  "serde",
  "serde_json",
  "tak-core",

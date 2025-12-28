@@ -47,7 +47,7 @@ pub trait MatchService {
         &self,
         match_id: MatchId,
         player: PlayerId,
-    ) -> Result<bool, RematchError>;
+    ) -> Result<bool, RequestRematchError>;
     fn retract_rematch_request(
         &self,
         match_id: MatchId,
@@ -56,7 +56,7 @@ pub trait MatchService {
     fn cleanup_old_matches(&self, now: Instant);
 }
 
-pub enum RematchError {
+pub enum RequestRematchError {
     MatchNotFound,
     InvalidPlayer,
 }
@@ -145,10 +145,10 @@ impl MatchService for MatchServiceImpl {
         &self,
         match_id: MatchId,
         player: PlayerId,
-    ) -> Result<bool, RematchError> {
+    ) -> Result<bool, RequestRematchError> {
         if let Some(mut match_entry) = self.matches.get_mut(&match_id) {
             if match_entry.player1 != player && match_entry.player2 != player {
-                return Err(RematchError::InvalidPlayer);
+                return Err(RequestRematchError::InvalidPlayer);
             }
             if let Some(requester) = match_entry.rematch_requested_by {
                 if requester != player {
@@ -162,7 +162,7 @@ impl MatchService for MatchServiceImpl {
                 return Ok(false);
             }
         }
-        Err(RematchError::MatchNotFound)
+        Err(RequestRematchError::MatchNotFound)
     }
 
     fn retract_rematch_request(

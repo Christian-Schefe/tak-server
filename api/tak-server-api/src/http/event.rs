@@ -1,9 +1,9 @@
 use std::sync::{LazyLock, RwLock};
 
 use axum::{Json, extract::State};
-use tak_server_domain::{app::AppState, event::Event};
+use tak_server_app::{domain::event::Event, workflow::events::list::ListEventsError};
 
-use crate::MyServiceError;
+use crate::{app::ServiceError, http::AppState};
 
 #[derive(serde::Serialize, Clone)]
 pub struct JsonEventResponse {
@@ -46,7 +46,7 @@ static EVENT_CACHE: LazyLock<RwLock<Option<EventCacheValue>>> = LazyLock::new(||
 
 pub async fn get_all_events(
     State(app_state): State<AppState>,
-) -> Result<Json<JsonEventResponse>, MyServiceError> {
+) -> Result<Json<JsonEventResponse>, ServiceError> {
     if let Some(cached) = EVENT_CACHE.read().unwrap().as_ref()
         && cached.timestamp.elapsed() < std::time::Duration::from_secs(300)
     {
@@ -54,10 +54,13 @@ pub async fn get_all_events(
     }
 
     let events = app_state
-        .event_service
+        .app
+        .event_list_use_case
         .list_events()
         .await
-        .map_err(MyServiceError::from)?;
+        .map_err(|ListEventsError::RepositoryError| {
+            ServiceError::Internal("Failed to retrieve events".to_string())
+        })?;
 
     let categories: Vec<String> = {
         let mut cats: Vec<String> = events

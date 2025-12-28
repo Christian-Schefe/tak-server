@@ -16,7 +16,7 @@ use tak_server_app::domain::{
 };
 
 impl ProtocolV2Handler {
-    pub fn send_draw_offer_message(&self, id: ListenerId, game_id: &GameId, offer: bool) {
+    pub fn send_draw_offer_message(&self, id: ListenerId, game_id: GameId, offer: bool) {
         let message = format!(
             "Game#{} {}",
             game_id,
@@ -25,7 +25,7 @@ impl ProtocolV2Handler {
         self.send_to(id, message);
     }
 
-    pub fn send_undo_request_message(&self, id: ListenerId, game_id: &GameId, offer: bool) {
+    pub fn send_undo_request_message(&self, id: ListenerId, game_id: GameId, offer: bool) {
         let message = format!(
             "Game#{} {}",
             game_id,
@@ -34,7 +34,7 @@ impl ProtocolV2Handler {
         self.send_to(id, message);
     }
 
-    pub fn send_undo_message(&self, id: ListenerId, game_id: &GameId) {
+    pub fn send_undo_message(&self, id: ListenerId, game_id: GameId) {
         let message = format!("Game#{} Undo", game_id);
         self.send_to(id, message);
     }
@@ -69,7 +69,7 @@ impl ProtocolV2Handler {
     pub fn send_game_over_message(
         &self,
         id: ListenerId,
-        game_id: &GameId,
+        game_id: GameId,
         game_state: &TakGameState,
     ) {
         if *game_state == TakGameState::Ongoing {
@@ -205,6 +205,7 @@ impl ProtocolV2Handler {
                 .app
                 .game_do_action_use_case
                 .request_undo(game_id, player_id)
+                .await
             {
                 Ok(_) => {}
                 Err(RequestUndoError::GameNotFound) => {
@@ -233,6 +234,7 @@ impl ProtocolV2Handler {
                 .app
                 .game_do_action_use_case
                 .retract_undo_request(game_id, player_id)
+                .await
             {
                 Ok(_) => {}
                 Err(RequestUndoError::GameNotFound) => {
@@ -406,7 +408,7 @@ impl ProtocolV2Handler {
     pub fn send_game_action_message(
         &self,
         id: ListenerId,
-        game_id: &GameId,
+        game_id: GameId,
         action: &TakActionRecord,
     ) {
         let message = match &action.action {

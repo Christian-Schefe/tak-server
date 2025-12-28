@@ -1,43 +1,19 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use uuid::Uuid;
 
-use crate::domain::{
-    AccountId, PlayerId, RepoCreateError, RepoError, RepoRetrieveError, RepoUpdateError,
-};
+use crate::domain::PlayerId;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Player {
     pub player_id: PlayerId,
-    pub account_id: Option<AccountId>,
 }
 
 impl Player {
-    pub fn new(account_id: Option<AccountId>) -> Self {
+    pub fn new() -> Self {
         Self {
-            player_id: PlayerId(Uuid::new_v4()),
-            account_id,
+            player_id: PlayerId(uuid::Uuid::new_v4()),
         }
     }
-}
-
-#[async_trait::async_trait]
-pub trait PlayerRepository {
-    async fn create_player(&self, player: Player) -> Result<(), RepoCreateError>;
-    async fn delete_player(&self, player_id: PlayerId) -> Result<(), RepoRetrieveError>;
-    async fn get_player(&self, player_id: PlayerId) -> Result<Player, RepoRetrieveError>;
-    async fn get_or_create_player_by_account_id(
-        &self,
-        account_id: AccountId,
-        create_fn: impl Fn() -> Player + Send + 'static,
-    ) -> Result<Player, RepoError>;
-    async fn link_account(
-        &self,
-        player_id: PlayerId,
-        account_id: AccountId,
-    ) -> Result<(), RepoUpdateError>;
-    async fn unlink_account(&self, player_id: PlayerId) -> Result<(), RepoUpdateError>;
 }
 
 pub trait PlayerService {

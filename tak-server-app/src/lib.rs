@@ -4,20 +4,20 @@ use tokio::task::JoinHandle;
 
 use crate::{
     domain::{
-        account::{AdminAccountPolicy, HigherRoleAccountPolicy, ModeratorAccountPolicy},
         chat::{ChatRoomServiceImpl, RustrictContentPolicy},
         event::EventRepository,
         game::GameServiceImpl,
         game_history::{GameHistoryServiceImpl, GameRepository},
         r#match::MatchServiceImpl,
-        player::{PlayerRepository, PlayerServiceImpl},
+        moderation::{AdminAccountPolicy, HigherRoleAccountPolicy, ModeratorAccountPolicy},
+        player::PlayerServiceImpl,
         rating::{RatingRepository, RatingServiceImpl},
         seek::SeekServiceImpl,
         spectator::SpectatorServiceImpl,
     },
     ports::{
         authentication::AuthenticationPort, connection::PlayerConnectionPort, email::EmailPort,
-        notification::ListenerNotificationPort,
+        notification::ListenerNotificationPort, player_mapping::PlayerAccountMappingRepository,
     },
     processes::game_timeout_runner::GameTimeoutRunnerImpl,
     services::player_resolver::{PlayerResolverService, PlayerResolverServiceImpl},
@@ -25,7 +25,7 @@ use crate::{
         account::{
             get_snapshot::{GetSnapshotWorkflow, GetSnapshotWorkflowImpl},
             get_username::{GetUsernameWorkflow, GetUsernameWorkflowImpl},
-            moderate::{ModeratePlayerUseCase, ModeratePlayerUseCaseImpl},
+            moderate::{ModeratePlayerUseCase, ModeratePlayerUseCaseImpl, ModerationPolicies},
         },
         chat::{
             message::{ChatMessageUseCase, ChatMessageUseCaseImpl},
@@ -40,6 +40,7 @@ use crate::{
             observe::{ObserveGameUseCase, ObserveGameUseCaseImpl},
             timeout::ObserveGameTimeoutUseCaseImpl,
         },
+        history::query::{GameHistoryQueryUseCase, GameHistoryQueryUseCaseImpl},
         matchmaking::{
             accept::{AcceptSeekUseCase, AcceptSeekUseCaseImpl},
             cancel::{CancelSeekUseCase, CancelSeekUseCaseImpl},
@@ -50,7 +51,10 @@ use crate::{
             list::{ListSeeksUseCase, ListSeeksUseCaseImpl},
             rematch::{RematchUseCase, RematchUseCaseImpl},
         },
-        player::set_online::{SetPlayerOnlineUseCase, SetPlayerOnlineUseCaseImpl},
+        player::{
+            get_rating::{PlayerGetRatingUseCase, PlayerGetRatingUseCaseImpl},
+            set_online::{SetPlayerOnlineUseCase, SetPlayerOnlineUseCaseImpl},
+        },
     },
 };
 
@@ -71,12 +75,15 @@ pub struct Application {
     pub match_rematch_use_case: Box<dyn RematchUseCase + Send + Sync + 'static>,
 
     pub player_set_online_use_case: Box<dyn SetPlayerOnlineUseCase + Send + Sync + 'static>,
+    pub player_get_rating_use_case: Box<dyn PlayerGetRatingUseCase + Send + Sync + 'static>,
     pub player_resolver_service: Arc<dyn PlayerResolverService + Send + Sync + 'static>,
 
     pub game_do_action_use_case: Box<dyn DoActionUseCase + Send + Sync + 'static>,
     pub game_get_ongoing_use_case: Box<dyn GetOngoingGameUseCase + Send + Sync + 'static>,
     pub game_list_ongoing_use_case: Box<dyn ListOngoingGameUseCase + Send + Sync + 'static>,
     pub game_observe_use_case: Box<dyn ObserveGameUseCase + Send + Sync + 'static>,
+
+    pub game_history_query_use_case: Box<dyn GameHistoryQueryUseCase + Send + Sync + 'static>,
 
     pub chat_message_use_case: Box<dyn ChatMessageUseCase + Send + Sync + 'static>,
     pub chat_room_use_case: Box<dyn ChatRoomUseCase + Send + Sync + 'static>,
@@ -97,7 +104,7 @@ pub async fn build_application<
     AS: AuthenticationPort + Send + Sync + 'static,
     E: EmailPort + Send + Sync + 'static,
     ER: EventRepository + Send + Sync + 'static,
-    PR: PlayerRepository + Send + Sync + 'static,
+    PR: PlayerAccountMappingRepository + Send + Sync + 'static,
 >(
     game_repository: Arc<G>,
     player_repository: Arc<PR>,
@@ -118,13 +125,14 @@ pub async fn build_application<
     let chat_content_policy = Arc::new(RustrictContentPolicy::new());
     let match_service = Arc::new(MatchServiceImpl::new());
 
-    let ban_policy = Arc::new(AdminAccountPolicy);
-    let kick_policy = Arc::new(ModeratorAccountPolicy);
-    let silence_policy = Arc::new(ModeratorAccountPolicy);
-    let set_bot_policy = Arc::new(AdminAccountPolicy);
-    let set_moderator_policy = Arc::new(HigherRoleAccountPolicy);
-    let set_admin_policy = Arc::new(HigherRoleAccountPolicy);
-    let set_user_policy = Arc::new(HigherRoleAccountPolicy);
+    let policies = ModerationPolicies {
+        ban_policy: Arc::new(AdminAccountPolicy),
+        kick_policy: Arc::new(ModeratorAccountPolicy),
+        silence_policy: Arc::new(ModeratorAccountPolicy),
+        set_moderator_policy: Arc::new(HigherRoleAccountPolicy),
+        set_admin_policy: Arc::new(HigherRoleAccountPolicy),
+        set_user_policy: Arc::new(HigherRoleAccountPolicy),
+    };
 
     let get_username_workflow = Arc::new(GetUsernameWorkflowImpl::new(
         authentication_service.clone(),
@@ -194,6 +202,9 @@ pub async fn build_application<
             player_service.clone(),
             listener_notification_port.clone(),
         )),
+        player_get_rating_use_case: Box::new(PlayerGetRatingUseCaseImpl::new(
+            rating_repository.clone(),
+        )),
         player_resolver_service: Arc::new(PlayerResolverServiceImpl::new(
             player_repository.clone(),
         )),
@@ -211,6 +222,10 @@ pub async fn build_application<
             spectator_service.clone(),
         )),
 
+        game_history_query_use_case: Box::new(GameHistoryQueryUseCaseImpl::new(
+            game_repository.clone(),
+        )),
+
         chat_message_use_case: Box::new(ChatMessageUseCaseImpl::new(
             listener_notification_port.clone(),
             player_connection_port.clone(),
@@ -221,13 +236,7 @@ pub async fn build_application<
 
         account_moderate_use_case: Box::new(ModeratePlayerUseCaseImpl::new(
             email_port.clone(),
-            kick_policy.clone(),
-            ban_policy.clone(),
-            silence_policy.clone(),
-            set_bot_policy.clone(),
-            set_moderator_policy.clone(),
-            set_admin_policy.clone(),
-            set_user_policy.clone(),
+            policies,
             player_repository.clone(),
             authentication_service.clone(),
         )),

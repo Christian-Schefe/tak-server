@@ -6,10 +6,9 @@ pub enum AccountRole {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum AccountFlag {
+pub enum ModerationFlag {
     Banned,
     Silenced,
-    Bot,
 }
 
 pub trait PermissionPolicy {
