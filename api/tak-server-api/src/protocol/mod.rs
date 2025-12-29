@@ -67,7 +67,7 @@ impl ProtocolService {
         &self,
         protocol: &Protocol,
         id: ListenerId,
-        account_id: AccountId,
+        account_id: &AccountId,
     ) {
         match protocol {
             Protocol::V0 | Protocol::V2 => self.handler_v2.on_authenticated(id, account_id).await,

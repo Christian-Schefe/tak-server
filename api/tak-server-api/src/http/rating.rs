@@ -2,7 +2,10 @@ use axum::{
     Json,
     extract::{Path, State},
 };
-use tak_server_app::domain::{Pagination, SortOrder};
+use tak_server_app::domain::{
+    Pagination, RepoError, SortOrder,
+    rating::{RatingQuery, RatingSortBy},
+};
 
 use crate::{
     app::ServiceError,
@@ -60,7 +63,7 @@ pub async fn get_rating_by_name(
             )));
         }
     };
-    let Some(account) = app_state.auth.get_account(account_id).await else {
+    let Some(account) = app_state.auth.get_account(&account_id).await else {
         return Err(ServiceError::NotFound(format!(
             "Account for player '{}' not found",
             name
@@ -97,16 +100,17 @@ pub async fn get_ratings(
             let sort_str = sort_str.trim().to_lowercase();
             match sort_str.as_str() {
                 "" => None,
-                "rating" => Some(Ok(PlayerSortBy::Rating)),
-                "participation_rating" => Some(Ok(PlayerSortBy::ParticipationRating)),
-                "id" => Some(Ok(PlayerSortBy::PlayerId)),
+                "rating" => Some(Ok(RatingSortBy::Rating)),
+                "participation_rating" => Some(Ok(RatingSortBy::ParticipationRating)),
+                "max_rating" => Some(Ok(RatingSortBy::MaxRating)),
+                "rated_games" => Some(Ok(RatingSortBy::RatedGames)),
                 _ => Some(Err(ServiceError::BadRequest(
                     "Invalid sort order".to_string(),
                 ))),
             }
         })
         .transpose()?
-        .unwrap_or(PlayerSortBy::ParticipationRating);
+        .unwrap_or(RatingSortBy::ParticipationRating);
 
     let order = filter
         .order
@@ -122,26 +126,49 @@ pub async fn get_ratings(
         .transpose()?
         .unwrap_or(SortOrder::Descending);
 
-    let filter = PlayerFilter {
+    let query = RatingQuery {
         pagination,
         sort: Some((order, sort)),
-        id: filter.id.map(|id| id.into()),
-        username: filter.name,
         ..Default::default()
     };
 
-    let res: PlayerFilterResult = app_state.player_service.get_players(filter).await?;
+    let res = match app_state
+        .app
+        .player_get_rating_use_case
+        .query_ratings(query)
+        .await
+    {
+        Ok(result) => result,
+        Err(RepoError::StorageError(_)) => {
+            return Err(ServiceError::Internal("Error querying ratings".to_string()));
+        }
+    };
 
-    let ratings: Vec<JsonPlayerRatingResponse> = res
-        .players
+    let mut username_futures = Vec::new();
+    for rating in res.items.iter() {
+        let username = app_state
+            .app
+            .get_account_workflow
+            .get_account(rating.player_id);
+        username_futures.push(username);
+    }
+    let usernames = futures::future::join_all(username_futures).await;
+    let ratings_with_usernames = res
+        .items
         .into_iter()
-        .map(|(_, player)| JsonPlayerRatingResponse {
-            name: player.username.clone(),
-            rating: player.rating.rating,
-            ratedgames: player.rating.rated_games_played as i32,
-            maxrating: player.rating.max_rating,
-            participation_rating: player.rating.participation_rating,
-            isbot: player.flags.is_bot,
+        .zip(usernames.into_iter())
+        .filter_map(|(rating, account)| account.ok().map(|account| (rating, account)))
+        .collect::<Vec<_>>();
+
+    let ratings: Vec<JsonPlayerRatingResponse> = ratings_with_usernames
+        .into_iter()
+        .map(|(rating, account)| JsonPlayerRatingResponse {
+            isbot: account.is_bot(),
+            name: account.username,
+            rating: rating.rating,
+            ratedgames: rating.rated_games_played as i32,
+            maxrating: rating.max_rating,
+            participation_rating: rating.participation_rating,
         })
         .collect();
 
@@ -166,6 +193,4 @@ pub struct JsonRatingsFilter {
     skip: Option<usize>,
     order: Option<String>,
     sort: Option<String>,
-    id: Option<i64>,
-    name: Option<String>,
 }

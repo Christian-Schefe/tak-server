@@ -12,8 +12,7 @@ use tak_server_app::{
     domain::{
         FinishedGameId, GameType, Pagination, SortOrder,
         game_history::{
-            DateSelector, GameFilter, GameFilterResult, GameIdSelector, GamePlayerFilter,
-            GameRecord, GameSortBy,
+            DateSelector, GameIdSelector, GamePlayerFilter, GameQuery, GameRecord, GameSortBy,
         },
     },
     workflow::history::query::GameQueryError,
@@ -216,7 +215,7 @@ pub async fn get_all(
         .extra_time_amount
         .map(|x| Duration::from_secs(x as u64));
 
-    let mut game_filter = GameFilter {
+    let mut game_filter = GameQuery {
         id_selector,
         date_selector,
         player_white: filter.player_white.map(|s| GamePlayerFilter::Contains(s)),
@@ -248,7 +247,7 @@ pub async fn get_all(
         });
     }
 
-    let res: GameFilterResult = match app_state
+    let res = match app_state
         .app
         .game_history_query_use_case
         .query_games(game_filter)
@@ -263,7 +262,7 @@ pub async fn get_all(
     let total = res.total_count;
     Ok(Json(PaginatedResponse {
         items: res
-            .games
+            .items
             .into_iter()
             .map(|(id, record)| JsonGameRecord::from_game_record(id, &record))
             .collect(),

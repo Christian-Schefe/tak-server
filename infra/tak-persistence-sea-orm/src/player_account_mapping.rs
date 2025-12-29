@@ -55,9 +55,9 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
             let account_id = AccountId(model.account_id);
             futures::join!(
                 self.player_id_to_account_id_cache
-                    .insert(player_id, account_id),
+                    .insert(player_id, account_id.clone()),
                 self.account_id_to_player_id_cache
-                    .insert(account_id, player_id)
+                    .insert(account_id.clone(), player_id)
             );
             Ok(account_id)
         } else {
@@ -67,19 +67,20 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
 
     async fn get_or_create_player_id(
         &self,
-        account_id: AccountId,
+        account_id: &AccountId,
         create_fn: impl FnOnce() -> PlayerId + Send + 'static,
     ) -> Result<PlayerId, RepoError> {
-        if let Some(player_id) = self.account_id_to_player_id_cache.get(&account_id).await {
+        if let Some(player_id) = self.account_id_to_player_id_cache.get(account_id).await {
             return Ok(player_id);
         }
 
+        let acc_id_str = account_id.0.clone();
         let res = self
             .db
             .transaction::<_, PlayerId, RepoError>(|c| {
                 Box::pin(async move {
                     let player_model = player_account_mapping::Entity::find()
-                        .filter(player_account_mapping::Column::AccountId.eq(account_id.0))
+                        .filter(player_account_mapping::Column::AccountId.eq(acc_id_str.clone()))
                         .one(c)
                         .await
                         .map_err(|e| RepoError::StorageError(e.to_string()))?;
@@ -91,7 +92,7 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
                         let new_player_id = create_fn();
                         let active_model = player_account_mapping::ActiveModel {
                             player_id: Set(new_player_id.0),
-                            account_id: Set(account_id.0),
+                            account_id: Set(acc_id_str),
                         };
                         active_model
                             .insert(c)
@@ -106,9 +107,9 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
             Ok(player_id) => {
                 futures::join!(
                     self.account_id_to_player_id_cache
-                        .insert(account_id, player_id),
+                        .insert(account_id.clone(), player_id),
                     self.player_id_to_account_id_cache
-                        .insert(player_id, account_id)
+                        .insert(player_id, account_id.clone())
                 );
                 Ok(player_id)
             }

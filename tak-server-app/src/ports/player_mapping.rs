@@ -4,7 +4,7 @@ use crate::domain::{AccountId, PlayerId, RepoError, RepoRetrieveError};
 pub trait PlayerAccountMappingRepository {
     async fn get_or_create_player_id(
         &self,
-        account_id: AccountId,
+        account_id: &AccountId,
         create_fn: impl FnOnce() -> PlayerId + Send + 'static,
     ) -> Result<PlayerId, RepoError>;
     async fn get_account_id(&self, player_id: PlayerId) -> Result<AccountId, RepoRetrieveError>;

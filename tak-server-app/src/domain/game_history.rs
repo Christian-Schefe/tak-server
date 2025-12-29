@@ -5,8 +5,8 @@ use dashmap::DashMap;
 use tak_core::{TakActionRecord, TakGameSettings, TakGameState};
 
 use crate::domain::{
-    FinishedGameId, GameId, GameType, Pagination, PlayerId, RepoError, RepoRetrieveError,
-    RepoUpdateError, SortOrder, game::Game,
+    FinishedGameId, GameId, GameType, PaginatedResponse, Pagination, PlayerId, RepoError,
+    RepoRetrieveError, RepoUpdateError, SortOrder, game::Game,
 };
 
 pub struct GameRecord {
@@ -42,7 +42,7 @@ pub struct GameRatingInfo {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct GameFilter {
+pub struct GameQuery {
     pub id_selector: Option<GameIdSelector>,
     pub date_selector: Option<DateSelector>,
     pub player_white: Option<GamePlayerFilter>,
@@ -106,12 +106,10 @@ pub trait GameRepository {
         &self,
         game_id: FinishedGameId,
     ) -> Result<GameRecord, RepoRetrieveError>;
-    async fn get_games(&self, filter: GameFilter) -> Result<GameFilterResult, RepoError>;
-}
-
-pub struct GameFilterResult {
-    pub total_count: usize,
-    pub games: Vec<(FinishedGameId, GameRecord)>,
+    async fn query_games(
+        &self,
+        query: GameQuery,
+    ) -> Result<PaginatedResponse<(FinishedGameId, GameRecord)>, RepoError>;
 }
 
 pub trait GameHistoryService {

@@ -4,11 +4,13 @@ use chrono::{DateTime, Utc};
 use tak_core::{TakActionRecord, TakGameSettings, TakGameState, TakPlayer};
 
 use crate::domain::{
-    GameType, PlayerId, RepoError, RepoUpdateError, game::Game, game_history::GameRatingInfo,
+    GameType, PaginatedResponse, Pagination, PlayerId, RepoError, RepoUpdateError, SortOrder,
+    game::Game, game_history::GameRatingInfo,
 };
 
 #[derive(Clone, Debug)]
 pub struct PlayerRating {
+    pub player_id: PlayerId,
     pub rating: f64,
     pub boost: f64,
     pub max_rating: f64,
@@ -20,8 +22,9 @@ pub struct PlayerRating {
 }
 
 impl PlayerRating {
-    pub fn new() -> Self {
+    pub fn new(player_id: PlayerId) -> Self {
         Self {
+            player_id,
             rating: 1000.0,
             boost: 750.0,
             max_rating: 1000.0,
@@ -41,6 +44,10 @@ pub trait RatingRepository {
         player_id: PlayerId,
         create_fn: impl Fn() -> PlayerRating + Send + 'static,
     ) -> Result<PlayerRating, RepoError>;
+    async fn query_ratings(
+        &self,
+        query: RatingQuery,
+    ) -> Result<PaginatedResponse<PlayerRating>, RepoError>;
     async fn update_player_ratings<R: Send + 'static>(
         &self,
         white: PlayerId,
@@ -49,6 +56,20 @@ pub trait RatingRepository {
         + Send
         + 'static,
     ) -> Result<R, RepoUpdateError>;
+}
+
+#[derive(Debug, Clone)]
+pub enum RatingSortBy {
+    Rating,
+    RatedGames,
+    MaxRating,
+    ParticipationRating,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RatingQuery {
+    pub pagination: Pagination,
+    pub sort: Option<(SortOrder, RatingSortBy)>,
 }
 
 pub trait RatingService {

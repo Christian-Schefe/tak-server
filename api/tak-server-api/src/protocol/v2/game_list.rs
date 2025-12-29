@@ -136,12 +136,18 @@ impl ProtocolV2Handler {
             .await
             .ok();
         let is_white_bot = if let Some(aid) = white_account_id {
-            self.auth.get_account(aid).await.is_some_and(|a| a.is_bot())
+            self.auth
+                .get_account(&aid)
+                .await
+                .is_some_and(|a| a.is_bot())
         } else {
             false
         };
         let is_black_bot = if let Some(aid) = black_account_id {
-            self.auth.get_account(aid).await.is_some_and(|a| a.is_bot())
+            self.auth
+                .get_account(&aid)
+                .await
+                .is_some_and(|a| a.is_bot())
         } else {
             false
         };

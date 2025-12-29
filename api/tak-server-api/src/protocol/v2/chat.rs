@@ -19,9 +19,11 @@ impl ProtocolV2Handler {
     ) {
         let Some(username) = self
             .app
-            .get_username_workflow
-            .get_username(from_player_id)
+            .get_account_workflow
+            .get_account(from_player_id)
             .await
+            .ok()
+            .map(|a| a.username)
         else {
             error!(
                 "Failed to get username for player ID {} when handling chat message",
@@ -74,15 +76,15 @@ impl ProtocolV2Handler {
                 "Invalid Shout message format".to_string(),
             ));
         }
-        let Some(account) = self.auth.get_account(account_id).await else {
+        let Some(account) = self.auth.get_account(&account_id).await else {
             return V2Response::ErrorNOK(ServiceError::Internal(
                 "Failed to retrieve account information".to_string(),
             ));
         };
         if account.is_flagged(ModerationFlag::Silenced) {
-            let username = match self.app.get_username_workflow.get_username(player_id).await {
-                Some(name) => name,
-                None => {
+            let username = match self.app.get_account_workflow.get_account(player_id).await {
+                Ok(account) => account.username,
+                Err(_) => {
                     return V2Response::ErrorNOK(ServiceError::Internal(
                         "Failed to retrieve username".to_string(),
                     ));
@@ -118,15 +120,15 @@ impl ProtocolV2Handler {
         }
         let room = parts[1].to_string();
 
-        let Some(account) = self.auth.get_account(account_id).await else {
+        let Some(account) = self.auth.get_account(&account_id).await else {
             return V2Response::ErrorNOK(ServiceError::Internal(
                 "Failed to retrieve account information".to_string(),
             ));
         };
         if account.is_flagged(ModerationFlag::Silenced) {
-            let username = match self.app.get_username_workflow.get_username(player_id).await {
-                Some(name) => name,
-                None => {
+            let username = match self.app.get_account_workflow.get_account(player_id).await {
+                Ok(account) => account.username,
+                Err(_) => {
                     return V2Response::ErrorNOK(ServiceError::Internal(
                         "Failed to retrieve username".to_string(),
                     ));
@@ -167,7 +169,7 @@ impl ProtocolV2Handler {
                 target_username
             )));
         };
-        let Some(account) = self.auth.get_account(account_id).await else {
+        let Some(account) = self.auth.get_account(&account_id).await else {
             return V2Response::ErrorNOK(ServiceError::Internal(
                 "Failed to retrieve account information".to_string(),
             ));

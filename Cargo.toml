@@ -15,6 +15,7 @@ members = [
     "infra/tak-persistence-sea-orm",
     "infra/tak-email-lettre",
     "infra/tak-events-google-sheets",
+    "infra/tak-auth-ory",
 ]
 
 [dependencies]
@@ -24,6 +25,7 @@ log4rs = { version = "1.4.0", features = ["gzip"] }
 tak-events-google-sheets = { path = "./infra/tak-events-google-sheets" }
 tak-persistence-sea-orm = { path = "./infra/tak-persistence-sea-orm" }
 tak-email-lettre = { path = "./infra/tak-email-lettre" }
+tak-auth-ory = { path = "./infra/tak-auth-ory" }
 tak-server-api = { path = "./api/tak-server-api" }
 tak-server-app = { path = "./tak-server-app" }
 tokio = { version = "1.47.1", features = ["full"] }

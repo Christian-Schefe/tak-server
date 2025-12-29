@@ -163,13 +163,13 @@ impl ProtocolV2Handler {
                 let online_message = format!("Online {}", players.len());
                 let mut username_futures = Vec::new();
                 for pid in players {
-                    let username = self.app.get_username_workflow.get_username(*pid);
+                    let username = self.app.get_account_workflow.get_account(*pid);
                     username_futures.push(username);
                 }
                 let usernames = futures::future::join_all(username_futures)
                     .await
                     .into_iter()
-                    .filter_map(|x| x)
+                    .filter_map(|x| x.ok().map(|a| a.username))
                     .collect::<Vec<_>>();
                 let players_message = format!(
                     "OnlinePlayers {}",
@@ -202,7 +202,7 @@ impl ProtocolV2Handler {
         }
     }
 
-    pub async fn on_authenticated(&self, id: ListenerId, account_id: AccountId) {
+    pub async fn on_authenticated(&self, id: ListenerId, account_id: &AccountId) {
         let player_id = self
             .app
             .player_resolver_service

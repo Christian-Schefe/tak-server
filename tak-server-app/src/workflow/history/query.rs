@@ -1,15 +1,18 @@
 use std::sync::Arc;
 
 use crate::domain::{
-    FinishedGameId, RepoError, RepoRetrieveError,
-    game_history::{GameFilter, GameFilterResult, GameRecord, GameRepository},
+    FinishedGameId, PaginatedResponse, RepoError, RepoRetrieveError,
+    game_history::{GameQuery, GameRecord, GameRepository},
 };
 
 #[async_trait::async_trait]
 pub trait GameHistoryQueryUseCase {
     async fn get_game(&self, game_id: FinishedGameId)
     -> Result<Option<GameRecord>, GameQueryError>;
-    async fn query_games(&self, filter: GameFilter) -> Result<GameFilterResult, GameQueryError>;
+    async fn query_games(
+        &self,
+        filter: GameQuery,
+    ) -> Result<PaginatedResponse<(FinishedGameId, GameRecord)>, GameQueryError>;
 }
 
 pub enum GameQueryError {
@@ -30,8 +33,11 @@ impl<G: GameRepository> GameHistoryQueryUseCaseImpl<G> {
 impl<G: GameRepository + Send + Sync + 'static> GameHistoryQueryUseCase
     for GameHistoryQueryUseCaseImpl<G>
 {
-    async fn query_games(&self, filter: GameFilter) -> Result<GameFilterResult, GameQueryError> {
-        match self.game_repository.get_games(filter).await {
+    async fn query_games(
+        &self,
+        filter: GameQuery,
+    ) -> Result<PaginatedResponse<(FinishedGameId, GameRecord)>, GameQueryError> {
+        match self.game_repository.query_games(filter).await {
             Ok(result) => Ok(result),
             Err(RepoError::StorageError(e)) => {
                 log::error!("Error querying games: {}", e);

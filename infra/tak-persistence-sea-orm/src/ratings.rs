@@ -2,11 +2,12 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::{create_db_pool, entity::rating};
 use sea_orm::{
-    ActiveModelTrait, DatabaseConnection, EntityTrait, TransactionError, TransactionTrait,
+    ActiveModelTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder, QuerySelect,
+    TransactionError, TransactionTrait,
 };
 use tak_server_app::domain::{
-    PlayerId, RepoError, RepoUpdateError,
-    rating::{PlayerRating, RatingRepository},
+    PaginatedResponse, PlayerId, RepoError, RepoUpdateError, SortOrder,
+    rating::{PlayerRating, RatingQuery, RatingRepository, RatingSortBy},
 };
 
 pub struct RatingRepositoryImpl {
@@ -28,6 +29,7 @@ impl RatingRepositoryImpl {
 
     fn model_to_rating(model: rating::Model) -> PlayerRating {
         PlayerRating {
+            player_id: PlayerId(model.player_id),
             rating: model.rating,
             boost: model.boost,
             max_rating: model.max_rating,
@@ -172,5 +174,53 @@ impl RatingRepository for RatingRepositoryImpl {
                 Err(RepoUpdateError::StorageError(e.to_string()))
             }
         }
+    }
+    async fn query_ratings(
+        &self,
+        query: RatingQuery,
+    ) -> Result<PaginatedResponse<PlayerRating>, RepoError> {
+        let mut db_query = rating::Entity::find();
+
+        let total_count = db_query
+            .clone()
+            .count(&self.db)
+            .await
+            .map_err(|e| RepoError::StorageError(e.to_string()))?;
+
+        if let Some((order, sort_by)) = query.sort {
+            use sea_orm::Order;
+            let order_expr = match sort_by {
+                RatingSortBy::Rating => rating::Column::Rating,
+                RatingSortBy::MaxRating => rating::Column::MaxRating,
+                RatingSortBy::ParticipationRating => rating::Column::ParticipationRating,
+                RatingSortBy::RatedGames => rating::Column::RatedGames,
+            };
+            db_query = match order {
+                SortOrder::Ascending => db_query.order_by(order_expr, Order::Asc),
+                SortOrder::Descending => db_query.order_by(order_expr, Order::Desc),
+            };
+        }
+
+        if let Some(limit) = query.pagination.limit {
+            db_query = db_query.limit(limit as u64);
+        }
+        if let Some(offset) = query.pagination.offset {
+            db_query = db_query.offset(offset as u64);
+        }
+
+        let models = db_query
+            .all(&self.db)
+            .await
+            .map_err(|e| RepoError::StorageError(e.to_string()))?;
+
+        let ratings = models
+            .into_iter()
+            .map(|model| Self::model_to_rating(model))
+            .collect();
+
+        Ok(PaginatedResponse {
+            total_count: total_count as usize,
+            items: ratings,
+        })
     }
 }

@@ -10,10 +10,11 @@ use tak_core::{
     ptn::{action_from_ptn, action_to_ptn, game_state_from_string, game_state_to_string},
 };
 use tak_server_app::domain::{
-    FinishedGameId, GameType, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError, SortOrder,
+    FinishedGameId, GameType, PaginatedResponse, PlayerId, RepoError, RepoRetrieveError,
+    RepoUpdateError, SortOrder,
     game_history::{
-        DateSelector, GameFilter, GameFilterResult, GameFinishedUpdate, GameIdSelector,
-        GamePlayerFilter, GameRatingInfo, GameRecord, GameRepository, GameSortBy, PlayerSnapshot,
+        DateSelector, GameFinishedUpdate, GameIdSelector, GamePlayerFilter, GameQuery,
+        GameRatingInfo, GameRecord, GameRepository, GameSortBy, PlayerSnapshot,
     },
 };
 
@@ -242,7 +243,10 @@ impl GameRepository for GameRepositoryImpl {
         Ok(Self::model_to_game(&model))
     }
 
-    async fn get_games(&self, filter: GameFilter) -> Result<GameFilterResult, RepoError> {
+    async fn query_games(
+        &self,
+        filter: GameQuery,
+    ) -> Result<PaginatedResponse<(FinishedGameId, GameRecord)>, RepoError> {
         let mut query = game::Entity::find();
         if let Some(game_id_selector) = filter.id_selector {
             query = match game_id_selector {
@@ -366,9 +370,9 @@ impl GameRepository for GameRepositoryImpl {
             results.push((FinishedGameId(model.id), game_record));
         }
 
-        Ok(GameFilterResult {
+        Ok(PaginatedResponse {
             total_count: total_count as usize,
-            games: results,
+            items: results,
         })
     }
 }

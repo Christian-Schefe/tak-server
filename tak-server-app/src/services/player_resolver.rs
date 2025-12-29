@@ -7,7 +7,8 @@ use crate::{
 
 #[async_trait::async_trait]
 pub trait PlayerResolverService {
-    async fn resolve_player_id_by_account_id(&self, account_id: AccountId) -> Result<PlayerId, ()>;
+    async fn resolve_player_id_by_account_id(&self, account_id: &AccountId)
+    -> Result<PlayerId, ()>;
     async fn resolve_account_id_by_player_id(&self, player_id: PlayerId) -> Result<AccountId, ()>;
 }
 
@@ -27,7 +28,10 @@ impl<PAM: PlayerAccountMappingRepository> PlayerResolverServiceImpl<PAM> {
 impl<PAM: PlayerAccountMappingRepository + Send + Sync + 'static> PlayerResolverService
     for PlayerResolverServiceImpl<PAM>
 {
-    async fn resolve_player_id_by_account_id(&self, account_id: AccountId) -> Result<PlayerId, ()> {
+    async fn resolve_player_id_by_account_id(
+        &self,
+        account_id: &AccountId,
+    ) -> Result<PlayerId, ()> {
         match self
             .player_account_mapping_repository
             .get_or_create_player_id(account_id, || Player::new().player_id)

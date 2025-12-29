@@ -6,7 +6,7 @@ use crate::{
         game_history::PlayerSnapshot,
         rating::{PlayerRating, RatingRepository, RatingService},
     },
-    workflow::account::get_username::GetUsernameWorkflow,
+    workflow::account::get_account::GetAccountWorkflow,
 };
 
 #[async_trait::async_trait]
@@ -18,22 +18,22 @@ pub trait GetSnapshotWorkflow {
     ) -> PlayerSnapshot;
 }
 
-pub struct GetSnapshotWorkflowImpl<U: GetUsernameWorkflow, R: RatingRepository, RS: RatingService> {
-    get_username_workflow: Arc<U>,
+pub struct GetSnapshotWorkflowImpl<U: GetAccountWorkflow, R: RatingRepository, RS: RatingService> {
+    get_account_workflow: Arc<U>,
     rating_repository: Arc<R>,
     rating_service: Arc<RS>,
 }
 
-impl<U: GetUsernameWorkflow, R: RatingRepository, RS: RatingService>
+impl<U: GetAccountWorkflow, R: RatingRepository, RS: RatingService>
     GetSnapshotWorkflowImpl<U, R, RS>
 {
     pub fn new(
-        get_username_workflow: Arc<U>,
+        get_account_workflow: Arc<U>,
         rating_repository: Arc<R>,
         rating_service: Arc<RS>,
     ) -> Self {
         Self {
-            get_username_workflow,
+            get_account_workflow,
             rating_repository,
             rating_service,
         }
@@ -42,7 +42,7 @@ impl<U: GetUsernameWorkflow, R: RatingRepository, RS: RatingService>
 
 #[async_trait::async_trait]
 impl<
-    U: GetUsernameWorkflow + Send + Sync + 'static,
+    U: GetAccountWorkflow + Send + Sync + 'static,
     R: RatingRepository + Send + Sync + 'static,
     RS: RatingService + Send + Sync + 'static,
 > GetSnapshotWorkflow for GetSnapshotWorkflowImpl<U, R, RS>
@@ -52,10 +52,11 @@ impl<
         player_id: PlayerId,
         date: chrono::DateTime<chrono::Utc>,
     ) -> PlayerSnapshot {
-        let username = self.get_username_workflow.get_username(player_id).await;
+        let account = self.get_account_workflow.get_account(player_id).await.ok();
+        let username = account.map(|a| a.username);
         let current_rating = match self
             .rating_repository
-            .get_or_create_player_rating(player_id, || PlayerRating::new())
+            .get_or_create_player_rating(player_id, move || PlayerRating::new(player_id))
             .await
         {
             Ok(rating) => Some(self.rating_service.get_current_rating(&rating, date)),

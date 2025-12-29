@@ -23,8 +23,8 @@ use crate::{
     services::player_resolver::{PlayerResolverService, PlayerResolverServiceImpl},
     workflow::{
         account::{
+            get_account::{GetAccountWorkflow, GetAccountWorkflowImpl},
             get_snapshot::{GetSnapshotWorkflow, GetSnapshotWorkflowImpl},
-            get_username::{GetUsernameWorkflow, GetUsernameWorkflowImpl},
             moderate::{ModeratePlayerUseCase, ModeratePlayerUseCaseImpl, ModerationPolicies},
         },
         chat::{
@@ -93,7 +93,7 @@ pub struct Application {
     pub event_list_use_case: Box<dyn ListEventsUseCase + Send + Sync + 'static>,
 
     pub get_snapshot_workflow: Arc<dyn GetSnapshotWorkflow + Send + Sync + 'static>,
-    pub get_username_workflow: Arc<dyn GetUsernameWorkflow + Send + Sync + 'static>,
+    pub get_account_workflow: Arc<dyn GetAccountWorkflow + Send + Sync + 'static>,
 }
 
 pub async fn build_application<
@@ -134,13 +134,13 @@ pub async fn build_application<
         set_user_policy: Arc::new(HigherRoleAccountPolicy),
     };
 
-    let get_username_workflow = Arc::new(GetUsernameWorkflowImpl::new(
+    let get_account_workflow = Arc::new(GetAccountWorkflowImpl::new(
         authentication_service.clone(),
         player_repository.clone(),
     ));
 
     let get_snapshot_workflow = Arc::new(GetSnapshotWorkflowImpl::new(
-        get_username_workflow.clone(),
+        get_account_workflow.clone(),
         rating_repository.clone(),
         rating_service.clone(),
     ));
@@ -244,7 +244,7 @@ pub async fn build_application<
         event_list_use_case: Box::new(ListEventsUseCaseImpl::new(event_repository.clone())),
 
         get_snapshot_workflow,
-        get_username_workflow,
+        get_account_workflow,
     };
 
     application

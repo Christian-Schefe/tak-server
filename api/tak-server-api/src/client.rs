@@ -84,7 +84,7 @@ impl TransportServiceImpl {
             let app = APPLICATION.get().unwrap();
             if let Ok(player_id) = app
                 .player_resolver_service
-                .resolve_player_id_by_account_id(account_id)
+                .resolve_player_id_by_account_id(&account_id)
                 .await
             {
                 app.player_set_online_use_case.set_offline(player_id);
@@ -324,7 +324,7 @@ impl TransportServiceImpl {
                 account_id, prev_client_id
             );
         }
-        if !self.account_associations.try_insert(id, account_id) {
+        if !self.account_associations.try_insert(id, account_id.clone()) {
             return Err(format!(
                 "Failed to associate account_id {} with client {}",
                 account_id, id
@@ -334,13 +334,13 @@ impl TransportServiceImpl {
             PROTOCOL_SERVICE
                 .get()
                 .unwrap()
-                .on_authenticated(&handler, id, account_id)
+                .on_authenticated(&handler, id, &account_id)
                 .await;
         }
         let app = APPLICATION.get().unwrap();
         if let Ok(player_id) = app
             .player_resolver_service
-            .resolve_player_id_by_account_id(account_id)
+            .resolve_player_id_by_account_id(&account_id)
             .await
         {
             app.player_set_online_use_case.set_online(player_id);
@@ -360,7 +360,7 @@ impl TransportServiceImpl {
         let account_id = self.account_associations.get_by_key(&id)?;
         let player_id = app
             .player_resolver_service
-            .resolve_player_id_by_account_id(account_id)
+            .resolve_player_id_by_account_id(&account_id)
             .await
             .ok()?;
         Some((player_id, account_id))
@@ -463,22 +463,21 @@ impl TransportServiceImpl {
     }
 
     pub async fn run(
-        self,
+        this: Arc<TransportServiceImpl>,
         app: Arc<Application>,
         auth: Arc<dyn AuthenticationPort + Send + Sync + 'static>,
         acl: Arc<LegacyAPIAntiCorruptionLayer>,
         shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
     ) {
-        let transport_impl = Arc::new(self.clone());
         let protocol_service = Arc::new(ProtocolService::new(
             app.clone(),
-            transport_impl.clone(),
+            this.clone(),
             auth.clone(),
             acl,
         ));
 
         APPLICATION.set(app.clone()).ok().unwrap();
-        TRANSPORT_IMPL.set(transport_impl.clone()).ok().unwrap();
+        TRANSPORT_IMPL.set(this.clone()).ok().unwrap();
         PROTOCOL_SERVICE.set(protocol_service.clone()).ok().unwrap();
 
         let router = Router::new()
@@ -498,7 +497,7 @@ impl TransportServiceImpl {
 
         let cancellation_token = CancellationToken::new();
 
-        let self_clone = self.clone();
+        let self_clone = this.clone();
 
         let cancellation_token_clone = cancellation_token.clone();
         let tcp_server_handle = tokio::spawn(async move {
@@ -506,7 +505,7 @@ impl TransportServiceImpl {
         });
         let cancellation_token_clone = cancellation_token.clone();
         let client_cleanup_handle = tokio::spawn(async move {
-            self.launch_client_cleanup_task(cancellation_token_clone)
+            this.launch_client_cleanup_task(cancellation_token_clone)
                 .await;
         });
 

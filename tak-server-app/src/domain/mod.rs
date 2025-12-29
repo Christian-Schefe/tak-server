@@ -18,12 +18,18 @@ impl std::fmt::Display for PlayerId {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct AccountId(pub uuid::Uuid);
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct AccountId(pub String);
+
+impl AccountId {
+    pub fn new() -> Self {
+        AccountId(uuid::Uuid::new_v4().to_string())
+    }
+}
 
 impl std::fmt::Display for AccountId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.as_hyphenated())
+        write!(f, "{}", self.0)
     }
 }
 
@@ -95,6 +101,11 @@ pub enum SortOrder {
 pub struct Pagination {
     pub offset: Option<usize>,
     pub limit: Option<usize>,
+}
+
+pub struct PaginatedResponse<T> {
+    pub total_count: usize,
+    pub items: Vec<T>,
 }
 
 #[derive(Debug)]

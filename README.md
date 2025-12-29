@@ -12,6 +12,14 @@ This is a rewrite of the java server at https://github.com/USTakAssociation/play
 
   Reason: Bots are now identified by account type, not by a flag. Account type is set during account creation.
 
+### Modified APIs:
+
+- http: `GET /ratings`
+
+  Modified: removed query parameters `id` and `name`
+  
+  Reason: There already is an endpoint for getting the rating via name, and if needed, an endpoint for getting ratings via id is trivially added. If at most one record is returned, there is no point in sorting and pagination.
+
 ### Removed Responses
 
 - `Accept rematch`

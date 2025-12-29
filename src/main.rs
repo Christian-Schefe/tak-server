@@ -13,6 +13,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
     filter::threshold::ThresholdFilter,
 };
+use tak_auth_ory::OryAuthenticationService;
 use tak_email_lettre::LettreEmailAdapter;
 use tak_events_google_sheets::NoopEventRepository;
 use tak_persistence_sea_orm::{
@@ -20,7 +21,7 @@ use tak_persistence_sea_orm::{
     ratings::RatingRepositoryImpl,
 };
 use tak_server_api::{acl::LegacyAPIAntiCorruptionLayer, client::TransportServiceImpl};
-use tak_server_app::{build_application, ports::authentication::AuthenticationPort};
+use tak_server_app::build_application;
 
 const LOG_SIZE_LIMIT: u64 = 10 * 1024 * 1024; // 10 MB
 
@@ -110,36 +111,45 @@ async fn main() {
     let email_adapter = Arc::new(LettreEmailAdapter::new());
     let player_connection_adapter = transport_service_impl.clone();
     let listener_notification_adapter = transport_service_impl.clone();
-    let authentication_service: Arc<AuthenticationPort> = todo!();
+    let authentication_service = Arc::new(OryAuthenticationService::new());
 
-    build_application(
-        game_repo,
-        player_repo,
-        rating_repo,
-        event_repo,
-        email_adapter,
-        listener_notification_adapter,
-        player_connection_adapter,
-        authentication_service,
-    )
-    .await;
+    let app = Arc::new(
+        build_application(
+            game_repo,
+            player_repo,
+            rating_repo,
+            event_repo,
+            email_adapter.clone(),
+            listener_notification_adapter,
+            player_connection_adapter,
+            authentication_service.clone(),
+        )
+        .await,
+    );
 
     let acl = Arc::new(LegacyAPIAntiCorruptionLayer::new(
-        app,
+        app.clone(),
         email_adapter.clone(),
     ));
 
     info!("Starting application");
 
     let app_clone = app.clone();
+    let auth_clone = authentication_service.clone();
+    let acl_clone = acl.clone();
     let http_app = tokio::spawn(async move {
-        tak_server_http_api::run(app_clone, shutdown_signal()).await;
+        tak_server_api::http::run(app_clone, auth_clone, acl_clone, shutdown_signal()).await;
     });
 
     let transport_app = tokio::spawn(async move {
-        transport_service_impl
-            .run(app, authentication_service.clone(), acl, shutdown_signal())
-            .await;
+        TransportServiceImpl::run(
+            transport_service_impl,
+            app,
+            authentication_service.clone(),
+            acl,
+            shutdown_signal(),
+        )
+        .await;
     });
 
     let (r1, r2) = tokio::join!(http_app, transport_app);

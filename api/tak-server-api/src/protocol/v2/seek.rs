@@ -255,14 +255,9 @@ impl ProtocolV2Handler {
 
     pub async fn send_seek_list_message(&self, id: ListenerId, seek: &SeekView, add: bool) {
         let opponent_username = if let Some(opponent_id) = seek.opponent {
-            match self
-                .app
-                .get_username_workflow
-                .get_username(opponent_id)
-                .await
-            {
-                Some(name) => Some(name),
-                None => None,
+            match self.app.get_account_workflow.get_account(opponent_id).await {
+                Ok(account) => Some(account.username),
+                Err(_) => None,
             }
         } else {
             None
@@ -274,7 +269,7 @@ impl ProtocolV2Handler {
             .await
             .ok();
         let creator_account = if let Some(account_id) = creator_account_id {
-            self.auth.get_account(account_id).await
+            self.auth.get_account(&account_id).await
         } else {
             None
         };
