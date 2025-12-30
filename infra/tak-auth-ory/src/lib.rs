@@ -4,13 +4,20 @@ use std::{
 };
 
 use dashmap::DashMap;
-use ory_kratos_client::apis::{configuration::Configuration, identity_api::get_identity};
+use ory_kratos_client::{
+    apis::{
+        configuration::Configuration,
+        frontend_api::{create_native_login_flow, update_login_flow},
+        identity_api::{create_identity, get_identity, list_identities, patch_identity},
+    },
+    models::{self, UpdateLoginFlowWithPasswordMethod},
+};
 use tak_server_app::{
     domain::{
         AccountId,
-        moderation::{AccountRole, ModerationFlag},
+        moderation::{AccountRole, ModerationFlag, ModerationFlags},
     },
-    ports::authentication::{Account, AccountQuery, AccountType, AuthenticationPort},
+    ports::authentication::{Account, AccountType, AuthenticationPort},
 };
 
 pub struct OryAuthenticationService {
@@ -23,37 +30,38 @@ pub struct OryAuthenticationService {
     ory_config: Arc<Configuration>,
 }
 
-#[derive(serde::Deserialize)]
-pub enum OryAccountRole {
+#[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
+enum OryAccountRole {
+    #[default]
     User,
     Moderator,
     Admin,
 }
 
-#[derive(serde::Deserialize)]
-pub enum OryModerationFlag {
-    Banned,
-    Silenced,
-}
-
-#[derive(serde::Deserialize)]
-pub enum OryAccountType {
+#[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
+enum OryAccountType {
+    #[default]
     Player,
     Bot,
 }
 
-#[derive(serde::Deserialize)]
-pub struct OryTraits {
+#[derive(serde::Deserialize, Debug)]
+struct OryTraits {
     pub email: Option<String>,
     pub username: String,
     pub display_name: String,
 }
 
-#[derive(serde::Deserialize)]
-pub struct OryAdminMetadata {
-    pub role: OryAccountRole,
-    pub flags: Vec<OryModerationFlag>,
-    pub account_type: OryAccountType,
+#[derive(serde::Deserialize, Debug, Default)]
+struct OryAdminMetadata {
+    #[serde(default)]
+    role: OryAccountRole,
+    #[serde(default)]
+    banned: bool,
+    #[serde(default)]
+    silenced: bool,
+    #[serde(default)]
+    account_type: OryAccountType,
 }
 
 impl OryAuthenticationService {
@@ -69,7 +77,7 @@ impl OryAuthenticationService {
                     .build(),
             ),
             ory_config: Arc::new(Configuration {
-                base_path: "localhost:4433".to_string(),
+                base_path: "http://localhost:4433".to_string(),
                 client: reqwest::Client::new(),
                 ..Default::default()
             }),
@@ -81,6 +89,187 @@ impl OryAuthenticationService {
         let number = *number_lock;
         *number_lock += 1;
         number
+    }
+
+    pub async fn create_account(
+        &self,
+        username: &str,
+        email: &str,
+        password_hash: &str,
+    ) -> Result<Account, String> {
+        let identity = models::CreateIdentityBody {
+            credentials: Some(Box::new(models::IdentityWithCredentials {
+                oidc: None,
+                password: Some(Box::new(models::IdentityWithCredentialsPassword {
+                    config: Some(Box::new(models::IdentityWithCredentialsPasswordConfig {
+                        hashed_password: Some(password_hash.to_string()),
+                        password: None,
+                        use_password_migration_hook: None,
+                    })),
+                })),
+                saml: None,
+            })),
+            external_id: None,
+            metadata_admin: None,
+            metadata_public: None,
+            organization_id: None,
+            recovery_addresses: None,
+            schema_id: "default".to_string(),
+            state: None,
+            traits: serde_json::json!({
+                "username": username,
+                "email": email,
+                "display_name": username,
+            }),
+            verifiable_addresses: None,
+        };
+
+        match create_identity(self.ory_config.as_ref(), Some(identity)).await {
+            Ok(response) => {
+                let account = Self::identity_to_account(response)
+                    .ok_or("Failed to convert identity".to_string())?;
+                self.account_cache
+                    .insert(account.account_id.clone(), account.clone());
+                Ok(account)
+            }
+            Err(error) => Err(error.to_string()),
+        }
+    }
+
+    pub async fn login_username_password(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<Account, String> {
+        let uri_str = format!("{}/self-service/login/api", self.ory_config.base_path);
+        let req_builder = self
+            .ory_config
+            .client
+            .request(reqwest::Method::GET, &uri_str);
+
+        let req = req_builder
+            .build()
+            .map_err(|e| format!("Failed to build: {}", e))?;
+        let resp = self
+            .ory_config
+            .client
+            .execute(req)
+            .await
+            .map_err(|e| format!("Failed to execute request to Ory Kratos login API: {}", e))?;
+        let status = resp.status();
+        let content_type = resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("application/octet-stream")
+            .to_string();
+
+        let body = resp
+            .text()
+            .await
+            .map_err(|e| format!("Failed to read body: {}", e))?;
+
+        println!(
+            "Ory Kratos login API response: status={}, content_type={}, body={}",
+            status, content_type, body
+        );
+
+        let login_flow = serde_json::from_str::<serde_json::Value>(&body)
+            .map_err(|e| format!("Failed to parse login flow: {}", e))?;
+        let flow_id = login_flow
+            .get("id")
+            .and_then(|v| v.as_str())
+            .ok_or("No id in login flow".to_string())?;
+
+        let res = update_login_flow(
+            self.ory_config.as_ref(),
+            &flow_id,
+            models::UpdateLoginFlowBody::Password(Box::new(UpdateLoginFlowWithPasswordMethod {
+                csrf_token: None,
+                identifier: username.to_string(),
+                method: "password".to_string(),
+                password: password.to_string(),
+                password_identifier: None,
+                transient_payload: None,
+            })),
+            None,
+            None,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        let identity = res
+            .session
+            .identity
+            .ok_or("No identity in session".to_string())?;
+        Self::identity_to_account(*identity).ok_or("Failed to convert identity".to_string())
+    }
+
+    pub async fn find_by_username(&self, username: &str) -> Option<Account> {
+        let identities = list_identities(
+            self.ory_config.as_ref(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(username),
+            None,
+            None,
+            None,
+        )
+        .await
+        .ok()?;
+        let first_identity = identities.into_iter().next()?;
+        Self::identity_to_account(first_identity)
+    }
+
+    fn identity_to_account(identity: models::Identity) -> Option<Account> {
+        println!("Identity: {:?}", identity);
+        let metadata: OryAdminMetadata = identity.metadata_admin.flatten().map_or_else(
+            || OryAdminMetadata::default(),
+            |x| serde_json::from_value(x).unwrap_or_default(),
+        );
+
+        println!("Metadata: {:?}", metadata);
+
+        let traits: OryTraits = identity
+            .traits
+            .map(|x| serde_json::from_value(x).ok())
+            .flatten()?;
+
+        println!("Traits: {:?}", traits);
+
+        let account_type = match metadata.account_type {
+            OryAccountType::Player => AccountType::Player,
+            OryAccountType::Bot => AccountType::Bot,
+        };
+        let role = match metadata.role {
+            OryAccountRole::User => AccountRole::User,
+            OryAccountRole::Moderator => AccountRole::Moderator,
+            OryAccountRole::Admin => AccountRole::Admin,
+        };
+        let flags = {
+            let mut moderation_flags = ModerationFlags::new();
+            if metadata.banned {
+                moderation_flags.set_flag(ModerationFlag::Banned);
+            }
+            if metadata.silenced {
+                moderation_flags.set_flag(ModerationFlag::Silenced);
+            }
+            moderation_flags
+        };
+
+        let account = Account::new(
+            AccountId(identity.id),
+            account_type,
+            role,
+            flags,
+            traits.username,
+            traits.display_name,
+            traits.email,
+        );
+        Some(account)
     }
 }
 
@@ -99,7 +288,9 @@ impl AuthenticationPort for OryAuthenticationService {
                 id,
                 AccountType::Guest,
                 AccountRole::User,
-                format!("Guest{}", guest_number),
+                ModerationFlags::new(),
+                format!("guest{}", guest_number),
+                format!("Guest {}", guest_number),
                 None,
             )
         });
@@ -120,37 +311,7 @@ impl AuthenticationPort for OryAuthenticationService {
                 Err(_) => return None,
             };
 
-        let metadata: OryAdminMetadata = identity
-            .metadata_admin
-            .flatten()
-            .map(|x| serde_json::from_value(x))
-            .transpose()
-            .unwrap_or(None)?;
-
-        let traits: OryTraits = identity
-            .traits
-            .map(|x| serde_json::from_value(x))
-            .transpose()
-            .unwrap_or(None)?;
-
-        let account_type = match metadata.account_type {
-            OryAccountType::Player => AccountType::Player,
-            OryAccountType::Bot => AccountType::Bot,
-        };
-        let role = match metadata.role {
-            OryAccountRole::User => AccountRole::User,
-            OryAccountRole::Moderator => AccountRole::Moderator,
-            OryAccountRole::Admin => AccountRole::Admin,
-        };
-
-        let account = Account::new(
-            AccountId(identity.id),
-            account_type,
-            role,
-            traits.username,
-            traits.email,
-        );
-
+        let account = Self::identity_to_account(identity)?;
         self.account_cache
             .insert(account_id.clone(), account.clone());
         Some(account)
@@ -161,6 +322,21 @@ impl AuthenticationPort for OryAuthenticationService {
             guest_account.role = role;
             Ok(())
         } else {
+            let ory_role = match role {
+                AccountRole::User => OryAccountRole::User,
+                AccountRole::Moderator => OryAccountRole::Moderator,
+                AccountRole::Admin => OryAccountRole::Admin,
+            };
+            let json_patch = vec![models::JsonPatch {
+                op: "add".to_string(),
+                path: "/metadata_admin/role".to_string(),
+                value: Some(Some(serde_json::to_value(ory_role).map_err(|_| ())?)),
+                from: None,
+            }];
+            match patch_identity(self.ory_config.as_ref(), &account_id.0, Some(json_patch)).await {
+                Ok(_) => {}
+                Err(_) => return Err(()),
+            };
             self.account_cache.invalidate(account_id);
             Ok(())
         }
@@ -171,6 +347,22 @@ impl AuthenticationPort for OryAuthenticationService {
             guest_account.add_flag(flag);
             Ok(())
         } else {
+            let json_patch = vec![models::JsonPatch {
+                op: "add".to_string(),
+                path: format!(
+                    "/metadata_admin/{}",
+                    match flag {
+                        ModerationFlag::Banned => "banned",
+                        ModerationFlag::Silenced => "silenced",
+                    }
+                ),
+                value: Some(Some(serde_json::json!(true))),
+                from: None,
+            }];
+            match patch_identity(self.ory_config.as_ref(), &account_id.0, Some(json_patch)).await {
+                Ok(_) => {}
+                Err(_) => return Err(()),
+            };
             self.account_cache.invalidate(account_id);
             Ok(())
         }
@@ -181,31 +373,24 @@ impl AuthenticationPort for OryAuthenticationService {
             guest_account.remove_flag(flag);
             Ok(())
         } else {
+            let json_patch = vec![models::JsonPatch {
+                op: "add".to_string(),
+                path: format!(
+                    "/metadata_admin/{}",
+                    match flag {
+                        ModerationFlag::Banned => "banned",
+                        ModerationFlag::Silenced => "silenced",
+                    }
+                ),
+                value: Some(Some(serde_json::json!(false))),
+                from: None,
+            }];
+            match patch_identity(self.ory_config.as_ref(), &account_id.0, Some(json_patch)).await {
+                Ok(_) => {}
+                Err(_) => return Err(()),
+            };
             self.account_cache.invalidate(account_id);
             Ok(())
         }
-    }
-
-    async fn query_accounts(&self, query: AccountQuery) -> Vec<Account> {
-        let mut results = Vec::new();
-        for guest_account in self.guest_accounts.iter() {
-            if let Some(flag) = query.flag {
-                if !guest_account.is_flagged(flag) {
-                    continue;
-                }
-            }
-            if let Some(role) = query.role {
-                if guest_account.role != role {
-                    continue;
-                }
-            }
-            if let Some(account_type) = query.account_type {
-                if guest_account.account_type != account_type {
-                    continue;
-                }
-            }
-            results.push(guest_account.clone());
-        }
-        results
     }
 }

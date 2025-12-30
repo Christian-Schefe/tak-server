@@ -5,6 +5,7 @@ pub mod game_history;
 pub mod r#match;
 pub mod moderation;
 pub mod player;
+pub mod profile;
 pub mod rating;
 pub mod seek;
 pub mod spectator;

@@ -18,7 +18,7 @@ use tak_email_lettre::LettreEmailAdapter;
 use tak_events_google_sheets::NoopEventRepository;
 use tak_persistence_sea_orm::{
     games::GameRepositoryImpl, player_account_mapping::PlayerAccountMappingRepositoryImpl,
-    ratings::RatingRepositoryImpl,
+    profile::ProfileRepositoryImpl, ratings::RatingRepositoryImpl,
 };
 use tak_server_api::{acl::LegacyAPIAntiCorruptionLayer, client::TransportServiceImpl};
 use tak_server_app::build_application;
@@ -107,6 +107,7 @@ async fn main() {
     let game_repo = Arc::new(GameRepositoryImpl::new().await);
     let player_repo = Arc::new(PlayerAccountMappingRepositoryImpl::new().await);
     let rating_repo = Arc::new(RatingRepositoryImpl::new().await);
+    let profile_repo = Arc::new(ProfileRepositoryImpl::new().await);
     let event_repo = Arc::new(NoopEventRepository);
     let email_adapter = Arc::new(LettreEmailAdapter::new());
     let player_connection_adapter = transport_service_impl.clone();
@@ -123,12 +124,14 @@ async fn main() {
             listener_notification_adapter,
             player_connection_adapter,
             authentication_service.clone(),
+            profile_repo,
         )
         .await,
     );
 
     let acl = Arc::new(LegacyAPIAntiCorruptionLayer::new(
         app.clone(),
+        authentication_service.clone(),
         email_adapter.clone(),
     ));
 

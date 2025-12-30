@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use passwords::PasswordGenerator;
+use tak_auth_ory::OryAuthenticationService;
 use tak_server_app::{
     Application,
     domain::{AccountId, PlayerId},
@@ -9,19 +10,32 @@ use tak_server_app::{
 
 pub struct LegacyAPIAntiCorruptionLayer {
     app: Arc<Application>,
+    auth: Arc<OryAuthenticationService>,
     email_port: Arc<dyn EmailPort + Send + Sync + 'static>,
 }
 
 impl LegacyAPIAntiCorruptionLayer {
     pub fn new(
         app: Arc<Application>,
+        auth: Arc<OryAuthenticationService>,
         email_port: Arc<dyn EmailPort + Send + Sync + 'static>,
     ) -> Self {
-        Self { app, email_port }
+        Self {
+            app,
+            auth,
+            email_port,
+        }
     }
 
     pub async fn get_player_id_by_username(&self, username: &str) -> Option<PlayerId> {
-        todo!();
+        let account = self.auth.find_by_username(username).await?;
+        let player_id = self
+            .app
+            .player_resolver_service
+            .resolve_player_id_by_account_id(&account.account_id)
+            .await
+            .ok()?;
+        Some(player_id)
     }
 
     pub async fn login_username_password(
@@ -29,7 +43,7 @@ impl LegacyAPIAntiCorruptionLayer {
         username: &str,
         password: &str,
     ) -> Result<Account, String> {
-        todo!();
+        self.auth.login_username_password(username, password).await
     }
 
     pub fn generate_random_password() -> String {
@@ -76,32 +90,44 @@ impl LegacyAPIAntiCorruptionLayer {
         username: &str,
         email: &str,
     ) -> Result<Account, String> {
-        let password = Self::generate_temporary_password();
-        self.send_password_email(email, username, &password);
-        todo!();
+        //let password = Self::generate_temporary_password();
+        let password = "changeme".to_string();
+
+        let password_hash =
+            bcrypt::hash(password.clone(), bcrypt::DEFAULT_COST).map_err(|e| e.to_string())?;
+        let account = self
+            .auth
+            .create_account(username, email, &password_hash)
+            .await
+            .map_err(|e| format!("Failed to create account: {}", e))?;
+
+        // self.send_password_email(email, username, &password)?;
+        Ok(account)
     }
 
-    pub async fn request_password_reset(&self, username: &str, email: &str) -> Result<(), String> {
-        let temp_password = Self::generate_temporary_password();
-        self.send_password_email(email, username, &temp_password);
-        todo!();
+    pub async fn request_password_reset(
+        &self,
+        _username: &str,
+        _email: &str,
+    ) -> Result<(), String> {
+        Err("Not implemented".to_string())
     }
 
     pub async fn reset_password(
         &self,
-        username: &str,
-        temp_password: &str,
-        new_password: &str,
+        _username: &str,
+        _temp_password: &str,
+        _new_password: &str,
     ) -> Result<(), String> {
-        todo!();
+        Err("Not implemented".to_string())
     }
 
     pub async fn change_password(
         &self,
-        account_id: AccountId,
-        old_password: &str,
-        new_password: &str,
+        _account_id: AccountId,
+        _old_password: &str,
+        _new_password: &str,
     ) -> Result<(), String> {
-        todo!();
+        Err("Not implemented".to_string())
     }
 }

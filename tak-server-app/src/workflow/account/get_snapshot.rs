@@ -52,8 +52,12 @@ impl<
         player_id: PlayerId,
         date: chrono::DateTime<chrono::Utc>,
     ) -> PlayerSnapshot {
-        let account = self.get_account_workflow.get_account(player_id).await.ok();
-        let username = account.map(|a| a.username);
+        let username = self
+            .get_account_workflow
+            .get_account(player_id)
+            .await
+            .ok()
+            .map(|acc| acc.username);
         let current_rating = match self
             .rating_repository
             .get_or_create_player_rating(player_id, move || PlayerRating::new(player_id))

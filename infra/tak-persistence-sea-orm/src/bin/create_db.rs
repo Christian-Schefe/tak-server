@@ -1,50 +1,36 @@
-use sea_orm::{ConnectionTrait, Database, DatabaseBackend, Schema};
-use tak_persistence_sea_orm::entity::{game, player_account_mapping};
+use sea_orm::{ConnectionTrait, DatabaseBackend, Schema};
+use tak_persistence_sea_orm::{
+    create_db_pool,
+    entity::{game, player_account_mapping, profile, rating},
+};
 
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
 
-    let games_db_path = std::env::var("TAK_GAMES_DB").expect("TAK_GAMES_DB env var not set");
-    let players_db_path = std::env::var("TAK_PLAYER_DB").expect("TAK_PLAYER_DB env var not set");
+    let pool = create_db_pool().await;
 
-    if std::path::Path::new(&games_db_path).exists() {
-        std::fs::remove_file(&games_db_path).expect("Failed to remove existing games DB");
-        println!("Removed existing games DB at {}", games_db_path);
-    }
-    if std::path::Path::new(&players_db_path).exists() {
-        std::fs::remove_file(&players_db_path).expect("Failed to remove existing players DB");
-        println!("Removed existing players DB at {}", players_db_path);
-    }
+    let schema = Schema::new(DatabaseBackend::MySql);
+    let game_table = schema.create_table_from_entity(game::Entity);
+    let player_account_mapping_table =
+        schema.create_table_from_entity(player_account_mapping::Entity);
+    let profile_table = schema.create_table_from_entity(profile::Entity);
+    let rating_table = schema.create_table_from_entity(rating::Entity);
 
-    // Create games database
-    let games_db_url = format!("sqlite://{}?mode=rwc", games_db_path);
-    let games_db = Database::connect(&games_db_url)
-        .await
-        .expect("Failed to connect to games database");
-
-    let schema = Schema::new(DatabaseBackend::Sqlite);
-    let stmt = schema.create_table_from_entity(game::Entity);
-
-    games_db
-        .execute(&stmt)
+    pool.execute(&game_table)
         .await
         .expect("Failed to create games table");
 
-    println!("Created new games DB at {}", games_db_path);
-
-    // Create players database
-    let players_db_url = format!("sqlite://{}?mode=rwc", players_db_path);
-    let players_db = Database::connect(&players_db_url)
+    pool.execute(&player_account_mapping_table)
         .await
-        .expect("Failed to connect to players database");
-
-    let stmt = schema.create_table_from_entity(player_account_mapping::Entity);
-
-    players_db
-        .execute(&stmt)
+        .expect("Failed to create player account mapping table");
+    pool.execute(&profile_table)
         .await
-        .expect("Failed to create players table");
+        .expect("Failed to create profiles table");
 
-    println!("Created new players DB at {}", players_db_path);
+    pool.execute(&rating_table)
+        .await
+        .expect("Failed to create ratings table");
+
+    println!("Created database tables successfully");
 }

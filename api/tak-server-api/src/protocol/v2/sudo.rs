@@ -1,10 +1,6 @@
 use tak_server_app::{
-    domain::{
-        ListenerId, PlayerId,
-        moderation::{AccountRole, ModerationFlag},
-    },
+    domain::{ListenerId, PlayerId},
     ports::{
-        authentication::{AccountQuery, AccountType},
         connection::PlayerConnectionPort,
         notification::{ListenerMessage, ListenerNotificationPort, ServerAlertMessage},
     },
@@ -68,10 +64,10 @@ impl ProtocolV2Handler {
                     .await
             }
             "kick" => self.handle_kick_message(player_id, parts).await,
-            "list" => self.handle_list_message(parts).await,
+            "list" => V2Response::OK,   // Not supported anymore
             "reload" => V2Response::OK, // Was used in legacy profanity filter, no-op here.
             "broadcast" => self.handle_broadcast_message(parts, msg).await,
-            "set" => V2Response::OK,
+            "set" => V2Response::OK, // Not supported anymore
             _ => V2Response::ErrorNOK(ServiceError::BadRequest("Unknown Sudo command".to_string())),
         };
         match response {
@@ -323,41 +319,6 @@ impl ProtocolV2Handler {
             target_username,
             if ban { "banned" } else { "unbanned" }
         ))
-    }
-
-    async fn handle_list_message(&self, parts: &[&str]) -> V2Response {
-        if parts.len() != 3 {
-            return V2Response::ErrorNOK(ServiceError::BadRequest(
-                "Invalid Sudo list command format".to_string(),
-            ));
-        }
-        let list_type = parts[2];
-
-        let mut query = AccountQuery::new();
-
-        match list_type {
-            "ban" => query = query.with_flag(ModerationFlag::Banned),
-            "gag" => query = query.with_flag(ModerationFlag::Silenced),
-            "mod" => query = query.with_role(AccountRole::Moderator),
-            "admin" => query = query.with_role(AccountRole::Admin),
-            "bot" => query = query.with_account_type(AccountType::Bot),
-            _ => {
-                return V2Response::ErrorNOK(ServiceError::BadRequest(
-                    "Unknown Sudo list command".to_string(),
-                ));
-            }
-        }
-
-        let accounts = self.auth.query_accounts(query).await;
-        let response = format!(
-            "[{}]",
-            accounts
-                .into_iter()
-                .map(|account| account.username)
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        V2Response::Message(response)
     }
 
     async fn handle_broadcast_message(&self, parts: &[&str], orig_msg: &str) -> V2Response {

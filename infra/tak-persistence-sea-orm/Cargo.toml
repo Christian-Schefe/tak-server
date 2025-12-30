@@ -10,7 +10,7 @@ chrono = "0.4.42"
 dotenvy = "0.15.7"
 moka = { version = "0.12.10", features = ["future"] }
 sea-orm = { version = "2.0.0-rc", features = [
-    "sqlx-sqlite",
+    "sqlx-mysql",
     "runtime-tokio-native-tls",
     "macros",
 ] }
@@ -22,3 +22,4 @@ tokio = { version = "1.47.1", features = ["full"] }
 futures = "0.3.31"
 uuid = { version = "1.18.1", features = ["v4"] }
 async-lock = "3.4.2"
+country-code-enum = "0.2.0"

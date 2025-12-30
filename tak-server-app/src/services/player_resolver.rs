@@ -38,7 +38,10 @@ impl<PAM: PlayerAccountMappingRepository + Send + Sync + 'static> PlayerResolver
             .await
         {
             Ok(player_id) => Ok(player_id),
-            Err(_) => Err(()),
+            Err(e) => {
+                log::error!("Failed to resolve player id by account id: {}", e);
+                Err(())
+            }
         }
     }
 
@@ -49,7 +52,10 @@ impl<PAM: PlayerAccountMappingRepository + Send + Sync + 'static> PlayerResolver
             .await
         {
             Ok(account_id) => Ok(account_id),
-            Err(_) => Err(()),
+            Err(e) => {
+                log::error!("Failed to resolve account id by player id: {}", e);
+                Err(())
+            }
         }
     }
 }

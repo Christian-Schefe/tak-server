@@ -11,6 +11,7 @@ use crate::{
         r#match::MatchServiceImpl,
         moderation::{AdminAccountPolicy, HigherRoleAccountPolicy, ModeratorAccountPolicy},
         player::PlayerServiceImpl,
+        profile::AccountProfileRepository,
         rating::{RatingRepository, RatingServiceImpl},
         seek::SeekServiceImpl,
         spectator::SpectatorServiceImpl,
@@ -24,6 +25,7 @@ use crate::{
     workflow::{
         account::{
             get_account::{GetAccountWorkflow, GetAccountWorkflowImpl},
+            get_profile::{GetProfileUseCase, GetProfileUseCaseImpl},
             get_snapshot::{GetSnapshotWorkflow, GetSnapshotWorkflowImpl},
             moderate::{ModeratePlayerUseCase, ModeratePlayerUseCaseImpl, ModerationPolicies},
         },
@@ -94,6 +96,7 @@ pub struct Application {
 
     pub get_snapshot_workflow: Arc<dyn GetSnapshotWorkflow + Send + Sync + 'static>,
     pub get_account_workflow: Arc<dyn GetAccountWorkflow + Send + Sync + 'static>,
+    pub get_profile_use_case: Arc<dyn GetProfileUseCase + Send + Sync + 'static>,
 }
 
 pub async fn build_application<
@@ -105,6 +108,7 @@ pub async fn build_application<
     E: EmailPort + Send + Sync + 'static,
     ER: EventRepository + Send + Sync + 'static,
     PR: PlayerAccountMappingRepository + Send + Sync + 'static,
+    PF: AccountProfileRepository + Send + Sync + 'static,
 >(
     game_repository: Arc<G>,
     player_repository: Arc<PR>,
@@ -114,6 +118,7 @@ pub async fn build_application<
     listener_notification_port: Arc<L>,
     player_connection_port: Arc<C>,
     authentication_service: Arc<AS>,
+    profile_repository: Arc<PF>,
 ) -> Application {
     let seek_service = Arc::new(SeekServiceImpl::new());
     let game_service = Arc::new(GameServiceImpl::new());
@@ -245,6 +250,10 @@ pub async fn build_application<
 
         get_snapshot_workflow,
         get_account_workflow,
+        get_profile_use_case: Arc::new(GetProfileUseCaseImpl::new(
+            player_repository.clone(),
+            profile_repository.clone(),
+        )),
     };
 
     application

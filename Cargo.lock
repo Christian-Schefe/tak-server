@@ -488,6 +488,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
+name = "country-code-enum"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12269997d692760c4a028a1e472091e0ad682be9e2086bb9445e5b26dbce97cd"
+
+[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1686,39 +1692,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ee5b5339afb4c41626dde77b7a611bd4f2c202b897852b4bcf5d03eddc61010"
 
 [[package]]
-name = "jiff"
-version = "0.2.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a87d9b8105c23642f50cbbae03d1f75d8422c5cb98ce7ee9271f7ff7505be6b8"
-dependencies = [
- "jiff-static",
- "portable-atomic",
- "portable-atomic-util",
-]
-
-[[package]]
-name = "jiff-sqlx"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cad0aaf716e798876e02217ae420bd730370a175ffd59870018c4aa4daa1513e"
-dependencies = [
- "jiff",
- "sqlx-core",
- "sqlx-sqlite",
-]
-
-[[package]]
-name = "jiff-static"
-version = "0.2.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b787bebb543f8969132630c51fd0afab173a86c6abae56ff3b9e5e3e3f9f6e58"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.111",
-]
-
-[[package]]
 name = "js-sys"
 version = "0.3.83"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1806,7 +1779,6 @@ version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
- "cc",
  "pkg-config",
  "vcpkg",
 ]
@@ -2320,15 +2292,6 @@ name = "portable-atomic"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f59e70c4aef1e55797c2e8fd94a4f2a973fc972cfde0e0b05f683667b0cd39dd"
-
-[[package]]
-name = "portable-atomic-util"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d8a2f0d8d040d7848a709caf78912debcc3f33ee4b3cac47d73d1e1069e83507"
-dependencies = [
- "portable-atomic",
-]
 
 [[package]]
 name = "potential_utf"
@@ -3013,7 +2976,6 @@ checksum = "f3c45d0fefde032a4cb0938901eb702b20430881a6de7f6b3664f46373978f00"
 dependencies = [
  "bigdecimal",
  "chrono",
- "jiff-sqlx",
  "rust_decimal",
  "sea-query",
  "serde_json",
@@ -3738,6 +3700,7 @@ dependencies = [
  "async-trait",
  "bcrypt",
  "chrono",
+ "country-code-enum",
  "dotenvy",
  "futures",
  "moka",
@@ -3773,6 +3736,7 @@ dependencies = [
  "async-trait",
  "axum",
  "axum-extra",
+ "bcrypt",
  "chrono",
  "dashmap",
  "futures",
@@ -3783,6 +3747,7 @@ dependencies = [
  "passwords",
  "serde",
  "serde_json",
+ "tak-auth-ory",
  "tak-core",
  "tak-server-app",
  "tokio",
@@ -3797,6 +3762,7 @@ dependencies = [
  "async-trait",
  "bcrypt",
  "chrono",
+ "country-code-enum",
  "dashmap",
  "futures",
  "lettre",

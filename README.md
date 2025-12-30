@@ -17,7 +17,7 @@ This is a rewrite of the java server at https://github.com/USTakAssociation/play
 - http: `GET /ratings`
 
   Modified: removed query parameters `id` and `name`
-  
+
   Reason: There already is an endpoint for getting the rating via name, and if needed, an endpoint for getting ratings via id is trivially added. If at most one record is returned, there is no point in sorting and pagination.
 
 ### Removed Responses
@@ -33,7 +33,6 @@ Player: A player is an abstract domain entity able to participate in games, iden
 Account: An account is an app concept describing the entity using the account. A human player owns a standard account, a bot owns a bot account, a temporary guest owns a temporary guest account. Depending on the account type, an account may own at most one player through which the owning entity is able to play games. The mapping from account to player is owned by the app layer.
 As an entity representing the user, the account owns information about representation and authentification (e.g. username, profile picture, email, auth methods, roles & permissions, etc.), but not about domain activity owned by the player entity.
 
-
 ## Feature wishlist
 
 - Async games
@@ -41,3 +40,7 @@ As an entity representing the user, the account owns information about represent
 - Player game history
 - Replay move timings
 - Native tournaments
+
+# Todo Notes
+
+- setup sea-orm migrations
