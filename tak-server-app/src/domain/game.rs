@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -12,8 +12,8 @@ pub struct Game {
     pub game_id: GameId,
     pub match_id: MatchId,
     pub date: chrono::DateTime<chrono::Utc>,
-    pub white: PlayerId,
-    pub black: PlayerId,
+    pub white_id: PlayerId,
+    pub black_id: PlayerId,
     pub game: TakGame,
     pub settings: TakGameSettings,
     pub game_type: GameType,
@@ -21,10 +21,10 @@ pub struct Game {
 
 impl Game {
     pub fn get_opponent(&self, player: PlayerId) -> Option<PlayerId> {
-        if player == self.white {
-            Some(self.black)
-        } else if player == self.black {
-            Some(self.white)
+        if player == self.white_id {
+            Some(self.black_id)
+        } else if player == self.black_id {
+            Some(self.white_id)
         } else {
             None
         }
@@ -34,10 +34,10 @@ impl Game {
 pub trait GameService {
     fn create_game(
         &self,
+        id: GameId,
         date: chrono::DateTime<chrono::Utc>,
-        player1: PlayerId,
-        player2: PlayerId,
-        color: Option<TakPlayer>,
+        white_id: PlayerId,
+        black_id: PlayerId,
         game_type: GameType,
         game_settings: TakGameSettings,
         match_id: MatchId,
@@ -51,7 +51,11 @@ pub trait GameService {
         action: TakAction,
     ) -> Result<DoActionSuccess, DoActionError>;
     fn resign(&self, game_id: GameId, player: PlayerId) -> Result<Game, ResignError>;
-    fn request_undo(&self, game_id: GameId, player: PlayerId) -> Result<bool, RequestUndoError>;
+    fn request_undo(
+        &self,
+        game_id: GameId,
+        player: PlayerId,
+    ) -> Result<RequestUndoSuccess, RequestUndoError>;
     fn retract_undo_request(
         &self,
         game_id: GameId,
@@ -94,6 +98,10 @@ pub enum OfferDrawSuccess {
     DrawOffered(bool),
     GameDrawn(Game),
 }
+pub enum RequestUndoSuccess {
+    UndoRequested(bool),
+    MoveUndone,
+}
 
 pub enum RequestUndoError {
     GameNotFound,
@@ -111,22 +119,13 @@ pub enum CheckTimoutResult {
 
 pub struct GameServiceImpl {
     games: Arc<DashMap<GameId, Game>>,
-    next_game_id: Arc<Mutex<GameId>>,
 }
 
 impl GameServiceImpl {
     pub fn new() -> Self {
         Self {
             games: Arc::new(DashMap::new()),
-            next_game_id: Arc::new(Mutex::new(GameId(0))),
         }
-    }
-
-    fn increment_game_id(&self) -> GameId {
-        let mut id_lock = self.next_game_id.lock().unwrap();
-        let game_id = *id_lock;
-        id_lock.0 += 1;
-        game_id
     }
 
     fn handle_maybe_game_over(&self, game_id: GameId) -> Option<Game> {
@@ -147,39 +146,26 @@ impl GameServiceImpl {
 impl GameService for GameServiceImpl {
     fn create_game(
         &self,
+        id: GameId,
         date: chrono::DateTime<chrono::Utc>,
-        player1: PlayerId,
-        player2: PlayerId,
-        color: Option<TakPlayer>,
+        white_id: PlayerId,
+        black_id: PlayerId,
         game_type: GameType,
         game_settings: TakGameSettings,
         match_id: MatchId,
     ) -> Game {
-        let (white, black) = match color {
-            Some(TakPlayer::White) => (player1, player2),
-            Some(TakPlayer::Black) => (player2, player1),
-            None => {
-                if rand::random() {
-                    (player1, player2)
-                } else {
-                    (player2, player1)
-                }
-            }
-        };
         let game = TakGame::new(game_settings.clone());
-
-        let game_id = self.increment_game_id();
         let game_struct = Game {
             date,
-            white,
-            black,
+            white_id,
+            black_id,
             game,
             game_type,
             settings: game_settings,
-            game_id,
+            game_id: id,
             match_id,
         };
-        self.games.insert(game_id, game_struct.clone());
+        self.games.insert(id, game_struct.clone());
 
         game_struct
     }
@@ -201,8 +187,8 @@ impl GameService for GameServiceImpl {
         let game_record = self
             .with_game(game_id, |game_entry| {
                 let current_player = match player {
-                    id if id == game_entry.white => TakPlayer::White,
-                    id if id == game_entry.black => TakPlayer::Black,
+                    id if id == game_entry.white_id => TakPlayer::White,
+                    id if id == game_entry.black_id => TakPlayer::Black,
                     _ => return Err(DoActionError::NotPlayersTurn),
                 };
 
@@ -227,8 +213,8 @@ impl GameService for GameServiceImpl {
     fn resign(&self, game_id: GameId, player: PlayerId) -> Result<Game, ResignError> {
         self.with_game(game_id, |game_entry| {
             let current_player = match player {
-                id if id == game_entry.white => TakPlayer::White,
-                id if id == game_entry.black => TakPlayer::Black,
+                id if id == game_entry.white_id => TakPlayer::White,
+                id if id == game_entry.black_id => TakPlayer::Black,
                 _ => return Err(ResignError::NotPlayersTurn),
             };
 
@@ -257,19 +243,17 @@ impl GameService for GameServiceImpl {
         let (did_draw, changed) = self
             .with_game(game_id, |game_entry| {
                 let current_player = match player {
-                    id if id == game_entry.white => TakPlayer::White,
-                    id if id == game_entry.black => TakPlayer::Black,
+                    id if id == game_entry.white_id => TakPlayer::White,
+                    id if id == game_entry.black_id => TakPlayer::Black,
                     _ => return Err(OfferDrawError::NotAPlayerInGame),
                 };
 
                 let changed = !game_entry.game.get_draw_offer(&current_player);
 
-                let did_draw = match game_entry.game.offer_draw(&current_player, true) {
-                    Ok(did_draw) => did_draw,
-                    Err(_) => return Err(OfferDrawError::InvalidOffer),
-                };
-
-                Ok((did_draw, changed))
+                match game_entry.game.offer_draw(&current_player, true) {
+                    Ok(did_draw) => Ok((did_draw, changed)),
+                    Err(_) => Err(OfferDrawError::InvalidOffer),
+                }
             })
             .unwrap_or(Err(OfferDrawError::GameNotFound))?;
         if did_draw {
@@ -287,36 +271,43 @@ impl GameService for GameServiceImpl {
         game_id: GameId,
         player: PlayerId,
     ) -> Result<bool, OfferDrawError> {
-        let did_retract = self
+        let changed = self
             .with_game(game_id, |game_entry| {
                 let current_player = match player {
-                    id if id == game_entry.white => TakPlayer::White,
-                    id if id == game_entry.black => TakPlayer::Black,
+                    id if id == game_entry.white_id => TakPlayer::White,
+                    id if id == game_entry.black_id => TakPlayer::Black,
                     _ => return Err(OfferDrawError::NotAPlayerInGame),
                 };
 
-                let did_retract = match game_entry.game.offer_draw(&current_player, false) {
-                    Ok(did_retract) => did_retract,
-                    Err(_) => return Err(OfferDrawError::InvalidOffer),
-                };
+                let changed = game_entry.game.get_draw_offer(&current_player);
 
-                Ok(did_retract)
+                match game_entry.game.offer_draw(&current_player, false) {
+                    Ok(_) => Ok(changed),
+                    Err(_) => Err(OfferDrawError::InvalidOffer),
+                }
             })
             .unwrap_or(Err(OfferDrawError::GameNotFound))?;
-        Ok(did_retract)
+        Ok(changed)
     }
 
-    fn request_undo(&self, game_id: GameId, player: PlayerId) -> Result<bool, RequestUndoError> {
-        let did_undo = self
+    fn request_undo(
+        &self,
+        game_id: GameId,
+        player: PlayerId,
+    ) -> Result<RequestUndoSuccess, RequestUndoError> {
+        let result = self
             .with_game(game_id, |game_entry| {
                 let current_player = match player {
-                    id if id == game_entry.white => TakPlayer::White,
-                    id if id == game_entry.black => TakPlayer::Black,
+                    id if id == game_entry.white_id => TakPlayer::White,
+                    id if id == game_entry.black_id => TakPlayer::Black,
                     _ => return Err(RequestUndoError::NotAPlayerInGame),
                 };
 
+                let changed = !game_entry.game.get_undo_request(&current_player);
+
                 match game_entry.game.request_undo(&current_player, true) {
-                    Ok(did_undo) => Ok(did_undo),
+                    Ok(false) => Ok(RequestUndoSuccess::UndoRequested(changed)),
+                    Ok(true) => Ok(RequestUndoSuccess::MoveUndone),
                     Err(_) => return Err(RequestUndoError::InvalidRequest),
                 }
             })
@@ -324,7 +315,7 @@ impl GameService for GameServiceImpl {
 
         self.handle_maybe_game_over(game_id);
 
-        Ok(did_undo)
+        Ok(result)
     }
 
     fn retract_undo_request(
@@ -332,21 +323,23 @@ impl GameService for GameServiceImpl {
         game_id: GameId,
         player: PlayerId,
     ) -> Result<bool, RequestUndoError> {
-        let did_retract = self
+        let changed = self
             .with_game(game_id, |game_entry| {
                 let current_player = match player {
-                    id if id == game_entry.white => TakPlayer::White,
-                    id if id == game_entry.black => TakPlayer::Black,
+                    id if id == game_entry.white_id => TakPlayer::White,
+                    id if id == game_entry.black_id => TakPlayer::Black,
                     _ => return Err(RequestUndoError::NotAPlayerInGame),
                 };
 
+                let changed = game_entry.game.get_undo_request(&current_player);
+
                 match game_entry.game.request_undo(&current_player, false) {
-                    Ok(did_retract) => Ok(did_retract),
-                    Err(_) => return Err(RequestUndoError::InvalidRequest),
+                    Ok(_) => Ok(changed),
+                    Err(_) => Err(RequestUndoError::InvalidRequest),
                 }
             })
             .unwrap_or(Err(RequestUndoError::GameNotFound))?;
-        Ok(did_retract)
+        Ok(changed)
     }
 
     fn check_timeout(&self, game_id: GameId, now: Instant) -> CheckTimoutResult {

@@ -6,8 +6,12 @@ use crate::{
         game_history::{GameHistoryService, GameRepository},
         r#match::MatchService,
         rating::{RatingRepository, RatingService},
+        spectator::SpectatorService,
     },
-    workflow::account::get_snapshot::GetSnapshotWorkflow,
+    ports::notification::{ListenerMessage, ListenerNotificationPort},
+    workflow::{
+        account::get_snapshot::GetSnapshotWorkflow, player::notify_player::NotifyPlayerWorkflow,
+    },
 };
 
 #[async_trait::async_trait]
@@ -22,6 +26,9 @@ pub struct FinalizeGameWorkflowImpl<
     GH: GameHistoryService,
     M: MatchService,
     S: GetSnapshotWorkflow,
+    NP: NotifyPlayerWorkflow,
+    SPS: SpectatorService,
+    L: ListenerNotificationPort,
 > {
     game_repository: Arc<G>,
     rating_service: Arc<R>,
@@ -29,6 +36,9 @@ pub struct FinalizeGameWorkflowImpl<
     game_history_service: Arc<GH>,
     match_service: Arc<M>,
     get_snapshot_workflow: Arc<S>,
+    notify_player_workflow: Arc<NP>,
+    spectator_service: Arc<SPS>,
+    listener_notification_port: Arc<L>,
 }
 
 impl<
@@ -38,7 +48,10 @@ impl<
     GH: GameHistoryService,
     M: MatchService,
     S: GetSnapshotWorkflow,
-> FinalizeGameWorkflowImpl<G, R, RP, GH, M, S>
+    NP: NotifyPlayerWorkflow,
+    SPS: SpectatorService,
+    L: ListenerNotificationPort,
+> FinalizeGameWorkflowImpl<G, R, RP, GH, M, S, NP, SPS, L>
 {
     pub fn new(
         game_repository: Arc<G>,
@@ -47,6 +60,9 @@ impl<
         game_history_service: Arc<GH>,
         match_service: Arc<M>,
         get_snapshot_workflow: Arc<S>,
+        notify_player_workflow: Arc<NP>,
+        spectator_service: Arc<SPS>,
+        listener_notification_port: Arc<L>,
     ) -> Self {
         Self {
             game_repository,
@@ -55,6 +71,9 @@ impl<
             game_history_service,
             match_service,
             get_snapshot_workflow,
+            notify_player_workflow,
+            spectator_service,
+            listener_notification_port,
         }
     }
 }
@@ -67,23 +86,39 @@ impl<
     GH: GameHistoryService + Send + Sync + 'static,
     M: MatchService + Send + Sync + 'static,
     S: GetSnapshotWorkflow + Send + Sync + 'static,
-> FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, GH, M, S>
+    NP: NotifyPlayerWorkflow + Send + Sync + 'static,
+    SPS: SpectatorService + Send + Sync + 'static,
+    L: ListenerNotificationPort + Send + Sync + 'static,
+> FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, GH, M, S, NP, SPS, L>
 {
     async fn finalize_game(&self, ended_game: Game) {
-        let Some(finished_game_id) = self
-            .game_history_service
-            .remove_ongoing_game_id(ended_game.game_id)
-        else {
-            return;
+        let over_msg = ListenerMessage::GameOver {
+            game_id: ended_game.game_id,
+            game_state: ended_game.game.game_state(),
         };
+
+        self.notify_player_workflow
+            .notify_players(
+                &[ended_game.white_id, ended_game.black_id],
+                over_msg.clone(),
+            )
+            .await;
+
+        let observers = self
+            .spectator_service
+            .get_spectators_for_game(ended_game.game_id);
+        self.listener_notification_port
+            .notify_listeners(&observers, over_msg);
+
+        self.spectator_service.remove_game(ended_game.game_id);
 
         let snapshot_white = self
             .get_snapshot_workflow
-            .get_snapshot(ended_game.white, ended_game.date)
+            .get_snapshot(ended_game.white_id, ended_game.date)
             .await;
         let snapshot_black = self
             .get_snapshot_workflow
-            .get_snapshot(ended_game.black, ended_game.date)
+            .get_snapshot(ended_game.black_id, ended_game.date)
             .await;
 
         let ended_game_clone = ended_game.clone();
@@ -91,8 +126,8 @@ impl<
         let game_rating_info = match self
             .rating_repository
             .update_player_ratings(
-                ended_game.white,
-                ended_game.black,
+                ended_game.white_id,
+                ended_game.black_id,
                 move |mut w_rating, mut b_rating| {
                     let res = rating_service.calculate_ratings(
                         &ended_game_clone,
@@ -115,6 +150,7 @@ impl<
             }
         };
 
+        let game_id = ended_game.game_id;
         let match_id = ended_game.match_id;
         let game_record_update = self.game_history_service.get_finished_game_record_update(
             ended_game,
@@ -123,15 +159,18 @@ impl<
             game_rating_info,
         );
 
-        self.match_service
-            .end_game_in_match(match_id, finished_game_id);
+        self.match_service.end_game_in_match(match_id);
 
-        if let Err(_) = self
+        if let Err(e) = self
             .game_repository
-            .update_finished_game(finished_game_id, game_record_update)
+            .update_finished_game(game_id, game_record_update)
             .await
         {
-            //TODO: log error
+            log::error!(
+                "Failed to update finished game record for game {}: {}",
+                game_id,
+                e
+            );
         }
     }
 }

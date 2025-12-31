@@ -1,12 +1,11 @@
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use dashmap::DashMap;
 use tak_core::{TakActionRecord, TakGameSettings, TakGameState};
 
 use crate::domain::{
-    FinishedGameId, GameId, GameType, PaginatedResponse, Pagination, PlayerId, RepoError,
-    RepoRetrieveError, RepoUpdateError, SortOrder, game::Game,
+    GameId, GameType, PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError,
+    RepoUpdateError, SortOrder, game::Game,
 };
 
 pub struct GameRecord {
@@ -74,10 +73,10 @@ pub enum DateSelector {
 
 #[derive(Debug, Clone)]
 pub enum GameIdSelector {
-    Range(FinishedGameId, FinishedGameId),
-    AndBefore(FinishedGameId),
-    AndAfter(FinishedGameId),
-    List(Vec<FinishedGameId>),
+    Range(GameId, GameId),
+    AndBefore(GameId),
+    AndAfter(GameId),
+    List(Vec<GameId>),
 }
 
 #[derive(Debug, Clone)]
@@ -96,25 +95,20 @@ pub struct GameFinishedUpdate {
 
 #[async_trait::async_trait]
 pub trait GameRepository {
-    async fn save_ongoing_game(&self, game: GameRecord) -> Result<FinishedGameId, RepoError>;
+    async fn save_ongoing_game(&self, game: GameRecord) -> Result<GameId, RepoError>;
     async fn update_finished_game(
         &self,
-        game_id: FinishedGameId,
+        game_id: GameId,
         update: GameFinishedUpdate,
     ) -> Result<(), RepoUpdateError>;
-    async fn get_game_record(
-        &self,
-        game_id: FinishedGameId,
-    ) -> Result<GameRecord, RepoRetrieveError>;
+    async fn get_game_record(&self, game_id: GameId) -> Result<GameRecord, RepoRetrieveError>;
     async fn query_games(
         &self,
         query: GameQuery,
-    ) -> Result<PaginatedResponse<(FinishedGameId, GameRecord)>, RepoError>;
+    ) -> Result<PaginatedResponse<(GameId, GameRecord)>, RepoError>;
 }
 
 pub trait GameHistoryService {
-    fn save_ongoing_game_id(&self, game_id: GameId, finished_game_id: FinishedGameId);
-    fn remove_ongoing_game_id(&self, game_id: GameId) -> Option<FinishedGameId>;
     fn get_ongoing_game_record(
         &self,
         date: DateTime<Utc>,
@@ -132,27 +126,15 @@ pub trait GameHistoryService {
     ) -> GameFinishedUpdate;
 }
 
-pub struct GameHistoryServiceImpl {
-    game_ids: Arc<DashMap<GameId, FinishedGameId>>,
-}
+pub struct GameHistoryServiceImpl;
 
 impl GameHistoryServiceImpl {
     pub fn new() -> Self {
-        Self {
-            game_ids: Arc::new(DashMap::new()),
-        }
+        Self
     }
 }
 
 impl GameHistoryService for GameHistoryServiceImpl {
-    fn save_ongoing_game_id(&self, game_id: GameId, finished_game_id: FinishedGameId) {
-        self.game_ids.insert(game_id, finished_game_id);
-    }
-
-    fn remove_ongoing_game_id(&self, game_id: GameId) -> Option<FinishedGameId> {
-        self.game_ids.remove(&game_id).map(|(_, v)| v)
-    }
-
     fn get_ongoing_game_record(
         &self,
         date: DateTime<Utc>,

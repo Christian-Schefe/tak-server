@@ -377,6 +377,13 @@ impl TakGame {
         }
     }
 
+    pub fn get_undo_request(&self, player: &TakPlayer) -> bool {
+        match player {
+            TakPlayer::White => self.undo_requested.0,
+            TakPlayer::Black => self.undo_requested.1,
+        }
+    }
+
     pub fn offer_draw(&mut self, player: &TakPlayer, offer: bool) -> Result<bool, String> {
         let now = Instant::now();
         self.check_is_ongoing(now)?;

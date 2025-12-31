@@ -8,8 +8,8 @@ use crate::domain::{GameType, PlayerId, SeekId};
 #[derive(Clone, Debug, PartialEq)]
 pub struct Seek {
     pub id: SeekId,
-    pub creator: PlayerId,
-    pub opponent: Option<PlayerId>,
+    pub creator_id: PlayerId,
+    pub opponent_id: Option<PlayerId>,
     pub color: Option<TakPlayer>,
     pub game_settings: TakGameSettings,
     pub game_type: GameType,
@@ -77,8 +77,8 @@ impl SeekService for SeekServiceImpl {
         let seek_id = self.increment_seek_id();
         let seek = Seek {
             id: seek_id,
-            creator: player,
-            opponent,
+            creator_id: player,
+            opponent_id: opponent,
             color,
             game_settings,
             game_type,
@@ -106,7 +106,7 @@ impl SeekService for SeekServiceImpl {
 
     fn cancel_seek(&self, seek_id: SeekId) -> Option<Seek> {
         if let Some((_, seek)) = self.seeks.remove(&seek_id) {
-            self.seeks_by_player.remove(&seek.creator);
+            self.seeks_by_player.remove(&seek.creator_id);
             Some(seek)
         } else {
             None

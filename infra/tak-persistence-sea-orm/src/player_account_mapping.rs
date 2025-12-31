@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
-use crate::{create_db_pool, entity::player_account_mapping};
+use crate::create_db_pool;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set,
     TransactionError, TransactionTrait,
 };
+use tak_persistence_sea_orm_entites::player_account_mapping;
 use tak_server_app::{
     domain::{AccountId, PlayerId, RepoError, RepoRetrieveError},
     ports::player_mapping::PlayerAccountMappingRepository,

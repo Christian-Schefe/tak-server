@@ -6,21 +6,51 @@ use std::{
 use dashmap::DashMap;
 use tak_core::{TakGameSettings, TakPlayer};
 
-use crate::domain::{FinishedGameId, GameId, GameType, MatchId, PlayerId};
+use crate::domain::{GameId, GameType, MatchId, PlayerId};
 
 #[derive(Clone, Debug)]
 pub struct Match {
     pub id: MatchId,
     pub player1: PlayerId,
     pub player2: PlayerId,
-    pub inital_color: Option<TakPlayer>,
+    pub initial_color: TakPlayer,
     pub color_rule: MatchColorRule,
     pub game_settings: TakGameSettings,
     pub game_type: GameType,
-    pub played_games: Vec<FinishedGameId>,
+    pub played_games: Vec<GameId>,
     pub current_game: Option<GameId>,
     rematch_requested_by: Option<PlayerId>,
     last_game_finished: Option<Instant>,
+}
+
+impl Match {
+    pub fn get_next_matchup_colors(&self) -> (PlayerId, PlayerId) {
+        let color = match self.color_rule {
+            MatchColorRule::Keep => Some(self.initial_color),
+            MatchColorRule::Alternate => {
+                if self.played_games.len() % 2 == 0 {
+                    Some(self.initial_color)
+                } else {
+                    match self.initial_color {
+                        TakPlayer::White => Some(TakPlayer::Black),
+                        TakPlayer::Black => Some(TakPlayer::White),
+                    }
+                }
+            }
+            MatchColorRule::Random => None,
+        };
+        match color {
+            Some(TakPlayer::White) => (self.player1, self.player2),
+            Some(TakPlayer::Black) => (self.player2, self.player1),
+            None => {
+                if rand::random() {
+                    (self.player1, self.player2)
+                } else {
+                    (self.player2, self.player1)
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -42,7 +72,7 @@ pub trait MatchService {
     ) -> Match;
     fn get_match(&self, match_id: MatchId) -> Option<Match>;
     fn start_game_in_match(&self, match_id: MatchId, game_id: GameId) -> bool;
-    fn end_game_in_match(&self, match_id: MatchId, finished_game_id: FinishedGameId) -> bool;
+    fn end_game_in_match(&self, match_id: MatchId) -> bool;
     fn request_or_accept_rematch(
         &self,
         match_id: MatchId,
@@ -98,11 +128,21 @@ impl MatchService for MatchServiceImpl {
         game_type: GameType,
     ) -> Match {
         let match_id = self.generate_match_id();
+        let initial_color = match initial_color {
+            Some(color) => color,
+            None => {
+                if rand::random() {
+                    TakPlayer::White
+                } else {
+                    TakPlayer::Black
+                }
+            }
+        };
         let new_match = Match {
             id: match_id,
             player1,
             player2,
-            inital_color: initial_color,
+            initial_color,
             color_rule,
             game_settings,
             game_type,
@@ -127,12 +167,12 @@ impl MatchService for MatchServiceImpl {
         }
     }
 
-    fn end_game_in_match(&self, match_id: MatchId, finished_game_id: FinishedGameId) -> bool {
+    fn end_game_in_match(&self, match_id: MatchId) -> bool {
         if let Some(mut match_entry) = self.matches.get_mut(&match_id) {
-            if match_entry.current_game.is_none() {
+            let Some(current_game_id) = match_entry.current_game else {
                 return false;
-            }
-            match_entry.played_games.push(finished_game_id);
+            };
+            match_entry.played_games.push(current_game_id);
             match_entry.current_game = None;
             match_entry.last_game_finished = Some(Instant::now());
             true

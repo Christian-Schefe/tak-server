@@ -7,7 +7,7 @@ use dashmap::DashMap;
 use ory_kratos_client::{
     apis::{
         configuration::Configuration,
-        frontend_api::{create_native_login_flow, update_login_flow},
+        frontend_api::update_login_flow,
         identity_api::{create_identity, get_identity, list_identities, patch_identity},
     },
     models::{self, UpdateLoginFlowWithPasswordMethod},
@@ -132,7 +132,10 @@ impl OryAuthenticationService {
                     .insert(account.account_id.clone(), account.clone());
                 Ok(account)
             }
-            Err(error) => Err(error.to_string()),
+            Err(error) => {
+                log::error!("Failed to create identity: {:?}", error);
+                Err(error.to_string())
+            }
         }
     }
 
@@ -156,23 +159,11 @@ impl OryAuthenticationService {
             .execute(req)
             .await
             .map_err(|e| format!("Failed to execute request to Ory Kratos login API: {}", e))?;
-        let status = resp.status();
-        let content_type = resp
-            .headers()
-            .get("content-type")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("application/octet-stream")
-            .to_string();
 
         let body = resp
             .text()
             .await
             .map_err(|e| format!("Failed to read body: {}", e))?;
-
-        println!(
-            "Ory Kratos login API response: status={}, content_type={}, body={}",
-            status, content_type, body
-        );
 
         let login_flow = serde_json::from_str::<serde_json::Value>(&body)
             .map_err(|e| format!("Failed to parse login flow: {}", e))?;
@@ -225,20 +216,15 @@ impl OryAuthenticationService {
     }
 
     fn identity_to_account(identity: models::Identity) -> Option<Account> {
-        println!("Identity: {:?}", identity);
         let metadata: OryAdminMetadata = identity.metadata_admin.flatten().map_or_else(
             || OryAdminMetadata::default(),
             |x| serde_json::from_value(x).unwrap_or_default(),
         );
 
-        println!("Metadata: {:?}", metadata);
-
         let traits: OryTraits = identity
             .traits
             .map(|x| serde_json::from_value(x).ok())
             .flatten()?;
-
-        println!("Traits: {:?}", traits);
 
         let account_type = match metadata.account_type {
             OryAccountType::Player => AccountType::Player,

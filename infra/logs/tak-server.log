@@ -1,0 +1,684 @@
+INFO - summary="SET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES …" db.statement="\n\nSET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;\n" rows_affected=0 rows_returned=0 elapsed=622.1µs elapsed_secs=0.0006221
+INFO - summary="SELECT DATABASE()" db.statement="" rows_affected=0 rows_returned=1 elapsed=940.6µs elapsed_secs=0.0009406
+INFO - summary="SET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES …" db.statement="\n\nSET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;\n" rows_affected=0 rows_returned=0 elapsed=500.7µs elapsed_secs=0.0005007
+INFO - summary="SELECT version()" db.statement="" rows_affected=0 rows_returned=1 elapsed=1.2126ms elapsed_secs=0.0012126
+INFO - summary="SELECT `table_name`, `engine`, `auto_increment`, …" db.statement="\n\nSELECT `table_name`, `engine`, `auto_increment`, `table_collation`, `table_comment`, `create_options`, `collation_character_set_applicability`.`character_set_name` FROM `information_schema`.`tables` LEFT JOIN `information_schema`.`collation_character_set_applicability` ON `collation_character_set_applicability`.`collation_name` = `tables`.`table_collation` WHERE `table_schema` = ? AND `table_type` IN (?, ?) ORDER BY `table_name` ASC\n" rows_affected=0 rows_returned=0 elapsed=1.7683ms elapsed_secs=0.0017683
+INFO - Starting application
+INFO - WebSocket server listening on port 9999
+INFO - API server listening on port 3004
+INFO - TCP server listening on port 10000
+INFO - Client 95d47d29-f986-47bc-af07-312e72b4a755 connected
+INFO - Client 95d47d29-f986-47bc-af07-312e72b4a755 set protocol to "2"
+DEBUG - starting new connection: http://localhost:4433/
+DEBUG - connecting to [::1]:4433
+DEBUG - connected to [::1]:4433
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=387.2µs elapsed_secs=0.0003872
+INFO - summary="SELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM …" db.statement="\n\nSELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM `player_account_mapping` WHERE `player_account_mapping`.`account_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=0 elapsed=572.8µs elapsed_secs=0.0005728
+INFO - summary="ROLLBACK" db.statement="" rows_affected=0 rows_returned=0 elapsed=344.4µs elapsed_secs=0.0003444
+ERROR - Failed to resolve player id by account id: Storage error: Query Error: error returned from database: 1146 (42S02): Table 'app_db.player_account_mapping' doesn't exist
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=342.8µs elapsed_secs=0.0003428
+INFO - summary="SELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM …" db.statement="\n\nSELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM `player_account_mapping` WHERE `player_account_mapping`.`account_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=0 elapsed=443.2µs elapsed_secs=0.0004432
+INFO - summary="ROLLBACK" db.statement="" rows_affected=0 rows_returned=0 elapsed=363.7µs elapsed_secs=0.0003637
+ERROR - Failed to resolve player id by account id: Storage error: Query Error: error returned from database: 1146 (42S02): Table 'app_db.player_account_mapping' doesn't exist
+INFO - Shutdown signal received. Preparing graceful exit...
+INFO - Shutdown signal received. Preparing graceful exit...
+INFO - Shutdown signal received, closing all clients
+INFO - HTTP API shut down gracefully
+INFO - Client 95d47d29-f986-47bc-af07-312e72b4a755 closed
+DEBUG - Client 95d47d29-f986-47bc-af07-312e72b4a755 received ended
+INFO - Client 95d47d29-f986-47bc-af07-312e72b4a755 notification ended
+INFO - TCP server shutting down
+INFO - Client cleanup task shutting down
+INFO - Client 95d47d29-f986-47bc-af07-312e72b4a755 send ended
+INFO - Transport service shut down gracefully
+INFO - summary="SET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES …" db.statement="\n\nSET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;\n" rows_affected=0 rows_returned=0 elapsed=631.4µs elapsed_secs=0.0006314
+INFO - summary="SELECT DATABASE()" db.statement="" rows_affected=0 rows_returned=1 elapsed=876µs elapsed_secs=0.000876
+INFO - summary="SET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES …" db.statement="\n\nSET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;\n" rows_affected=0 rows_returned=0 elapsed=464.6µs elapsed_secs=0.0004646
+INFO - summary="SELECT version()" db.statement="" rows_affected=0 rows_returned=1 elapsed=752.2µs elapsed_secs=0.0007522
+INFO - summary="SELECT `table_name`, `engine`, `auto_increment`, …" db.statement="\n\nSELECT `table_name`, `engine`, `auto_increment`, `table_collation`, `table_comment`, `create_options`, `collation_character_set_applicability`.`character_set_name` FROM `information_schema`.`tables` LEFT JOIN `information_schema`.`collation_character_set_applicability` ON `collation_character_set_applicability`.`collation_name` = `tables`.`table_collation` WHERE `table_schema` = ? AND `table_type` IN (?, ?) ORDER BY `table_name` ASC\n" rows_affected=0 rows_returned=0 elapsed=1.8159ms elapsed_secs=0.0018159
+INFO - summary="CREATE TABLE `ratings` ( …" db.statement="\n\nCREATE TABLE `ratings` ( `player_id` binary(16) NOT NULL PRIMARY KEY, `rating` double NOT NULL, `boost` double NOT NULL, `rated_games` int NOT NULL, `is_unrated` bool NOT NULL, `max_rating` double NOT NULL, `rating_age` double NOT NULL, `participation_rating` double NOT NULL, `fatigue` varchar(255) NOT NULL )\n" rows_affected=0 rows_returned=0 elapsed=36.1278ms elapsed_secs=0.0361278
+INFO - summary="CREATE TABLE `games` ( …" db.statement="\n\nCREATE TABLE `games` ( `id` bigint NOT NULL PRIMARY KEY AUTO_INCREMENT, `date` timestamp NOT NULL, `size` int NOT NULL, `player_white_id` binary(16) NOT NULL, `player_black_id` binary(16) NOT NULL, `player_white_username` varchar(255), `player_black_username` varchar(255), `player_white_rating` double, `player_black_rating` double, `rating_change_white` double, `rating_change_black` double, `notation` varchar(255) NOT NULL, `result` varchar(255) NOT NULL, `clock_contingent` int NOT NULL, `clock_increment` int NOT NULL, `is_unrated` bool NOT NULL, `is_tournament` bool NOT NULL, `half_komi` int NOT NULL, `pieces` int NOT NULL, `capstones` int NOT NULL, `extra_time_amount` int NOT NULL, `extra_time_trigger` int NOT NULL )\n" rows_affected=0 rows_returned=0 elapsed=30.151ms elapsed_secs=0.030151
+INFO - summary="CREATE TABLE `profile` ( …" db.statement="\n\nCREATE TABLE `profile` ( `account_id` varchar(255) NOT NULL PRIMARY KEY, `country` varchar(255) )\n" rows_affected=0 rows_returned=0 elapsed=29.9498ms elapsed_secs=0.0299498
+INFO - summary="CREATE TABLE `player_account_mapping` ( …" db.statement="\n\nCREATE TABLE `player_account_mapping` ( `account_id` varchar(255) NOT NULL PRIMARY KEY, `player_id` binary(16) NOT NULL UNIQUE )\n" rows_affected=0 rows_returned=0 elapsed=33.5673ms elapsed_secs=0.0335673
+INFO - summary="CREATE UNIQUE INDEX `idx-player_account_mapping-player_id` …" db.statement="\n\nCREATE UNIQUE INDEX `idx-player_account_mapping-player_id` ON `player_account_mapping` (`player_id`)\n" rows_affected=0 rows_returned=0 elapsed=70.4178ms elapsed_secs=0.0704178
+INFO - Starting application
+INFO - WebSocket server listening on port 9999
+INFO - API server listening on port 3004
+INFO - TCP server listening on port 10000
+INFO - Client e21ce5e6-becf-4124-a775-a7370021d0fe connected
+INFO - Client e21ce5e6-becf-4124-a775-a7370021d0fe set protocol to "2"
+DEBUG - starting new connection: http://localhost:4433/
+DEBUG - connecting to [::1]:4433
+DEBUG - connected to [::1]:4433
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=363.1µs elapsed_secs=0.0003631
+INFO - summary="SELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM …" db.statement="\n\nSELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM `player_account_mapping` WHERE `player_account_mapping`.`account_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=0 elapsed=2.5709ms elapsed_secs=0.0025709
+INFO - summary="INSERT INTO `player_account_mapping` (`account_id`, …" db.statement="\n\nINSERT INTO `player_account_mapping` (`account_id`, `player_id`) VALUES (?, ?)\n" rows_affected=1 rows_returned=0 elapsed=1.0653ms elapsed_secs=0.0010653
+INFO - summary="SELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM …" db.statement="\n\nSELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM `player_account_mapping` WHERE `player_account_mapping`.`account_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=479.5µs elapsed_secs=0.0004795
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=3.3039ms elapsed_secs=0.0033039
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - starting new connection: http://localhost:4434/
+DEBUG - connecting to [::1]:4434
+DEBUG - connected to [::1]:4434
+DEBUG - pooling idle connection for ("http", localhost:4434)
+INFO - Shutdown signal received. Preparing graceful exit...
+INFO - Shutdown signal received. Preparing graceful exit...
+INFO - Shutdown signal received, closing all clients
+INFO - HTTP API shut down gracefully
+INFO - Client e21ce5e6-becf-4124-a775-a7370021d0fe closed
+DEBUG - Client e21ce5e6-becf-4124-a775-a7370021d0fe received ended
+INFO - Client e21ce5e6-becf-4124-a775-a7370021d0fe notification ended
+INFO - TCP server shutting down
+INFO - Client cleanup task shutting down
+INFO - Client e21ce5e6-becf-4124-a775-a7370021d0fe send ended
+INFO - Transport service shut down gracefully
+ERROR - Failed to notify listener e21ce5e6-becf-4124-a775-a7370021d0fe: channel closed
+INFO - summary="SET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES …" db.statement="\n\nSET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;\n" rows_affected=0 rows_returned=0 elapsed=584.4µs elapsed_secs=0.0005844
+INFO - summary="SELECT DATABASE()" db.statement="" rows_affected=0 rows_returned=1 elapsed=911.1µs elapsed_secs=0.0009111
+INFO - summary="SET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES …" db.statement="\n\nSET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;\n" rows_affected=0 rows_returned=0 elapsed=443.2µs elapsed_secs=0.0004432
+INFO - summary="SELECT version()" db.statement="" rows_affected=0 rows_returned=1 elapsed=740.8µs elapsed_secs=0.0007408
+INFO - summary="SELECT `table_name`, `engine`, `auto_increment`, …" db.statement="\n\nSELECT `table_name`, `engine`, `auto_increment`, `table_collation`, `table_comment`, `create_options`, `collation_character_set_applicability`.`character_set_name` FROM `information_schema`.`tables` LEFT JOIN `information_schema`.`collation_character_set_applicability` ON `collation_character_set_applicability`.`collation_name` = `tables`.`table_collation` WHERE `table_schema` = ? AND `table_type` IN (?, ?) ORDER BY `table_name` ASC\n" rows_affected=0 rows_returned=4 elapsed=2.4716ms elapsed_secs=0.0024716
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=22 elapsed=2.3333ms elapsed_secs=0.0023333
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=942µs elapsed_secs=0.000942
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=8.4598ms elapsed_secs=0.0084598
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=2 elapsed=1.2975ms elapsed_secs=0.0012975
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=3 elapsed=893.2µs elapsed_secs=0.0008932
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=6.5667ms elapsed_secs=0.0065667
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=2 elapsed=830.6µs elapsed_secs=0.0008306
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=523.6µs elapsed_secs=0.0005236
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=5.8756ms elapsed_secs=0.0058756
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=9 elapsed=895.7µs elapsed_secs=0.0008957
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=506.8µs elapsed_secs=0.0005068
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=5.9504ms elapsed_secs=0.0059504
+INFO - Starting application
+INFO - WebSocket server listening on port 9999
+INFO - API server listening on port 3004
+INFO - TCP server listening on port 10000
+INFO - Client 6ee12184-3e5d-4a51-97a3-729a4e55b21a connected
+INFO - Client 6ee12184-3e5d-4a51-97a3-729a4e55b21a set protocol to "2"
+DEBUG - starting new connection: http://localhost:4433/
+DEBUG - connecting to [::1]:4433
+DEBUG - connected to [::1]:4433
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=354.9µs elapsed_secs=0.0003549
+INFO - summary="SELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM …" db.statement="\n\nSELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM `player_account_mapping` WHERE `player_account_mapping`.`account_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=1.0186ms elapsed_secs=0.0010186
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=369.7µs elapsed_secs=0.0003697
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - starting new connection: http://localhost:4434/
+DEBUG - connecting to [::1]:4434
+DEBUG - connected to [::1]:4434
+DEBUG - pooling idle connection for ("http", localhost:4434)
+DEBUG - Received close frame: Some(CloseFrame { code: Away, reason: Utf8Bytes(b"") })
+DEBUG - Replying to close with Frame { header: FrameHeader { is_final: true, rsv1: false, rsv2: false, rsv3: false, opcode: Control(Close), mask: None }, payload: b"\x03\xe9" }
+DEBUG - Client 6ee12184-3e5d-4a51-97a3-729a4e55b21a received ended
+INFO - Client 6ee12184-3e5d-4a51-97a3-729a4e55b21a notification ended
+INFO - Client 6ee12184-3e5d-4a51-97a3-729a4e55b21a send ended
+ERROR - Failed to notify listener 6ee12184-3e5d-4a51-97a3-729a4e55b21a: channel closed
+INFO - Client b67f6c59-3743-4778-ae7d-9d0a41b274a5 connected
+INFO - Client 6cc2fbc2-52ff-4dd3-b64c-b59830b8e29b connected
+DEBUG - starting new connection: http://localhost:4433/
+DEBUG - connecting to [::1]:4433
+DEBUG - connected to [::1]:4433
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+ERROR - Failed to notify listener 6ee12184-3e5d-4a51-97a3-729a4e55b21a: channel closed
+DEBUG - Client 6cc2fbc2-52ff-4dd3-b64c-b59830b8e29b received ended
+INFO - Client 6cc2fbc2-52ff-4dd3-b64c-b59830b8e29b notification ended
+DEBUG - websocket close error: IO error: An existing connection was forcibly closed by the remote host. (os error 10054)
+INFO - Client 6cc2fbc2-52ff-4dd3-b64c-b59830b8e29b send ended
+ERROR - Failed to notify listener 6cc2fbc2-52ff-4dd3-b64c-b59830b8e29b: channel closed
+ERROR - Failed to notify listener 6ee12184-3e5d-4a51-97a3-729a4e55b21a: channel closed
+INFO - Client 2d0483c9-7944-4eb6-938d-4a7ab927c733 connected
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+INFO - Error handling message ["Login", "meeshroom2", "changeme"]: Unauthorized: error in response: status code 400 Bad Request
+DEBUG - Received close frame: Some(CloseFrame { code: Away, reason: Utf8Bytes(b"") })
+DEBUG - Replying to close with Frame { header: FrameHeader { is_final: true, rsv1: false, rsv2: false, rsv3: false, opcode: Control(Close), mask: None }, payload: b"\x03\xe9" }
+DEBUG - Client b67f6c59-3743-4778-ae7d-9d0a41b274a5 received ended
+INFO - Client b67f6c59-3743-4778-ae7d-9d0a41b274a5 notification ended
+INFO - Client b67f6c59-3743-4778-ae7d-9d0a41b274a5 send ended
+INFO - Client 4cf80a2a-11ee-4006-86e2-32d445a0ccdc connected
+DEBUG - Client 2d0483c9-7944-4eb6-938d-4a7ab927c733 received ended
+INFO - Client 2d0483c9-7944-4eb6-938d-4a7ab927c733 notification ended
+DEBUG - websocket close error: IO error: An existing connection was forcibly closed by the remote host. (os error 10054)
+INFO - Client 2d0483c9-7944-4eb6-938d-4a7ab927c733 send ended
+INFO - Shutdown signal received. Preparing graceful exit...
+INFO - Shutdown signal received. Preparing graceful exit...
+INFO - Shutdown signal received, closing all clients
+INFO - HTTP API shut down gracefully
+INFO - Client 4cf80a2a-11ee-4006-86e2-32d445a0ccdc closed
+INFO - Client 4cf80a2a-11ee-4006-86e2-32d445a0ccdc notification ended
+DEBUG - Client 4cf80a2a-11ee-4006-86e2-32d445a0ccdc received ended
+INFO - TCP server shutting down
+INFO - Client cleanup task shutting down
+INFO - Client 4cf80a2a-11ee-4006-86e2-32d445a0ccdc send ended
+INFO - Transport service shut down gracefully
+INFO - summary="SET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES …" db.statement="\n\nSET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;\n" rows_affected=0 rows_returned=0 elapsed=851.6µs elapsed_secs=0.0008516
+INFO - summary="SELECT DATABASE()" db.statement="" rows_affected=0 rows_returned=1 elapsed=1.0075ms elapsed_secs=0.0010075
+INFO - summary="SELECT version()" db.statement="" rows_affected=0 rows_returned=1 elapsed=712.9µs elapsed_secs=0.0007129
+INFO - summary="SET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES …" db.statement="\n\nSET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;\n" rows_affected=0 rows_returned=0 elapsed=542.3µs elapsed_secs=0.0005423
+INFO - summary="SELECT `table_name`, `engine`, `auto_increment`, …" db.statement="\n\nSELECT `table_name`, `engine`, `auto_increment`, `table_collation`, `table_comment`, `create_options`, `collation_character_set_applicability`.`character_set_name` FROM `information_schema`.`tables` LEFT JOIN `information_schema`.`collation_character_set_applicability` ON `collation_character_set_applicability`.`collation_name` = `tables`.`table_collation` WHERE `table_schema` = ? AND `table_type` IN (?, ?) ORDER BY `table_name` ASC\n" rows_affected=0 rows_returned=4 elapsed=2.4592ms elapsed_secs=0.0024592
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=22 elapsed=1.7249ms elapsed_secs=0.0017249
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=1.0949ms elapsed_secs=0.0010949
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=6.7043ms elapsed_secs=0.0067043
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=2 elapsed=1.2178ms elapsed_secs=0.0012178
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=3 elapsed=872.4µs elapsed_secs=0.0008724
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=6.3096ms elapsed_secs=0.0063096
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=2 elapsed=808.8µs elapsed_secs=0.0008088
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=553.4µs elapsed_secs=0.0005534
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=5.453ms elapsed_secs=0.005453
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=9 elapsed=936.4µs elapsed_secs=0.0009364
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=470.3µs elapsed_secs=0.0004703
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=5.6122ms elapsed_secs=0.0056122
+INFO - Starting application
+INFO - API server listening on port 3004
+INFO - WebSocket server listening on port 9999
+INFO - TCP server listening on port 10000
+INFO - Client 9e5b5dc5-223e-468f-a58f-98bbd88f5243 connected
+DEBUG - starting new connection: http://localhost:4433/
+DEBUG - connecting to [::1]:4433
+DEBUG - connected to [::1]:4433
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - starting new connection: http://localhost:4434/
+DEBUG - connecting to [::1]:4434
+DEBUG - connected to [::1]:4434
+DEBUG - pooling idle connection for ("http", localhost:4434)
+ERROR - Failed to create identity: ResponseError(ResponseContent { status: 409, content: "{\"error\":{\"code\":409,\"status\":\"Conflict\",\"reason\":\"This identity conflicts with another identity that already exists.\",\"message\":\"The resource could not be created due to a conflict\"}}\n", entity: Some(Status400(ErrorGeneric { error: GenericError { code: Some(409), debug: None, details: None, id: None, message: "The resource could not be created due to a conflict", reason: Some("This identity conflicts with another identity that already exists."), request: None, status: Some("Conflict") } })) })
+ERROR - Error handling message ["Register", "meeshroom2", "meeshroom@gmx.net"]: Bad request: Failed to create account: error in response: status code 409 Conflict
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4434)
+ERROR - Failed to create identity: ResponseError(ResponseContent { status: 409, content: "{\"error\":{\"code\":409,\"status\":\"Conflict\",\"reason\":\"This identity conflicts with another identity that already exists.\",\"message\":\"The resource could not be created due to a conflict\"}}\n", entity: Some(Status400(ErrorGeneric { error: GenericError { code: Some(409), debug: None, details: None, id: None, message: "The resource could not be created due to a conflict", reason: Some("This identity conflicts with another identity that already exists."), request: None, status: Some("Conflict") } })) })
+ERROR - Error handling message ["Register", "meeshroom2", "meeshroom@gmx.net"]: Bad request: Failed to create account: error in response: status code 409 Conflict
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4434)
+ERROR - Failed to create identity: ResponseError(ResponseContent { status: 409, content: "{\"error\":{\"code\":409,\"status\":\"Conflict\",\"reason\":\"This identity conflicts with another identity that already exists.\",\"message\":\"The resource could not be created due to a conflict\"}}\n", entity: Some(Status400(ErrorGeneric { error: GenericError { code: Some(409), debug: None, details: None, id: None, message: "The resource could not be created due to a conflict", reason: Some("This identity conflicts with another identity that already exists."), request: None, status: Some("Conflict") } })) })
+ERROR - Error handling message ["Register", "meeshroom3", "meeshroom@gmx.net"]: Bad request: Failed to create account: error in response: status code 409 Conflict
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4434)
+ERROR - Failed to create identity: ResponseError(ResponseContent { status: 409, content: "{\"error\":{\"code\":409,\"status\":\"Conflict\",\"reason\":\"This identity conflicts with another identity that already exists.\",\"message\":\"The resource could not be created due to a conflict\"}}\n", entity: Some(Status400(ErrorGeneric { error: GenericError { code: Some(409), debug: None, details: None, id: None, message: "The resource could not be created due to a conflict", reason: Some("This identity conflicts with another identity that already exists."), request: None, status: Some("Conflict") } })) })
+ERROR - Error handling message ["Register", "meeshroom", "meeshroom@gamx.net"]: Bad request: Failed to create account: error in response: status code 409 Conflict
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4434)
+INFO - Client 9e5b5dc5-223e-468f-a58f-98bbd88f5243 set protocol to "2"
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=544.9µs elapsed_secs=0.0005449
+INFO - summary="SELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM …" db.statement="\n\nSELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM `player_account_mapping` WHERE `player_account_mapping`.`account_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=0 elapsed=1.8973ms elapsed_secs=0.0018973
+INFO - summary="INSERT INTO `player_account_mapping` (`account_id`, …" db.statement="\n\nINSERT INTO `player_account_mapping` (`account_id`, `player_id`) VALUES (?, ?)\n" rows_affected=1 rows_returned=0 elapsed=1.2787ms elapsed_secs=0.0012787
+INFO - summary="SELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM …" db.statement="\n\nSELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM `player_account_mapping` WHERE `player_account_mapping`.`account_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=468.8µs elapsed_secs=0.0004688
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=8.9184ms elapsed_secs=0.0089184
+INFO - Client 0f832dd6-fb4c-449b-98eb-40a2b6a50b28 connected
+INFO - Client 0f832dd6-fb4c-449b-98eb-40a2b6a50b28 set protocol to "2"
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+INFO - Client 9e5b5dc5-223e-468f-a58f-98bbd88f5243 closed
+DEBUG - Client 9e5b5dc5-223e-468f-a58f-98bbd88f5243 received ended
+INFO - Client 9e5b5dc5-223e-468f-a58f-98bbd88f5243 notification ended
+ERROR - Failed to notify listener 9e5b5dc5-223e-468f-a58f-98bbd88f5243: channel closed
+INFO - Disconnected previous session of account 53435312-ccc4-4384-aa52-486faf569ada (client 9e5b5dc5-223e-468f-a58f-98bbd88f5243)
+INFO - Client 9e5b5dc5-223e-468f-a58f-98bbd88f5243 send ended
+ERROR - Failed to notify listener 9e5b5dc5-223e-468f-a58f-98bbd88f5243: channel closed
+INFO - Client 420861ca-97d9-47bc-8f40-d06aba08cea1 connected
+INFO - Client 420861ca-97d9-47bc-8f40-d06aba08cea1 set protocol to "2"
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=370µs elapsed_secs=0.00037
+INFO - summary="SELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM …" db.statement="\n\nSELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM `player_account_mapping` WHERE `player_account_mapping`.`account_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=1.0273ms elapsed_secs=0.0010273
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=413.7µs elapsed_secs=0.0004137
+ERROR - Failed to notify listener 9e5b5dc5-223e-468f-a58f-98bbd88f5243: channel closed
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - starting new connection: http://localhost:4433/
+DEBUG - connecting to [::1]:4433
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4434)
+DEBUG - connected to [::1]:4433
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - starting new connection: http://localhost:4434/
+DEBUG - connecting to [::1]:4434
+DEBUG - connected to [::1]:4434
+DEBUG - pooling idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4434)
+DEBUG - client connection error: hyper::Error(IncompleteMessage)
+ERROR - Failed to notify listener 9e5b5dc5-223e-468f-a58f-98bbd88f5243: channel closed
+ERROR - Failed to notify listener 9e5b5dc5-223e-468f-a58f-98bbd88f5243: channel closed
+INFO - summary="INSERT INTO `games` (`date`, …" db.statement="\n\nINSERT INTO `games` (`date`, `size`, `player_white_id`, `player_black_id`, `player_white_username`, `player_black_username`, `player_white_rating`, `player_black_rating`, `rating_change_white`, `rating_change_black`, `notation`, `result`, `clock_contingent`, `clock_increment`, `is_unrated`, `is_tournament`, `half_komi`, `pieces`, `capstones`, `extra_time_amount`, `extra_time_trigger`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n" rows_affected=1 rows_returned=0 elapsed=4.3834ms elapsed_secs=0.0043834
+INFO - summary="SELECT `games`.`id`, `games`.`date`, `games`.`size`, …" db.statement="\n\nSELECT `games`.`id`, `games`.`date`, `games`.`size`, `games`.`player_white_id`, `games`.`player_black_id`, `games`.`player_white_username`, `games`.`player_black_username`, `games`.`player_white_rating`, `games`.`player_black_rating`, `games`.`rating_change_white`, `games`.`rating_change_black`, `games`.`notation`, `games`.`result`, `games`.`clock_contingent`, `games`.`clock_increment`, `games`.`is_unrated`, `games`.`is_tournament`, `games`.`half_komi`, `games`.`pieces`, `games`.`capstones`, `games`.`extra_time_amount`, `games`.`extra_time_trigger` FROM `games` WHERE `games`.`id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=1.505ms elapsed_secs=0.001505
+INFO - Shutdown signal received. Preparing graceful exit...
+INFO - Shutdown signal received. Preparing graceful exit...
+INFO - Shutdown signal received, closing all clients
+INFO - HTTP API shut down gracefully
+INFO - Client 0f832dd6-fb4c-449b-98eb-40a2b6a50b28 closed
+INFO - Client 0f832dd6-fb4c-449b-98eb-40a2b6a50b28 notification ended
+DEBUG - Client 0f832dd6-fb4c-449b-98eb-40a2b6a50b28 received ended
+INFO - Client 420861ca-97d9-47bc-8f40-d06aba08cea1 closed
+DEBUG - Client 420861ca-97d9-47bc-8f40-d06aba08cea1 received ended
+INFO - Client 420861ca-97d9-47bc-8f40-d06aba08cea1 notification ended
+INFO - Client 0f832dd6-fb4c-449b-98eb-40a2b6a50b28 send ended
+INFO - TCP server shutting down
+INFO - Client cleanup task shutting down
+INFO - Client 420861ca-97d9-47bc-8f40-d06aba08cea1 send ended
+INFO - Transport service shut down gracefully
+ERROR - Failed to notify listener 9e5b5dc5-223e-468f-a58f-98bbd88f5243: channel closed
+ERROR - Failed to notify listener 9e5b5dc5-223e-468f-a58f-98bbd88f5243: channel closed
+ERROR - Failed to notify listener 0f832dd6-fb4c-449b-98eb-40a2b6a50b28: channel closed
+ERROR - Failed to notify listener 0f832dd6-fb4c-449b-98eb-40a2b6a50b28: channel closed
+ERROR - Failed to notify listener 420861ca-97d9-47bc-8f40-d06aba08cea1: channel closed
+ERROR - Failed to notify listener 420861ca-97d9-47bc-8f40-d06aba08cea1: channel closed
+INFO - summary="SET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES …" db.statement="\n\nSET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;\n" rows_affected=0 rows_returned=0 elapsed=853.9µs elapsed_secs=0.0008539
+INFO - summary="SELECT DATABASE()" db.statement="" rows_affected=0 rows_returned=1 elapsed=1.1051ms elapsed_secs=0.0011051
+INFO - summary="SET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES …" db.statement="\n\nSET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;\n" rows_affected=0 rows_returned=0 elapsed=491.4µs elapsed_secs=0.0004914
+INFO - summary="SELECT version()" db.statement="" rows_affected=0 rows_returned=1 elapsed=926.3µs elapsed_secs=0.0009263
+INFO - summary="SELECT `table_name`, `engine`, `auto_increment`, …" db.statement="\n\nSELECT `table_name`, `engine`, `auto_increment`, `table_collation`, `table_comment`, `create_options`, `collation_character_set_applicability`.`character_set_name` FROM `information_schema`.`tables` LEFT JOIN `information_schema`.`collation_character_set_applicability` ON `collation_character_set_applicability`.`collation_name` = `tables`.`table_collation` WHERE `table_schema` = ? AND `table_type` IN (?, ?) ORDER BY `table_name` ASC\n" rows_affected=0 rows_returned=4 elapsed=3.3381ms elapsed_secs=0.0033381
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=22 elapsed=2.0828ms elapsed_secs=0.0020828
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=1.019ms elapsed_secs=0.001019
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=9.0144ms elapsed_secs=0.0090144
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=2 elapsed=1.6681ms elapsed_secs=0.0016681
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=3 elapsed=1.1533ms elapsed_secs=0.0011533
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=8.3128ms elapsed_secs=0.0083128
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=2 elapsed=997.8µs elapsed_secs=0.0009978
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=552.1µs elapsed_secs=0.0005521
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=6.8204ms elapsed_secs=0.0068204
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=9 elapsed=1.1754ms elapsed_secs=0.0011754
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=537.5µs elapsed_secs=0.0005375
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=7.0258ms elapsed_secs=0.0070258
+INFO - Starting application
+INFO - WebSocket server listening on port 9999
+INFO - API server listening on port 3004
+INFO - TCP server listening on port 10000
+INFO - Client 6b8a8137-17f2-49ab-9d69-c32d87052ed4 connected
+INFO - Client 6b8a8137-17f2-49ab-9d69-c32d87052ed4 set protocol to "2"
+DEBUG - starting new connection: http://localhost:4433/
+DEBUG - connecting to [::1]:4433
+DEBUG - connected to [::1]:4433
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=475.1µs elapsed_secs=0.0004751
+INFO - summary="SELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM …" db.statement="\n\nSELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM `player_account_mapping` WHERE `player_account_mapping`.`account_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=998.5µs elapsed_secs=0.0009985
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=424.3µs elapsed_secs=0.0004243
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - starting new connection: http://localhost:4434/
+DEBUG - connecting to [::1]:4434
+DEBUG - connected to [::1]:4434
+DEBUG - pooling idle connection for ("http", localhost:4434)
+INFO - Client 8b39a495-21f9-4cbb-9a90-943045067ac4 connected
+INFO - Client 8b39a495-21f9-4cbb-9a90-943045067ac4 set protocol to "2"
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=444.4µs elapsed_secs=0.0004444
+INFO - summary="SELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM …" db.statement="\n\nSELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM `player_account_mapping` WHERE `player_account_mapping`.`account_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=1.0773ms elapsed_secs=0.0010773
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=405.2µs elapsed_secs=0.0004052
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - starting new connection: http://localhost:4433/
+DEBUG - connecting to [::1]:4433
+DEBUG - connected to [::1]:4433
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - starting new connection: http://localhost:4434/
+DEBUG - connecting to [::1]:4434
+DEBUG - connected to [::1]:4434
+DEBUG - pooling idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4434)
+DEBUG - client connection error: hyper::Error(IncompleteMessage)
+DEBUG - Received close frame: Some(CloseFrame { code: Away, reason: Utf8Bytes(b"") })
+DEBUG - Replying to close with Frame { header: FrameHeader { is_final: true, rsv1: false, rsv2: false, rsv3: false, opcode: Control(Close), mask: None }, payload: b"\x03\xe9" }
+DEBUG - Client 8b39a495-21f9-4cbb-9a90-943045067ac4 received ended
+INFO - Client 8b39a495-21f9-4cbb-9a90-943045067ac4 notification ended
+INFO - Client 8b39a495-21f9-4cbb-9a90-943045067ac4 send ended
+ERROR - Failed to notify listener 8b39a495-21f9-4cbb-9a90-943045067ac4 of all listeners: channel closed, Notification(PlayersOnline { players: [PlayerId(89d3b54d-3e08-4a0c-a8ce-bb852dbf2bdf)] })
+INFO - Client 8b39a495-21f9-4cbb-9a90-943045067ac4 fully disconnected
+INFO - Client 8f2e7aee-666b-418a-8b67-dc1d22093271 connected
+INFO - Client 8f2e7aee-666b-418a-8b67-dc1d22093271 set protocol to "2"
+DEBUG - starting new connection: http://localhost:4433/
+DEBUG - connecting to [::1]:4433
+DEBUG - connected to [::1]:4433
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+ERROR - Failed to notify listener 8b39a495-21f9-4cbb-9a90-943045067ac4 of all listeners: channel closed, Notification(PlayersOnline { players: [PlayerId(4b293af5-90d6-4694-bb79-67873aa98d81), PlayerId(89d3b54d-3e08-4a0c-a8ce-bb852dbf2bdf)] })
+ERROR - Failed to notify listener 8b39a495-21f9-4cbb-9a90-943045067ac4 of all listeners: channel closed, Notification(SeekCreated { seek: SeekView { id: SeekId(0), creator_id: PlayerId(89d3b54d-3e08-4a0c-a8ce-bb852dbf2bdf), opponent_id: None, color: None, game_settings: TakGameSettings { board_size: 7, half_komi: 7, reserve: TakReserve { pieces: 40, capstones: 2 }, time_control: TakTimeControl { contingent: 1200s, increment: 60s, extra: None } }, game_type: Unrated } })
+ERROR - Failed to notify listener 8b39a495-21f9-4cbb-9a90-943045067ac4 of all listeners: channel closed, Notification(SeekCanceled { seek: SeekView { id: SeekId(0), creator_id: PlayerId(89d3b54d-3e08-4a0c-a8ce-bb852dbf2bdf), opponent_id: None, color: None, game_settings: TakGameSettings { board_size: 7, half_komi: 7, reserve: TakReserve { pieces: 40, capstones: 2 }, time_control: TakTimeControl { contingent: 1200s, increment: 60s, extra: None } }, game_type: Unrated } })
+INFO - summary="INSERT INTO `games` (`date`, …" db.statement="\n\nINSERT INTO `games` (`date`, `size`, `player_white_id`, `player_black_id`, `player_white_username`, `player_black_username`, `player_white_rating`, `player_black_rating`, `rating_change_white`, `rating_change_black`, `notation`, `result`, `clock_contingent`, `clock_increment`, `is_unrated`, `is_tournament`, `half_komi`, `pieces`, `capstones`, `extra_time_amount`, `extra_time_trigger`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n" rows_affected=1 rows_returned=0 elapsed=5.919ms elapsed_secs=0.005919
+INFO - summary="SELECT `games`.`id`, `games`.`date`, `games`.`size`, …" db.statement="\n\nSELECT `games`.`id`, `games`.`date`, `games`.`size`, `games`.`player_white_id`, `games`.`player_black_id`, `games`.`player_white_username`, `games`.`player_black_username`, `games`.`player_white_rating`, `games`.`player_black_rating`, `games`.`rating_change_white`, `games`.`rating_change_black`, `games`.`notation`, `games`.`result`, `games`.`clock_contingent`, `games`.`clock_increment`, `games`.`is_unrated`, `games`.`is_tournament`, `games`.`half_komi`, `games`.`pieces`, `games`.`capstones`, `games`.`extra_time_amount`, `games`.`extra_time_trigger` FROM `games` WHERE `games`.`id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=1.377ms elapsed_secs=0.001377
+INFO - Shutdown signal received. Preparing graceful exit...
+INFO - Shutdown signal received. Preparing graceful exit...
+INFO - HTTP API shut down gracefully
+INFO - Shutdown signal received, closing all clients
+INFO - Client 8f2e7aee-666b-418a-8b67-dc1d22093271 closed
+DEBUG - Client 8f2e7aee-666b-418a-8b67-dc1d22093271 received ended
+INFO - Client 8f2e7aee-666b-418a-8b67-dc1d22093271 notification ended
+INFO - Client 6b8a8137-17f2-49ab-9d69-c32d87052ed4 closed
+INFO - Client 6b8a8137-17f2-49ab-9d69-c32d87052ed4 notification ended
+DEBUG - Client 6b8a8137-17f2-49ab-9d69-c32d87052ed4 received ended
+INFO - Client 8f2e7aee-666b-418a-8b67-dc1d22093271 send ended
+INFO - TCP server shutting down
+INFO - Client cleanup task shutting down
+INFO - Client 6b8a8137-17f2-49ab-9d69-c32d87052ed4 send ended
+INFO - Transport service shut down gracefully
+ERROR - Failed to notify listener 8b39a495-21f9-4cbb-9a90-943045067ac4 of all listeners: channel closed, Notification(PlayersOnline { players: [PlayerId(89d3b54d-3e08-4a0c-a8ce-bb852dbf2bdf)] })
+ERROR - Failed to notify listener 8b39a495-21f9-4cbb-9a90-943045067ac4 of all listeners: channel closed, Notification(PlayersOnline { players: [] })
+ERROR - Failed to notify listener 8f2e7aee-666b-418a-8b67-dc1d22093271 of all listeners: channel closed, Notification(PlayersOnline { players: [PlayerId(89d3b54d-3e08-4a0c-a8ce-bb852dbf2bdf)] })
+ERROR - Failed to notify listener 8f2e7aee-666b-418a-8b67-dc1d22093271 of all listeners: channel closed, Notification(PlayersOnline { players: [] })
+ERROR - Failed to notify listener 6b8a8137-17f2-49ab-9d69-c32d87052ed4 of all listeners: channel closed, Notification(PlayersOnline { players: [PlayerId(89d3b54d-3e08-4a0c-a8ce-bb852dbf2bdf)] })
+ERROR - Failed to notify listener 6b8a8137-17f2-49ab-9d69-c32d87052ed4 of all listeners: channel closed, Notification(PlayersOnline { players: [] })
+INFO - Client 8f2e7aee-666b-418a-8b67-dc1d22093271 fully disconnected
+INFO - Client 6b8a8137-17f2-49ab-9d69-c32d87052ed4 fully disconnected
+INFO - summary="SET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES …" db.statement="\n\nSET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;\n" rows_affected=0 rows_returned=0 elapsed=826.3µs elapsed_secs=0.0008263
+INFO - summary="SELECT DATABASE()" db.statement="" rows_affected=0 rows_returned=1 elapsed=983.8µs elapsed_secs=0.0009838
+INFO - summary="SET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES …" db.statement="\n\nSET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;\n" rows_affected=0 rows_returned=0 elapsed=438.6µs elapsed_secs=0.0004386
+INFO - summary="SELECT version()" db.statement="" rows_affected=0 rows_returned=1 elapsed=810.9µs elapsed_secs=0.0008109
+INFO - summary="SELECT `table_name`, `engine`, `auto_increment`, …" db.statement="\n\nSELECT `table_name`, `engine`, `auto_increment`, `table_collation`, `table_comment`, `create_options`, `collation_character_set_applicability`.`character_set_name` FROM `information_schema`.`tables` LEFT JOIN `information_schema`.`collation_character_set_applicability` ON `collation_character_set_applicability`.`collation_name` = `tables`.`table_collation` WHERE `table_schema` = ? AND `table_type` IN (?, ?) ORDER BY `table_name` ASC\n" rows_affected=0 rows_returned=4 elapsed=2.9807ms elapsed_secs=0.0029807
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=22 elapsed=1.9055ms elapsed_secs=0.0019055
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=970.8µs elapsed_secs=0.0009708
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=9.1901ms elapsed_secs=0.0091901
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=2 elapsed=1.449ms elapsed_secs=0.001449
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=3 elapsed=949.2µs elapsed_secs=0.0009492
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=7.7681ms elapsed_secs=0.0077681
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=2 elapsed=1.0352ms elapsed_secs=0.0010352
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=494.1µs elapsed_secs=0.0004941
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=6.9447ms elapsed_secs=0.0069447
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=9 elapsed=1.1243ms elapsed_secs=0.0011243
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=1.2642ms elapsed_secs=0.0012642
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=7.4552ms elapsed_secs=0.0074552
+INFO - Starting application
+INFO - API server listening on port 3004
+INFO - WebSocket server listening on port 9999
+INFO - TCP server listening on port 10000
+INFO - Client 62a23102-7cec-42bc-908e-e5b0ba866480 connected
+INFO - Client cb3f9338-043e-4af4-a16c-5176957357ab connected
+INFO - Client 62a23102-7cec-42bc-908e-e5b0ba866480 set protocol to "2"
+DEBUG - starting new connection: http://localhost:4433/
+DEBUG - connecting to [::1]:4433
+DEBUG - connected to [::1]:4433
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=342µs elapsed_secs=0.000342
+INFO - summary="SELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM …" db.statement="\n\nSELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM `player_account_mapping` WHERE `player_account_mapping`.`account_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=1.0355ms elapsed_secs=0.0010355
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=363.6µs elapsed_secs=0.0003636
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - starting new connection: http://localhost:4434/
+DEBUG - connecting to [::1]:4434
+DEBUG - connected to [::1]:4434
+DEBUG - pooling idle connection for ("http", localhost:4434)
+INFO - Client cb3f9338-043e-4af4-a16c-5176957357ab set protocol to "2"
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=463.9µs elapsed_secs=0.0004639
+INFO - summary="SELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM …" db.statement="\n\nSELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM `player_account_mapping` WHERE `player_account_mapping`.`account_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=1.0369ms elapsed_secs=0.0010369
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=392.5µs elapsed_secs=0.0003925
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - starting new connection: http://localhost:4433/
+DEBUG - connecting to [::1]:4433
+DEBUG - connected to [::1]:4433
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - starting new connection: http://localhost:4434/
+DEBUG - connecting to [::1]:4434
+DEBUG - connected to [::1]:4434
+DEBUG - pooling idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4434)
+DEBUG - client connection error: hyper::Error(IncompleteMessage)
+INFO - summary="INSERT INTO `games` (`date`, …" db.statement="\n\nINSERT INTO `games` (`date`, `size`, `player_white_id`, `player_black_id`, `player_white_username`, `player_black_username`, `player_white_rating`, `player_black_rating`, `rating_change_white`, `rating_change_black`, `notation`, `result`, `clock_contingent`, `clock_increment`, `is_unrated`, `is_tournament`, `half_komi`, `pieces`, `capstones`, `extra_time_amount`, `extra_time_trigger`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n" rows_affected=1 rows_returned=0 elapsed=9.0406ms elapsed_secs=0.0090406
+INFO - summary="SELECT `games`.`id`, `games`.`date`, `games`.`size`, …" db.statement="\n\nSELECT `games`.`id`, `games`.`date`, `games`.`size`, `games`.`player_white_id`, `games`.`player_black_id`, `games`.`player_white_username`, `games`.`player_black_username`, `games`.`player_white_rating`, `games`.`player_black_rating`, `games`.`rating_change_white`, `games`.`rating_change_black`, `games`.`notation`, `games`.`result`, `games`.`clock_contingent`, `games`.`clock_increment`, `games`.`is_unrated`, `games`.`is_tournament`, `games`.`half_komi`, `games`.`pieces`, `games`.`capstones`, `games`.`extra_time_amount`, `games`.`extra_time_trigger` FROM `games` WHERE `games`.`id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=1.2687ms elapsed_secs=0.0012687
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=309.2µs elapsed_secs=0.0003092
+INFO - summary="SELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, …" db.statement="\n\nSELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, `ratings`.`rated_games`, `ratings`.`is_unrated`, `ratings`.`max_rating`, `ratings`.`rating_age`, `ratings`.`participation_rating`, `ratings`.`fatigue` FROM `ratings` WHERE `ratings`.`player_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=0 elapsed=1.0435ms elapsed_secs=0.0010435
+INFO - summary="INSERT INTO `ratings` (`player_id`, …" db.statement="\n\nINSERT INTO `ratings` (`player_id`, `rating`, `boost`, `rated_games`, `is_unrated`, `max_rating`, `rating_age`, `participation_rating`, `fatigue`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\n" rows_affected=1 rows_returned=0 elapsed=1.078ms elapsed_secs=0.001078
+INFO - summary="SELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, …" db.statement="\n\nSELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, `ratings`.`rated_games`, `ratings`.`is_unrated`, `ratings`.`max_rating`, `ratings`.`rating_age`, `ratings`.`participation_rating`, `ratings`.`fatigue` FROM `ratings` WHERE `ratings`.`player_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=515.8µs elapsed_secs=0.0005158
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=3.6548ms elapsed_secs=0.0036548
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=417.8µs elapsed_secs=0.0004178
+INFO - summary="SELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, …" db.statement="\n\nSELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, `ratings`.`rated_games`, `ratings`.`is_unrated`, `ratings`.`max_rating`, `ratings`.`rating_age`, `ratings`.`participation_rating`, `ratings`.`fatigue` FROM `ratings` WHERE `ratings`.`player_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=0 elapsed=1.239ms elapsed_secs=0.001239
+INFO - summary="INSERT INTO `ratings` (`player_id`, …" db.statement="\n\nINSERT INTO `ratings` (`player_id`, `rating`, `boost`, `rated_games`, `is_unrated`, `max_rating`, `rating_age`, `participation_rating`, `fatigue`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\n" rows_affected=1 rows_returned=0 elapsed=989.7µs elapsed_secs=0.0009897
+INFO - summary="SELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, …" db.statement="\n\nSELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, `ratings`.`rated_games`, `ratings`.`is_unrated`, `ratings`.`max_rating`, `ratings`.`rating_age`, `ratings`.`participation_rating`, `ratings`.`fatigue` FROM `ratings` WHERE `ratings`.`player_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=457.2µs elapsed_secs=0.0004572
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=5.2439ms elapsed_secs=0.0052439
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=410.3µs elapsed_secs=0.0004103
+INFO - summary="SELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, …" db.statement="\n\nSELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, `ratings`.`rated_games`, `ratings`.`is_unrated`, `ratings`.`max_rating`, `ratings`.`rating_age`, `ratings`.`participation_rating`, `ratings`.`fatigue` FROM `ratings` WHERE `ratings`.`player_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=496.8µs elapsed_secs=0.0004968
+INFO - summary="SELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, …" db.statement="\n\nSELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, `ratings`.`rated_games`, `ratings`.`is_unrated`, `ratings`.`max_rating`, `ratings`.`rating_age`, `ratings`.`participation_rating`, `ratings`.`fatigue` FROM `ratings` WHERE `ratings`.`player_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=451.9µs elapsed_secs=0.0004519
+INFO - summary="UPDATE `ratings` SET `rating` …" db.statement="\n\nUPDATE `ratings` SET `rating` = ?, `boost` = ?, `rated_games` = ?, `is_unrated` = ?, `max_rating` = ?, `rating_age` = ?, `participation_rating` = ?, `fatigue` = ? WHERE `ratings`.`player_id` = ?\n" rows_affected=1 rows_returned=0 elapsed=2.4381ms elapsed_secs=0.0024381
+INFO - summary="SELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, …" db.statement="\n\nSELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, `ratings`.`rated_games`, `ratings`.`is_unrated`, `ratings`.`max_rating`, `ratings`.`rating_age`, `ratings`.`participation_rating`, `ratings`.`fatigue` FROM `ratings` WHERE `ratings`.`player_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=495.3µs elapsed_secs=0.0004953
+INFO - summary="UPDATE `ratings` SET `rating` …" db.statement="\n\nUPDATE `ratings` SET `rating` = ?, `boost` = ?, `rated_games` = ?, `is_unrated` = ?, `max_rating` = ?, `rating_age` = ?, `participation_rating` = ?, `fatigue` = ? WHERE `ratings`.`player_id` = ?\n" rows_affected=1 rows_returned=0 elapsed=427.7µs elapsed_secs=0.0004277
+INFO - summary="SELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, …" db.statement="\n\nSELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, `ratings`.`rated_games`, `ratings`.`is_unrated`, `ratings`.`max_rating`, `ratings`.`rating_age`, `ratings`.`participation_rating`, `ratings`.`fatigue` FROM `ratings` WHERE `ratings`.`player_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=459.3µs elapsed_secs=0.0004593
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=445.7µs elapsed_secs=0.0004457
+INFO - summary="UPDATE `games` SET `player_white_rating` …" db.statement="\n\nUPDATE `games` SET `player_white_rating` = ?, `player_black_rating` = ?, `rating_change_white` = ?, `rating_change_black` = ?, `notation` = ?, `result` = ? WHERE `games`.`id` = ?\n" rows_affected=1 rows_returned=0 elapsed=4.1897ms elapsed_secs=0.0041897
+INFO - summary="SELECT `games`.`id`, `games`.`date`, `games`.`size`, …" db.statement="\n\nSELECT `games`.`id`, `games`.`date`, `games`.`size`, `games`.`player_white_id`, `games`.`player_black_id`, `games`.`player_white_username`, `games`.`player_black_username`, `games`.`player_white_rating`, `games`.`player_black_rating`, `games`.`rating_change_white`, `games`.`rating_change_black`, `games`.`notation`, `games`.`result`, `games`.`clock_contingent`, `games`.`clock_increment`, `games`.`is_unrated`, `games`.`is_tournament`, `games`.`half_komi`, `games`.`pieces`, `games`.`capstones`, `games`.`extra_time_amount`, `games`.`extra_time_trigger` FROM `games` WHERE `games`.`id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=1.3505ms elapsed_secs=0.0013505
+ERROR - Error handling message ["Game#0", "RemoveDraw"]: Not found: Game not found
+INFO - Shutdown signal received. Preparing graceful exit...
+INFO - Shutdown signal received. Preparing graceful exit...
+INFO - Shutdown signal received, closing all clients
+INFO - HTTP API shut down gracefully
+INFO - Client cb3f9338-043e-4af4-a16c-5176957357ab closed
+INFO - Client cb3f9338-043e-4af4-a16c-5176957357ab notification ended
+INFO - Client cb3f9338-043e-4af4-a16c-5176957357ab received ended
+INFO - Client 62a23102-7cec-42bc-908e-e5b0ba866480 closed
+INFO - Client 62a23102-7cec-42bc-908e-e5b0ba866480 received ended
+INFO - Client 62a23102-7cec-42bc-908e-e5b0ba866480 notification ended
+INFO - Client cb3f9338-043e-4af4-a16c-5176957357ab send ended
+INFO - TCP server shutting down
+INFO - Client 62a23102-7cec-42bc-908e-e5b0ba866480 send ended
+INFO - Client cleanup task shutting down
+INFO - Client cb3f9338-043e-4af4-a16c-5176957357ab fully disconnected
+INFO - Client 62a23102-7cec-42bc-908e-e5b0ba866480 fully disconnected
+INFO - Transport service shut down gracefully
+INFO - summary="SET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES …" db.statement="\n\nSET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;\n" rows_affected=0 rows_returned=0 elapsed=3.5093ms elapsed_secs=0.0035093
+INFO - summary="SELECT DATABASE()" db.statement="" rows_affected=0 rows_returned=1 elapsed=1.7059ms elapsed_secs=0.0017059
+INFO - summary="SET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES …" db.statement="\n\nSET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;\n" rows_affected=0 rows_returned=0 elapsed=794.6µs elapsed_secs=0.0007946
+INFO - summary="SELECT version()" db.statement="" rows_affected=0 rows_returned=1 elapsed=1.376ms elapsed_secs=0.001376
+INFO - summary="SELECT `table_name`, `engine`, `auto_increment`, …" db.statement="\n\nSELECT `table_name`, `engine`, `auto_increment`, `table_collation`, `table_comment`, `create_options`, `collation_character_set_applicability`.`character_set_name` FROM `information_schema`.`tables` LEFT JOIN `information_schema`.`collation_character_set_applicability` ON `collation_character_set_applicability`.`collation_name` = `tables`.`table_collation` WHERE `table_schema` = ? AND `table_type` IN (?, ?) ORDER BY `table_name` ASC\n" rows_affected=0 rows_returned=4 elapsed=8.2788ms elapsed_secs=0.0082788
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=22 elapsed=3.9195ms elapsed_secs=0.0039195
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=1.59ms elapsed_secs=0.00159
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=20.4036ms elapsed_secs=0.0204036
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=2 elapsed=2.9183ms elapsed_secs=0.0029183
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=3 elapsed=1.6539ms elapsed_secs=0.0016539
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=15.8241ms elapsed_secs=0.0158241
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=2 elapsed=1.4226ms elapsed_secs=0.0014226
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=653.6µs elapsed_secs=0.0006536
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=10.817ms elapsed_secs=0.010817
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=9 elapsed=1.1436ms elapsed_secs=0.0011436
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=762.7µs elapsed_secs=0.0007627
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=8.1357ms elapsed_secs=0.0081357
+INFO - Starting application
+INFO - WebSocket server listening on port 9999
+INFO - API server listening on port 3004
+INFO - TCP server listening on port 10000
+INFO - Client 0a711aac-f687-4a98-af6c-d4b0505bfdf7 connected
+INFO - Client 908375e7-4b62-409f-b7bc-8f078ec379e4 connected
+INFO - Client 908375e7-4b62-409f-b7bc-8f078ec379e4 set protocol to "2"
+DEBUG - starting new connection: http://localhost:4433/
+DEBUG - connecting to [::1]:4433
+DEBUG - connected to [::1]:4433
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=465.8µs elapsed_secs=0.0004658
+INFO - summary="SELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM …" db.statement="\n\nSELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM `player_account_mapping` WHERE `player_account_mapping`.`account_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=1.7184ms elapsed_secs=0.0017184
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=472.5µs elapsed_secs=0.0004725
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - starting new connection: http://localhost:4434/
+DEBUG - connecting to [::1]:4434
+DEBUG - connected to [::1]:4434
+DEBUG - pooling idle connection for ("http", localhost:4434)
+INFO - Client 0a711aac-f687-4a98-af6c-d4b0505bfdf7 set protocol to "2"
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=341µs elapsed_secs=0.000341
+INFO - summary="SELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM …" db.statement="\n\nSELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM `player_account_mapping` WHERE `player_account_mapping`.`account_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=997.5µs elapsed_secs=0.0009975
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=357.5µs elapsed_secs=0.0003575
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - starting new connection: http://localhost:4433/
+DEBUG - connecting to [::1]:4433
+DEBUG - connected to [::1]:4433
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - starting new connection: http://localhost:4434/
+DEBUG - connecting to [::1]:4434
+DEBUG - connected to [::1]:4434
+DEBUG - pooling idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4434)
+DEBUG - client connection error: hyper::Error(IncompleteMessage)
+INFO - summary="INSERT INTO `games` (`date`, …" db.statement="\n\nINSERT INTO `games` (`date`, `size`, `player_white_id`, `player_black_id`, `player_white_username`, `player_black_username`, `player_white_rating`, `player_black_rating`, `rating_change_white`, `rating_change_black`, `notation`, `result`, `clock_contingent`, `clock_increment`, `is_unrated`, `is_tournament`, `half_komi`, `pieces`, `capstones`, `extra_time_amount`, `extra_time_trigger`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n" rows_affected=1 rows_returned=0 elapsed=5.7458ms elapsed_secs=0.0057458
+INFO - summary="SELECT `games`.`id`, `games`.`date`, `games`.`size`, …" db.statement="\n\nSELECT `games`.`id`, `games`.`date`, `games`.`size`, `games`.`player_white_id`, `games`.`player_black_id`, `games`.`player_white_username`, `games`.`player_black_username`, `games`.`player_white_rating`, `games`.`player_black_rating`, `games`.`rating_change_white`, `games`.`rating_change_black`, `games`.`notation`, `games`.`result`, `games`.`clock_contingent`, `games`.`clock_increment`, `games`.`is_unrated`, `games`.`is_tournament`, `games`.`half_komi`, `games`.`pieces`, `games`.`capstones`, `games`.`extra_time_amount`, `games`.`extra_time_trigger` FROM `games` WHERE `games`.`id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=1.2013ms elapsed_secs=0.0012013
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4434)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4434)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4434)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4434)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4434)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4434)
+INFO - Shutdown signal received. Preparing graceful exit...
+INFO - Shutdown signal received. Preparing graceful exit...
+INFO - Shutdown signal received, closing all clients
+INFO - HTTP API shut down gracefully
+INFO - Client 908375e7-4b62-409f-b7bc-8f078ec379e4 closed
+INFO - Client 908375e7-4b62-409f-b7bc-8f078ec379e4 notification ended
+INFO - Client 908375e7-4b62-409f-b7bc-8f078ec379e4 received ended
+INFO - Client 0a711aac-f687-4a98-af6c-d4b0505bfdf7 closed
+INFO - Client 0a711aac-f687-4a98-af6c-d4b0505bfdf7 received ended
+INFO - Client 0a711aac-f687-4a98-af6c-d4b0505bfdf7 notification ended
+INFO - Client 908375e7-4b62-409f-b7bc-8f078ec379e4 send ended
+INFO - TCP server shutting down
+INFO - Client 0a711aac-f687-4a98-af6c-d4b0505bfdf7 send ended
+INFO - Client cleanup task shutting down
+ERROR - Failed to notify listener 0a711aac-f687-4a98-af6c-d4b0505bfdf7 of all listeners: channel closed, Notification(PlayersOnline { players: [PlayerId(4b293af5-90d6-4694-bb79-67873aa98d81)] })
+INFO - Transport service shut down gracefully
+INFO - Client 908375e7-4b62-409f-b7bc-8f078ec379e4 fully disconnected
+INFO - Client 0a711aac-f687-4a98-af6c-d4b0505bfdf7 fully disconnected
+INFO - summary="SET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES …" db.statement="\n\nSET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;\n" rows_affected=0 rows_returned=0 elapsed=832.5µs elapsed_secs=0.0008325
+INFO - summary="SELECT DATABASE()" db.statement="" rows_affected=0 rows_returned=1 elapsed=1.1012ms elapsed_secs=0.0011012
+INFO - summary="SET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES …" db.statement="\n\nSET sql_mode=(SELECT CONCAT(@@sql_mode, ',PIPES_AS_CONCAT,NO_ENGINE_SUBSTITUTION')),time_zone='+00:00',NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;\n" rows_affected=0 rows_returned=0 elapsed=414.7µs elapsed_secs=0.0004147
+INFO - summary="SELECT version()" db.statement="" rows_affected=0 rows_returned=1 elapsed=823.6µs elapsed_secs=0.0008236
+INFO - summary="SELECT `table_name`, `engine`, `auto_increment`, …" db.statement="\n\nSELECT `table_name`, `engine`, `auto_increment`, `table_collation`, `table_comment`, `create_options`, `collation_character_set_applicability`.`character_set_name` FROM `information_schema`.`tables` LEFT JOIN `information_schema`.`collation_character_set_applicability` ON `collation_character_set_applicability`.`collation_name` = `tables`.`table_collation` WHERE `table_schema` = ? AND `table_type` IN (?, ?) ORDER BY `table_name` ASC\n" rows_affected=0 rows_returned=4 elapsed=2.6449ms elapsed_secs=0.0026449
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=22 elapsed=1.6562ms elapsed_secs=0.0016562
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=935.3µs elapsed_secs=0.0009353
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=8.4311ms elapsed_secs=0.0084311
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=2 elapsed=1.4786ms elapsed_secs=0.0014786
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=3 elapsed=922.8µs elapsed_secs=0.0009228
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=7.6388ms elapsed_secs=0.0076388
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=2 elapsed=1.0649ms elapsed_secs=0.0010649
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=593.9µs elapsed_secs=0.0005939
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=7.6636ms elapsed_secs=0.0076636
+INFO - summary="SELECT `column_name`, `column_type`, `is_nullable`, …" db.statement="\n\nSELECT `column_name`, `column_type`, `is_nullable`, `column_key`, `column_default`, `extra`, ?, `column_comment` FROM `information_schema`.`columns` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `ordinal_position` ASC\n" rows_affected=0 rows_returned=9 elapsed=1.3282ms elapsed_secs=0.0013282
+INFO - summary="SELECT `non_unique`, `index_name`, `column_name`, …" db.statement="\n\nSELECT `non_unique`, `index_name`, `column_name`, `collation`, `sub_part`, `nullable`, `index_type`, `index_comment`, ? FROM `information_schema`.`statistics` WHERE `table_schema` = ? AND `table_name` = ? ORDER BY `index_name` ASC, `seq_in_index` ASC\n" rows_affected=0 rows_returned=1 elapsed=551.6µs elapsed_secs=0.0005516
+INFO - summary="SELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, …" db.statement="\n\nSELECT `key_column_usage`.`constraint_name`, `key_column_usage`.`column_name`, `key_column_usage`.`referenced_table_name`, `key_column_usage`.`referenced_column_name`, `referential_constraints`.`update_rule`, `referential_constraints`.`delete_rule` FROM `information_schema`.`key_column_usage` INNER JOIN `information_schema`.`referential_constraints` ON `key_column_usage`.`constraint_schema` = `referential_constraints`.`constraint_schema` AND `key_column_usage`.`constraint_name` = `referential_constraints`.`constraint_name` WHERE `key_column_usage`.`constraint_schema` = ? AND `key_column_usage`.`table_name` = ? AND `key_column_usage`.`referenced_table_name` IS NOT NULL AND `key_column_usage`.`referenced_column_name` IS NOT NULL ORDER BY `constraint_name` ASC, `ordinal_position` ASC\n" rows_affected=0 rows_returned=0 elapsed=8.5769ms elapsed_secs=0.0085769
+INFO - Starting application
+INFO - WebSocket server listening on port 9999
+INFO - API server listening on port 3004
+INFO - TCP server listening on port 10000
+INFO - Client bdac1f5f-fc38-4c83-81d0-ed98e02bfb5d connected
+INFO - Client 1692b588-8476-49fc-aed5-92ea9633c052 connected
+INFO - Client bdac1f5f-fc38-4c83-81d0-ed98e02bfb5d set protocol to "2"
+DEBUG - starting new connection: http://localhost:4433/
+DEBUG - connecting to [::1]:4433
+DEBUG - connected to [::1]:4433
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=438µs elapsed_secs=0.000438
+INFO - summary="SELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM …" db.statement="\n\nSELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM `player_account_mapping` WHERE `player_account_mapping`.`account_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=1.1471ms elapsed_secs=0.0011471
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=461.9µs elapsed_secs=0.0004619
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - starting new connection: http://localhost:4434/
+DEBUG - connecting to [::1]:4434
+DEBUG - connected to [::1]:4434
+DEBUG - pooling idle connection for ("http", localhost:4434)
+INFO - Client 1692b588-8476-49fc-aed5-92ea9633c052 set protocol to "2"
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=369.1µs elapsed_secs=0.0003691
+INFO - summary="SELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM …" db.statement="\n\nSELECT `player_account_mapping`.`account_id`, `player_account_mapping`.`player_id` FROM `player_account_mapping` WHERE `player_account_mapping`.`account_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=918.9µs elapsed_secs=0.0009189
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=362.8µs elapsed_secs=0.0003628
+DEBUG - reuse idle connection for ("http", localhost:4433)
+DEBUG - starting new connection: http://localhost:4433/
+DEBUG - connecting to [::1]:4433
+DEBUG - connected to [::1]:4433
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - reuse idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4433)
+DEBUG - starting new connection: http://localhost:4434/
+DEBUG - reuse idle connection for ("http", localhost:4434)
+DEBUG - connecting to [::1]:4434
+DEBUG - connected to [::1]:4434
+DEBUG - pooling idle connection for ("http", localhost:4434)
+DEBUG - pooling idle connection for ("http", localhost:4434)
+DEBUG - client connection error: hyper::Error(IncompleteMessage)
+INFO - summary="INSERT INTO `games` (`date`, …" db.statement="\n\nINSERT INTO `games` (`date`, `size`, `player_white_id`, `player_black_id`, `player_white_username`, `player_black_username`, `player_white_rating`, `player_black_rating`, `rating_change_white`, `rating_change_black`, `notation`, `result`, `clock_contingent`, `clock_increment`, `is_unrated`, `is_tournament`, `half_komi`, `pieces`, `capstones`, `extra_time_amount`, `extra_time_trigger`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n" rows_affected=1 rows_returned=0 elapsed=6.0531ms elapsed_secs=0.0060531
+INFO - summary="SELECT `games`.`id`, `games`.`date`, `games`.`size`, …" db.statement="\n\nSELECT `games`.`id`, `games`.`date`, `games`.`size`, `games`.`player_white_id`, `games`.`player_black_id`, `games`.`player_white_username`, `games`.`player_black_username`, `games`.`player_white_rating`, `games`.`player_black_rating`, `games`.`rating_change_white`, `games`.`rating_change_black`, `games`.`notation`, `games`.`result`, `games`.`clock_contingent`, `games`.`clock_increment`, `games`.`is_unrated`, `games`.`is_tournament`, `games`.`half_komi`, `games`.`pieces`, `games`.`capstones`, `games`.`extra_time_amount`, `games`.`extra_time_trigger` FROM `games` WHERE `games`.`id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=1.1792ms elapsed_secs=0.0011792
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=379.4µs elapsed_secs=0.0003794
+INFO - summary="SELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, …" db.statement="\n\nSELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, `ratings`.`rated_games`, `ratings`.`is_unrated`, `ratings`.`max_rating`, `ratings`.`rating_age`, `ratings`.`participation_rating`, `ratings`.`fatigue` FROM `ratings` WHERE `ratings`.`player_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=1.1405ms elapsed_secs=0.0011405
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=400.4µs elapsed_secs=0.0004004
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=308.9µs elapsed_secs=0.0003089
+INFO - summary="SELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, …" db.statement="\n\nSELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, `ratings`.`rated_games`, `ratings`.`is_unrated`, `ratings`.`max_rating`, `ratings`.`rating_age`, `ratings`.`participation_rating`, `ratings`.`fatigue` FROM `ratings` WHERE `ratings`.`player_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=1.1736ms elapsed_secs=0.0011736
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=557.7µs elapsed_secs=0.0005577
+INFO - summary="BEGIN" db.statement="" rows_affected=0 rows_returned=0 elapsed=454.7µs elapsed_secs=0.0004547
+INFO - summary="SELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, …" db.statement="\n\nSELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, `ratings`.`rated_games`, `ratings`.`is_unrated`, `ratings`.`max_rating`, `ratings`.`rating_age`, `ratings`.`participation_rating`, `ratings`.`fatigue` FROM `ratings` WHERE `ratings`.`player_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=520.7µs elapsed_secs=0.0005207
+INFO - summary="SELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, …" db.statement="\n\nSELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, `ratings`.`rated_games`, `ratings`.`is_unrated`, `ratings`.`max_rating`, `ratings`.`rating_age`, `ratings`.`participation_rating`, `ratings`.`fatigue` FROM `ratings` WHERE `ratings`.`player_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=487.5µs elapsed_secs=0.0004875
+INFO - summary="UPDATE `ratings` SET `rating` …" db.statement="\n\nUPDATE `ratings` SET `rating` = ?, `boost` = ?, `rated_games` = ?, `is_unrated` = ?, `max_rating` = ?, `rating_age` = ?, `participation_rating` = ?, `fatigue` = ? WHERE `ratings`.`player_id` = ?\n" rows_affected=1 rows_returned=0 elapsed=1.4569ms elapsed_secs=0.0014569
+INFO - summary="SELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, …" db.statement="\n\nSELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, `ratings`.`rated_games`, `ratings`.`is_unrated`, `ratings`.`max_rating`, `ratings`.`rating_age`, `ratings`.`participation_rating`, `ratings`.`fatigue` FROM `ratings` WHERE `ratings`.`player_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=438.6µs elapsed_secs=0.0004386
+INFO - summary="UPDATE `ratings` SET `rating` …" db.statement="\n\nUPDATE `ratings` SET `rating` = ?, `boost` = ?, `rated_games` = ?, `is_unrated` = ?, `max_rating` = ?, `rating_age` = ?, `participation_rating` = ?, `fatigue` = ? WHERE `ratings`.`player_id` = ?\n" rows_affected=1 rows_returned=0 elapsed=437.4µs elapsed_secs=0.0004374
+INFO - summary="SELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, …" db.statement="\n\nSELECT `ratings`.`player_id`, `ratings`.`rating`, `ratings`.`boost`, `ratings`.`rated_games`, `ratings`.`is_unrated`, `ratings`.`max_rating`, `ratings`.`rating_age`, `ratings`.`participation_rating`, `ratings`.`fatigue` FROM `ratings` WHERE `ratings`.`player_id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=421.9µs elapsed_secs=0.0004219
+INFO - summary="COMMIT" db.statement="" rows_affected=0 rows_returned=0 elapsed=413.2µs elapsed_secs=0.0004132
+INFO - summary="UPDATE `games` SET `player_white_rating` …" db.statement="\n\nUPDATE `games` SET `player_white_rating` = ?, `player_black_rating` = ?, `rating_change_white` = ?, `rating_change_black` = ?, `notation` = ?, `result` = ? WHERE `games`.`id` = ?\n" rows_affected=1 rows_returned=0 elapsed=5.3809ms elapsed_secs=0.0053809
+INFO - summary="SELECT `games`.`id`, `games`.`date`, `games`.`size`, …" db.statement="\n\nSELECT `games`.`id`, `games`.`date`, `games`.`size`, `games`.`player_white_id`, `games`.`player_black_id`, `games`.`player_white_username`, `games`.`player_black_username`, `games`.`player_white_rating`, `games`.`player_black_rating`, `games`.`rating_change_white`, `games`.`rating_change_black`, `games`.`notation`, `games`.`result`, `games`.`clock_contingent`, `games`.`clock_increment`, `games`.`is_unrated`, `games`.`is_tournament`, `games`.`half_komi`, `games`.`pieces`, `games`.`capstones`, `games`.`extra_time_amount`, `games`.`extra_time_trigger` FROM `games` WHERE `games`.`id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=1.1594ms elapsed_secs=0.0011594
+ERROR - Error handling message ["Game#0", "OfferDraw"]: Not found: Game not found
+ERROR - Error handling message ["Game#0", "P", "C6"]: Not found: Game not found

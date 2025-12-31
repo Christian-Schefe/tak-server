@@ -1,6 +1,5 @@
 use std::{sync::Arc, time::Instant};
 
-use log::info;
 use tak_server_app::{
     domain::{AccountId, ListenerId},
     ports::{
@@ -55,7 +54,7 @@ impl ProtocolV2Handler {
     pub async fn handle_client_message(&self, id: ListenerId, msg: String) {
         let parts = msg.split_whitespace().collect::<Vec<_>>();
         if parts.is_empty() {
-            info!("Received empty message");
+            log::info!("Received empty message");
             return;
         }
         let res: V2Response = match parts[0].to_ascii_lowercase().as_str() {
@@ -82,11 +81,11 @@ impl ProtocolV2Handler {
                 self.send_to(id, "OK");
             }
             V2Response::ErrorMessage(err, msg) => {
-                info!("Error handling message {:?}: {}", parts, err);
+                log::error!("Error handling message {:?}: {}", parts, err);
                 self.send_to(id, msg);
             }
             V2Response::ErrorNOK(err) => {
-                info!("Error handling message {:?}: {}", parts, err);
+                log::error!("Error handling message {:?}: {}", parts, err);
                 self.send_to(id, "NOK");
             }
         }
@@ -124,10 +123,11 @@ impl ProtocolV2Handler {
             ListenerMessage::SeekCanceled { seek } => {
                 self.send_seek_list_message(id, seek, false).await;
             }
+
             ListenerMessage::GameStarted { game } => {
                 self.send_game_list_message(id, game, true).await;
                 if let Some(player_id) = player_id
-                    && (game.white == player_id || game.black == player_id)
+                    && (game.white_id == player_id || game.black_id == player_id)
                 {
                     self.send_game_start_message(id, player_id, &game).await;
                 }
@@ -135,30 +135,59 @@ impl ProtocolV2Handler {
             ListenerMessage::GameEnded { game } => {
                 self.send_game_list_message(id, game, false).await;
             }
+
             ListenerMessage::GameOver {
                 game_id,
                 game_state,
             } => {
                 self.send_game_over_message(id, *game_id, game_state);
             }
-            ListenerMessage::GameAction { game_id, action } => {
-                self.send_game_action_message(id, *game_id, action);
+            ListenerMessage::GameAction {
+                game_id,
+                action,
+                player_id: moving_player_id,
+            } => {
+                // legacy api expects only opponent to receive action messages
+                if player_id.is_none_or(|x| x != *moving_player_id) {
+                    self.send_game_action_message(id, *game_id, action);
+                }
             }
-            ListenerMessage::GameDrawOffered { game_id } => {
-                self.send_draw_offer_message(id, *game_id, true);
+            ListenerMessage::GameDrawOffered {
+                game_id,
+                offering_player_id,
+            } => {
+                if player_id.is_none_or(|x| x != *offering_player_id) {
+                    self.send_draw_offer_message(id, *game_id, true);
+                }
             }
-            ListenerMessage::GameDrawOfferRetracted { game_id } => {
-                self.send_draw_offer_message(id, *game_id, false);
+            ListenerMessage::GameDrawOfferRetracted {
+                game_id,
+                retracting_player_id,
+            } => {
+                if player_id.is_none_or(|x| x != *retracting_player_id) {
+                    self.send_draw_offer_message(id, *game_id, false);
+                }
             }
-            ListenerMessage::GameUndoRequested { game_id } => {
-                self.send_undo_request_message(id, *game_id, true);
+            ListenerMessage::GameUndoRequested {
+                game_id,
+                requesting_player_id,
+            } => {
+                if player_id.is_none_or(|x| x != *requesting_player_id) {
+                    self.send_undo_request_message(id, *game_id, true);
+                }
             }
-            ListenerMessage::GameUndoRequestRetracted { game_id } => {
-                self.send_undo_request_message(id, *game_id, false);
+            ListenerMessage::GameUndoRequestRetracted {
+                game_id,
+                retracting_player_id,
+            } => {
+                if player_id.is_none_or(|x| x != *retracting_player_id) {
+                    self.send_undo_request_message(id, *game_id, false);
+                }
             }
             ListenerMessage::GameActionUndone { game_id } => {
                 self.send_undo_message(id, *game_id);
             }
+
             ListenerMessage::PlayersOnline { players } => {
                 let online_message = format!("Online {}", players.len());
                 let mut username_futures = Vec::new();
@@ -218,7 +247,7 @@ impl ProtocolV2Handler {
         for game in games {
             self.send_game_list_message(id, &game, true).await;
             if let Some(player_id) = player_id
-                && (game.white == player_id || game.black == player_id)
+                && (game.white_id == player_id || game.black_id == player_id)
             {
                 self.send_game_start_message(id, player_id, &game).await;
 
@@ -259,10 +288,10 @@ impl ProtocolV2Handler {
             "seek" => self.handle_seek_message(player_id, &parts).await,
             "rematch" => self.handle_rematch_message(player_id, &parts).await,
             "list" => self.handle_seek_list_message(id).await,
-            "gamelist" => self.handle_game_list_message(id),
+            "gamelist" => self.handle_game_list_message(id).await,
             "accept" => self.handle_accept_message(player_id, &parts).await,
-            "observe" => self.handle_observe_message(id, &parts, true),
-            "unobserve" => self.handle_observe_message(id, &parts, false),
+            "observe" => self.handle_observe_message(id, &parts, true).await,
+            "unobserve" => self.handle_observe_message(id, &parts, false).await,
             "shout" => {
                 self.handle_shout_message(id, account_id, player_id, &msg)
                     .await

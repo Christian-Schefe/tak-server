@@ -1,0 +1,14 @@
+[package]
+name = "tak-persistence-sea-orm-entites"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+sea-orm = { version = "2.0.0-rc", features = [
+    "sqlx-mysql",
+    "runtime-tokio-native-tls",
+    "macros",
+] }
+tak-core = { path = "../../tak-core" }
+tak-server-app = { path = "../../tak-server-app" }
+chrono = "0.4.42"

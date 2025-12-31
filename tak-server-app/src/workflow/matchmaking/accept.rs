@@ -68,7 +68,7 @@ impl<
         };
         self.notification_port.notify_all(message);
 
-        if seek.opponent.is_some_and(|opp| opp != player) {
+        if seek.opponent_id.is_some_and(|opp| opp != player) {
             return Err(AcceptSeekError::InvalidOpponent);
         }
 
@@ -82,7 +82,7 @@ impl<
         }
 
         let match_entry = self.match_service.create_match(
-            seek.creator,
+            seek.creator_id,
             player,
             seek.color,
             MatchColorRule::Alternate,

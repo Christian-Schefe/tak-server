@@ -1,10 +1,11 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::{create_db_pool, entity::rating};
+use crate::create_db_pool;
 use sea_orm::{
     ActiveModelTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder, QuerySelect,
     TransactionError, TransactionTrait,
 };
+use tak_persistence_sea_orm_entites::rating;
 use tak_server_app::domain::{
     PaginatedResponse, PlayerId, RepoError, RepoUpdateError, SortOrder,
     rating::{PlayerRating, RatingQuery, RatingRepository, RatingSortBy},

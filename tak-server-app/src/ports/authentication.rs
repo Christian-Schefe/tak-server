@@ -59,6 +59,14 @@ impl Account {
     pub fn remove_flag(&mut self, flag: ModerationFlag) {
         self.flags.unset_flag(flag);
     }
+
+    pub fn get_username(&self) -> &str {
+        &self.username
+    }
+
+    pub fn get_display_name(&self) -> &str {
+        &self.display_name
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

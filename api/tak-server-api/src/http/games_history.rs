@@ -10,7 +10,7 @@ use tak_core::{
 };
 use tak_server_app::{
     domain::{
-        FinishedGameId, GameType, Pagination, SortOrder,
+        GameId, GameType, Pagination, SortOrder,
         game_history::{
             DateSelector, GameIdSelector, GamePlayerFilter, GameQuery, GameRecord, GameSortBy,
         },
@@ -41,8 +41,8 @@ pub async fn get_all(
                     && let (Ok(start), Ok(end)) = (parts[0].parse(), parts[1].parse())
                 {
                     return Some(Ok(GameIdSelector::Range(
-                        FinishedGameId(start),
-                        FinishedGameId(end),
+                        GameId(start),
+                        GameId(end),
                     )));
                 } else {
                     return Some(Err(ServiceError::BadRequest(
@@ -50,9 +50,9 @@ pub async fn get_all(
                     )));
                 }
             } else {
-                let ids: Vec<FinishedGameId> = id_str
+                let ids: Vec<GameId> = id_str
                     .split(',')
-                    .filter_map(|s| s.parse().ok().map(FinishedGameId))
+                    .filter_map(|s| s.parse().ok().map(GameId))
                     .collect();
                 Some(Ok(GameIdSelector::List(ids)))
             }
@@ -305,7 +305,7 @@ pub async fn get_by_id(
     Path(game_id): Path<String>,
     State(app_state): State<AppState>,
 ) -> Result<Json<JsonGameRecord>, ServiceError> {
-    let game_id = FinishedGameId(
+    let game_id = GameId(
         game_id
             .parse()
             .map_err(|e| ServiceError::BadRequest(format!("Invalid game ID: {}", e)))?,
@@ -340,7 +340,7 @@ pub async fn get_ptn_by_id(
     Path(game_id): Path<String>,
     State(app_state): State<AppState>,
 ) -> Result<String, ServiceError> {
-    let game_id = FinishedGameId(
+    let game_id = GameId(
         game_id
             .parse()
             .map_err(|e| ServiceError::BadRequest(format!("Invalid game ID: {}", e)))?,
@@ -451,7 +451,7 @@ fn action_record_to_database_string(record: &TakActionRecord) -> String {
 }
 
 impl JsonGameRecord {
-    fn from_game_record(id: FinishedGameId, record: &GameRecord) -> Self {
+    fn from_game_record(id: GameId, record: &GameRecord) -> Self {
         Self {
             id: id.0,
             date: record.date.timestamp(),

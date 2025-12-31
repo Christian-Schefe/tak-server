@@ -167,38 +167,14 @@ impl ProtocolV2Handler {
         }
         Ok(())
     }
-    /*
-    } else if let Some(from_game) = rematch {
-        let Some(opponent) = opponent else {
-            return Err(ServiceError::BadRequest(
-                "Rematch seek must specify opponent".into(),
-            ));
-        };
-        if let Some(new_seek_id) = self
-            .app
-            .match_rematch_use_case
-            .request_rematch(
-                username.to_string(),
-                opponent,
-                color,
-                game_settings,
-                game_type,
-                from_game,
-            )
-            .await?
-        {
-            return Ok(V2Response::Message(format!(
-                "Rematch seek created with ID: {}",
-                new_seek_id
-            )));
-        } */
+
     pub async fn handle_rematch_message(&self, player_id: PlayerId, parts: &[&str]) -> V2Response {
         if parts.len() < 2 {
             return V2Response::ErrorNOK(ServiceError::BadRequest(
                 "Invalid Rematch message format".to_string(),
             ));
         }
-        let Ok(game_id) = parts[1].parse::<u32>() else {
+        let Ok(game_id) = parts[1].parse::<i64>() else {
             return V2Response::ErrorNOK(ServiceError::BadRequest(
                 "Invalid Game ID in Rematch message".to_string(),
             ));
@@ -254,9 +230,9 @@ impl ProtocolV2Handler {
     }
 
     pub async fn send_seek_list_message(&self, id: ListenerId, seek: &SeekView, add: bool) {
-        let opponent_username = if let Some(opponent_id) = seek.opponent {
+        let opponent_username = if let Some(opponent_id) = seek.opponent_id {
             match self.app.get_account_workflow.get_account(opponent_id).await {
-                Ok(account) => Some(account.username),
+                Ok(account) => Some(account.get_username().to_string()),
                 Err(_) => None,
             }
         } else {
@@ -265,7 +241,7 @@ impl ProtocolV2Handler {
         let creator_account_id = self
             .app
             .player_resolver_service
-            .resolve_account_id_by_player_id(seek.creator)
+            .resolve_account_id_by_player_id(seek.creator_id)
             .await
             .ok();
         let creator_account = if let Some(account_id) = creator_account_id {
@@ -273,12 +249,19 @@ impl ProtocolV2Handler {
         } else {
             None
         };
+        // Note that we don't use display names here as the legacy V2 protocol only knows usernames
+        let creator_username = creator_account
+            .as_ref()
+            .map(|a| a.get_username())
+            .unwrap_or("Unknown")
+            .to_string();
+
         let is_bot = creator_account.map_or(false, |a| a.is_bot());
         let message = format!(
             "Seek {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}",
             if add { "new" } else { "remove" },
             seek.id,
-            seek.creator,
+            creator_username,
             seek.game_settings.board_size,
             seek.game_settings.time_control.contingent.as_secs(),
             seek.game_settings.time_control.increment.as_secs(),

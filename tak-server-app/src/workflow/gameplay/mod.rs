@@ -15,21 +15,21 @@ pub mod timeout;
 pub struct GameView {
     pub id: GameId,
     pub match_id: MatchId,
-    pub white: PlayerId,
-    pub black: PlayerId,
+    pub white_id: PlayerId,
+    pub black_id: PlayerId,
     pub game: TakGame,
     pub game_type: GameType,
     pub settings: TakGameSettings,
 }
 
 impl GameView {
-    fn from(game: impl Borrow<Game>) -> Self {
+    pub fn from(game: impl Borrow<Game>) -> Self {
         let game = game.borrow();
         GameView {
             id: game.game_id,
             match_id: game.match_id,
-            white: game.white,
-            black: game.black,
+            white_id: game.white_id,
+            black_id: game.black_id,
             game: game.game.clone(),
             game_type: game.game_type,
             settings: game.settings.clone(),

@@ -16,6 +16,7 @@ members = [
     "infra/tak-email-lettre",
     "infra/tak-events-google-sheets",
     "infra/tak-auth-ory",
+    "infra/tak-persistence-sea-orm-entites",
 ]
 
 [dependencies]

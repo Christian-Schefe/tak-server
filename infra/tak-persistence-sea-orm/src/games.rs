@@ -9,8 +9,9 @@ use tak_core::{
     TakAction, TakActionRecord, TakGameSettings, TakGameState, TakReserve, TakTimeControl,
     ptn::{action_from_ptn, action_to_ptn, game_state_from_string, game_state_to_string},
 };
+use tak_persistence_sea_orm_entites::game;
 use tak_server_app::domain::{
-    FinishedGameId, GameType, PaginatedResponse, PlayerId, RepoError, RepoRetrieveError,
+    GameId, GameType, PaginatedResponse, PlayerId, RepoError, RepoRetrieveError,
     RepoUpdateError, SortOrder,
     game_history::{
         DateSelector, GameFinishedUpdate, GameIdSelector, GamePlayerFilter, GameQuery,
@@ -18,7 +19,7 @@ use tak_server_app::domain::{
     },
 };
 
-use crate::{create_db_pool, entity::game};
+use crate::create_db_pool;
 
 pub struct GameRepositoryImpl {
     db: DatabaseConnection,
@@ -145,7 +146,7 @@ impl GameRepositoryImpl {
 
 #[async_trait::async_trait]
 impl GameRepository for GameRepositoryImpl {
-    async fn save_ongoing_game(&self, game: GameRecord) -> Result<FinishedGameId, RepoError> {
+    async fn save_ongoing_game(&self, game: GameRecord) -> Result<GameId, RepoError> {
         let new_game = game::ActiveModel {
             id: Default::default(), // Auto-increment
             date: Set(game.date.clone()),
@@ -186,12 +187,12 @@ impl GameRepository for GameRepositoryImpl {
             .await
             .map_err(|e| RepoError::StorageError(e.to_string()))?;
 
-        Ok(FinishedGameId(result.id))
+        Ok(GameId(result.id))
     }
 
     async fn update_finished_game(
         &self,
-        game_id: FinishedGameId,
+        game_id: GameId,
         update: GameFinishedUpdate,
     ) -> Result<(), RepoUpdateError> {
         let notation_val = update
@@ -234,7 +235,7 @@ impl GameRepository for GameRepositoryImpl {
         Ok(())
     }
 
-    async fn get_game_record(&self, id: FinishedGameId) -> Result<GameRecord, RepoRetrieveError> {
+    async fn get_game_record(&self, id: GameId) -> Result<GameRecord, RepoRetrieveError> {
         let model = game::Entity::find_by_id(id.0)
             .one(&self.db)
             .await
@@ -246,7 +247,7 @@ impl GameRepository for GameRepositoryImpl {
     async fn query_games(
         &self,
         filter: GameQuery,
-    ) -> Result<PaginatedResponse<(FinishedGameId, GameRecord)>, RepoError> {
+    ) -> Result<PaginatedResponse<(GameId, GameRecord)>, RepoError> {
         let mut query = game::Entity::find();
         if let Some(game_id_selector) = filter.id_selector {
             query = match game_id_selector {
@@ -367,7 +368,7 @@ impl GameRepository for GameRepositoryImpl {
         let mut results = Vec::new();
         for model in models {
             let game_record = Self::model_to_game(&model);
-            results.push((FinishedGameId(model.id), game_record));
+            results.push((GameId(model.id), game_record));
         }
 
         Ok(PaginatedResponse {

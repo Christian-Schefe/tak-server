@@ -8,6 +8,8 @@ pub trait SpectatorService {
     fn observe_game(&self, game_id: GameId, listener_id: ListenerId);
     fn unobserve_game(&self, game_id: GameId, listener_id: ListenerId);
     fn unobserve_all_games(&self, listener_id: ListenerId);
+    fn get_spectators_for_game(&self, game_id: GameId) -> Vec<ListenerId>;
+    fn remove_game(&self, game_id: GameId);
 }
 
 pub struct SpectatorServiceImpl {
@@ -33,5 +35,13 @@ impl SpectatorService for SpectatorServiceImpl {
 
     fn unobserve_all_games(&self, listener_id: ListenerId) {
         self.game_spectators.remove_value(&listener_id);
+    }
+
+    fn get_spectators_for_game(&self, game_id: GameId) -> Vec<ListenerId> {
+        self.game_spectators.get_by_key(&game_id)
+    }
+
+    fn remove_game(&self, game_id: GameId) {
+        self.game_spectators.remove_key(&game_id);
     }
 }

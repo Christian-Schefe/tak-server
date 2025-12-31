@@ -13,6 +13,8 @@ sea-orm = { version = "2.0.0-rc", features = [
     "sqlx-mysql",
     "runtime-tokio-native-tls",
     "macros",
+    "schema-sync",
+    "entity-registry",
 ] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"
@@ -23,3 +25,4 @@ futures = "0.3.31"
 uuid = { version = "1.18.1", features = ["v4"] }
 async-lock = "3.4.2"
 country-code-enum = "0.2.0"
+tak-persistence-sea-orm-entites = { path = "../tak-persistence-sea-orm-entites" }

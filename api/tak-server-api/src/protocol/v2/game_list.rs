@@ -23,17 +23,19 @@ impl ProtocolV2Handler {
             } else {
                 "GameList Remove"
             },
-        );
+        )
+        .await;
     }
 
-    pub fn handle_game_list_message(&self, id: ListenerId) -> V2Response {
+    pub async fn handle_game_list_message(&self, id: ListenerId) -> V2Response {
         for game in self.app.game_list_ongoing_use_case.list_games() {
-            self.send_game_string_message(id, &game, "GameList Add");
+            self.send_game_string_message(id, &game, "GameList Add")
+                .await;
         }
         V2Response::OK
     }
 
-    pub fn handle_observe_message(
+    pub async fn handle_observe_message(
         &self,
         id: ListenerId,
         parts: &[&str],
@@ -44,7 +46,7 @@ impl ProtocolV2Handler {
                 "Invalid Observe/Unobserve message format".to_string(),
             ));
         }
-        let Ok(game_id) = parts[1].parse::<u32>() else {
+        let Ok(game_id) = parts[1].parse::<i64>() else {
             return V2Response::ErrorNOK(ServiceError::BadRequest(
                 "Invalid Game ID in Observe message".to_string(),
             ));
@@ -63,7 +65,7 @@ impl ProtocolV2Handler {
                     "Game ID not found".to_string(),
                 ));
             };
-            self.send_game_string_message(id, &game, "Observe");
+            self.send_game_string_message(id, &game, "Observe").await;
             for action in game.game.action_history() {
                 self.send_game_action_message(id, game.id, action);
             }
@@ -76,14 +78,34 @@ impl ProtocolV2Handler {
         V2Response::OK
     }
 
-    pub fn send_game_string_message(&self, id: ListenerId, game: &GameView, operation: &str) {
+    pub async fn send_game_string_message(&self, id: ListenerId, game: &GameView, operation: &str) {
         let settings = &game.settings;
+        let white_account = self
+            .app
+            .get_account_workflow
+            .get_account(game.white_id)
+            .await
+            .ok();
+        let black_account = self
+            .app
+            .get_account_workflow
+            .get_account(game.black_id)
+            .await
+            .ok();
+        let white_username = white_account
+            .as_ref()
+            .map(|a| a.get_username())
+            .unwrap_or("Unknown");
+        let black_username = black_account
+            .as_ref()
+            .map(|a| a.get_username())
+            .unwrap_or("Unknown");
         let message = format!(
             "{} {} {} {} {} {} {} {} {} {} {} {} {} {}",
             operation,
             game.id,
-            game.white,
-            game.black,
+            white_username,
+            black_username,
             settings.board_size,
             settings.time_control.contingent.as_secs(),
             settings.time_control.increment.as_secs(),
@@ -126,31 +148,36 @@ impl ProtocolV2Handler {
         let white_account_id = self
             .app
             .player_resolver_service
-            .resolve_account_id_by_player_id(game.white)
+            .resolve_account_id_by_player_id(game.white_id)
             .await
             .ok();
         let black_account_id = self
             .app
             .player_resolver_service
-            .resolve_account_id_by_player_id(game.black)
+            .resolve_account_id_by_player_id(game.black_id)
             .await
             .ok();
-        let is_white_bot = if let Some(aid) = white_account_id {
-            self.auth
-                .get_account(&aid)
-                .await
-                .is_some_and(|a| a.is_bot())
+        let white_account = if let Some(aid) = &white_account_id {
+            self.auth.get_account(aid).await
         } else {
-            false
+            None
         };
-        let is_black_bot = if let Some(aid) = black_account_id {
-            self.auth
-                .get_account(&aid)
-                .await
-                .is_some_and(|a| a.is_bot())
+        let black_account = if let Some(aid) = &black_account_id {
+            self.auth.get_account(aid).await
         } else {
-            false
+            None
         };
+        let is_white_bot = white_account.as_ref().is_some_and(|a| a.is_bot());
+        let is_black_bot = black_account.as_ref().is_some_and(|a| a.is_bot());
+
+        let white_username = white_account
+            .as_ref()
+            .map(|a| a.get_username())
+            .unwrap_or("Unknown");
+        let black_username = black_account
+            .as_ref()
+            .map(|a| a.get_username())
+            .unwrap_or("Unknown");
 
         let is_bot_game = is_white_bot || is_black_bot;
         let settings = &game.settings;
@@ -160,9 +187,9 @@ impl ProtocolV2Handler {
                 "Game Start {} {} {} vs {} {} {} {} {} {}",
                 game.id,
                 settings.board_size,
-                game.white,
-                game.black,
-                if player_id == game.white {
+                white_username,
+                black_username,
+                if player_id == game.white_id {
                     "white"
                 } else {
                     "black"
@@ -176,9 +203,9 @@ impl ProtocolV2Handler {
             format!(
                 "Game Start {} {} vs {} {} {} {} {} {} {} {} {} {} {} {} {}",
                 game.id,
-                game.white,
-                game.black,
-                if player_id == game.white {
+                white_username,
+                black_username,
+                if player_id == game.white_id {
                     "white"
                 } else {
                     "black"

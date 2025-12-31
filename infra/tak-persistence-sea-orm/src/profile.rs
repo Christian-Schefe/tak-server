@@ -1,8 +1,9 @@
 use std::{str::FromStr, sync::Arc};
 
-use crate::{create_db_pool, entity::profile};
+use crate::create_db_pool;
 use country_code_enum::CountryCode;
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait};
+use tak_persistence_sea_orm_entites::profile;
 use tak_server_app::domain::{
     AccountId, RepoError, RepoRetrieveError,
     profile::{AccountProfile, AccountProfileRepository},
@@ -37,8 +38,8 @@ impl AccountProfileRepository for ProfileRepositoryImpl {
             account_id: sea_orm::ActiveValue::Set(account_id.to_string()),
             country: sea_orm::ActiveValue::Set(profile_information.country.map(|x| x.to_string())),
         };
-        profile::Entity::insert(active_model)
-            .exec(&self.db)
+        active_model
+            .insert(&self.db)
             .await
             .map_err(|e| RepoError::StorageError(e.to_string()))?;
         Ok(())

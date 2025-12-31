@@ -55,6 +55,7 @@ use crate::{
         },
         player::{
             get_rating::{PlayerGetRatingUseCase, PlayerGetRatingUseCaseImpl},
+            notify_player::NotifyPlayerWorkflowImpl,
             set_online::{SetPlayerOnlineUseCase, SetPlayerOnlineUseCaseImpl},
         },
     },
@@ -150,6 +151,13 @@ pub async fn build_application<
         rating_service.clone(),
     ));
 
+    let notify_player_workflow = Arc::new(NotifyPlayerWorkflowImpl::new(
+        listener_notification_port.clone(),
+        player_connection_port.clone(),
+        game_service.clone(),
+        spectator_service.clone(),
+    ));
+
     let finalize_game_workflow = Arc::new(FinalizeGameWorkflowImpl::new(
         game_repository.clone(),
         rating_service.clone(),
@@ -157,6 +165,9 @@ pub async fn build_application<
         game_history_service.clone(),
         match_service.clone(),
         get_snapshot_workflow.clone(),
+        notify_player_workflow.clone(),
+        spectator_service.clone(),
+        listener_notification_port.clone(),
     ));
     let observe_game_timeout_use_case = Arc::new(ObserveGameTimeoutUseCaseImpl::new(
         game_service.clone(),
@@ -172,6 +183,7 @@ pub async fn build_application<
         game_repository.clone(),
         game_service.clone(),
         game_timeout_scheduler.clone(),
+        listener_notification_port.clone(),
     ));
 
     let match_cleanup_job = MatchCleanupJob::new(match_service.clone());
@@ -216,8 +228,7 @@ pub async fn build_application<
 
         game_do_action_use_case: Box::new(DoActionUseCaseImpl::new(
             game_service.clone(),
-            listener_notification_port.clone(),
-            player_connection_port.clone(),
+            notify_player_workflow.clone(),
             finalize_game_workflow.clone(),
         )),
         game_get_ongoing_use_case: Box::new(GetOngoingGameUseCaseImpl::new(game_service.clone())),

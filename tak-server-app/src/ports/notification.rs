@@ -34,6 +34,7 @@ pub enum ListenerMessage {
     },
     GameAction {
         game_id: GameId,
+        player_id: PlayerId,
         action: TakActionRecord,
     },
     GameActionUndone {
@@ -41,15 +42,19 @@ pub enum ListenerMessage {
     },
     GameDrawOffered {
         game_id: GameId,
+        offering_player_id: PlayerId,
     },
     GameDrawOfferRetracted {
         game_id: GameId,
+        retracting_player_id: PlayerId,
     },
     GameUndoRequested {
         game_id: GameId,
+        requesting_player_id: PlayerId,
     },
     GameUndoRequestRetracted {
         game_id: GameId,
+        retracting_player_id: PlayerId,
     },
     GameRematchRequested {
         game_id: GameId,

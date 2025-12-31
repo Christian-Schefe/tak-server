@@ -88,7 +88,7 @@ impl ProtocolV2Handler {
         let Some(Ok(game_id)) = parts[0]
             .split("#")
             .nth(1)
-            .map(|s| s.parse::<u32>().map(GameId::new))
+            .map(|s| s.parse::<i64>().map(GameId::new))
         else {
             return V2Response::ErrorNOK(ServiceError::BadRequest(
                 "Invalid Game ID in Game message".to_string(),

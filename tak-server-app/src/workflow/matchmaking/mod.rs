@@ -16,8 +16,8 @@ pub mod rematch;
 #[derive(Clone, Debug)]
 pub struct SeekView {
     pub id: SeekId,
-    pub creator: PlayerId,
-    pub opponent: Option<PlayerId>,
+    pub creator_id: PlayerId,
+    pub opponent_id: Option<PlayerId>,
     pub color: Option<TakPlayer>,
     pub game_settings: TakGameSettings,
     pub game_type: GameType,
@@ -28,8 +28,8 @@ impl<T: Borrow<Seek>> From<T> for SeekView {
         let seek = seek.borrow();
         SeekView {
             id: seek.id,
-            creator: seek.creator,
-            opponent: seek.opponent,
+            creator_id: seek.creator_id,
+            opponent_id: seek.opponent_id,
             color: seek.color,
             game_settings: seek.game_settings.clone(),
             game_type: seek.game_type,
