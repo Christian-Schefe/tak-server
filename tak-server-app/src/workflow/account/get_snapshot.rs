@@ -53,14 +53,7 @@ impl<
         date: chrono::DateTime<chrono::Utc>,
     ) -> PlayerSnapshot {
         let username = match self.get_account_workflow.get_account(player_id).await {
-            Ok(account) => {
-                log::info!(
-                    "Retrieved account for player {}: {:?}",
-                    player_id.to_string(),
-                    account,
-                );
-                Some(account.username)
-            }
+            Ok(account) => Some(account.username),
             Err(GetAccountError::AccountNotFound) => {
                 log::error!(
                     "Failed to retrieve account for player {}: Not found",

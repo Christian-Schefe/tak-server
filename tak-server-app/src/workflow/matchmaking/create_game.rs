@@ -80,10 +80,19 @@ impl<
 
         let (white_id, black_id) = match_entry.get_next_matchup_colors();
 
+        let snapshot_white = self
+            .get_snapshot_workflow
+            .get_snapshot(white_id, date)
+            .await;
+        let snapshot_black = self
+            .get_snapshot_workflow
+            .get_snapshot(black_id, date)
+            .await;
+
         let game_record = self.game_history_service.get_ongoing_game_record(
             date,
-            white_id,
-            black_id,
+            snapshot_white,
+            snapshot_black,
             match_entry.game_settings.clone(),
             match_entry.game_type,
         );
@@ -100,20 +109,11 @@ impl<
             }
         };
 
-        let snapshot_white = self
-            .get_snapshot_workflow
-            .get_snapshot(white_id, date)
-            .await;
-        let snapshot_black = self
-            .get_snapshot_workflow
-            .get_snapshot(black_id, date)
-            .await;
-
         let game = self.game_service.create_game(
             game_id,
             date,
-            snapshot_white,
-            snapshot_black,
+            white_id,
+            black_id,
             match_entry.game_type,
             match_entry.game_settings.clone(),
             match_entry.id,

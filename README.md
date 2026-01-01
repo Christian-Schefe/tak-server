@@ -31,9 +31,10 @@ This is a rewrite of the java server at https://github.com/USTakAssociation/play
 - Async games (easy)
 - Player profiles (easy)
 - Player game history (easy)
-- Native tournaments (medium, because of scope. Architecturally it should be easy)
+- Native tournaments (medium because of scope. Architecturally it should be easy)
 - Replay move timings (server side implemented)
 
 # Todo Notes
 
+- test rematches
 - setup sea-orm migrations

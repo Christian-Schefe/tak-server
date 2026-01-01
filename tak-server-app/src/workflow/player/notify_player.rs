@@ -56,11 +56,8 @@ impl<
         let Some(game) = self.game_service.get_game_by_id(game_id) else {
             return;
         };
-        self.notify_players(
-            &[game.white.player_id, game.black.player_id],
-            message.clone(),
-        )
-        .await;
+        self.notify_players(&[game.white_id, game.black_id], message.clone())
+            .await;
         let observers = self.spectator_service.get_spectators_for_game(game_id);
         self.listener_notification_port
             .notify_listeners(&observers, message);

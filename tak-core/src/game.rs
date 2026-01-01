@@ -251,17 +251,15 @@ impl TakGame {
     }
 
     fn maybe_apply_elapsed(&mut self, now: Instant, player: &TakPlayer) {
+        let remaining = match player {
+            TakPlayer::White => &mut self.clock.remaining_time.0,
+            TakPlayer::Black => &mut self.clock.remaining_time.1,
+        };
         if self.clock.is_ticking {
-            let time_control = &self.base.settings.time_control;
-            let remaining = match player {
-                TakPlayer::White => &mut self.clock.remaining_time.0,
-                TakPlayer::Black => &mut self.clock.remaining_time.1,
-            };
             let elapsed = now.duration_since(self.clock.last_update_timestamp);
-            *remaining = remaining
-                .saturating_sub(elapsed)
-                .saturating_add(time_control.increment);
+            *remaining = remaining.saturating_sub(elapsed);
         }
+        *remaining = remaining.saturating_add(self.base.settings.time_control.increment);
         self.clock.last_update_timestamp = now;
     }
 
@@ -279,7 +277,10 @@ impl TakGame {
                 TakPlayer::White => &mut self.clock.has_gained_extra_time.0,
                 TakPlayer::Black => &mut self.clock.has_gained_extra_time.1,
             };
-            let move_index = (self.base.ply_index / 2) + 1;
+            // ply index is incremented before clock update, which means it is odd for white moves and starts at 1 for move 1
+            // move 1: white 1, black 2 ---(+1)--> (2, 3) ---(/2)--> (1, 1)
+            // move 2: white 3, black 4 ---(+1)--> (4, 5) ---(/2)--> (2, 2)
+            let move_index = (self.base.ply_index + 1) / 2;
             if !*has_gained_extra_time && extra_move_index as usize == move_index {
                 *remaining = remaining.saturating_add(extra_time);
                 *has_gained_extra_time = true;

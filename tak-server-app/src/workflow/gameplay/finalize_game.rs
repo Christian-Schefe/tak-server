@@ -91,7 +91,7 @@ impl<
 
         self.notify_player_workflow
             .notify_players(
-                &[ended_game.white.player_id, ended_game.black.player_id],
+                &[ended_game.white_id, ended_game.black_id],
                 over_msg.clone(),
             )
             .await;
@@ -109,8 +109,8 @@ impl<
         let game_rating_info = match self
             .rating_repository
             .update_player_ratings(
-                ended_game.white.player_id,
-                ended_game.black.player_id,
+                ended_game.white_id,
+                ended_game.black_id,
                 move |mut w_rating, mut b_rating| {
                     let res = rating_service.calculate_ratings(
                         &ended_game_clone,

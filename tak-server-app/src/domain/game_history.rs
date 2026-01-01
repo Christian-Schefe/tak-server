@@ -111,8 +111,8 @@ pub trait GameHistoryService {
     fn get_ongoing_game_record(
         &self,
         date: DateTime<Utc>,
-        white_id: PlayerId,
-        black_id: PlayerId,
+        white: PlayerSnapshot,
+        black: PlayerSnapshot,
         settings: TakGameSettings,
         game_type: GameType,
     ) -> GameRecord;
@@ -135,15 +135,15 @@ impl GameHistoryService for GameHistoryServiceImpl {
     fn get_ongoing_game_record(
         &self,
         date: DateTime<Utc>,
-        white_id: PlayerId,
-        black_id: PlayerId,
+        white: PlayerSnapshot,
+        black: PlayerSnapshot,
         settings: TakGameSettings,
         game_type: GameType,
     ) -> GameRecord {
         GameRecord {
             date,
-            white: PlayerSnapshot::new(white_id, None, None),
-            black: PlayerSnapshot::new(black_id, None, None),
+            white,
+            black,
             rating_info: None,
             settings,
             game_type,

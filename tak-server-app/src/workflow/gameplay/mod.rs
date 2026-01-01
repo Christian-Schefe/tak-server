@@ -28,8 +28,8 @@ impl GameView {
         GameView {
             id: game.game_id,
             match_id: game.match_id,
-            white_id: game.white.player_id,
-            black_id: game.black.player_id,
+            white_id: game.white_id,
+            black_id: game.black_id,
             game: game.game.clone(),
             game_type: game.game_type,
             settings: game.settings.clone(),

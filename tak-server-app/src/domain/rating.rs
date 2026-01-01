@@ -274,8 +274,8 @@ impl RatingService for RatingServiceImpl {
         white_rating: &mut PlayerRating,
         black_rating: &mut PlayerRating,
     ) -> Option<GameRatingInfo> {
-        let white_id = game.white.player_id;
-        let black_id = game.black.player_id;
+        let white_id = game.white_id;
+        let black_id = game.black_id;
         let result = game.game.game_state();
 
         if !self.is_game_eligible_for_rating(

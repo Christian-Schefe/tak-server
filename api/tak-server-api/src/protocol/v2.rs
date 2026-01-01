@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Instant};
 
 use tak_server_app::{
-    domain::{AccountId, ListenerId},
+    domain::{AccountId, GameId, ListenerId, PlayerId},
     ports::{
         authentication::AuthenticationPort,
         notification::{ListenerMessage, ServerAlertMessage},
@@ -110,6 +110,22 @@ impl ProtocolV2Handler {
         }
     }
 
+    // legacy api only notifies the opponent of draw and undo offers, not the offering player or observers
+    fn is_opponent_in_game(
+        &self,
+        action_player_id: PlayerId,
+        player_id: Option<PlayerId>,
+        game_id: GameId,
+    ) -> bool {
+        if let Some(game) = self.app.game_get_ongoing_use_case.get_game(game_id)
+            && let Some(player_id) = player_id
+        {
+            return (game.white_id == player_id || game.black_id == player_id)
+                && player_id != action_player_id;
+        }
+        false
+    }
+
     async fn send_notification_message(&self, id: ListenerId, msg: &ListenerMessage) {
         let (player_id, _) = self
             .transport
@@ -156,7 +172,7 @@ impl ProtocolV2Handler {
                 game_id,
                 offering_player_id,
             } => {
-                if player_id.is_none_or(|x| x != *offering_player_id) {
+                if self.is_opponent_in_game(*offering_player_id, player_id, *game_id) {
                     self.send_draw_offer_message(id, *game_id, true);
                 }
             }
@@ -164,7 +180,7 @@ impl ProtocolV2Handler {
                 game_id,
                 retracting_player_id,
             } => {
-                if player_id.is_none_or(|x| x != *retracting_player_id) {
+                if self.is_opponent_in_game(*retracting_player_id, player_id, *game_id) {
                     self.send_draw_offer_message(id, *game_id, false);
                 }
             }
@@ -172,7 +188,7 @@ impl ProtocolV2Handler {
                 game_id,
                 requesting_player_id,
             } => {
-                if player_id.is_none_or(|x| x != *requesting_player_id) {
+                if self.is_opponent_in_game(*requesting_player_id, player_id, *game_id) {
                     self.send_undo_request_message(id, *game_id, true);
                 }
             }
@@ -180,7 +196,7 @@ impl ProtocolV2Handler {
                 game_id,
                 retracting_player_id,
             } => {
-                if player_id.is_none_or(|x| x != *retracting_player_id) {
+                if self.is_opponent_in_game(*retracting_player_id, player_id, *game_id) {
                     self.send_undo_request_message(id, *game_id, false);
                 }
             }

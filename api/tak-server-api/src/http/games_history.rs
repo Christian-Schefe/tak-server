@@ -40,10 +40,7 @@ pub async fn get_all(
                 if parts.len() == 2
                     && let (Ok(start), Ok(end)) = (parts[0].parse(), parts[1].parse())
                 {
-                    return Some(Ok(GameIdSelector::Range(
-                        GameId(start),
-                        GameId(end),
-                    )));
+                    return Some(Ok(GameIdSelector::Range(GameId(start), GameId(end))));
                 } else {
                     return Some(Err(ServiceError::BadRequest(
                         "Invalid ID range format".to_string(),
@@ -368,7 +365,7 @@ pub async fn get_ptn_by_id(
                     .as_deref()
                     .unwrap_or("Anonymous")
                     .to_string(),
-                record.white.rating,
+                record.white.rating.map(|x| x.round()),
             ),
             (
                 record
@@ -377,7 +374,7 @@ pub async fn get_ptn_by_id(
                     .as_deref()
                     .unwrap_or("Anonymous")
                     .to_string(),
-                record.black.rating,
+                record.black.rating.map(|x| x.round()),
             ),
             record.date,
         )
@@ -477,8 +474,8 @@ impl JsonGameRecord {
             result: game_state_to_string(&record.result),
             timer_time: record.settings.time_control.contingent.as_secs() as u32,
             timer_inc: record.settings.time_control.increment.as_secs() as u32,
-            rating_white: record.white.rating.unwrap_or(0.0),
-            rating_black: record.black.rating.unwrap_or(0.0),
+            rating_white: record.white.rating.unwrap_or(0.0).round(),
+            rating_black: record.black.rating.unwrap_or(0.0).round(),
             unrated: matches!(record.game_type, GameType::Unrated),
             tournament: matches!(record.game_type, GameType::Tournament),
             komi: record.settings.half_komi,
@@ -487,11 +484,11 @@ impl JsonGameRecord {
             rating_change_white: record
                 .rating_info
                 .as_ref()
-                .map_or(0.0, |x| x.rating_change_white),
+                .map_or(0.0, |x| x.rating_change_white.round()),
             rating_change_black: record
                 .rating_info
                 .as_ref()
-                .map_or(0.0, |x| x.rating_change_black),
+                .map_or(0.0, |x| x.rating_change_black.round()),
             extra_time_amount: record
                 .settings
                 .time_control

@@ -135,10 +135,10 @@ impl ProtocolV2Handler {
                         err_str,
                     );
                 }
-                Err(ResignError::NotPlayersTurn) => {
-                    let err_str = format!("Error: Not player's turn");
+                Err(ResignError::NotAPlayerInGame) => {
+                    let err_str = format!("Error: Not a player in game");
                     return V2Response::ErrorMessage(
-                        ServiceError::BadRequest("Not player's turn".to_string()),
+                        ServiceError::BadRequest("Not a player in game".to_string()),
                         err_str,
                     );
                 }
@@ -175,7 +175,7 @@ impl ProtocolV2Handler {
             "RemoveDraw" => match self
                 .app
                 .game_do_action_use_case
-                .offer_draw(game_id, player_id)
+                .retract_draw_offer(game_id, player_id)
                 .await
             {
                 Ok(_) => {}

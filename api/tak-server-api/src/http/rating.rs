@@ -71,10 +71,10 @@ pub async fn get_rating_by_name(
     };
     let rating = JsonPlayerRatingResponse {
         name: name.clone(),
-        rating: rating.rating,
+        rating: rating.rating.round(),
         ratedgames: rating.rated_games_played as i32,
-        maxrating: rating.max_rating,
-        participation_rating: rating.participation_rating,
+        maxrating: rating.max_rating.round(),
+        participation_rating: rating.participation_rating.round(),
         isbot: account.is_bot(),
     };
 
@@ -165,10 +165,10 @@ pub async fn get_ratings(
         .map(|(rating, account)| JsonPlayerRatingResponse {
             isbot: account.is_bot(),
             name: account.username,
-            rating: rating.rating,
+            rating: rating.rating.round(),
             ratedgames: rating.rated_games_played as i32,
-            maxrating: rating.max_rating,
-            participation_rating: rating.participation_rating,
+            maxrating: rating.max_rating.round(),
+            participation_rating: rating.participation_rating.round(),
         })
         .collect();
 
