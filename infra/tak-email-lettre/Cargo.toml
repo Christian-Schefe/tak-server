@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 tak-server-app = { path = "../../tak-server-app" }
 lettre = "0.11.18"
+log = "0.4.28"

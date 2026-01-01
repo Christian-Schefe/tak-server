@@ -13,21 +13,21 @@ use tak_server_app::{
 
 pub struct PlayerAccountMappingRepositoryImpl {
     db: DatabaseConnection,
-    player_id_to_account_id_cache: Arc<moka::future::Cache<PlayerId, AccountId>>,
-    account_id_to_player_id_cache: Arc<moka::future::Cache<AccountId, PlayerId>>,
+    player_id_to_account_id_cache: Arc<moka::sync::Cache<PlayerId, AccountId>>,
+    account_id_to_player_id_cache: Arc<moka::sync::Cache<AccountId, PlayerId>>,
 }
 
 impl PlayerAccountMappingRepositoryImpl {
     pub async fn new() -> Self {
         let db = create_db_pool().await;
         let player_id_to_account_id_cache = Arc::new(
-            moka::future::Cache::builder()
+            moka::sync::Cache::builder()
                 .max_capacity(10_000)
                 .time_to_live(std::time::Duration::from_secs(60 * 60))
                 .build(),
         );
         let account_id_to_player_id_cache = Arc::new(
-            moka::future::Cache::builder()
+            moka::sync::Cache::builder()
                 .max_capacity(10_000)
                 .time_to_live(std::time::Duration::from_secs(60 * 60))
                 .build(),
@@ -43,7 +43,7 @@ impl PlayerAccountMappingRepositoryImpl {
 #[async_trait::async_trait]
 impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
     async fn get_account_id(&self, player_id: PlayerId) -> Result<AccountId, RepoRetrieveError> {
-        if let Some(account_id) = self.player_id_to_account_id_cache.get(&player_id).await {
+        if let Some(account_id) = self.player_id_to_account_id_cache.get(&player_id) {
             return Ok(account_id);
         }
 
@@ -54,12 +54,12 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
 
         if let Some(model) = player_model {
             let account_id = AccountId(model.account_id);
-            futures::join!(
-                self.player_id_to_account_id_cache
-                    .insert(player_id, account_id.clone()),
-                self.account_id_to_player_id_cache
-                    .insert(account_id.clone(), player_id)
-            );
+
+            self.player_id_to_account_id_cache
+                .insert(player_id, account_id.clone());
+            self.account_id_to_player_id_cache
+                .insert(account_id.clone(), player_id);
+
             Ok(account_id)
         } else {
             Err(RepoRetrieveError::NotFound)
@@ -71,7 +71,7 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
         account_id: &AccountId,
         create_fn: impl FnOnce() -> PlayerId + Send + 'static,
     ) -> Result<PlayerId, RepoError> {
-        if let Some(player_id) = self.account_id_to_player_id_cache.get(account_id).await {
+        if let Some(player_id) = self.account_id_to_player_id_cache.get(account_id) {
             return Ok(player_id);
         }
 
@@ -106,12 +106,11 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
             .await;
         match res {
             Ok(player_id) => {
-                futures::join!(
-                    self.account_id_to_player_id_cache
-                        .insert(account_id.clone(), player_id),
-                    self.player_id_to_account_id_cache
-                        .insert(player_id, account_id.clone())
-                );
+                self.account_id_to_player_id_cache
+                    .insert(account_id.clone(), player_id);
+                self.player_id_to_account_id_cache
+                    .insert(player_id, account_id.clone());
+
                 Ok(player_id)
             }
             Err(TransactionError::Transaction(e)) => Err(e),

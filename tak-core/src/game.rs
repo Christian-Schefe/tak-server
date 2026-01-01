@@ -304,8 +304,11 @@ impl TakGame {
         Ok(())
     }
 
-    pub fn do_action(&mut self, action: &TakAction) -> Result<TakActionRecord, String> {
-        let now = Instant::now();
+    pub fn do_action(
+        &mut self,
+        action: &TakAction,
+        now: Instant,
+    ) -> Result<TakActionRecord, String> {
         self.check_is_ongoing(now)?;
 
         let player = self.base.current_player.clone();
@@ -323,8 +326,7 @@ impl TakGame {
         Ok(record)
     }
 
-    pub fn undo_action(&mut self) -> Result<(), String> {
-        let now = Instant::now();
+    pub fn undo_action(&mut self, now: Instant) -> Result<(), String> {
         self.check_is_ongoing(now)?;
 
         if self.action_history.pop().is_none() {
@@ -344,8 +346,8 @@ impl TakGame {
         &mut self,
         player: &TakPlayer,
         duration: Duration,
+        now: Instant,
     ) -> Result<(), String> {
-        let now = Instant::now();
         self.check_is_ongoing(now)?;
 
         let remaining = match player {
@@ -356,8 +358,7 @@ impl TakGame {
         Ok(())
     }
 
-    pub fn resign(&mut self, player: &TakPlayer) -> Result<(), String> {
-        let now = Instant::now();
+    pub fn resign(&mut self, player: &TakPlayer, now: Instant) -> Result<(), String> {
         self.check_is_ongoing(now)?;
 
         self.set_game_over(
@@ -384,8 +385,12 @@ impl TakGame {
         }
     }
 
-    pub fn offer_draw(&mut self, player: &TakPlayer, offer: bool) -> Result<bool, String> {
-        let now = Instant::now();
+    pub fn offer_draw(
+        &mut self,
+        player: &TakPlayer,
+        offer: bool,
+        now: Instant,
+    ) -> Result<bool, String> {
         self.check_is_ongoing(now)?;
 
         match player {
@@ -400,8 +405,12 @@ impl TakGame {
         }
     }
 
-    pub fn request_undo(&mut self, player: &TakPlayer, request: bool) -> Result<bool, String> {
-        let now = Instant::now();
+    pub fn request_undo(
+        &mut self,
+        player: &TakPlayer,
+        request: bool,
+        now: Instant,
+    ) -> Result<bool, String> {
         self.check_is_ongoing(now)?;
 
         match player {
@@ -409,7 +418,7 @@ impl TakGame {
             TakPlayer::Black => self.undo_requested.1 = request,
         }
         if self.undo_requested.0 && self.undo_requested.1 {
-            self.undo_action().ok();
+            self.undo_action(now).ok();
             self.undo_requested = (false, false);
             Ok(true)
         } else {
@@ -426,6 +435,7 @@ mod tests {
 
     #[test]
     fn test_reserve_constraints() {
+        let now = Instant::now();
         let mut game = TakGame::new(TakGameSettings {
             board_size: 5,
             half_komi: 0,
@@ -437,58 +447,85 @@ mod tests {
             },
         });
 
-        game.do_action(&TakAction::Place {
-            pos: TakPos::new(0, 0),
-            variant: TakVariant::Flat,
-        })
+        game.do_action(
+            &TakAction::Place {
+                pos: TakPos::new(0, 0),
+                variant: TakVariant::Flat,
+            },
+            now,
+        )
         .unwrap();
-        game.do_action(&TakAction::Place {
-            pos: TakPos::new(1, 0),
-            variant: TakVariant::Flat,
-        })
+        game.do_action(
+            &TakAction::Place {
+                pos: TakPos::new(1, 0),
+                variant: TakVariant::Flat,
+            },
+            now,
+        )
         .unwrap();
-        game.do_action(&TakAction::Place {
-            pos: TakPos::new(2, 0),
-            variant: TakVariant::Flat,
-        })
+        game.do_action(
+            &TakAction::Place {
+                pos: TakPos::new(2, 0),
+                variant: TakVariant::Flat,
+            },
+            now,
+        )
         .unwrap();
-        game.do_action(&TakAction::Place {
-            pos: TakPos::new(3, 0),
-            variant: TakVariant::Capstone,
-        })
+        game.do_action(
+            &TakAction::Place {
+                pos: TakPos::new(3, 0),
+                variant: TakVariant::Capstone,
+            },
+            now,
+        )
         .unwrap();
-        game.do_action(&TakAction::Place {
-            pos: TakPos::new(4, 0),
-            variant: TakVariant::Flat,
-        })
+        game.do_action(
+            &TakAction::Place {
+                pos: TakPos::new(4, 0),
+                variant: TakVariant::Flat,
+            },
+            now,
+        )
         .unwrap();
 
         // player 2 has placed one flat and one capstone, has two flat left
         assert!(
-            game.do_action(&TakAction::Place {
-                pos: TakPos::new(0, 1),
-                variant: TakVariant::Capstone,
-            })
+            game.do_action(
+                &TakAction::Place {
+                    pos: TakPos::new(0, 1),
+                    variant: TakVariant::Capstone,
+                },
+                now
+            )
             .is_err()
         );
-        game.do_action(&TakAction::Place {
-            pos: TakPos::new(0, 1),
-            variant: TakVariant::Flat,
-        })
+        game.do_action(
+            &TakAction::Place {
+                pos: TakPos::new(0, 1),
+                variant: TakVariant::Flat,
+            },
+            now,
+        )
         .unwrap();
 
         // player 1 has placed all flats and has a capstone left
         assert!(
-            game.do_action(&TakAction::Place {
-                pos: TakPos::new(0, 2),
-                variant: TakVariant::Flat,
-            })
+            game.do_action(
+                &TakAction::Place {
+                    pos: TakPos::new(0, 2),
+                    variant: TakVariant::Flat,
+                },
+                now
+            )
             .is_err()
         );
-        game.do_action(&TakAction::Place {
-            pos: TakPos::new(0, 2),
-            variant: TakVariant::Capstone,
-        })
+        game.do_action(
+            &TakAction::Place {
+                pos: TakPos::new(0, 2),
+                variant: TakVariant::Capstone,
+            },
+            now,
+        )
         .unwrap();
 
         // game should be over now
@@ -504,6 +541,7 @@ mod tests {
 
     #[test]
     fn test_komi_effect() {
+        let now = Instant::now();
         for (half_komi, result, result2) in [
             (
                 0,
@@ -554,20 +592,29 @@ mod tests {
                     extra: Some((2, Duration::from_secs(60))),
                 },
             });
-            game.do_action(&TakAction::Place {
-                pos: TakPos::new(0, 0),
-                variant: TakVariant::Flat,
-            })
+            game.do_action(
+                &TakAction::Place {
+                    pos: TakPos::new(0, 0),
+                    variant: TakVariant::Flat,
+                },
+                now,
+            )
             .unwrap();
-            game.do_action(&TakAction::Place {
-                pos: TakPos::new(1, 0),
-                variant: TakVariant::Flat,
-            })
+            game.do_action(
+                &TakAction::Place {
+                    pos: TakPos::new(1, 0),
+                    variant: TakVariant::Flat,
+                },
+                now,
+            )
             .unwrap();
-            game.do_action(&TakAction::Place {
-                pos: TakPos::new(2, 0),
-                variant: TakVariant::Flat,
-            })
+            game.do_action(
+                &TakAction::Place {
+                    pos: TakPos::new(2, 0),
+                    variant: TakVariant::Flat,
+                },
+                now,
+            )
             .unwrap();
 
             assert_eq!(game.base.game_state, result);
@@ -583,22 +630,31 @@ mod tests {
                 },
             });
             game2
-                .do_action(&TakAction::Place {
-                    pos: TakPos::new(0, 0),
-                    variant: TakVariant::Flat,
-                })
+                .do_action(
+                    &TakAction::Place {
+                        pos: TakPos::new(0, 0),
+                        variant: TakVariant::Flat,
+                    },
+                    now,
+                )
                 .unwrap();
             game2
-                .do_action(&TakAction::Place {
-                    pos: TakPos::new(1, 0),
-                    variant: TakVariant::Flat,
-                })
+                .do_action(
+                    &TakAction::Place {
+                        pos: TakPos::new(1, 0),
+                        variant: TakVariant::Flat,
+                    },
+                    now,
+                )
                 .unwrap();
             game2
-                .do_action(&TakAction::Place {
-                    pos: TakPos::new(2, 0),
-                    variant: TakVariant::Capstone,
-                })
+                .do_action(
+                    &TakAction::Place {
+                        pos: TakPos::new(2, 0),
+                        variant: TakVariant::Capstone,
+                    },
+                    now,
+                )
                 .unwrap();
 
             assert_eq!(game2.base.game_state, result2);
@@ -607,6 +663,7 @@ mod tests {
 
     #[test]
     fn test_first_move_must_be_flat() {
+        let now = Instant::now();
         let mut game = TakGame::new(TakGameSettings {
             board_size: 5,
             half_komi: 0,
@@ -620,79 +677,109 @@ mod tests {
 
         // first move must be flat stone
         assert!(
-            game.do_action(&TakAction::Place {
-                pos: TakPos::new(0, 0),
-                variant: TakVariant::Capstone,
-            })
+            game.do_action(
+                &TakAction::Place {
+                    pos: TakPos::new(0, 0),
+                    variant: TakVariant::Capstone,
+                },
+                now
+            )
             .is_err()
         );
         assert!(
-            game.do_action(&TakAction::Place {
-                pos: TakPos::new(0, 0),
-                variant: TakVariant::Standing,
-            })
+            game.do_action(
+                &TakAction::Place {
+                    pos: TakPos::new(0, 0),
+                    variant: TakVariant::Standing,
+                },
+                now
+            )
             .is_err()
         );
         assert!(
-            game.do_action(&TakAction::Place {
-                pos: TakPos::new(0, 0),
-                variant: TakVariant::Flat,
-            })
+            game.do_action(
+                &TakAction::Place {
+                    pos: TakPos::new(0, 0),
+                    variant: TakVariant::Flat,
+                },
+                now
+            )
             .is_ok()
         );
 
         // second move must be flat stone
         assert!(
-            game.do_action(&TakAction::Place {
-                pos: TakPos::new(1, 0),
-                variant: TakVariant::Capstone,
-            })
+            game.do_action(
+                &TakAction::Place {
+                    pos: TakPos::new(1, 0),
+                    variant: TakVariant::Capstone,
+                },
+                now
+            )
             .is_err()
         );
         assert!(
-            game.do_action(&TakAction::Place {
-                pos: TakPos::new(1, 0),
-                variant: TakVariant::Standing,
-            })
+            game.do_action(
+                &TakAction::Place {
+                    pos: TakPos::new(1, 0),
+                    variant: TakVariant::Standing,
+                },
+                now
+            )
             .is_err()
         );
         // moving piece from first place is not allowed either
         assert!(
-            game.do_action(&TakAction::Move {
-                pos: TakPos::new(0, 0),
-                dir: TakDir::Right,
-                drops: vec![1],
-            })
+            game.do_action(
+                &TakAction::Move {
+                    pos: TakPos::new(0, 0),
+                    dir: TakDir::Right,
+                    drops: vec![1],
+                },
+                now
+            )
             .is_err()
         );
         assert!(
-            game.do_action(&TakAction::Place {
-                pos: TakPos::new(1, 0),
-                variant: TakVariant::Flat,
-            })
+            game.do_action(
+                &TakAction::Place {
+                    pos: TakPos::new(1, 0),
+                    variant: TakVariant::Flat,
+                },
+                now
+            )
             .is_ok()
         );
 
         // from third move onwards, any variant is allowed
         assert!(
-            game.do_action(&TakAction::Place {
-                pos: TakPos::new(0, 1),
-                variant: TakVariant::Capstone,
-            })
+            game.do_action(
+                &TakAction::Place {
+                    pos: TakPos::new(0, 1),
+                    variant: TakVariant::Capstone,
+                },
+                now
+            )
             .is_ok()
         );
         assert!(
-            game.do_action(&TakAction::Place {
-                pos: TakPos::new(0, 2),
-                variant: TakVariant::Standing,
-            })
+            game.do_action(
+                &TakAction::Place {
+                    pos: TakPos::new(0, 2),
+                    variant: TakVariant::Standing,
+                },
+                now
+            )
             .is_ok()
         );
         assert!(
-            game.do_action(&TakAction::Place {
-                pos: TakPos::new(0, 3),
-                variant: TakVariant::Flat,
-            })
+            game.do_action(
+                &TakAction::Place {
+                    pos: TakPos::new(0, 3),
+                    variant: TakVariant::Flat,
+                },
+                now
+            )
             .is_ok()
         );
     }

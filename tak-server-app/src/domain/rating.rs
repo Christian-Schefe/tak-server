@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use tak_core::{TakActionRecord, TakGameSettings, TakGameState, TakPlayer};
 
 use crate::domain::{
@@ -17,7 +17,7 @@ pub struct PlayerRating {
     pub rated_games_played: u32,
     pub is_unrated: bool,
     pub participation_rating: f64,
-    pub rating_age: f64,
+    pub rating_age: Option<DateTime<Utc>>,
     pub fatigue: HashMap<PlayerId, f64>,
 }
 
@@ -31,7 +31,7 @@ impl PlayerRating {
             rated_games_played: 0,
             is_unrated: false,
             participation_rating: 0.0,
-            rating_age: 0.0,
+            rating_age: None,
             fatigue: HashMap::new(),
         }
     }
@@ -148,7 +148,7 @@ impl RatingServiceImpl {
 
     fn calc_decayed_rating(
         rating: &PlayerRating,
-        date: i64,
+        date: DateTime<Utc>,
         participation_cutoff: f64,
         rating_retention: f64,
         max_drop: f64,
@@ -157,9 +157,11 @@ impl RatingServiceImpl {
         if rating.rating < participation_cutoff {
             return rating.rating;
         }
-        let participation = (20.0
-            * (0.5f64).powf((date as f64 - rating.rating_age) / rating_retention))
-            / participation_limit;
+        let time_decay = rating
+            .rating_age
+            .map(|dt| (date.signed_duration_since(dt).num_milliseconds() as f64) / rating_retention)
+            .unwrap_or(1.0);
+        let participation = (20.0 * (0.5f64).powf(time_decay)) / participation_limit;
 
         if rating.rating < participation_cutoff + max_drop {
             rating
@@ -175,7 +177,7 @@ impl RatingServiceImpl {
         amount: f64,
         fairness: f64,
         fatigue_factor: f64,
-        date: f64,
+        date: DateTime<Utc>,
         bonus_factor: f64,
         bonus_rating: f64,
         rating_retention: f64,
@@ -194,15 +196,20 @@ impl RatingServiceImpl {
             + 15.0 * (0.5f64).powf(player.rated_games_played as f64 / 200.0)
             + 15.0 * (0.5f64).powf((player.max_rating - initial_rating) / 300.0);
         player.rating += fatigue_factor * amount * k + bonus;
-        if player.rating_age == 0.0 {
-            player.rating_age = date - rating_retention;
-        }
+
+        let time_decay = player
+            .rating_age
+            .map(|dt| (date.signed_duration_since(dt).num_milliseconds() as f64) / rating_retention)
+            .unwrap_or(1.0);
         let participation = f64::min(
             20.0,
-            20.0 * (0.5f64).powf((date - player.rating_age) / rating_retention)
-                + fairness * fatigue_factor,
+            20.0 * (0.5f64).powf(time_decay) + fairness * fatigue_factor,
         );
-        player.rating_age = f64::log2(participation / 20.0) * rating_retention + date;
+        let extra_millis = f64::log2(participation / 20.0) * rating_retention;
+        player.rating_age = Some(
+            date.checked_add_signed(TimeDelta::milliseconds(extra_millis as i64))
+                .unwrap_or(date),
+        );
         player.rated_games_played += 1;
         player.max_rating = f64::max(player.max_rating, player.rating);
     }
@@ -239,7 +246,7 @@ impl RatingServiceImpl {
             amount,
             fairness,
             fatigue_factor,
-            date.timestamp() as f64,
+            date,
             Self::BONUS_FACTOR,
             Self::BONUS_RATING,
             Self::RATING_RETENTION,
@@ -253,7 +260,7 @@ impl RatingService for RatingServiceImpl {
     fn get_current_rating(&self, player_rating: &PlayerRating, date: DateTime<Utc>) -> f64 {
         Self::calc_decayed_rating(
             player_rating,
-            date.timestamp(),
+            date,
             Self::PARTICIPATION_CUTOFF,
             Self::RATING_RETENTION,
             Self::MAX_DROP,
@@ -267,8 +274,8 @@ impl RatingService for RatingServiceImpl {
         white_rating: &mut PlayerRating,
         black_rating: &mut PlayerRating,
     ) -> Option<GameRatingInfo> {
-        let white_id = game.white_id;
-        let black_id = game.black_id;
+        let white_id = game.white.player_id;
+        let black_id = game.black.player_id;
         let result = game.game.game_state();
 
         if !self.is_game_eligible_for_rating(

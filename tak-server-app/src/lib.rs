@@ -164,7 +164,6 @@ pub async fn build_application<
         rating_repository.clone(),
         game_history_service.clone(),
         match_service.clone(),
-        get_snapshot_workflow.clone(),
         notify_player_workflow.clone(),
         spectator_service.clone(),
         listener_notification_port.clone(),
@@ -184,6 +183,7 @@ pub async fn build_application<
         game_service.clone(),
         game_timeout_scheduler.clone(),
         listener_notification_port.clone(),
+        get_snapshot_workflow.clone(),
     ));
 
     let match_cleanup_job = MatchCleanupJob::new(match_service.clone());

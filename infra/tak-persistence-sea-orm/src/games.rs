@@ -11,8 +11,8 @@ use tak_core::{
 };
 use tak_persistence_sea_orm_entites::game;
 use tak_server_app::domain::{
-    GameId, GameType, PaginatedResponse, PlayerId, RepoError, RepoRetrieveError,
-    RepoUpdateError, SortOrder,
+    GameId, GameType, PaginatedResponse, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
+    SortOrder,
     game_history::{
         DateSelector, GameFinishedUpdate, GameIdSelector, GamePlayerFilter, GameQuery,
         GameRatingInfo, GameRecord, GameRepository, GameSortBy, PlayerSnapshot,
@@ -73,7 +73,7 @@ impl GameRepositoryImpl {
         }
     }
 
-    fn model_to_game(model: &game::Model) -> GameRecord {
+    fn model_to_game(model: game::Model) -> GameRecord {
         let rating_info = if let Some(rating_change_white) = model.rating_change_white
             && let Some(rating_change_black) = model.rating_change_black
         {
@@ -97,7 +97,7 @@ impl GameRepositoryImpl {
             },
         };
         let json_moves: Vec<JsonMoveRecord> =
-            serde_json::from_str(&model.notation).unwrap_or_default();
+            serde_json::from_value(model.notation).unwrap_or_default();
 
         let white_snapshot = PlayerSnapshot::new(
             PlayerId(model.player_white_id),
@@ -153,11 +153,11 @@ impl GameRepository for GameRepositoryImpl {
             size: Set(game.settings.board_size as i32),
             player_white_id: Set(game.white.player_id.0),
             player_black_id: Set(game.black.player_id.0),
-            player_white_username: Set(game.white.username.clone()),
-            player_black_username: Set(game.black.username.clone()),
+            player_white_username: Set(game.white.username),
+            player_black_username: Set(game.black.username),
             player_white_rating: Set(game.white.rating),
             player_black_rating: Set(game.black.rating),
-            notation: Set(String::new()),
+            notation: Set(serde_json::json!([])),
             result: Set("0-0".to_string()),
             clock_contingent: Set(game.settings.time_control.contingent.as_secs() as i32),
             clock_increment: Set(game.settings.time_control.increment.as_secs() as i32),
@@ -204,17 +204,15 @@ impl GameRepository for GameRepositoryImpl {
                 black_remaining_ms: action.time_remaining.1.as_millis() as u64,
             })
             .collect::<Vec<_>>();
-        let notation_str = serde_json::to_string(&notation_val)
+        let notation = serde_json::to_value(&notation_val)
             .map_err(|e| RepoUpdateError::StorageError(e.to_string()))?;
 
         let result_val = game_state_to_string(&update.result);
 
         let model = game::ActiveModel {
             id: Set(game_id.0),
-            notation: Set(notation_str),
+            notation: Set(notation),
             result: Set(result_val),
-            player_white_rating: Set(update.player_white.rating),
-            player_black_rating: Set(update.player_black.rating),
             rating_change_white: Set(update
                 .rating_info
                 .as_ref()
@@ -241,7 +239,7 @@ impl GameRepository for GameRepositoryImpl {
             .await
             .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?
             .ok_or(RepoRetrieveError::NotFound)?;
-        Ok(Self::model_to_game(&model))
+        Ok(Self::model_to_game(model))
     }
 
     async fn query_games(
@@ -367,8 +365,9 @@ impl GameRepository for GameRepositoryImpl {
 
         let mut results = Vec::new();
         for model in models {
-            let game_record = Self::model_to_game(&model);
-            results.push((GameId(model.id), game_record));
+            let game_id = GameId(model.id);
+            let game_record = Self::model_to_game(model);
+            results.push((game_id, game_record));
         }
 
         Ok(PaginatedResponse {

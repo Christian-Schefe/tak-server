@@ -1,0 +1,11 @@
+{$SITE_ADDRESS} {
+    handle_path /api/* {
+        reverse_proxy host.docker.internal:3004
+    }
+    handle_path /ws {
+        reverse_proxy host.docker.internal:9999
+    }
+
+    reverse_proxy host.docker.internal:3000
+    tls internal
+}

@@ -90,18 +90,19 @@ impl LegacyAPIAntiCorruptionLayer {
         username: &str,
         email: &str,
     ) -> Result<Account, String> {
-        //let password = Self::generate_temporary_password();
-        let password = "changeme".to_string();
+        let password = Self::generate_temporary_password();
+        // TODO: Remove for prod
+        let dev_password = "changeme".to_string();
 
         let password_hash =
-            bcrypt::hash(password.clone(), bcrypt::DEFAULT_COST).map_err(|e| e.to_string())?;
+            bcrypt::hash(dev_password.clone(), bcrypt::DEFAULT_COST).map_err(|e| e.to_string())?;
         let account = self
             .auth
             .create_account(username, email, &password_hash)
             .await
             .map_err(|e| format!("Failed to create account: {}", e))?;
 
-        // self.send_password_email(email, username, &password)?;
+        self.send_password_email(email, username, &password)?;
         Ok(account)
     }
 

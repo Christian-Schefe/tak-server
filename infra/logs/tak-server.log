@@ -682,3 +682,22 @@ INFO - summary="UPDATE `games` SET `player_white_rating` …" db.statement="\n\n
 INFO - summary="SELECT `games`.`id`, `games`.`date`, `games`.`size`, …" db.statement="\n\nSELECT `games`.`id`, `games`.`date`, `games`.`size`, `games`.`player_white_id`, `games`.`player_black_id`, `games`.`player_white_username`, `games`.`player_black_username`, `games`.`player_white_rating`, `games`.`player_black_rating`, `games`.`rating_change_white`, `games`.`rating_change_black`, `games`.`notation`, `games`.`result`, `games`.`clock_contingent`, `games`.`clock_increment`, `games`.`is_unrated`, `games`.`is_tournament`, `games`.`half_komi`, `games`.`pieces`, `games`.`capstones`, `games`.`extra_time_amount`, `games`.`extra_time_trigger` FROM `games` WHERE `games`.`id` = ? LIMIT ?\n" rows_affected=0 rows_returned=1 elapsed=1.1594ms elapsed_secs=0.0011594
 ERROR - Error handling message ["Game#0", "OfferDraw"]: Not found: Game not found
 ERROR - Error handling message ["Game#0", "P", "C6"]: Not found: Game not found
+DEBUG - Received close frame: Some(CloseFrame { code: Away, reason: Utf8Bytes(b"") })
+DEBUG - Replying to close with Frame { header: FrameHeader { is_final: true, rsv1: false, rsv2: false, rsv3: false, opcode: Control(Close), mask: None }, payload: b"\x03\xe9" }
+INFO - Client bdac1f5f-fc38-4c83-81d0-ed98e02bfb5d received ended
+INFO - Client bdac1f5f-fc38-4c83-81d0-ed98e02bfb5d notification ended
+INFO - Client bdac1f5f-fc38-4c83-81d0-ed98e02bfb5d send ended
+INFO - Client bdac1f5f-fc38-4c83-81d0-ed98e02bfb5d fully disconnected
+DEBUG - Received close frame: Some(CloseFrame { code: Away, reason: Utf8Bytes(b"") })
+DEBUG - Replying to close with Frame { header: FrameHeader { is_final: true, rsv1: false, rsv2: false, rsv3: false, opcode: Control(Close), mask: None }, payload: b"\x03\xe9" }
+INFO - Client 1692b588-8476-49fc-aed5-92ea9633c052 received ended
+INFO - Client 1692b588-8476-49fc-aed5-92ea9633c052 notification ended
+INFO - Client 1692b588-8476-49fc-aed5-92ea9633c052 send ended
+INFO - Client 1692b588-8476-49fc-aed5-92ea9633c052 fully disconnected
+INFO - Shutdown signal received. Preparing graceful exit...
+INFO - Shutdown signal received. Preparing graceful exit...
+INFO - Shutdown signal received, closing all clients
+INFO - HTTP API shut down gracefully
+INFO - TCP server shutting down
+INFO - Client cleanup task shutting down
+INFO - Transport service shut down gracefully

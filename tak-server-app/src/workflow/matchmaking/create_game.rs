@@ -8,7 +8,7 @@ use crate::{
     },
     ports::notification::{ListenerMessage, ListenerNotificationPort},
     processes::game_timeout_runner::GameTimeoutRunner,
-    workflow::gameplay::GameView,
+    workflow::{account::get_snapshot::GetSnapshotWorkflow, gameplay::GameView},
 };
 
 #[async_trait::async_trait]
@@ -23,6 +23,7 @@ pub struct CreateGameFromMatchWorkflowImpl<
     G: GameService,
     GT: GameTimeoutRunner,
     L: ListenerNotificationPort,
+    S: GetSnapshotWorkflow,
 > {
     match_service: Arc<M>,
     game_history_service: Arc<GH>,
@@ -30,6 +31,7 @@ pub struct CreateGameFromMatchWorkflowImpl<
     game_service: Arc<G>,
     game_timeout_runner: Arc<GT>,
     listener_notification_port: Arc<L>,
+    get_snapshot_workflow: Arc<S>,
 }
 impl<
     M: MatchService,
@@ -38,7 +40,8 @@ impl<
     G: GameService,
     GT: GameTimeoutRunner,
     L: ListenerNotificationPort,
-> CreateGameFromMatchWorkflowImpl<M, GH, GR, G, GT, L>
+    S: GetSnapshotWorkflow,
+> CreateGameFromMatchWorkflowImpl<M, GH, GR, G, GT, L, S>
 {
     pub fn new(
         match_service: Arc<M>,
@@ -47,6 +50,7 @@ impl<
         game_service: Arc<G>,
         game_timeout_runner: Arc<GT>,
         listener_notification_port: Arc<L>,
+        get_snapshot_workflow: Arc<S>,
     ) -> Self {
         Self {
             match_service,
@@ -55,6 +59,7 @@ impl<
             game_service,
             game_timeout_runner,
             listener_notification_port,
+            get_snapshot_workflow,
         }
     }
 }
@@ -67,7 +72,8 @@ impl<
     G: GameService + Send + Sync,
     GT: GameTimeoutRunner + Send + Sync,
     L: ListenerNotificationPort + Send + Sync,
-> CreateGameFromMatchWorkflow for CreateGameFromMatchWorkflowImpl<M, GH, GR, G, GT, L>
+    S: GetSnapshotWorkflow + Send + Sync,
+> CreateGameFromMatchWorkflow for CreateGameFromMatchWorkflowImpl<M, GH, GR, G, GT, L, S>
 {
     async fn create_game_from_match(&self, match_entry: &Match) {
         let date = chrono::Utc::now();
@@ -94,11 +100,20 @@ impl<
             }
         };
 
+        let snapshot_white = self
+            .get_snapshot_workflow
+            .get_snapshot(white_id, date)
+            .await;
+        let snapshot_black = self
+            .get_snapshot_workflow
+            .get_snapshot(black_id, date)
+            .await;
+
         let game = self.game_service.create_game(
             game_id,
             date,
-            white_id,
-            black_id,
+            snapshot_white,
+            snapshot_black,
             match_entry.game_type,
             match_entry.game_settings.clone(),
             match_entry.id,

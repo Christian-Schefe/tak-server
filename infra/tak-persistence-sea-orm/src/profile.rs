@@ -11,14 +11,14 @@ use tak_server_app::domain::{
 
 pub struct ProfileRepositoryImpl {
     db: DatabaseConnection,
-    profile_cache: Arc<moka::future::Cache<AccountId, AccountProfile>>,
+    profile_cache: Arc<moka::sync::Cache<AccountId, AccountProfile>>,
 }
 
 impl ProfileRepositoryImpl {
     pub async fn new() -> Self {
         let db = create_db_pool().await;
         let profile_cache = Arc::new(
-            moka::future::Cache::builder()
+            moka::sync::Cache::builder()
                 .max_capacity(10_000)
                 .time_to_live(std::time::Duration::from_secs(60 * 60 * 12))
                 .build(),
@@ -42,6 +42,8 @@ impl AccountProfileRepository for ProfileRepositoryImpl {
             .insert(&self.db)
             .await
             .map_err(|e| RepoError::StorageError(e.to_string()))?;
+        self.profile_cache
+            .insert(account_id.clone(), profile_information);
         Ok(())
     }
 
@@ -49,7 +51,7 @@ impl AccountProfileRepository for ProfileRepositoryImpl {
         &self,
         account_id: &AccountId,
     ) -> Result<AccountProfile, RepoRetrieveError> {
-        if let Some(cached_profile) = self.profile_cache.get(account_id).await {
+        if let Some(cached_profile) = self.profile_cache.get(account_id) {
             return Ok(cached_profile);
         }
 
@@ -66,8 +68,7 @@ impl AccountProfileRepository for ProfileRepositoryImpl {
                     .and_then(|c| CountryCode::from_str(c).ok()),
             };
             self.profile_cache
-                .insert(account_id.clone(), profile_information.clone())
-                .await;
+                .insert(account_id.clone(), profile_information.clone());
             Ok(profile_information)
         } else {
             Err(RepoRetrieveError::NotFound)

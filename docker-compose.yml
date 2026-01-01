@@ -1,16 +1,16 @@
 services:
-#  playtak-bot:
-#    image: mortenlohne/tiltak-playtak:0.1.0
-#    container_name: playtak-bot
-#    restart: unless-stopped
-#    environment:
-#      PLAYTAK_USERNAME: "testuser2"
-#      PLAYTAK_PASSWORD: "pw"
-#      SIZE: "5"
-#      TC: "300+10"
-#      PLAYTAK_BASE_URL: "host.docker.internal"
-#      PLAYTAK_PORT: "10000"
-#      KOMI: "0.0"
+  #  playtak-bot:
+  #    image: mortenlohne/tiltak-playtak:0.1.0
+  #    container_name: playtak-bot
+  #    restart: unless-stopped
+  #    environment:
+  #      PLAYTAK_USERNAME: "testuser2"
+  #      PLAYTAK_PASSWORD: "pw"
+  #      SIZE: "5"
+  #      TC: "300+10"
+  #      PLAYTAK_BASE_URL: "host.docker.internal"
+  #      PLAYTAK_PORT: "10000"
+  #      KOMI: "0.0"
   mariadb:
     image: mariadb:11
     container_name: mariadb_dev
@@ -27,5 +27,19 @@ services:
     volumes:
       - mariadb_data:/var/lib/mysql
 
+  caddy:
+    image: caddy:latest
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - SITE_ADDRESS=localhost
+
 volumes:
+  caddy_data:
+  caddy_config:
   mariadb_data:

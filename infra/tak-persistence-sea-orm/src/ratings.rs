@@ -13,14 +13,14 @@ use tak_server_app::domain::{
 
 pub struct RatingRepositoryImpl {
     db: DatabaseConnection,
-    ratings_cache: Arc<moka::future::Cache<PlayerId, PlayerRating>>,
+    ratings_cache: Arc<moka::sync::Cache<PlayerId, PlayerRating>>,
 }
 
 impl RatingRepositoryImpl {
     pub async fn new() -> Self {
         let db = create_db_pool().await;
         let ratings_cache = Arc::new(
-            moka::future::Cache::builder()
+            moka::sync::Cache::builder()
                 .max_capacity(10_000)
                 .time_to_live(std::time::Duration::from_secs(60 * 60))
                 .build(),
@@ -38,7 +38,7 @@ impl RatingRepositoryImpl {
             is_unrated: model.is_unrated,
             participation_rating: model.participation_rating,
             rating_age: model.rating_age,
-            fatigue: serde_json::from_str::<HashMap<uuid::Uuid, f64>>(&model.fatigue)
+            fatigue: serde_json::from_value::<HashMap<uuid::Uuid, f64>>(model.fatigue)
                 .unwrap_or_default()
                 .into_iter()
                 .map(|(k, v)| (PlayerId(k), v))
@@ -57,14 +57,14 @@ impl RatingRepositoryImpl {
             participation_rating: sea_orm::Set(rating.participation_rating),
             rating_age: sea_orm::Set(rating.rating_age),
             fatigue: sea_orm::Set(
-                serde_json::to_string(
+                serde_json::to_value(
                     &rating
                         .fatigue
                         .iter()
                         .map(|(k, v)| (k.0, *v))
                         .collect::<HashMap<uuid::Uuid, f64>>(),
                 )
-                .unwrap_or_else(|_| "{}".to_string()),
+                .unwrap_or_else(|_| serde_json::json!({})),
             ),
         }
     }
@@ -77,7 +77,7 @@ impl RatingRepository for RatingRepositoryImpl {
         player_id: PlayerId,
         create_fn: impl Fn() -> PlayerRating + Send + 'static,
     ) -> Result<PlayerRating, RepoError> {
-        if let Some(cached) = self.ratings_cache.get(&player_id).await {
+        if let Some(cached) = self.ratings_cache.get(&player_id) {
             return Ok(cached);
         }
         let res = self
@@ -106,9 +106,7 @@ impl RatingRepository for RatingRepositoryImpl {
             .await;
         match res {
             Ok(player_rating) => {
-                self.ratings_cache
-                    .insert(player_id, player_rating.clone())
-                    .await;
+                self.ratings_cache.insert(player_id, player_rating.clone());
                 Ok(player_rating)
             }
             Err(TransactionError::Transaction(e)) => Err(e),
@@ -169,13 +167,18 @@ impl RatingRepository for RatingRepositoryImpl {
             .await;
 
         match res {
-            Ok(result) => Ok(result),
+            Ok(result) => {
+                self.ratings_cache.invalidate(&white);
+                self.ratings_cache.invalidate(&black);
+                Ok(result)
+            }
             Err(TransactionError::Transaction(e)) => Err(e),
             Err(TransactionError::Connection(e)) => {
                 Err(RepoUpdateError::StorageError(e.to_string()))
             }
         }
     }
+
     async fn query_ratings(
         &self,
         query: RatingQuery,

@@ -6,7 +6,7 @@ use crate::{
         game_history::PlayerSnapshot,
         rating::{PlayerRating, RatingRepository, RatingService},
     },
-    workflow::account::get_account::GetAccountWorkflow,
+    workflow::account::get_account::{GetAccountError, GetAccountWorkflow},
 };
 
 #[async_trait::async_trait]
@@ -52,12 +52,30 @@ impl<
         player_id: PlayerId,
         date: chrono::DateTime<chrono::Utc>,
     ) -> PlayerSnapshot {
-        let username = self
-            .get_account_workflow
-            .get_account(player_id)
-            .await
-            .ok()
-            .map(|acc| acc.username);
+        let username = match self.get_account_workflow.get_account(player_id).await {
+            Ok(account) => {
+                log::info!(
+                    "Retrieved account for player {}: {:?}",
+                    player_id.to_string(),
+                    account,
+                );
+                Some(account.username)
+            }
+            Err(GetAccountError::AccountNotFound) => {
+                log::error!(
+                    "Failed to retrieve account for player {}: Not found",
+                    player_id.to_string(),
+                );
+                None
+            }
+            Err(GetAccountError::RepositoryError) => {
+                log::error!(
+                    "Failed to retrieve account for player {}: Repository error",
+                    player_id.to_string(),
+                );
+                None
+            }
+        };
         let current_rating = match self
             .rating_repository
             .get_or_create_player_rating(player_id, move || PlayerRating::new(player_id))

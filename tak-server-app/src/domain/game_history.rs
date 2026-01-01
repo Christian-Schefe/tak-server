@@ -19,6 +19,7 @@ pub struct GameRecord {
     pub moves: Vec<TakActionRecord>,
 }
 
+#[derive(Debug, Clone)]
 pub struct PlayerSnapshot {
     pub player_id: PlayerId,
     pub username: Option<String>,
@@ -88,8 +89,6 @@ pub enum GamePlayerFilter {
 pub struct GameFinishedUpdate {
     pub result: TakGameState,
     pub moves: Vec<TakActionRecord>,
-    pub player_white: PlayerSnapshot,
-    pub player_black: PlayerSnapshot,
     pub rating_info: Option<GameRatingInfo>,
 }
 
@@ -120,8 +119,6 @@ pub trait GameHistoryService {
     fn get_finished_game_record_update(
         &self,
         game: Game,
-        white: PlayerSnapshot,
-        black: PlayerSnapshot,
         rating_info: Option<GameRatingInfo>,
     ) -> GameFinishedUpdate;
 }
@@ -158,15 +155,11 @@ impl GameHistoryService for GameHistoryServiceImpl {
     fn get_finished_game_record_update(
         &self,
         game: Game,
-        white: PlayerSnapshot,
-        black: PlayerSnapshot,
         rating_info: Option<GameRatingInfo>,
     ) -> GameFinishedUpdate {
         GameFinishedUpdate {
             result: game.game.game_state(),
             moves: game.game.action_history().clone(),
-            player_white: white,
-            player_black: black,
             rating_info,
         }
     }

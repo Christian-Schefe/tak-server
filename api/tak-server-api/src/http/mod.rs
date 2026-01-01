@@ -23,16 +23,19 @@ pub async fn run(
     acl: Arc<LegacyAPIAntiCorruptionLayer>,
     shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
 ) {
-    let router: Router<AppState> = Router::new()
-        .route("/games-history", get(games_history::get_all))
-        .route("/games-history/{id}", get(games_history::get_by_id))
-        .route("/games-history/ptn/{id}", get(games_history::get_ptn_by_id))
-        .route("/events", get(event::get_all_events))
-        .route("/ratings", get(rating::get_ratings))
-        .route("/rating/{name}", get(rating::get_rating_by_name));
+    let router: Router<AppState> = Router::new().nest(
+        "/v1",
+        Router::new()
+            .route("/games-history", get(games_history::get_all))
+            .route("/games-history/{id}", get(games_history::get_by_id))
+            .route("/games-history/ptn/{id}", get(games_history::get_ptn_by_id))
+            .route("/events", get(event::get_all_events))
+            .route("/ratings", get(rating::get_ratings))
+            .route("/ratings/{name}", get(rating::get_rating_by_name)),
+    );
 
     let port = std::env::var("TAK_HTTP_API_PORT")
-        .unwrap_or_else(|_| "3004".to_string())
+        .expect("TAK_HTTP_API_PORT must be set")
         .parse::<u16>()
         .expect("TAK_HTTP_API_PORT must be a valid u16");
 

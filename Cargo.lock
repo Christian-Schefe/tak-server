@@ -1935,13 +1935,10 @@ version = "0.12.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3dec6bd31b08944e08b58fd99373893a6c17054d6f3ea5006cc894f4f4eee2a"
 dependencies = [
- "async-lock",
  "crossbeam-channel",
  "crossbeam-epoch",
  "crossbeam-utils",
  "equivalent",
- "event-listener",
- "futures-util",
  "parking_lot",
  "portable-atomic",
  "smallvec",
@@ -3691,6 +3688,7 @@ name = "tak-email-lettre"
 version = "0.1.0"
 dependencies = [
  "lettre",
+ "log",
  "tak-server-app",
 ]
 
@@ -3731,6 +3729,8 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "sea-orm",
+ "serde",
+ "serde_json",
  "tak-core",
  "tak-server-app",
 ]

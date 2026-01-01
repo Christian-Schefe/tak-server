@@ -41,3 +41,17 @@ impl EmailPort for LettreEmailAdapter {
         Ok(())
     }
 }
+
+pub struct LogEmailAdapter;
+
+impl EmailPort for LogEmailAdapter {
+    fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<(), String> {
+        log::info!(
+            "Simulated sending email to: {}, subject: {}, body: {}",
+            to,
+            subject,
+            body
+        );
+        Ok(())
+    }
+}

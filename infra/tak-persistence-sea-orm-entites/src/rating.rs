@@ -1,3 +1,4 @@
+use chrono::Utc;
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
@@ -10,9 +11,9 @@ pub struct Model {
     pub rated_games: i32,
     pub is_unrated: bool,
     pub max_rating: f64,
-    pub rating_age: f64,
+    pub rating_age: Option<chrono::DateTime<Utc>>,
     pub participation_rating: f64,
-    pub fatigue: String,
+    pub fatigue: serde_json::Value,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::domain::{GameId, GameType, MatchId, PlayerId};
+use crate::domain::{GameId, GameType, MatchId, PlayerId, game_history::PlayerSnapshot};
 use dashmap::DashMap;
 use tak_core::{TakAction, TakActionRecord, TakGame, TakGameSettings, TakPlayer};
 
@@ -12,8 +12,8 @@ pub struct Game {
     pub game_id: GameId,
     pub match_id: MatchId,
     pub date: chrono::DateTime<chrono::Utc>,
-    pub white_id: PlayerId,
-    pub black_id: PlayerId,
+    pub white: PlayerSnapshot,
+    pub black: PlayerSnapshot,
     pub game: TakGame,
     pub settings: TakGameSettings,
     pub game_type: GameType,
@@ -21,12 +21,20 @@ pub struct Game {
 
 impl Game {
     pub fn get_opponent(&self, player: PlayerId) -> Option<PlayerId> {
-        if player == self.white_id {
-            Some(self.black_id)
-        } else if player == self.black_id {
-            Some(self.white_id)
+        if player == self.white.player_id {
+            Some(self.black.player_id)
+        } else if player == self.black.player_id {
+            Some(self.white.player_id)
         } else {
             None
+        }
+    }
+
+    pub fn get_time_remaining(&self, now: Instant) -> TimeRemaining {
+        let (white_time, black_time) = self.game.get_time_remaining_both(now);
+        TimeRemaining {
+            white_time,
+            black_time,
         }
     }
 }
@@ -36,8 +44,8 @@ pub trait GameService {
         &self,
         id: GameId,
         date: chrono::DateTime<chrono::Utc>,
-        white_id: PlayerId,
-        black_id: PlayerId,
+        white: PlayerSnapshot,
+        black: PlayerSnapshot,
         game_type: GameType,
         game_settings: TakGameSettings,
         match_id: MatchId,
@@ -49,25 +57,33 @@ pub trait GameService {
         game_id: GameId,
         player: PlayerId,
         action: TakAction,
+        now: Instant,
     ) -> Result<DoActionSuccess, DoActionError>;
-    fn resign(&self, game_id: GameId, player: PlayerId) -> Result<Game, ResignError>;
+    fn resign(&self, game_id: GameId, player: PlayerId, now: Instant) -> Result<Game, ResignError>;
     fn request_undo(
         &self,
         game_id: GameId,
         player: PlayerId,
+        now: Instant,
     ) -> Result<RequestUndoSuccess, RequestUndoError>;
     fn retract_undo_request(
         &self,
         game_id: GameId,
         player: PlayerId,
+        now: Instant,
     ) -> Result<bool, RequestUndoError>;
     fn offer_draw(
         &self,
         game_id: GameId,
         player: PlayerId,
+        now: Instant,
     ) -> Result<OfferDrawSuccess, OfferDrawError>;
-    fn retract_draw_offer(&self, game_id: GameId, player: PlayerId)
-    -> Result<bool, OfferDrawError>;
+    fn retract_draw_offer(
+        &self,
+        game_id: GameId,
+        player: PlayerId,
+        now: Instant,
+    ) -> Result<bool, OfferDrawError>;
     fn check_timeout(&self, game_id: GameId, now: Instant) -> CheckTimoutResult;
 }
 
@@ -75,6 +91,11 @@ pub enum DoActionError {
     GameNotFound,
     NotPlayersTurn,
     InvalidAction,
+}
+
+pub struct TimeRemaining {
+    pub white_time: Duration,
+    pub black_time: Duration,
 }
 
 pub enum DoActionSuccess {
@@ -148,8 +169,8 @@ impl GameService for GameServiceImpl {
         &self,
         id: GameId,
         date: chrono::DateTime<chrono::Utc>,
-        white_id: PlayerId,
-        black_id: PlayerId,
+        white: PlayerSnapshot,
+        black: PlayerSnapshot,
         game_type: GameType,
         game_settings: TakGameSettings,
         match_id: MatchId,
@@ -157,8 +178,8 @@ impl GameService for GameServiceImpl {
         let game = TakGame::new(game_settings.clone());
         let game_struct = Game {
             date,
-            white_id,
-            black_id,
+            white,
+            black,
             game,
             game_type,
             settings: game_settings,
@@ -183,12 +204,13 @@ impl GameService for GameServiceImpl {
         game_id: GameId,
         player: PlayerId,
         action: TakAction,
+        now: Instant,
     ) -> Result<DoActionSuccess, DoActionError> {
         let game_record = self
             .with_game(game_id, |game_entry| {
                 let current_player = match player {
-                    id if id == game_entry.white_id => TakPlayer::White,
-                    id if id == game_entry.black_id => TakPlayer::Black,
+                    id if id == game_entry.white.player_id => TakPlayer::White,
+                    id if id == game_entry.black.player_id => TakPlayer::Black,
                     _ => return Err(DoActionError::NotPlayersTurn),
                 };
 
@@ -196,7 +218,7 @@ impl GameService for GameServiceImpl {
                     return Err(DoActionError::NotPlayersTurn);
                 }
 
-                match game_entry.game.do_action(&action) {
+                match game_entry.game.do_action(&action, now) {
                     Ok(record) => Ok(record),
                     Err(_) => Err(DoActionError::InvalidAction),
                 }
@@ -210,11 +232,11 @@ impl GameService for GameServiceImpl {
         Ok(DoActionSuccess::ActionPerformed(game_record))
     }
 
-    fn resign(&self, game_id: GameId, player: PlayerId) -> Result<Game, ResignError> {
+    fn resign(&self, game_id: GameId, player: PlayerId, now: Instant) -> Result<Game, ResignError> {
         self.with_game(game_id, |game_entry| {
             let current_player = match player {
-                id if id == game_entry.white_id => TakPlayer::White,
-                id if id == game_entry.black_id => TakPlayer::Black,
+                id if id == game_entry.white.player_id => TakPlayer::White,
+                id if id == game_entry.black.player_id => TakPlayer::Black,
                 _ => return Err(ResignError::NotPlayersTurn),
             };
 
@@ -222,7 +244,7 @@ impl GameService for GameServiceImpl {
                 return Err(ResignError::NotPlayersTurn);
             }
 
-            if let Err(_) = game_entry.game.resign(&current_player) {
+            if let Err(_) = game_entry.game.resign(&current_player, now) {
                 return Err(ResignError::InvalidResign);
             }
             Ok(())
@@ -239,18 +261,19 @@ impl GameService for GameServiceImpl {
         &self,
         game_id: GameId,
         player: PlayerId,
+        now: Instant,
     ) -> Result<OfferDrawSuccess, OfferDrawError> {
         let (did_draw, changed) = self
             .with_game(game_id, |game_entry| {
                 let current_player = match player {
-                    id if id == game_entry.white_id => TakPlayer::White,
-                    id if id == game_entry.black_id => TakPlayer::Black,
+                    id if id == game_entry.white.player_id => TakPlayer::White,
+                    id if id == game_entry.black.player_id => TakPlayer::Black,
                     _ => return Err(OfferDrawError::NotAPlayerInGame),
                 };
 
                 let changed = !game_entry.game.get_draw_offer(&current_player);
 
-                match game_entry.game.offer_draw(&current_player, true) {
+                match game_entry.game.offer_draw(&current_player, true, now) {
                     Ok(did_draw) => Ok((did_draw, changed)),
                     Err(_) => Err(OfferDrawError::InvalidOffer),
                 }
@@ -270,18 +293,19 @@ impl GameService for GameServiceImpl {
         &self,
         game_id: GameId,
         player: PlayerId,
+        now: Instant,
     ) -> Result<bool, OfferDrawError> {
         let changed = self
             .with_game(game_id, |game_entry| {
                 let current_player = match player {
-                    id if id == game_entry.white_id => TakPlayer::White,
-                    id if id == game_entry.black_id => TakPlayer::Black,
+                    id if id == game_entry.white.player_id => TakPlayer::White,
+                    id if id == game_entry.black.player_id => TakPlayer::Black,
                     _ => return Err(OfferDrawError::NotAPlayerInGame),
                 };
 
                 let changed = game_entry.game.get_draw_offer(&current_player);
 
-                match game_entry.game.offer_draw(&current_player, false) {
+                match game_entry.game.offer_draw(&current_player, false, now) {
                     Ok(_) => Ok(changed),
                     Err(_) => Err(OfferDrawError::InvalidOffer),
                 }
@@ -294,18 +318,19 @@ impl GameService for GameServiceImpl {
         &self,
         game_id: GameId,
         player: PlayerId,
+        now: Instant,
     ) -> Result<RequestUndoSuccess, RequestUndoError> {
         let result = self
             .with_game(game_id, |game_entry| {
                 let current_player = match player {
-                    id if id == game_entry.white_id => TakPlayer::White,
-                    id if id == game_entry.black_id => TakPlayer::Black,
+                    id if id == game_entry.white.player_id => TakPlayer::White,
+                    id if id == game_entry.black.player_id => TakPlayer::Black,
                     _ => return Err(RequestUndoError::NotAPlayerInGame),
                 };
 
                 let changed = !game_entry.game.get_undo_request(&current_player);
 
-                match game_entry.game.request_undo(&current_player, true) {
+                match game_entry.game.request_undo(&current_player, true, now) {
                     Ok(false) => Ok(RequestUndoSuccess::UndoRequested(changed)),
                     Ok(true) => Ok(RequestUndoSuccess::MoveUndone),
                     Err(_) => return Err(RequestUndoError::InvalidRequest),
@@ -322,18 +347,19 @@ impl GameService for GameServiceImpl {
         &self,
         game_id: GameId,
         player: PlayerId,
+        now: Instant,
     ) -> Result<bool, RequestUndoError> {
         let changed = self
             .with_game(game_id, |game_entry| {
                 let current_player = match player {
-                    id if id == game_entry.white_id => TakPlayer::White,
-                    id if id == game_entry.black_id => TakPlayer::Black,
+                    id if id == game_entry.white.player_id => TakPlayer::White,
+                    id if id == game_entry.black.player_id => TakPlayer::Black,
                     _ => return Err(RequestUndoError::NotAPlayerInGame),
                 };
 
                 let changed = game_entry.game.get_undo_request(&current_player);
 
-                match game_entry.game.request_undo(&current_player, false) {
+                match game_entry.game.request_undo(&current_player, false, now) {
                     Ok(_) => Ok(changed),
                     Err(_) => Err(RequestUndoError::InvalidRequest),
                 }

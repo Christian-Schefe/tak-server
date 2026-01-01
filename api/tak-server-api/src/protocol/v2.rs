@@ -187,6 +187,13 @@ impl ProtocolV2Handler {
             ListenerMessage::GameActionUndone { game_id } => {
                 self.send_undo_message(id, *game_id);
             }
+            ListenerMessage::GameTimeUpdate {
+                game_id,
+                white_time,
+                black_time,
+            } => {
+                self.send_time_update_message(id, *game_id, *white_time, *black_time);
+            }
 
             ListenerMessage::PlayersOnline { players } => {
                 let online_message = format!("Online {}", players.len());

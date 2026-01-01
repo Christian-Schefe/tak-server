@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use tak_core::{TakActionRecord, TakGameState};
 
 use crate::{
@@ -39,6 +41,11 @@ pub enum ListenerMessage {
     },
     GameActionUndone {
         game_id: GameId,
+    },
+    GameTimeUpdate {
+        game_id: GameId,
+        white_time: Duration,
+        black_time: Duration,
     },
     GameDrawOffered {
         game_id: GameId,
