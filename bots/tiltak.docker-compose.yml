@@ -1,0 +1,16 @@
+services:
+  slate-bot:
+    image: mortenlohne/tiltak-playtak:0.1.0
+    restart: unless-stopped
+    environment:
+      PLAYTAK_USERNAME: "meeshroom2"
+      PLAYTAK_PASSWORD: "changeme"
+      SIZE: "5"
+      TC: "600+20"
+      PLAYTAK_BASE_URL: "host.docker.internal"
+      PLAYTAK_PORT: "10000"
+      KOMI: "2.0"
+      TARGET_MOVE_TIME: "5"
+      ROLLOUT_DEPTH: "200"
+      ROLLOUT_NOISE: "low"
+      ALLOW_CHOOSING_COLOR: "true"

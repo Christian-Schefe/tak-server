@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
 use crate::{
-    domain::{GameId, PlayerId, game::GameService, spectator::SpectatorService},
+    domain::{
+        GameId, PlayerId,
+        game::{Game, GameService},
+        spectator::SpectatorService,
+    },
     ports::{
         connection::PlayerConnectionPort,
         notification::{ListenerMessage, ListenerNotificationPort},
@@ -10,6 +14,7 @@ use crate::{
 
 #[async_trait::async_trait]
 pub trait NotifyPlayerWorkflow {
+    async fn notify_players_and_observers_of_game(&self, game: &Game, message: ListenerMessage);
     async fn notify_players_and_observers(&self, game_id: GameId, message: ListenerMessage);
     async fn notify_players(&self, players: &[PlayerId], message: ListenerMessage);
 }
@@ -52,15 +57,20 @@ impl<
     S: SpectatorService + Send + Sync,
 > NotifyPlayerWorkflow for NotifyPlayerWorkflowImpl<L, P, G, S>
 {
+    async fn notify_players_and_observers_of_game(&self, game: &Game, message: ListenerMessage) {
+        self.notify_players(&[game.white_id, game.black_id], message.clone())
+            .await;
+        let observers = self.spectator_service.get_spectators_for_game(game.game_id);
+        self.listener_notification_port
+            .notify_listeners(&observers, message);
+    }
+    
     async fn notify_players_and_observers(&self, game_id: GameId, message: ListenerMessage) {
         let Some(game) = self.game_service.get_game_by_id(game_id) else {
             return;
         };
-        self.notify_players(&[game.white_id, game.black_id], message.clone())
+        self.notify_players_and_observers_of_game(&game, message)
             .await;
-        let observers = self.spectator_service.get_spectators_for_game(game_id);
-        self.listener_notification_port
-            .notify_listeners(&observers, message);
     }
 
     async fn notify_players(&self, players: &[PlayerId], message: ListenerMessage) {

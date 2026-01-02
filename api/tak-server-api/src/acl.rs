@@ -4,7 +4,7 @@ use passwords::PasswordGenerator;
 use tak_auth_ory::OryAuthenticationService;
 use tak_server_app::{
     Application,
-    domain::{AccountId, PlayerId},
+    domain::PlayerId,
     ports::{authentication::Account, email::EmailPort},
 };
 
@@ -125,10 +125,13 @@ impl LegacyAPIAntiCorruptionLayer {
 
     pub async fn change_password(
         &self,
-        _account_id: AccountId,
-        _old_password: &str,
-        _new_password: &str,
+        username: &str,
+        old_password: &str,
+        new_password: &str,
     ) -> Result<(), String> {
-        Err("Not implemented".to_string())
+        self.auth
+            .change_password(username, old_password, new_password)
+            .await?;
+        Ok(())
     }
 }

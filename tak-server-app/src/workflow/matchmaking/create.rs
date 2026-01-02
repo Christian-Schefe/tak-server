@@ -3,7 +3,10 @@ use std::sync::Arc;
 use tak_core::{TakGameSettings, TakPlayer};
 
 use crate::{
-    domain::{PlayerId, seek::SeekService},
+    domain::{
+        PlayerId,
+        seek::{CreateSeekError, SeekService},
+    },
     ports::notification::{ListenerMessage, ListenerNotificationPort},
     workflow::matchmaking::GameType,
 };
@@ -33,11 +36,6 @@ impl<S: SeekService, L: ListenerNotificationPort> CreateSeekUseCaseImpl<S, L> {
     }
 }
 
-pub enum CreateSeekError {
-    InvalidGameSettings,
-    InvalidOpponent,
-}
-
 impl<S: SeekService, L: ListenerNotificationPort> CreateSeekUseCase
     for CreateSeekUseCaseImpl<S, L>
 {
@@ -50,18 +48,8 @@ impl<S: SeekService, L: ListenerNotificationPort> CreateSeekUseCase
         game_type: GameType,
     ) -> Result<(), CreateSeekError> {
         let created_seek =
-            match self
-                .seek_service
-                .create_seek(player, opponent, color, game_settings, game_type)
-            {
-                Ok(seek) => seek,
-                Err(crate::domain::seek::CreateSeekError::InvalidGameSettings) => {
-                    return Err(CreateSeekError::InvalidGameSettings);
-                }
-                Err(crate::domain::seek::CreateSeekError::InvalidOpponent) => {
-                    return Err(CreateSeekError::InvalidOpponent);
-                }
-            };
+            self.seek_service
+                .create_seek(player, opponent, color, game_settings, game_type)?;
 
         let message = ListenerMessage::SeekCreated {
             seek: created_seek.into(),

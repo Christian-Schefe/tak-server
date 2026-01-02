@@ -18,9 +18,16 @@ pub struct Match {
     pub game_settings: TakGameSettings,
     pub game_type: GameType,
     pub played_games: Vec<GameId>,
-    pub current_game: Option<GameId>,
+    pub status: MatchStatus,
     rematch_requested_by: Option<PlayerId>,
     last_game_finished: Option<Instant>,
+}
+
+#[derive(Clone, Debug)]
+pub enum MatchStatus {
+    Waiting,
+    InProgressReserved,
+    InProgress(GameId),
 }
 
 impl Match {
@@ -69,10 +76,11 @@ pub trait MatchService {
         color_rule: MatchColorRule,
         game_settings: TakGameSettings,
         game_type: GameType,
-    ) -> Match;
+    ) -> MatchId;
     fn get_match(&self, match_id: MatchId) -> Option<Match>;
+    fn reserve_match_in_progress(&self, match_id: MatchId) -> Option<Match>;
     fn start_game_in_match(&self, match_id: MatchId, game_id: GameId) -> bool;
-    fn end_game_in_match(&self, match_id: MatchId) -> bool;
+    fn end_game_in_match(&self, match_id: MatchId, game_id: GameId) -> bool;
     fn request_or_accept_rematch(
         &self,
         match_id: MatchId,
@@ -84,21 +92,27 @@ pub trait MatchService {
         player: PlayerId,
     ) -> Result<(), RetractRematchError>;
     fn cleanup_old_matches(&self, now: Instant);
+    fn get_match_id_by_game_id(&self, game_id: GameId) -> Option<MatchId>;
 }
 
+#[derive(Debug)]
 pub enum RequestRematchError {
     MatchNotFound,
     InvalidPlayer,
+    GameInProgress,
 }
 
+#[derive(Debug)]
 pub enum RetractRematchError {
     MatchNotFound,
     NoRematchRequested,
+    GameInProgress,
 }
 
 pub struct MatchServiceImpl {
     next_match_id: Arc<Mutex<MatchId>>,
     matches: Arc<DashMap<MatchId, Match>>,
+    matches_by_game: Arc<DashMap<GameId, MatchId>>,
 }
 
 impl MatchServiceImpl {
@@ -106,6 +120,7 @@ impl MatchServiceImpl {
         Self {
             next_match_id: Arc::new(Mutex::new(MatchId(0))),
             matches: Arc::new(DashMap::new()),
+            matches_by_game: Arc::new(DashMap::new()),
         }
     }
 
@@ -126,7 +141,7 @@ impl MatchService for MatchServiceImpl {
         color_rule: MatchColorRule,
         game_settings: TakGameSettings,
         game_type: GameType,
-    ) -> Match {
+    ) -> MatchId {
         let match_id = self.generate_match_id();
         let initial_color = match initial_color {
             Some(color) => color,
@@ -147,33 +162,50 @@ impl MatchService for MatchServiceImpl {
             game_settings,
             game_type,
             played_games: Vec::new(),
-            current_game: None,
+            status: MatchStatus::Waiting,
             rematch_requested_by: None,
             last_game_finished: None,
         };
         self.matches.insert(match_id, new_match.clone());
-        new_match
+        match_id
+    }
+
+    fn reserve_match_in_progress(&self, match_id: MatchId) -> Option<Match> {
+        if let Some(mut match_entry) = self.matches.get_mut(&match_id) {
+            let MatchStatus::Waiting = match_entry.status else {
+                return None;
+            };
+            match_entry.status = MatchStatus::InProgressReserved;
+            Some(match_entry.clone())
+        } else {
+            None
+        }
     }
 
     fn start_game_in_match(&self, match_id: MatchId, game_id: GameId) -> bool {
         if let Some(mut match_entry) = self.matches.get_mut(&match_id) {
-            if match_entry.current_game.is_some() {
+            let MatchStatus::InProgressReserved = match_entry.status else {
                 return false;
-            }
-            match_entry.current_game = Some(game_id);
+            };
+            match_entry.status = MatchStatus::InProgress(game_id);
+            match_entry.rematch_requested_by = None;
+            self.matches_by_game.insert(game_id, match_id);
             true
         } else {
             false
         }
     }
 
-    fn end_game_in_match(&self, match_id: MatchId) -> bool {
+    fn end_game_in_match(&self, match_id: MatchId, game_id: GameId) -> bool {
         if let Some(mut match_entry) = self.matches.get_mut(&match_id) {
-            let Some(current_game_id) = match_entry.current_game else {
+            let MatchStatus::InProgress(current_game_id) = match_entry.status else {
                 return false;
             };
+            if game_id != current_game_id {
+                return false;
+            }
             match_entry.played_games.push(current_game_id);
-            match_entry.current_game = None;
+            match_entry.status = MatchStatus::Waiting;
             match_entry.last_game_finished = Some(Instant::now());
             true
         } else {
@@ -190,6 +222,9 @@ impl MatchService for MatchServiceImpl {
             if match_entry.player1 != player && match_entry.player2 != player {
                 return Err(RequestRematchError::InvalidPlayer);
             }
+            let MatchStatus::Waiting = match_entry.status else {
+                return Err(RequestRematchError::GameInProgress);
+            };
             if let Some(requester) = match_entry.rematch_requested_by {
                 if requester != player {
                     match_entry.rematch_requested_by = None;
@@ -211,6 +246,9 @@ impl MatchService for MatchServiceImpl {
         player: PlayerId,
     ) -> Result<(), RetractRematchError> {
         if let Some(mut match_entry) = self.matches.get_mut(&match_id) {
+            let MatchStatus::Waiting = match_entry.status else {
+                return Err(RetractRematchError::GameInProgress);
+            };
             if match_entry.rematch_requested_by == Some(player) {
                 match_entry.rematch_requested_by = None;
                 Ok(())
@@ -232,11 +270,11 @@ impl MatchService for MatchServiceImpl {
             .iter()
             .filter_map(|entry| {
                 let match_entry = entry.value();
-                if let Some(last_finished) = match_entry.last_game_finished {
+                if let MatchStatus::Waiting = match_entry.status
+                    && let Some(last_finished) = match_entry.last_game_finished
+                {
                     let elapsed = now.saturating_duration_since(last_finished);
-                    if elapsed > Duration::from_secs(60 * 60 * 5)
-                        && match_entry.current_game.is_none()
-                    {
+                    if elapsed > Duration::from_secs(60 * 60 * 5) {
                         return Some(match_entry.id);
                     }
                 }
@@ -245,7 +283,18 @@ impl MatchService for MatchServiceImpl {
             .collect();
 
         for key in keys_to_remove {
-            self.matches.remove(&key);
+            log::info!("Cleaning up old match {}", key);
+            if let Some((_, match_entry)) = self.matches.remove(&key) {
+                for game_id in match_entry.played_games {
+                    self.matches_by_game.remove(&game_id);
+                }
+            }
         }
+    }
+
+    fn get_match_id_by_game_id(&self, game_id: GameId) -> Option<MatchId> {
+        self.matches_by_game
+            .get(&game_id)
+            .map(|entry| *entry.value())
     }
 }

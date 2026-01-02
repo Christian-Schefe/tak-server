@@ -146,9 +146,19 @@ impl ProtocolV2Handler {
         let old_password = parts[1].to_string();
         let new_password = parts[2].to_string();
 
+        let username = match self.auth.get_account(&account_id).await {
+            Some(acc) => acc.username,
+            None => {
+                return V2Response::ErrorMessage(
+                    ServiceError::BadRequest("Account not found".to_string()),
+                    "Account not found".to_string(),
+                );
+            }
+        };
+
         match self
             .acl
-            .change_password(account_id, &old_password, &new_password)
+            .change_password(&username, &old_password, &new_password)
             .await
         {
             Ok(_) => V2Response::Message("Password changed".to_string()),

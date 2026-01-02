@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashSet,
+    sync::{Arc, Mutex},
+};
 
 use dashmap::DashMap;
 use tak_core::{TakGameSettings, TakPlayer};
@@ -29,7 +32,7 @@ pub trait SeekService {
         game_settings: TakGameSettings,
         game_type: GameType,
     ) -> Result<Seek, CreateSeekError>;
-    fn get_seek_by_player(&self, player: PlayerId) -> Option<SeekId>;
+    fn cancel_all_player_seeks(&self, player: PlayerId) -> Vec<Seek>;
     fn get_seek(&self, seek_id: SeekId) -> Option<Seek>;
     fn list_seeks(&self) -> Vec<Seek>;
     fn cancel_seek(&self, seek_id: SeekId) -> Option<Seek>;
@@ -38,7 +41,7 @@ pub trait SeekService {
 #[derive(Clone)]
 pub struct SeekServiceImpl {
     seeks: Arc<DashMap<SeekId, Seek>>,
-    seeks_by_player: Arc<DashMap<PlayerId, SeekId>>,
+    seeks_by_player: Arc<DashMap<PlayerId, HashSet<SeekId>>>,
     next_seek_id: Arc<Mutex<SeekId>>,
 }
 
@@ -75,6 +78,7 @@ impl SeekService for SeekServiceImpl {
             return Err(CreateSeekError::InvalidOpponent);
         }
         let seek_id = self.increment_seek_id();
+
         let seek = Seek {
             id: seek_id,
             creator_id: player,
@@ -84,13 +88,24 @@ impl SeekService for SeekServiceImpl {
             game_type,
         };
         self.seeks.insert(seek_id, seek.clone());
-        self.seeks_by_player.insert(player, seek_id);
+        self.seeks_by_player
+            .entry(player)
+            .or_default()
+            .insert(seek_id);
 
         Ok(seek)
     }
 
-    fn get_seek_by_player(&self, player: PlayerId) -> Option<SeekId> {
-        self.seeks_by_player.get(&player).as_deref().cloned()
+    fn cancel_all_player_seeks(&self, player: PlayerId) -> Vec<Seek> {
+        let mut canceled_seeks = Vec::new();
+        if let Some(seek_ids) = self.seeks_by_player.remove(&player) {
+            for seek_id in seek_ids.1 {
+                if let Some((_, seek)) = self.seeks.remove(&seek_id) {
+                    canceled_seeks.push(seek);
+                }
+            }
+        }
+        canceled_seeks
     }
 
     fn get_seek(&self, seek_id: SeekId) -> Option<Seek> {

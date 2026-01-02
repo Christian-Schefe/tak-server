@@ -3,14 +3,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::domain::{GameId, GameType, MatchId, PlayerId};
+use crate::domain::{GameId, GameType, PlayerId};
 use dashmap::DashMap;
 use tak_core::{TakAction, TakActionRecord, TakGame, TakGameSettings, TakPlayer};
 
 #[derive(Clone, Debug)]
 pub struct Game {
     pub game_id: GameId,
-    pub match_id: MatchId,
     pub date: chrono::DateTime<chrono::Utc>,
     pub white_id: PlayerId,
     pub black_id: PlayerId,
@@ -48,7 +47,6 @@ pub trait GameService {
         black_id: PlayerId,
         game_type: GameType,
         game_settings: TakGameSettings,
-        match_id: MatchId,
     ) -> Game;
     fn get_game_by_id(&self, game_id: GameId) -> Option<Game>;
     fn get_games(&self) -> Vec<Game>;
@@ -173,7 +171,6 @@ impl GameService for GameServiceImpl {
         black_id: PlayerId,
         game_type: GameType,
         game_settings: TakGameSettings,
-        match_id: MatchId,
     ) -> Game {
         let game = TakGame::new(game_settings.clone());
         let game_struct = Game {
@@ -184,7 +181,6 @@ impl GameService for GameServiceImpl {
             game_type,
             settings: game_settings,
             game_id: id,
-            match_id,
         };
         self.games.insert(id, game_struct.clone());
 

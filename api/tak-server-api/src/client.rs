@@ -88,6 +88,7 @@ impl TransportServiceImpl {
                 .await
             {
                 app.player_set_online_use_case.set_offline(player_id);
+                app.seek_cancel_use_case.cancel_seek(player_id);
             }
         }
         /*self.application

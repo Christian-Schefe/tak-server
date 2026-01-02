@@ -4,26 +4,25 @@ services:
   #    container_name: playtak-bot
   #    restart: unless-stopped
   #    environment:
-  #      PLAYTAK_USERNAME: "testuser2"
-  #      PLAYTAK_PASSWORD: "pw"
+  #      PLAYTAK_USERNAME: "meeshroom2"
+  #      PLAYTAK_PASSWORD: "changeme"
   #      SIZE: "5"
   #      TC: "300+10"
-  #      PLAYTAK_BASE_URL: "host.docker.internal"
-  #      PLAYTAK_PORT: "10000"
+  #      PLAYTAK_BASE_URL: "caddy"
+  #      PLAYTAK_PORT: "443"
   #      KOMI: "0.0"
+
   mariadb:
     image: mariadb:11
     container_name: mariadb_dev
     restart: unless-stopped
-    env_file:
-      - .env
+    ports:
+      - '3306:3306'
     environment:
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
       MARIADB_DATABASE: ${MARIADB_DATABASE}
       MARIADB_USER: ${MARIADB_USER}
       MARIADB_PASSWORD: ${MARIADB_PASSWORD}
-    ports:
-      - "${MARIADB_PORT}:3306"
     volumes:
       - mariadb_data:/var/lib/mysql
 
@@ -34,10 +33,54 @@ services:
       - '443:443'
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
+      - ../playtak-ui/src:/srv/www/dist
       - caddy_data:/data
       - caddy_config:/config
     environment:
       - SITE_ADDRESS=localhost
+      - TAK_HTTP_API_HOST=host.docker.internal
+      - TAK_HTTP_API_PORT=${TAK_HTTP_API_PORT}
+      - TAK_WS_HOST=host.docker.internal
+      - TAK_WS_PORT=${TAK_WS_PORT}
+
+  kratos-migrate:
+    image: oryd/kratos:v25.4.0
+    environment:
+      - DSN=postgres://${KRATOS_POSTGRES_USER}:${KRATOS_POSTGRES_PASSWORD}@postgresd:5432/${KRATOS_POSTGRES_DB}?sslmode=disable&max_conns=20&max_idle_conns=4
+    volumes:
+      - ./ory/kratos:/etc/config/kratos
+    command: -c /etc/config/kratos/kratos.yml migrate sql -e --yes
+    restart: on-failure
+
+  kratos:
+    depends_on:
+      - kratos-migrate
+    image: oryd/kratos:v25.4.0
+    ports:
+      - '4433:4433' # public
+      - '4434:4434' # admin
+    restart: unless-stopped
+    environment:
+      - DSN=postgres://${KRATOS_POSTGRES_USER}:${KRATOS_POSTGRES_PASSWORD}@postgresd:5432/${KRATOS_POSTGRES_DB}?sslmode=disable&max_conns=20&max_idle_conns=4
+      - LOG_LEVEL=trace
+    command: serve -c /etc/config/kratos/kratos.yml --dev --watch-courier
+    volumes:
+      - ./ory/kratos:/etc/config/kratos
+
+  mailslurper:
+    image: oryd/mailslurper:latest-smtps
+    ports:
+      - '4436:4436'
+      - '4437:4437'
+
+  postgresd:
+    image: postgres:14
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${KRATOS_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${KRATOS_POSTGRES_PASSWORD}
+      - POSTGRES_DB=${KRATOS_POSTGRES_DB}
 
 volumes:
   caddy_data:

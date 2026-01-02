@@ -9,7 +9,7 @@ use crate::{
         spectator::SpectatorService,
     },
     ports::notification::{ListenerMessage, ListenerNotificationPort},
-    workflow::player::notify_player::NotifyPlayerWorkflow,
+    workflow::{gameplay::GameView, player::notify_player::NotifyPlayerWorkflow},
 };
 
 #[async_trait::async_trait]
@@ -89,6 +89,11 @@ impl<
             game_state: ended_game.game.game_state(),
         };
 
+        let ended_msg = ListenerMessage::GameEnded {
+            game: GameView::from(&ended_game),
+        };
+        self.listener_notification_port.notify_all(ended_msg);
+
         self.notify_player_workflow
             .notify_players(
                 &[ended_game.white_id, ended_game.black_id],
@@ -134,13 +139,18 @@ impl<
         };
 
         let game_id = ended_game.game_id;
-        let match_id = ended_game.match_id;
+        if let Some(match_id) = self.match_service.get_match_id_by_game_id(game_id) {
+            log::info!("Finalizing game {} in match {}", game_id, match_id);
+            if !self.match_service.end_game_in_match(match_id, game_id) {
+                log::error!("Failed to end game {} in match {}", game_id, match_id);
+            }
+        } else {
+            log::info!("Game {} is not part of a match", game_id);
+        }
+
         let game_record_update = self
             .game_history_service
             .get_finished_game_record_update(ended_game, game_rating_info);
-
-        self.match_service.end_game_in_match(match_id);
-
         if let Err(e) = self
             .game_repository
             .update_finished_game(game_id, game_record_update)

@@ -1,8 +1,11 @@
+use std::sync::Mutex;
+
 use dashmap::DashMap;
 
 pub struct OneOneDashMap<K, V> {
     forward: DashMap<K, V>,
     backward: DashMap<V, K>,
+    lock: Mutex<()>,
 }
 
 #[allow(unused)]
@@ -15,6 +18,7 @@ where
         Self {
             forward: DashMap::new(),
             backward: DashMap::new(),
+            lock: Mutex::new(()),
         }
     }
 
@@ -35,15 +39,18 @@ where
     }
 
     pub fn try_insert(&self, key: K, value: V) -> bool {
+        let _guard = self.lock.lock().unwrap();
         if self.forward.contains_key(&key) || self.backward.contains_key(&value) {
             return false;
         }
         self.forward.insert(key.clone(), value.clone());
         self.backward.insert(value, key);
+        drop(_guard);
         true
     }
 
     pub fn try_remove(&self, key: &K, value: &V) -> bool {
+        let _guard = self.lock.lock().unwrap();
         let mut removed = false;
         if let Some(v) = self.forward.get(key) {
             if &*v == value {
@@ -53,23 +60,27 @@ where
                 removed = true;
             }
         }
-
+        drop(_guard);
         removed
     }
 
     pub fn remove_by_key(&self, key: &K) -> Option<V> {
+        let _guard = self.lock.lock().unwrap();
         if let Some((_, value)) = self.forward.remove(key) {
             self.backward.remove(&value);
             return Some(value);
         }
+        drop(_guard);
         None
     }
 
     pub fn remove_by_value(&self, value: &V) -> Option<K> {
+        let _guard = self.lock.lock().unwrap();
         if let Some((_, key)) = self.backward.remove(value) {
             self.forward.remove(&key);
             return Some(key);
         }
+        drop(_guard);
         None
     }
 

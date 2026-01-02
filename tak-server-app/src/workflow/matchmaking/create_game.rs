@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use crate::{
     domain::{
+        MatchId,
         game::GameService,
         game_history::{GameHistoryService, GameRepository},
-        r#match::{Match, MatchService},
+        r#match::MatchService,
     },
     ports::notification::{ListenerMessage, ListenerNotificationPort},
     processes::game_timeout_runner::GameTimeoutRunner,
@@ -13,7 +14,17 @@ use crate::{
 
 #[async_trait::async_trait]
 pub trait CreateGameFromMatchWorkflow {
-    async fn create_game_from_match(&self, match_entry: &Match);
+    async fn create_game_from_match(
+        &self,
+        match_id: MatchId,
+    ) -> Result<(), CreateGameFromMatchError>;
+}
+
+#[derive(Debug)]
+pub enum CreateGameFromMatchError {
+    MatchNotFound,
+    RepositoryError,
+    AlreadyInProgress,
 }
 
 pub struct CreateGameFromMatchWorkflowImpl<
@@ -75,9 +86,15 @@ impl<
     S: GetSnapshotWorkflow + Send + Sync,
 > CreateGameFromMatchWorkflow for CreateGameFromMatchWorkflowImpl<M, GH, GR, G, GT, L, S>
 {
-    async fn create_game_from_match(&self, match_entry: &Match) {
+    async fn create_game_from_match(
+        &self,
+        match_id: MatchId,
+    ) -> Result<(), CreateGameFromMatchError> {
         let date = chrono::Utc::now();
 
+        let Some(match_entry) = self.match_service.reserve_match_in_progress(match_id) else {
+            return Err(CreateGameFromMatchError::AlreadyInProgress);
+        };
         let (white_id, black_id) = match_entry.get_next_matchup_colors();
 
         let snapshot_white = self
@@ -105,9 +122,21 @@ impl<
                     match_entry.id,
                     e
                 );
-                return;
+                return Err(CreateGameFromMatchError::RepositoryError);
             }
         };
+
+        if !self
+            .match_service
+            .start_game_in_match(match_entry.id, game_id)
+        {
+            log::error!(
+                "Failed to start game {} in match {}",
+                game_id,
+                match_entry.id
+            );
+            return Err(CreateGameFromMatchError::MatchNotFound);
+        }
 
         let game = self.game_service.create_game(
             game_id,
@@ -116,11 +145,7 @@ impl<
             black_id,
             match_entry.game_type,
             match_entry.game_settings.clone(),
-            match_entry.id,
         );
-
-        self.match_service
-            .start_game_in_match(match_entry.id, game.game_id);
 
         GameTimeoutRunner::schedule_game_timeout_check(
             self.game_timeout_runner.clone(),
@@ -131,5 +156,6 @@ impl<
             game: GameView::from(&game),
         };
         self.listener_notification_port.notify_all(msg);
+        Ok(())
     }
 }

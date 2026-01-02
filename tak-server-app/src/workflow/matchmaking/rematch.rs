@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     domain::{
-        MatchId, PlayerId,
+        GameId, PlayerId,
         r#match::{MatchService, RequestRematchError},
     },
     workflow::matchmaking::create_game::CreateGameFromMatchWorkflow,
@@ -12,9 +12,9 @@ use crate::{
 pub trait RematchUseCase {
     async fn request_or_accept_rematch(
         &self,
-        match_id: MatchId,
+        game_id: GameId,
         player: PlayerId,
-    ) -> Result<(), RequestRematchError>;
+    ) -> Result<(), RequestOrAcceptRematchError>;
 }
 
 pub struct RematchUseCaseImpl<M: MatchService, C: CreateGameFromMatchWorkflow> {
@@ -31,6 +31,12 @@ impl<M: MatchService, C: CreateGameFromMatchWorkflow> RematchUseCaseImpl<M, C> {
     }
 }
 
+pub enum RequestOrAcceptRematchError {
+    MatchNotFound,
+    RequestRematchError(RequestRematchError),
+    FailedToCreateGame,
+}
+
 #[async_trait::async_trait]
 impl<
     M: MatchService + Send + Sync + 'static,
@@ -39,19 +45,36 @@ impl<
 {
     async fn request_or_accept_rematch(
         &self,
-        match_id: MatchId,
+        game_id: GameId,
         player: PlayerId,
-    ) -> Result<(), RequestRematchError> {
-        let should_create_game = self
+    ) -> Result<(), RequestOrAcceptRematchError> {
+        let match_id = self
             .match_service
-            .request_or_accept_rematch(match_id, player)?;
+            .get_match_id_by_game_id(game_id)
+            .ok_or(RequestOrAcceptRematchError::MatchNotFound)?;
+        let should_create_game = match self
+            .match_service
+            .request_or_accept_rematch(match_id, player)
+        {
+            Ok(should_create) => should_create,
+            Err(e) => {
+                log::error!(
+                    "Failed to request or accept rematch for match {}: {:?}",
+                    match_id,
+                    e
+                );
+                return Err(RequestOrAcceptRematchError::RequestRematchError(e));
+            }
+        };
         if should_create_game {
-            let Some(match_entry) = self.match_service.get_match(match_id) else {
-                return Err(RequestRematchError::MatchNotFound);
-            };
-            self.create_game_workflow
-                .create_game_from_match(&match_entry)
-                .await;
+            if let Err(e) = self
+                .create_game_workflow
+                .create_game_from_match(match_id)
+                .await
+            {
+                log::error!("Failed to create game from match {}: {:?}", match_id, e);
+                return Err(RequestOrAcceptRematchError::FailedToCreateGame);
+            }
         }
         Ok(())
     }

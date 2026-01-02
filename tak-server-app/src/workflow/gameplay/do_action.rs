@@ -78,7 +78,7 @@ impl<G: GameService, NP: NotifyPlayerWorkflow, F: FinalizeGameWorkflow>
             black_time: time_remaining.black_time,
         };
         self.notify_player_workflow
-            .notify_players_and_observers(game.game_id, time_update_msg)
+            .notify_players_and_observers_of_game(game, time_update_msg)
             .await;
     }
 }
@@ -96,6 +96,12 @@ impl<
         player_id: PlayerId,
         action: TakAction,
     ) -> Result<(), DoActionError> {
+        log::debug!(
+            "Player {} is performing action {:?} in game {}",
+            player_id,
+            action,
+            game_id
+        );
         let now = Instant::now();
         let (action_record, maybe_ended_game) = match self
             .game_service
@@ -112,14 +118,21 @@ impl<
             player_id,
             action: action_record,
         };
-        self.notify_player_workflow
-            .notify_players_and_observers(game_id, msg)
-            .await;
 
+        // Needs different notification flow as game domain removes game once ended
         if let Some(ended_game) = maybe_ended_game {
+            self.notify_player_workflow
+                .notify_players_and_observers_of_game(&ended_game, msg)
+                .await;
+
             self.send_game_time_update_for_game(&ended_game, now).await;
+
             self.finalize_game_workflow.finalize_game(ended_game).await;
         } else {
+            self.notify_player_workflow
+                .notify_players_and_observers(game_id, msg)
+                .await;
+
             self.send_game_time_update(game_id, now).await;
         }
 

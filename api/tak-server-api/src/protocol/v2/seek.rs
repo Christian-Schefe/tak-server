@@ -7,12 +7,12 @@ use crate::{
 
 use tak_core::{TakGameSettings, TakPlayer, TakReserve, TakTimeControl};
 use tak_server_app::{
-    domain::r#match::RequestRematchError,
-    workflow::matchmaking::{SeekView, create::CreateSeekError},
-};
-use tak_server_app::{
     domain::{GameId, GameType, ListenerId, PlayerId, SeekId},
     workflow::matchmaking::accept::AcceptSeekError,
+};
+use tak_server_app::{
+    domain::{r#match::RequestRematchError, seek::CreateSeekError},
+    workflow::matchmaking::{SeekView, rematch::RequestOrAcceptRematchError},
 };
 
 impl ProtocolV2Handler {
@@ -181,22 +181,23 @@ impl ProtocolV2Handler {
         };
         let game_id = GameId::new(game_id);
 
-        let Some(game) = self.app.game_get_ongoing_use_case.get_game(game_id) else {
-            return V2Response::ErrorNOK(ServiceError::NotFound("Game ID not found".to_string()));
-        };
         match self
             .app
             .match_rematch_use_case
-            .request_or_accept_rematch(game.match_id, player_id)
+            .request_or_accept_rematch(game_id, player_id)
             .await
         {
             Ok(_) => V2Response::OK,
-            Err(RequestRematchError::InvalidPlayer) => V2Response::ErrorNOK(
-                ServiceError::BadRequest("You are not a participant in this match".to_string()),
+            Err(RequestOrAcceptRematchError::FailedToCreateGame) => V2Response::ErrorNOK(
+                ServiceError::BadRequest("Failed to create game".to_string()),
             ),
-            Err(RequestRematchError::MatchNotFound) => {
-                V2Response::ErrorNOK(ServiceError::NotFound("Match not found".to_string()))
-            }
+            Err(RequestOrAcceptRematchError::MatchNotFound)
+            | Err(RequestOrAcceptRematchError::RequestRematchError(
+                RequestRematchError::MatchNotFound,
+            )) => V2Response::ErrorNOK(ServiceError::NotFound("Match not found".to_string())),
+            Err(RequestOrAcceptRematchError::RequestRematchError(_)) => V2Response::ErrorNOK(
+                ServiceError::BadRequest("Failed to request or accept rematch".to_string()),
+            ),
         }
     }
 
@@ -226,6 +227,9 @@ impl ProtocolV2Handler {
                     "You are not the intended opponent for this seek".to_string(),
                 ))
             }
+            Err(AcceptSeekError::FailedToCreateGame) => V2Response::ErrorNOK(
+                ServiceError::Internal("Failed to create game from seek".to_string()),
+            ),
         }
     }
 

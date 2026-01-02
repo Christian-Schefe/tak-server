@@ -7,7 +7,7 @@ use crate::{
         seek::SeekService,
     },
     ports::notification::{ListenerMessage, ListenerNotificationPort},
-    workflow::matchmaking::create_game::CreateGameFromMatchWorkflow,
+    workflow::matchmaking::create_game::{CreateGameFromMatchError, CreateGameFromMatchWorkflow},
 };
 
 #[async_trait::async_trait]
@@ -48,6 +48,7 @@ impl<S: SeekService, M: MatchService, L: ListenerNotificationPort, C: CreateGame
 pub enum AcceptSeekError {
     SeekNotFound,
     InvalidOpponent,
+    FailedToCreateGame,
 }
 
 #[async_trait::async_trait]
@@ -72,16 +73,14 @@ impl<
             return Err(AcceptSeekError::InvalidOpponent);
         }
 
-        if let Some(other_player_seek_id) = self.seek_service.get_seek_by_player(player) {
-            if let Some(cancelled_seek) = self.seek_service.cancel_seek(other_player_seek_id) {
-                let message = ListenerMessage::SeekCanceled {
-                    seek: cancelled_seek.into(),
-                };
-                self.notification_port.notify_all(message);
-            }
+        for cancelled_seek in self.seek_service.cancel_all_player_seeks(player) {
+            let message = ListenerMessage::SeekCanceled {
+                seek: cancelled_seek.into(),
+            };
+            self.notification_port.notify_all(message);
         }
 
-        let match_entry = self.match_service.create_match(
+        let match_id = self.match_service.create_match(
             seek.creator_id,
             player,
             seek.color,
@@ -90,10 +89,33 @@ impl<
             seek.game_type,
         );
 
-        self.create_game_workflow
-            .create_game_from_match(&match_entry)
-            .await;
-
-        Ok(())
+        match self
+            .create_game_workflow
+            .create_game_from_match(match_id)
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(CreateGameFromMatchError::AlreadyInProgress) => {
+                log::error!(
+                    "Failed to create game from match {}: already in progress",
+                    match_id
+                );
+                Err(AcceptSeekError::FailedToCreateGame)
+            }
+            Err(CreateGameFromMatchError::RepositoryError) => {
+                log::error!(
+                    "Failed to create game from match {}: repository error",
+                    match_id
+                );
+                Err(AcceptSeekError::FailedToCreateGame)
+            }
+            Err(CreateGameFromMatchError::MatchNotFound) => {
+                log::error!(
+                    "Failed to create game from match {}: match not found",
+                    match_id
+                );
+                Err(AcceptSeekError::FailedToCreateGame)
+            }
+        }
     }
 }

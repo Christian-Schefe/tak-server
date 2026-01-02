@@ -1,11 +1,14 @@
 {$SITE_ADDRESS} {
+    root * /srv/www/dist
+
     handle_path /api/* {
-        reverse_proxy host.docker.internal:3004
+        reverse_proxy {$TAK_HTTP_API_HOST}:{$TAK_HTTP_API_PORT}
     }
     handle_path /ws {
-        reverse_proxy host.docker.internal:9999
+        reverse_proxy {$TAK_WS_HOST}:{$TAK_WS_PORT}
     }
-
-    reverse_proxy host.docker.internal:3000
+    handle {
+        file_server
+    }
     tls internal
 }

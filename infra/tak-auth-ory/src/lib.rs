@@ -7,10 +7,13 @@ use dashmap::DashMap;
 use ory_kratos_client::{
     apis::{
         configuration::Configuration,
-        frontend_api::update_login_flow,
+        frontend_api::{create_native_settings_flow, update_login_flow, update_settings_flow},
         identity_api::{create_identity, get_identity, list_identities, patch_identity},
     },
-    models::{self, UpdateLoginFlowWithPasswordMethod},
+    models::{
+        self, SuccessfulNativeLogin, UpdateLoginFlowWithPasswordMethod,
+        UpdateSettingsFlowWithPasswordMethod,
+    },
 };
 use tak_server_app::{
     domain::{
@@ -52,7 +55,7 @@ struct OryTraits {
     pub display_name: String,
 }
 
-#[derive(serde::Deserialize, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Default)]
 struct OryAdminMetadata {
     #[serde(default)]
     role: OryAccountRole,
@@ -62,6 +65,53 @@ struct OryAdminMetadata {
     silenced: bool,
     #[serde(default)]
     account_type: OryAccountType,
+}
+
+async fn do_login_flow(
+    config: &Configuration,
+    identifier: &str,
+    password: &str,
+) -> Result<SuccessfulNativeLogin, String> {
+    let uri_str = format!("{}/self-service/login/api", config.base_path);
+    let req_builder = config.client.request(reqwest::Method::GET, &uri_str);
+    let req = req_builder
+        .build()
+        .map_err(|e| format!("Failed to build: {}", e))?;
+    let resp = config
+        .client
+        .execute(req)
+        .await
+        .map_err(|e| format!("Failed to execute request to Ory Kratos login API: {}", e))?;
+
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read body: {}", e))?;
+
+    let login_flow = serde_json::from_str::<serde_json::Value>(&body)
+        .map_err(|e| format!("Failed to parse login flow: {}", e))?;
+    let flow_id = login_flow
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or("No id in login flow".to_string())?;
+
+    let res = update_login_flow(
+        config,
+        &flow_id,
+        models::UpdateLoginFlowBody::Password(Box::new(UpdateLoginFlowWithPasswordMethod {
+            csrf_token: None,
+            identifier: identifier.to_string(),
+            method: "password".to_string(),
+            password: password.to_string(),
+            password_identifier: None,
+            transient_payload: None,
+        })),
+        None,
+        None,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(res)
 }
 
 impl OryAuthenticationService {
@@ -110,7 +160,15 @@ impl OryAuthenticationService {
                 saml: None,
             })),
             external_id: None,
-            metadata_admin: None,
+            metadata_admin: Some(Some(
+                serde_json::to_value(OryAdminMetadata {
+                    role: OryAccountRole::User,
+                    banned: false,
+                    silenced: false,
+                    account_type: OryAccountType::Player,
+                })
+                .unwrap(),
+            )),
             metadata_public: None,
             organization_id: None,
             recovery_addresses: None,
@@ -144,55 +202,42 @@ impl OryAuthenticationService {
         username: &str,
         password: &str,
     ) -> Result<Account, String> {
-        let uri_str = format!("{}/self-service/login/api", self.ory_config.base_path);
-        let req_builder = self
-            .ory_config
-            .client
-            .request(reqwest::Method::GET, &uri_str);
-
-        let req = req_builder
-            .build()
-            .map_err(|e| format!("Failed to build: {}", e))?;
-        let resp = self
-            .ory_config
-            .client
-            .execute(req)
-            .await
-            .map_err(|e| format!("Failed to execute request to Ory Kratos login API: {}", e))?;
-
-        let body = resp
-            .text()
-            .await
-            .map_err(|e| format!("Failed to read body: {}", e))?;
-
-        let login_flow = serde_json::from_str::<serde_json::Value>(&body)
-            .map_err(|e| format!("Failed to parse login flow: {}", e))?;
-        let flow_id = login_flow
-            .get("id")
-            .and_then(|v| v.as_str())
-            .ok_or("No id in login flow".to_string())?;
-
-        let res = update_login_flow(
-            self.ory_config.as_ref(),
-            &flow_id,
-            models::UpdateLoginFlowBody::Password(Box::new(UpdateLoginFlowWithPasswordMethod {
-                csrf_token: None,
-                identifier: username.to_string(),
-                method: "password".to_string(),
-                password: password.to_string(),
-                password_identifier: None,
-                transient_payload: None,
-            })),
-            None,
-            None,
-        )
-        .await
-        .map_err(|e| e.to_string())?;
+        let res = do_login_flow(&self.ory_config, username, password).await?;
         let identity = res
             .session
             .identity
             .ok_or("No identity in session".to_string())?;
         Self::identity_to_account(*identity).ok_or("Failed to convert identity".to_string())
+    }
+
+    pub async fn change_password(
+        &self,
+        username: &str,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), String> {
+        let res = do_login_flow(&self.ory_config, username, old_password).await?;
+
+        let res = create_native_settings_flow(&self.ory_config, res.session_token.as_deref())
+            .await
+            .map_err(|e| e.to_string())?;
+        update_settings_flow(
+            &self.ory_config,
+            &res.id,
+            models::UpdateSettingsFlowBody::Password(Box::new(
+                UpdateSettingsFlowWithPasswordMethod {
+                    csrf_token: None,
+                    method: "password".to_string(),
+                    password: new_password.to_string(),
+                    transient_payload: None,
+                },
+            )),
+            None,
+            None,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     pub async fn find_by_username(&self, username: &str) -> Option<Account> {

@@ -1,0 +1,36 @@
+{
+  "$id": "https://schemas.playtak.com/bot.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Bot",
+  "type": "object",
+  "properties": {
+    "traits": {
+      "type": "object",
+      "properties": {
+        "username": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 32,
+          "title": "Username",
+          "pattern": "^[a-zA-Z0-9_]+$",
+          "ory.sh/kratos": {
+            "credentials": {
+              "password": {
+                "identifier": true
+              }
+            }
+          }
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "title": "Display Name",
+          "pattern": "^[\\p{L}\\p{N}][\\p{L}\\p{N} .,'-]+$"
+        }
+      },
+      "required": ["username", "display_name"],
+      "additionalProperties": false
+    }
+  }
+}
