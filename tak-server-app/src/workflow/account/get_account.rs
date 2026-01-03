@@ -13,6 +13,7 @@ pub trait GetAccountWorkflow {
     async fn get_account(&self, player_id: PlayerId) -> Result<Account, GetAccountError>;
 }
 
+#[derive(Debug)]
 pub enum GetAccountError {
     AccountNotFound,
     RepositoryError,

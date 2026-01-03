@@ -47,7 +47,8 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
             return Ok(account_id);
         }
 
-        let player_model = player_account_mapping::Entity::find_by_id(player_id.0)
+        let player_model = player_account_mapping::Entity::find()
+            .filter(player_account_mapping::Column::PlayerId.eq(player_id.0))
             .one(&self.db)
             .await
             .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
@@ -80,11 +81,11 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
             .db
             .transaction::<_, PlayerId, RepoError>(|c| {
                 Box::pin(async move {
-                    let player_model = player_account_mapping::Entity::find()
-                        .filter(player_account_mapping::Column::AccountId.eq(acc_id_str.clone()))
-                        .one(c)
-                        .await
-                        .map_err(|e| RepoError::StorageError(e.to_string()))?;
+                    let player_model =
+                        player_account_mapping::Entity::find_by_id(acc_id_str.clone())
+                            .one(c)
+                            .await
+                            .map_err(|e| RepoError::StorageError(e.to_string()))?;
 
                     if let Some(model) = player_model {
                         let player_id = PlayerId(model.player_id);

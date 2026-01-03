@@ -43,4 +43,4 @@ identity:
 
 courier:
   smtp:
-    connection_uri: smtp://test:test@mailslurper:4436/?skip_ssl_verify=true
+    connection_uri: ${KRATOS_EMAIL_SMTP_URI}

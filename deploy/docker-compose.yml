@@ -1,17 +1,4 @@
 services:
-  #  playtak-bot:
-  #    image: mortenlohne/tiltak-playtak:0.1.0
-  #    container_name: playtak-bot
-  #    restart: unless-stopped
-  #    environment:
-  #      PLAYTAK_USERNAME: "meeshroom2"
-  #      PLAYTAK_PASSWORD: "changeme"
-  #      SIZE: "5"
-  #      TC: "300+10"
-  #      PLAYTAK_BASE_URL: "caddy"
-  #      PLAYTAK_PORT: "443"
-  #      KOMI: "0.0"
-
   mariadb:
     image: mariadb:11
     container_name: mariadb_dev
@@ -33,11 +20,12 @@ services:
       - '443:443'
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
-      - ../playtak-ui/src:/srv/www/dist
+      - ${PLAYTAK_UI_DIST}:/srv/www/dist
       - caddy_data:/data
       - caddy_config:/config
+      - ./certs:/certs
     environment:
-      - SITE_ADDRESS=localhost
+      - SITE_ADDRESS=${SITE_ADDRESS}
       - TAK_HTTP_API_HOST=host.docker.internal
       - TAK_HTTP_API_PORT=${TAK_HTTP_API_PORT}
       - TAK_WS_HOST=host.docker.internal
@@ -62,6 +50,7 @@ services:
     restart: unless-stopped
     environment:
       - DSN=postgres://${KRATOS_POSTGRES_USER}:${KRATOS_POSTGRES_PASSWORD}@postgresd:5432/${KRATOS_POSTGRES_DB}?sslmode=disable&max_conns=20&max_idle_conns=4
+      - KRATOS_EMAIL_SMTP_URI=${KRATOS_EMAIL_SMTP_URI}
       - LOG_LEVEL=trace
     command: serve -c /etc/config/kratos/kratos.yml --dev --watch-courier
     volumes:

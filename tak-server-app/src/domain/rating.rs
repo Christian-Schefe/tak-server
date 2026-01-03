@@ -16,7 +16,6 @@ pub struct PlayerRating {
     pub max_rating: f64,
     pub rated_games_played: u32,
     pub is_unrated: bool,
-    pub participation_rating: f64,
     pub rating_age: Option<DateTime<Utc>>,
     pub fatigue: HashMap<PlayerId, f64>,
 }
@@ -30,7 +29,6 @@ impl PlayerRating {
             max_rating: 1000.0,
             rated_games_played: 0,
             is_unrated: false,
-            participation_rating: 0.0,
             rating_age: None,
             fatigue: HashMap::new(),
         }
@@ -63,7 +61,6 @@ pub enum RatingSortBy {
     Rating,
     RatedGames,
     MaxRating,
-    ParticipationRating,
 }
 
 #[derive(Debug, Clone, Default)]

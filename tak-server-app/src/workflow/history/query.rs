@@ -7,8 +7,7 @@ use crate::domain::{
 
 #[async_trait::async_trait]
 pub trait GameHistoryQueryUseCase {
-    async fn get_game(&self, game_id: GameId)
-    -> Result<Option<GameRecord>, GameQueryError>;
+    async fn get_game(&self, game_id: GameId) -> Result<Option<GameRecord>, GameQueryError>;
     async fn query_games(
         &self,
         filter: GameQuery,
@@ -45,10 +44,7 @@ impl<G: GameRepository + Send + Sync + 'static> GameHistoryQueryUseCase
             }
         }
     }
-    async fn get_game(
-        &self,
-        game_id: GameId,
-    ) -> Result<Option<GameRecord>, GameQueryError> {
+    async fn get_game(&self, game_id: GameId) -> Result<Option<GameRecord>, GameQueryError> {
         match self.game_repository.get_game_record(game_id).await {
             Ok(result) => Ok(Some(result)),
             Err(RepoRetrieveError::StorageError(e)) => {

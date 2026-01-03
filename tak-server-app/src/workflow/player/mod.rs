@@ -14,15 +14,15 @@ pub struct RatingView {
     pub participation_rating: f64,
 }
 
-impl From<PlayerRating> for RatingView {
-    fn from(player_rating: PlayerRating) -> Self {
+impl RatingView {
+    pub fn from(player_rating: PlayerRating, participation_rating: f64) -> Self {
         Self {
             player_id: player_rating.player_id,
             rating: player_rating.rating,
             max_rating: player_rating.max_rating,
             rated_games_played: player_rating.rated_games_played,
             is_unrated: player_rating.is_unrated,
-            participation_rating: player_rating.participation_rating,
+            participation_rating,
         }
     }
 }

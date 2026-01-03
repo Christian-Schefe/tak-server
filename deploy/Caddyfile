@@ -1,6 +1,9 @@
 {$SITE_ADDRESS} {
     root * /srv/www/dist
 
+    handle_path /auth/* {
+        reverse_proxy kratos:4433
+    }
     handle_path /api/* {
         reverse_proxy {$TAK_HTTP_API_HOST}:{$TAK_HTTP_API_PORT}
     }

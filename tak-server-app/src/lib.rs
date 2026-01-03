@@ -221,6 +221,7 @@ pub async fn build_application<
         )),
         player_get_rating_use_case: Box::new(PlayerGetRatingUseCaseImpl::new(
             rating_repository.clone(),
+            rating_service.clone(),
         )),
         player_resolver_service: Arc::new(PlayerResolverServiceImpl::new(
             player_repository.clone(),

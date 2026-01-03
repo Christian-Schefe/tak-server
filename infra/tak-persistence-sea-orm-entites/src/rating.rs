@@ -12,7 +12,6 @@ pub struct Model {
     pub is_unrated: bool,
     pub max_rating: f64,
     pub rating_age: Option<chrono::DateTime<Utc>>,
-    pub participation_rating: f64,
     pub fatigue: serde_json::Value,
 }
 

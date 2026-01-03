@@ -64,7 +64,7 @@ impl<
         self.listener_notification_port
             .notify_listeners(&observers, message);
     }
-    
+
     async fn notify_players_and_observers(&self, game_id: GameId, message: ListenerMessage) {
         let Some(game) = self.game_service.get_game_by_id(game_id) else {
             return;

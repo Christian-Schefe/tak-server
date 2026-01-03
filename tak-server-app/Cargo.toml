@@ -4,22 +4,15 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-more-dashmap = { path = "../more-dashmap" }
-bcrypt = "0.17.1"
+async-trait = "0.1.89"
 chrono = "0.4.42"
+country-code-enum = "0.2.0"
 dashmap = "6.1.0"
 futures = "0.3.31"
-lettre = "0.11.18"
 log = "0.4.28"
-moka = { version = "0.12.10", features = ["sync"] }
-passwords = "3.1.16"
+more-dashmap = { path = "../more-dashmap" }
 rand = "0.9.2"
 rustrict = "0.7.36"
 tak-core = { path = "../tak-core" }
-thiserror = "2.0.16"
 tokio = { version = "1.47.1", features = ["full"] }
-tokio-util = { version = "0.7.16", features = ["full"] }
 uuid = { version = "1.18.1", features = ["v4"] }
-validator = { version = "0.20.0", features = ["derive"] }
-country-code-enum = "0.2.0"
-async-trait = "0.1.89"

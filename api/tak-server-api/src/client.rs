@@ -497,7 +497,7 @@ impl TransportServiceImpl {
         let router = crate::protocol::register_http_endpoints(router);
 
         let ws_port = std::env::var("TAK_WS_PORT")
-            .unwrap_or_else(|_| "9999".to_string())
+            .expect("TAK_WS_PORT must be set")
             .parse::<u16>()
             .expect("TAK_WS_PORT must be a valid u16");
 
@@ -629,7 +629,7 @@ async fn ws_handler(ws: WebSocketUpgrade) -> Response {
 
 async fn serve_tcp_server(cancellation_token: CancellationToken) {
     let tcp_port = std::env::var("TAK_TCP_PORT")
-        .unwrap_or_else(|_| "10000".to_string())
+        .expect("TAK_TCP_PORT must be set")
         .parse::<u16>()
         .expect("TAK_TCP_PORT must be a valid u16");
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", tcp_port))

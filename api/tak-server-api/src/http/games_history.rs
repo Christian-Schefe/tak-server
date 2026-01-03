@@ -320,10 +320,6 @@ pub async fn get_by_id(
     };
     if let Some(record) = res {
         let json_record = JsonGameRecord::from_game_record(game_id, &record);
-        let json = serde_json::to_string(&json_record).map_err(|e| {
-            ServiceError::Internal(format!("Failed to serialize game record: {}", e))
-        })?;
-        println!("{}", json);
         Ok(Json(json_record))
     } else {
         Err(ServiceError::NotFound(format!(

@@ -1,3 +1,5 @@
+use std::{sync::LazyLock, time::Instant};
+
 use axum::{
     Json,
     extract::{Path, State},
@@ -6,6 +8,7 @@ use tak_server_app::domain::{
     Pagination, RepoError, SortOrder,
     rating::{RatingQuery, RatingSortBy},
 };
+use tokio::sync::Mutex;
 
 use crate::{
     app::ServiceError,
@@ -81,57 +84,10 @@ pub async fn get_rating_by_name(
     Ok(Json(rating))
 }
 
-pub async fn get_ratings(
-    State(app_state): State<AppState>,
-    Json(filter): Json<JsonRatingsFilter>,
-) -> Result<Json<PaginatedResponse<JsonPlayerRatingResponse>>, ServiceError> {
-    let page = filter.page.unwrap_or(0);
-    let limit = filter.limit.filter(|&l| l > 0).unwrap_or(50);
-    let skip = filter.skip.unwrap_or(0);
-    let offset = if page > 1 { (page - 1) * limit } else { skip };
-    let pagination = Pagination {
-        offset: Some(offset),
-        limit: Some(limit),
-    };
-    let sort = filter
-        .sort
-        .as_ref()
-        .and_then(|sort_str| {
-            let sort_str = sort_str.trim().to_lowercase();
-            match sort_str.as_str() {
-                "" => None,
-                "rating" => Some(Ok(RatingSortBy::Rating)),
-                "participation_rating" => Some(Ok(RatingSortBy::ParticipationRating)),
-                "max_rating" => Some(Ok(RatingSortBy::MaxRating)),
-                "rated_games" => Some(Ok(RatingSortBy::RatedGames)),
-                _ => Some(Err(ServiceError::BadRequest(
-                    "Invalid sort order".to_string(),
-                ))),
-            }
-        })
-        .transpose()?
-        .unwrap_or(RatingSortBy::ParticipationRating);
-
-    let order = filter
-        .order
-        .as_ref()
-        .and_then(|order_str| match order_str.trim().to_lowercase().as_str() {
-            "asc" => Some(Ok(SortOrder::Ascending)),
-            "desc" => Some(Ok(SortOrder::Descending)),
-            "" => None,
-            _ => Some(Err(ServiceError::BadRequest(
-                "Invalid sort order".to_string(),
-            ))),
-        })
-        .transpose()?
-        .unwrap_or(SortOrder::Descending);
-
-    let query = RatingQuery {
-        pagination,
-        sort: Some((order, sort)),
-        ..Default::default()
-    };
-
+async fn query_ratings(
+    app_state: AppState,
+    query: RatingQuery,
+) -> Result<(Vec<JsonPlayerRatingResponse>, usize), ServiceError> {
     let res = match app_state
         .app
         .player_get_rating_use_case
@@ -157,14 +113,24 @@ pub async fn get_ratings(
         .items
         .into_iter()
         .zip(usernames.into_iter())
-        .filter_map(|(rating, account)| account.ok().map(|account| (rating, account)))
+        .map(|(rating, account)| match account {
+            Ok(account) => (rating, account.username.clone(), account.is_bot()),
+            Err(e) => {
+                log::error!(
+                    "Failed to get account for player {}: {:?}",
+                    rating.player_id,
+                    e
+                );
+                (rating, "Unknown".to_string(), false)
+            }
+        })
         .collect::<Vec<_>>();
 
     let ratings: Vec<JsonPlayerRatingResponse> = ratings_with_usernames
         .into_iter()
-        .map(|(rating, account)| JsonPlayerRatingResponse {
-            isbot: account.is_bot(),
-            name: account.username,
+        .map(|(rating, username, is_bot)| JsonPlayerRatingResponse {
+            isbot: is_bot,
+            name: username,
             rating: rating.rating.round(),
             ratedgames: rating.rated_games_played as i32,
             maxrating: rating.max_rating.round(),
@@ -173,6 +139,61 @@ pub async fn get_ratings(
         .collect();
 
     let total = res.total_count;
+    Ok((ratings, total))
+}
+
+pub async fn get_ratings(
+    State(app_state): State<AppState>,
+    Json(filter): Json<JsonRatingsFilter>,
+) -> Result<Json<PaginatedResponse<JsonPlayerRatingResponse>>, ServiceError> {
+    let page = filter.page.unwrap_or(0);
+    let limit = filter.limit.filter(|&l| l > 0).unwrap_or(50);
+    let skip = filter.skip.unwrap_or(0);
+    let offset = if page > 1 { (page - 1) * limit } else { skip };
+    let pagination = Pagination {
+        offset: Some(offset),
+        limit: Some(limit),
+    };
+    let sort = filter
+        .sort
+        .as_ref()
+        .and_then(|sort_str| {
+            let sort_str = sort_str.trim().to_lowercase();
+            match sort_str.as_str() {
+                "" => None,
+                "rating" => Some(Ok(RatingSortBy::Rating)),
+                "max_rating" => Some(Ok(RatingSortBy::MaxRating)),
+                "rated_games" => Some(Ok(RatingSortBy::RatedGames)),
+                _ => Some(Err(ServiceError::BadRequest(
+                    "Invalid sort order".to_string(),
+                ))),
+            }
+        })
+        .transpose()?
+        .unwrap_or(RatingSortBy::Rating);
+
+    let order = filter
+        .order
+        .as_ref()
+        .and_then(|order_str| match order_str.trim().to_lowercase().as_str() {
+            "asc" => Some(Ok(SortOrder::Ascending)),
+            "desc" => Some(Ok(SortOrder::Descending)),
+            "" => None,
+            _ => Some(Err(ServiceError::BadRequest(
+                "Invalid sort order".to_string(),
+            ))),
+        })
+        .transpose()?
+        .unwrap_or(SortOrder::Descending);
+
+    let query = RatingQuery {
+        pagination,
+        sort: Some((order, sort)),
+        ..Default::default()
+    };
+
+    let (ratings, total) = query_ratings(app_state, query).await?;
+
     Ok(Json(PaginatedResponse {
         items: ratings,
         total,
@@ -184,6 +205,46 @@ pub async fn get_ratings(
             1
         },
     }))
+}
+
+static RATING_LIST_CACHE: LazyLock<Mutex<Option<(Json<Vec<serde_json::Value>>, Instant)>>> =
+    LazyLock::new(|| Mutex::new(None));
+
+pub async fn get_rating_list(
+    State(app_state): State<AppState>,
+) -> Result<Json<Vec<serde_json::Value>>, ServiceError> {
+    let mut lock = RATING_LIST_CACHE.lock().await;
+    let ratings = if let Some((cached_ratings, timestamp)) = &*lock
+        && timestamp.elapsed().as_secs() < 60 * 5
+    {
+        cached_ratings.clone()
+    } else {
+        let query = RatingQuery {
+            pagination: Pagination {
+                offset: None,
+                limit: None,
+            },
+            sort: Some((SortOrder::Descending, RatingSortBy::Rating)),
+        };
+        let (ratings, _) = query_ratings(app_state, query).await?;
+        let res: Json<Vec<serde_json::Value>> = Json(
+            ratings
+                .into_iter()
+                .map(|item| {
+                    serde_json::json!([
+                        item.name,
+                        item.rating.round(),
+                        item.participation_rating.round(),
+                        item.ratedgames,
+                        if item.isbot { 1 } else { 0 }
+                    ])
+                })
+                .collect(),
+        );
+        *lock = Some((res.clone(), Instant::now()));
+        res
+    };
+    Ok(ratings)
 }
 
 #[derive(serde::Deserialize)]

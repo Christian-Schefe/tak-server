@@ -30,6 +30,7 @@ pub async fn run(
             .route("/games-history/{id}", get(games_history::get_by_id))
             .route("/games-history/ptn/{id}", get(games_history::get_ptn_by_id))
             .route("/events", get(event::get_all_events))
+            .route("/ratinglist.json", get(rating::get_rating_list))
             .route("/ratings", get(rating::get_ratings))
             .route("/ratings/{name}", get(rating::get_rating_by_name)),
     );

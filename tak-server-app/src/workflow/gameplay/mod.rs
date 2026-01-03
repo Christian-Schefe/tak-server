@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 
 use tak_core::{TakGame, TakGameSettings};
 
-use crate::domain::{GameId, GameType,  PlayerId, game::Game};
+use crate::domain::{GameId, GameType, PlayerId, game::Game};
 
 pub mod do_action;
 pub mod finalize_game;

@@ -1,0 +1,17 @@
+{$SITE_ADDRESS} {
+    root * /srv/www/dist
+
+    handle_path /auth/* {
+        reverse_proxy kratos:4433
+    }
+    handle_path /api/* {
+        reverse_proxy {$TAK_HTTP_API_HOST}:{$TAK_HTTP_API_PORT}
+    }
+    handle_path /ws {
+        reverse_proxy {$TAK_WS_HOST}:{$TAK_WS_PORT}
+    }
+    handle {
+        file_server
+    }
+    tls /certs/certificate.pem /certs/key.pem
+}

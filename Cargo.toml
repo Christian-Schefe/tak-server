@@ -8,25 +8,24 @@ default-run = "tak-server"
 resolver = "3"
 members = [
     "api/tak-server-api",
-    "tak-core",
-    "tak-server-app",
-    "more-dashmap",
-    "tak-client",
-    "infra/tak-persistence-sea-orm",
+    "infra/tak-auth-ory",
     "infra/tak-email-lettre",
     "infra/tak-events-google-sheets",
-    "infra/tak-auth-ory",
+    "infra/tak-persistence-sea-orm",
     "infra/tak-persistence-sea-orm-entites",
+    "more-dashmap",
+    "tak-core",
+    "tak-server-app",
 ]
 
 [dependencies]
 dotenvy = "0.15.7"
 log = "0.4.28"
 log4rs = { version = "1.4.0", features = ["gzip"] }
+tak-auth-ory = { path = "./infra/tak-auth-ory" }
+tak-email-lettre = { path = "./infra/tak-email-lettre" }
 tak-events-google-sheets = { path = "./infra/tak-events-google-sheets" }
 tak-persistence-sea-orm = { path = "./infra/tak-persistence-sea-orm" }
-tak-email-lettre = { path = "./infra/tak-email-lettre" }
-tak-auth-ory = { path = "./infra/tak-auth-ory" }
 tak-server-api = { path = "./api/tak-server-api" }
 tak-server-app = { path = "./tak-server-app" }
 tokio = { version = "1.47.1", features = ["full"] }
