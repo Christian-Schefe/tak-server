@@ -97,19 +97,15 @@ async fn shutdown_signal() {
 }
 
 fn try_load_env() {
-    let env_path = std::path::Path::new("deploy/.env");
-    if env_path.exists() {
-        if let Err(e) = dotenvy::from_path_override(env_path) {
-            println!("Failed to load .env file: {}", e);
-        } else {
-            println!("Loaded environment variables from {}", env_path.display());
-        }
-    } else {
-        println!(
-            ".env file not found at {}. Using existing environment variables.",
-            env_path.display()
-        );
-    }
+    let environment = std::env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string());
+    if environment == "production" {
+        return;
+    };
+    let path_str = format!("deploy/.env");
+    let env_path = std::path::Path::new(&path_str);
+
+    dotenvy::from_path_override(env_path).expect("Failed to load environment variables from file");
+    println!("Loaded environment variables from {}", env_path.display());
 }
 
 #[tokio::main]

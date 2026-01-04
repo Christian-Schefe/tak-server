@@ -28,6 +28,7 @@ mod api;
 pub struct OryAuthenticationService {
     guest_account_ids: Arc<DashMap<String, AccountId>>,
     guest_accounts: Arc<DashMap<AccountId, Account>>,
+    guest_usernames: Arc<DashMap<String, AccountId>>,
     guest_number: Arc<Mutex<u32>>,
 
     account_cache: Arc<moka::sync::Cache<AccountId, Account>>,
@@ -105,6 +106,7 @@ impl OryAuthenticationService {
         Self {
             guest_accounts: Arc::new(DashMap::new()),
             guest_account_ids: Arc::new(DashMap::new()),
+            guest_usernames: Arc::new(DashMap::new()),
             guest_number: Arc::new(Mutex::new(1)),
             account_cache: Arc::new(
                 moka::sync::Cache::builder()
@@ -228,6 +230,11 @@ impl OryAuthenticationService {
     }
 
     pub async fn find_by_username(&self, username: &str) -> Option<Account> {
+        if let Some(account_id) = self.guest_usernames.get(username) {
+            if let Some(guest_account) = self.guest_accounts.get(&account_id) {
+                return Some(guest_account.clone());
+            }
+        }
         let identities = list_identities(
             self.ory_config.as_ref(),
             None,
@@ -243,6 +250,7 @@ impl OryAuthenticationService {
         )
         .await
         .ok()?;
+        // TODO: Handle multiple identities with the same identifier in different credential categories
         let first_identity = identities.into_iter().next()?;
         Self::identity_to_account(first_identity)
     }
@@ -307,11 +315,13 @@ impl AuthenticationPort for OryAuthenticationService {
                 AccountType::Guest,
                 AccountRole::User,
                 ModerationFlags::new(),
-                format!("guest{}", guest_number),
+                format!("Guest{}", guest_number),
                 format!("Guest {}", guest_number),
                 None,
             )
         });
+        self.guest_usernames
+            .insert(account.username.clone(), account.account_id.clone());
         account.clone()
     }
 

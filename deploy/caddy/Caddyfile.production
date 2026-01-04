@@ -5,13 +5,13 @@
         reverse_proxy kratos:4433
     }
     handle_path /api/* {
-        reverse_proxy {$TAK_HTTP_API_HOST}:{$TAK_HTTP_API_PORT}
+        reverse_proxy tak_server:{$TAK_HTTP_API_PORT}
     }
     handle_path /ws {
-        reverse_proxy {$TAK_WS_HOST}:{$TAK_WS_PORT}
+        reverse_proxy tak_server:{$TAK_WS_PORT}
     }
     handle {
         file_server
     }
-    tls internal
+    tls /certs/certificate.pem /certs/key.pem
 }

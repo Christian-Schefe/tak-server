@@ -19,22 +19,20 @@ services:
       - '80:80'
       - '443:443'
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./caddy/Caddyfile.${ENVIRONMENT}:/etc/caddy/Caddyfile
       - ${PLAYTAK_UI_DIST}:/srv/www/dist
       - caddy_data:/data
       - caddy_config:/config
       - ./certs:/certs
     environment:
       - SITE_ADDRESS=${SITE_ADDRESS}
-      - TAK_HTTP_API_HOST=${TAK_HTTP_API_HOST}
       - TAK_HTTP_API_PORT=${TAK_HTTP_API_PORT}
-      - TAK_WS_HOST=${TAK_WS_HOST}
       - TAK_WS_PORT=${TAK_WS_PORT}
 
   kratos-migrate:
     image: oryd/kratos:v25.4.0
     env_file:
-      - ./ory/kratos/.env.${ENVIRONMENT}
+      - ./ory/kratos/kratos.env.${ENVIRONMENT}
     environment:
       - DSN=postgres://${KRATOS_POSTGRES_USER}:${KRATOS_POSTGRES_PASSWORD}@postgresd:5432/${KRATOS_POSTGRES_DB}?sslmode=disable&max_conns=20&max_idle_conns=4
       - COURIER_SMTP_CONNECTION_URI=${KRATOS_EMAIL_SMTP_URI}
@@ -52,7 +50,7 @@ services:
       - '4434:4434' # admin
     restart: unless-stopped
     env_file:
-      - ./ory/kratos/.env.${ENVIRONMENT}
+      - ./ory/kratos/kratos.env.${ENVIRONMENT}
     environment:
       - DSN=postgres://${KRATOS_POSTGRES_USER}:${KRATOS_POSTGRES_PASSWORD}@postgresd:5432/${KRATOS_POSTGRES_DB}?sslmode=disable&max_conns=20&max_idle_conns=4
       - COURIER_SMTP_CONNECTION_URI=${KRATOS_EMAIL_SMTP_URI}
@@ -101,6 +99,7 @@ services:
       - MARIADB_PORT=${MARIADB_PORT}
       - TAK_EMAIL_URL=${TAK_EMAIL_URL}
       - TAK_EMAIL_FROM=${TAK_EMAIL_FROM}
+      - ENVIRONMENT=${ENVIRONMENT}
     depends_on:
       - mariadb
     profiles:

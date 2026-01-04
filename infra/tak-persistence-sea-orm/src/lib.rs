@@ -38,6 +38,8 @@ pub async fn create_db_pool() -> DatabaseConnection {
                 mariadb_user, mariadb_password, mariadb_host, mariadb_port, mariadb_database
             );
 
+            println!("Connecting to database at {}", db_url);
+
             let mut opt = ConnectOptions::new(&db_url);
             opt.max_connections(5);
 

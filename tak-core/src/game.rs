@@ -198,13 +198,12 @@ impl TakGame {
 
     fn set_game_over(&mut self, now: Instant, game_state: TakGameState) {
         if !self.is_ongoing() {
-            panic!("Cannot set game over state on a finished game");
+            eprintln!("Cannot set game over state on a finished game");
+            return;
         }
         self.base.game_state = game_state;
         let player = self.base.current_player.clone();
-        if self.clock.is_ticking {
-            self.maybe_apply_elapsed(now, &player);
-        }
+        self.stop_clock(now, &player);
     }
 
     pub fn check_timeout(&mut self, now: Instant) -> bool {
@@ -250,7 +249,7 @@ impl TakGame {
         )
     }
 
-    fn maybe_apply_elapsed(&mut self, now: Instant, player: &TakPlayer) {
+    fn maybe_apply_elapsed(&mut self, now: Instant, player: &TakPlayer, add_increment: bool) {
         let remaining = match player {
             TakPlayer::White => &mut self.clock.remaining_time.0,
             TakPlayer::Black => &mut self.clock.remaining_time.1,
@@ -259,7 +258,9 @@ impl TakGame {
             let elapsed = now.duration_since(self.clock.last_update_timestamp);
             *remaining = remaining.saturating_sub(elapsed);
         }
-        *remaining = remaining.saturating_add(self.base.settings.time_control.increment);
+        if add_increment {
+            *remaining = remaining.saturating_add(self.base.settings.time_control.increment);
+        }
         self.clock.last_update_timestamp = now;
     }
 
@@ -289,10 +290,16 @@ impl TakGame {
     }
 
     fn start_or_update_clock(&mut self, now: Instant, player: &TakPlayer) {
-        self.maybe_apply_elapsed(now, player);
+        self.maybe_apply_elapsed(now, player, true);
         self.maybe_gain_extra_time(player);
 
         self.clock.is_ticking = true;
+    }
+
+    fn stop_clock(&mut self, now: Instant, player: &TakPlayer) {
+        self.maybe_apply_elapsed(now, player, false);
+
+        self.clock.is_ticking = false;
     }
 
     fn check_is_ongoing(&mut self, now: Instant) -> Result<(), String> {
@@ -339,7 +346,7 @@ impl TakGame {
             game_clone.do_action(&record.action)?;
         }
         self.base = game_clone;
-        self.maybe_apply_elapsed(now, &player);
+        self.maybe_apply_elapsed(now, &player, true); // TODO: confirm that undo is supposed to add increment
         Ok(())
     }
 

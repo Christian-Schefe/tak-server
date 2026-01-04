@@ -501,7 +501,7 @@ impl TransportServiceImpl {
             .parse::<u16>()
             .expect("TAK_WS_PORT must be a valid u16");
 
-        let host = std::env::var("TAK_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+        let host = std::env::var("TAK_HOST").expect("TAK_HOST must be set");
 
         let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, ws_port))
             .await
@@ -634,7 +634,7 @@ async fn serve_tcp_server(cancellation_token: CancellationToken) {
         .expect("TAK_TCP_PORT must be set")
         .parse::<u16>()
         .expect("TAK_TCP_PORT must be a valid u16");
-    let host = std::env::var("TAK_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let host = std::env::var("TAK_HOST").expect("TAK_HOST must be set");
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, tcp_port))
         .await
         .unwrap();

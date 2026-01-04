@@ -1,4 +1,4 @@
 /certs
 .env
-.env.prod
+.env.production
 artifacts/
