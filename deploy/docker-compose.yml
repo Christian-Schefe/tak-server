@@ -1,7 +1,7 @@
+name: tak-app
 services:
   mariadb:
     image: mariadb:11
-    container_name: mariadb_dev
     restart: unless-stopped
     ports:
       - '3306:3306'
@@ -26,18 +26,23 @@ services:
       - ./certs:/certs
     environment:
       - SITE_ADDRESS=${SITE_ADDRESS}
-      - TAK_HTTP_API_HOST=host.docker.internal
+      - TAK_HTTP_API_HOST=${TAK_HTTP_API_HOST}
       - TAK_HTTP_API_PORT=${TAK_HTTP_API_PORT}
-      - TAK_WS_HOST=host.docker.internal
+      - TAK_WS_HOST=${TAK_WS_HOST}
       - TAK_WS_PORT=${TAK_WS_PORT}
 
   kratos-migrate:
     image: oryd/kratos:v25.4.0
     environment:
       - DSN=postgres://${KRATOS_POSTGRES_USER}:${KRATOS_POSTGRES_PASSWORD}@postgresd:5432/${KRATOS_POSTGRES_DB}?sslmode=disable&max_conns=20&max_idle_conns=4
+      - COURIER_SMTP_CONNECTION_URI=${KRATOS_EMAIL_SMTP_URI}
+      - KRATOS_PUBLIC_BASE_URL=${KRATOS_PUBLIC_BASE_URL}
+      - KRATOS_ADMIN_BASE_URL=${KRATOS_ADMIN_BASE_URL}
+      - KRATOS_BROWSER_BASE_URL=${KRATOS_BROWSER_BASE_URL}
     volumes:
       - ./ory/kratos:/etc/config/kratos
-    command: -c /etc/config/kratos/kratos.yml migrate sql -e --yes
+    command: >
+      -c <(envsubst < /etc/config/kratos/kratos.yml) migrate sql -e --yes
     restart: on-failure
 
   kratos:
@@ -50,17 +55,24 @@ services:
     restart: unless-stopped
     environment:
       - DSN=postgres://${KRATOS_POSTGRES_USER}:${KRATOS_POSTGRES_PASSWORD}@postgresd:5432/${KRATOS_POSTGRES_DB}?sslmode=disable&max_conns=20&max_idle_conns=4
-      - KRATOS_EMAIL_SMTP_URI=${KRATOS_EMAIL_SMTP_URI}
+      - COURIER_SMTP_CONNECTION_URI=${KRATOS_EMAIL_SMTP_URI}
+      - KRATOS_PUBLIC_BASE_URL=${KRATOS_PUBLIC_BASE_URL}
+      - KRATOS_ADMIN_BASE_URL=${KRATOS_ADMIN_BASE_URL}
+      - KRATOS_BROWSER_BASE_URL=${KRATOS_BROWSER_BASE_URL}
       - LOG_LEVEL=trace
-    command: serve -c /etc/config/kratos/kratos.yml --dev --watch-courier
+    command: >
+       sh -c "envsubst < /etc/config/kratos.yml.template > /tmp/kratos.yml
+       && kratos serve -c /tmp/kratos.yml --dev --watch-courier"
     volumes:
       - ./ory/kratos:/etc/config/kratos
 
-  mailslurper:
-    image: oryd/mailslurper:latest-smtps
+  mailpit:
+    image: axllent/mailpit
     ports:
-      - '4436:4436'
-      - '4437:4437'
+      - "1025:1025"
+      - "8025:8025"
+    environment:
+      - MP_SEND_API_AUTH_ACCEPT_ANY=true
 
   postgresd:
     image: postgres:14
@@ -70,6 +82,34 @@ services:
       - POSTGRES_USER=${KRATOS_POSTGRES_USER}
       - POSTGRES_PASSWORD=${KRATOS_POSTGRES_PASSWORD}
       - POSTGRES_DB=${KRATOS_POSTGRES_DB}
+
+  tak_server:
+    image: tak-server:latest
+    restart: unless-stopped
+    ports:
+      - '${TAK_TCP_PORT}:${TAK_TCP_PORT}'
+      - '${TAK_HTTP_API_PORT}:${TAK_HTTP_API_PORT}'
+    environment:
+      - TAK_WS_PORT=${TAK_WS_PORT}
+      - TAK_TCP_PORT=${TAK_TCP_PORT}
+      - TAK_HTTP_API_PORT=${TAK_HTTP_API_PORT}
+      - TAK_HOST=${TAK_HOST}
+      - TAK_ORY_KRATOS_URL=${TAK_ORY_KRATOS_URL}
+      - LOG_FILE_PATH=${LOG_FILE_PATH}
+      - LOG_ARCHIVE_PATTERN=${LOG_ARCHIVE_PATTERN}
+      - GOOGLE_SERVICE_ACCOUNT_KEY=${GOOGLE_SERVICE_ACCOUNT_KEY}
+      - GOOGLE_SHEETS_EVENTS_SPREADSHEET_ID=${GOOGLE_SHEETS_EVENTS_SPREADSHEET_ID}
+      - MARIADB_DATABASE=${MARIADB_DATABASE}
+      - MARIADB_USER=${MARIADB_USER}
+      - MARIADB_PASSWORD=${MARIADB_PASSWORD}
+      - MARIADB_HOST=${MARIADB_HOST}
+      - MARIADB_PORT=${MARIADB_PORT}
+      - TAK_EMAIL_URL=${TAK_EMAIL_URL}
+      - TAK_EMAIL_FROM=${TAK_EMAIL_FROM}
+    depends_on:
+      - mariadb
+    profiles:
+      - production
 
 volumes:
   caddy_data:

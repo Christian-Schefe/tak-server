@@ -2,14 +2,17 @@ dsn: ${DSN}
 
 serve:
   public:
-    base_url: http://localhost:4433
+    host: 0.0.0.0
+    port: 4433
+    base_url: set_by_env_variable
+
   admin:
-    base_url: http://localhost:4434
+    host: 0.0.0.0
+    port: 4434
+    base_url: set_by_env_variable
 
 selfservice:
-  default_browser_return_url: http://localhost:3000
-  allowed_return_urls:
-    - http://localhost:3000
+  default_browser_return_url: set_by_env_variable
 
   methods:
     password:
@@ -17,14 +20,14 @@ selfservice:
 
   flows:
     login:
-      ui_url: http://localhost:3000/login
+      ui_url: set_by_env_variable
     registration:
-      ui_url: http://localhost:3000/register
+      ui_url: set_by_env_variable
     settings:
-      ui_url: http://localhost:3000/settings
+      ui_url: set_by_env_variable
     recovery:
       enabled: true
-      ui_url: http://localhost:3000/recovery
+      ui_url: set_by_env_variable
     verification:
       enabled: false # legacy-style, can enable later
 
@@ -43,4 +46,4 @@ identity:
 
 courier:
   smtp:
-    connection_uri: ${KRATOS_EMAIL_SMTP_URI}
+    connection_uri: set_by_env_variable

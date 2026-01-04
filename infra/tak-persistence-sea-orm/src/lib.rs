@@ -8,6 +8,21 @@ pub mod ratings;
 
 static DB_POOL: OnceCell<DatabaseConnection> = OnceCell::new();
 
+async fn try_reconnect_db_pool(opt: ConnectOptions) -> DatabaseConnection {
+    loop {
+        match Database::connect(opt.clone()).await {
+            Ok(db) => return db,
+            Err(e) => {
+                eprintln!(
+                    "Failed to connect to database: {}. Retrying in 5 seconds...",
+                    e
+                );
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        }
+    }
+}
+
 pub async fn create_db_pool() -> DatabaseConnection {
     DB_POOL
         .get_or_init(|| async move {
@@ -26,9 +41,7 @@ pub async fn create_db_pool() -> DatabaseConnection {
             let mut opt = ConnectOptions::new(&db_url);
             opt.max_connections(5);
 
-            let db = Database::connect(opt)
-                .await
-                .expect("Failed to connect to database");
+            let db = try_reconnect_db_pool(opt).await;
 
             db.get_schema_builder()
                 .register(tak_persistence_sea_orm_entites::game::Entity)

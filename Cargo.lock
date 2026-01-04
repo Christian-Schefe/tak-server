@@ -3612,6 +3612,7 @@ dependencies = [
  "tak-core",
  "tak-persistence-sea-orm-entites",
  "tak-server-app",
+ "tokio",
  "uuid",
 ]
 

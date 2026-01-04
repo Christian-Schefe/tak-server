@@ -1,0 +1,19 @@
+# Rust
+target
+**/target
+
+# Git
+.git
+.gitignore
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Deployment configurations
+deploy
+docs
+logs

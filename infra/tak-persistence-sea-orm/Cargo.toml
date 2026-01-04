@@ -21,3 +21,4 @@ tak-core = { path = "../../tak-core" }
 tak-persistence-sea-orm-entites = { path = "../tak-persistence-sea-orm-entites" }
 tak-server-app = { path = "../../tak-server-app" }
 uuid = { version = "1.18.1", features = ["v4"] }
+tokio = { version = "1.47.1", features = ["full"] }

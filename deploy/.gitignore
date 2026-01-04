@@ -1,3 +1,4 @@
 /certs
 .env
 .env.prod
+artifacts/

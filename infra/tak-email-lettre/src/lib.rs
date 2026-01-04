@@ -1,9 +1,6 @@
 use std::str::FromStr;
 
-use lettre::{
-    Message, SmtpTransport, Transport, message::Mailbox,
-    transport::smtp::authentication::Credentials,
-};
+use lettre::{Message, SmtpTransport, Transport, message::Mailbox};
 use tak_server_app::ports::email::EmailPort;
 
 pub struct LettreEmailAdapter {
@@ -13,15 +10,11 @@ pub struct LettreEmailAdapter {
 
 impl LettreEmailAdapter {
     pub fn new() -> Self {
-        let host = std::env::var("TAK_EMAIL_HOST").expect("TAK_EMAIL_HOST env var not set");
-        let user = std::env::var("TAK_EMAIL_USER").expect("TAK_EMAIL_USER env var not set");
-        let password =
-            std::env::var("TAK_EMAIL_PASSWORD").expect("TAK_EMAIL_PASSWORD env var not set");
+        let url = std::env::var("TAK_EMAIL_URL").expect("TAK_EMAIL_URL env var not set");
         let from = std::env::var("TAK_EMAIL_FROM").expect("TAK_EMAIL_FROM env var not set");
         let from = Mailbox::from_str(&from).expect("Invalid TAK_EMAIL_FROM address");
-        let transport = SmtpTransport::relay(&host)
-            .expect("Failed to create SMTP transport")
-            .credentials(Credentials::new(user.clone(), password.clone()))
+        let transport = SmtpTransport::from_url(&url)
+            .expect("Invalid smtp transport url")
             .build();
         Self { transport, from }
     }

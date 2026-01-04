@@ -39,8 +39,9 @@ pub async fn run(
         .expect("TAK_HTTP_API_PORT must be set")
         .parse::<u16>()
         .expect("TAK_HTTP_API_PORT must be a valid u16");
+    let host = std::env::var("TAK_HOST").expect("TAK_HOST must be set");
 
-    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port))
+    let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port))
         .await
         .unwrap();
 

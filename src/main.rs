@@ -96,10 +96,25 @@ async fn shutdown_signal() {
     info!("Shutdown signal received. Preparing graceful exit...");
 }
 
+fn try_load_env() {
+    let env_path = std::path::Path::new("deploy/.env");
+    if env_path.exists() {
+        if let Err(e) = dotenvy::from_path_override(env_path) {
+            println!("Failed to load .env file: {}", e);
+        } else {
+            println!("Loaded environment variables from {}", env_path.display());
+        }
+    } else {
+        println!(
+            ".env file not found at {}. Using existing environment variables.",
+            env_path.display()
+        );
+    }
+}
+
 #[tokio::main]
 async fn main() {
-    dotenvy::dotenv().expect("Failed to load .env file");
-
+    try_load_env();
     init_logger();
 
     let transport_service_impl = Arc::new(TransportServiceImpl::new());

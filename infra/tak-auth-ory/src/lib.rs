@@ -7,7 +7,7 @@ use dashmap::DashMap;
 use ory_kratos_client::{
     apis::{
         configuration::Configuration,
-        frontend_api::{create_native_settings_flow, update_login_flow, update_settings_flow},
+        frontend_api::update_login_flow,
         identity_api::{create_identity, get_identity, list_identities, patch_identity},
     },
     models::{
@@ -22,6 +22,8 @@ use tak_server_app::{
     },
     ports::authentication::{Account, AccountType, AuthenticationPort},
 };
+
+mod api;
 
 pub struct OryAuthenticationService {
     guest_account_ids: Arc<DashMap<String, AccountId>>,
@@ -72,28 +74,10 @@ async fn do_login_flow(
     identifier: &str,
     password: &str,
 ) -> Result<SuccessfulNativeLogin, String> {
-    let uri_str = format!("{}/self-service/login/api", config.base_path);
-    let req_builder = config.client.request(reqwest::Method::GET, &uri_str);
-    let req = req_builder
-        .build()
-        .map_err(|e| format!("Failed to build: {}", e))?;
-    let resp = config
-        .client
-        .execute(req)
-        .await
-        .map_err(|e| format!("Failed to execute request to Ory Kratos login API: {}", e))?;
-
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read body: {}", e))?;
-
-    let login_flow = serde_json::from_str::<serde_json::Value>(&body)
-        .map_err(|e| format!("Failed to parse login flow: {}", e))?;
-    let flow_id = login_flow
-        .get("id")
-        .and_then(|v| v.as_str())
-        .ok_or("No id in login flow".to_string())?;
+    let flow_id =
+        api::create_native_login_flow(config, None, None, None, None, None, None, None, None)
+            .await
+            .map_err(|e| e.to_string())?;
 
     let res = update_login_flow(
         config,
@@ -116,6 +100,8 @@ async fn do_login_flow(
 
 impl OryAuthenticationService {
     pub fn new() -> Self {
+        let kratos_base_url =
+            std::env::var("TAK_ORY_KRATOS_URL").expect("TAK_ORY_KRATOS_URL env var not set");
         Self {
             guest_accounts: Arc::new(DashMap::new()),
             guest_account_ids: Arc::new(DashMap::new()),
@@ -127,7 +113,7 @@ impl OryAuthenticationService {
                     .build(),
             ),
             ory_config: Arc::new(Configuration {
-                base_path: "http://localhost:4433".to_string(),
+                base_path: kratos_base_url,
                 client: reqwest::Client::new(),
                 ..Default::default()
             }),
@@ -216,14 +202,15 @@ impl OryAuthenticationService {
         old_password: &str,
         new_password: &str,
     ) -> Result<(), String> {
-        let res = do_login_flow(&self.ory_config, username, old_password).await?;
+        let login_res = do_login_flow(&self.ory_config, username, old_password).await?;
 
-        let res = create_native_settings_flow(&self.ory_config, res.session_token.as_deref())
-            .await
-            .map_err(|e| e.to_string())?;
-        update_settings_flow(
+        let flow_id =
+            api::create_native_settings_flow(&self.ory_config, login_res.session_token.as_deref())
+                .await
+                .map_err(|e| e.to_string())?;
+        api::update_settings_flow(
             &self.ory_config,
-            &res.id,
+            &flow_id,
             models::UpdateSettingsFlowBody::Password(Box::new(
                 UpdateSettingsFlowWithPasswordMethod {
                     csrf_token: None,
@@ -232,7 +219,7 @@ impl OryAuthenticationService {
                     transient_payload: None,
                 },
             )),
-            None,
+            login_res.session_token.as_deref(),
             None,
         )
         .await
