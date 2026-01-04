@@ -1,6 +1,9 @@
 {$SITE_ADDRESS} {
     root * /srv/www/dist
 
+    handle_path /auth/admin/* {
+        respond 404
+    }
     handle_path /auth/* {
         reverse_proxy kratos:4433
     }

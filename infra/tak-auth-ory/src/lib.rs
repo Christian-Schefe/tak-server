@@ -33,7 +33,8 @@ pub struct OryAuthenticationService {
 
     account_cache: Arc<moka::sync::Cache<AccountId, Account>>,
 
-    ory_config: Arc<Configuration>,
+    public_config: Arc<Configuration>,
+    admin_config: Arc<Configuration>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Default, Debug)]
@@ -101,8 +102,12 @@ async fn do_login_flow(
 
 impl OryAuthenticationService {
     pub fn new() -> Self {
-        let kratos_base_url =
-            std::env::var("TAK_ORY_KRATOS_URL").expect("TAK_ORY_KRATOS_URL env var not set");
+        let kratos_public_base_url = std::env::var("TAK_ORY_KRATOS_PUBLIC_URL")
+            .expect("TAK_ORY_KRATOS_PUBLIC_URL env var not set");
+        let kratos_admin_base_url = std::env::var("TAK_ORY_KRATOS_ADMIN_URL")
+            .expect("TAK_ORY_KRATOS_ADMIN_URL env var not set");
+
+        let client = reqwest::Client::new();
         Self {
             guest_accounts: Arc::new(DashMap::new()),
             guest_account_ids: Arc::new(DashMap::new()),
@@ -114,9 +119,14 @@ impl OryAuthenticationService {
                     .time_to_live(Duration::from_secs(60 * 60 * 12))
                     .build(),
             ),
-            ory_config: Arc::new(Configuration {
-                base_path: kratos_base_url,
-                client: reqwest::Client::new(),
+            admin_config: Arc::new(Configuration {
+                base_path: kratos_admin_base_url,
+                client: client.clone(),
+                ..Default::default()
+            }),
+            public_config: Arc::new(Configuration {
+                base_path: kratos_public_base_url,
+                client,
                 ..Default::default()
             }),
         }
@@ -170,7 +180,7 @@ impl OryAuthenticationService {
             verifiable_addresses: None,
         };
 
-        match create_identity(self.ory_config.as_ref(), Some(identity)).await {
+        match create_identity(self.admin_config.as_ref(), Some(identity)).await {
             Ok(response) => {
                 let account = Self::identity_to_account(response)
                     .ok_or("Failed to convert identity".to_string())?;
@@ -190,7 +200,7 @@ impl OryAuthenticationService {
         username: &str,
         password: &str,
     ) -> Result<Account, String> {
-        let res = do_login_flow(&self.ory_config, username, password).await?;
+        let res = do_login_flow(&self.public_config, username, password).await?;
         let identity = res
             .session
             .identity
@@ -204,14 +214,16 @@ impl OryAuthenticationService {
         old_password: &str,
         new_password: &str,
     ) -> Result<(), String> {
-        let login_res = do_login_flow(&self.ory_config, username, old_password).await?;
+        let login_res = do_login_flow(&self.public_config, username, old_password).await?;
 
-        let flow_id =
-            api::create_native_settings_flow(&self.ory_config, login_res.session_token.as_deref())
-                .await
-                .map_err(|e| e.to_string())?;
+        let flow_id = api::create_native_settings_flow(
+            &self.public_config,
+            login_res.session_token.as_deref(),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
         api::update_settings_flow(
-            &self.ory_config,
+            &self.public_config,
             &flow_id,
             models::UpdateSettingsFlowBody::Password(Box::new(
                 UpdateSettingsFlowWithPasswordMethod {
@@ -236,7 +248,7 @@ impl OryAuthenticationService {
             }
         }
         let identities = list_identities(
-            self.ory_config.as_ref(),
+            &self.admin_config,
             None,
             None,
             None,
@@ -333,11 +345,10 @@ impl AuthenticationPort for OryAuthenticationService {
             return Some(cached_account);
         }
 
-        let identity =
-            match get_identity(self.ory_config.as_ref(), &account_id.to_string(), None).await {
-                Ok(response) => response,
-                Err(_) => return None,
-            };
+        let identity = match get_identity(&self.admin_config, &account_id.to_string(), None).await {
+            Ok(response) => response,
+            Err(_) => return None,
+        };
 
         let account = Self::identity_to_account(identity)?;
         self.account_cache
@@ -361,7 +372,8 @@ impl AuthenticationPort for OryAuthenticationService {
                 value: Some(Some(serde_json::to_value(ory_role).map_err(|_| ())?)),
                 from: None,
             }];
-            match patch_identity(self.ory_config.as_ref(), &account_id.0, Some(json_patch)).await {
+            match patch_identity(self.admin_config.as_ref(), &account_id.0, Some(json_patch)).await
+            {
                 Ok(_) => {}
                 Err(_) => return Err(()),
             };
@@ -387,7 +399,8 @@ impl AuthenticationPort for OryAuthenticationService {
                 value: Some(Some(serde_json::json!(true))),
                 from: None,
             }];
-            match patch_identity(self.ory_config.as_ref(), &account_id.0, Some(json_patch)).await {
+            match patch_identity(self.admin_config.as_ref(), &account_id.0, Some(json_patch)).await
+            {
                 Ok(_) => {}
                 Err(_) => return Err(()),
             };
@@ -413,7 +426,8 @@ impl AuthenticationPort for OryAuthenticationService {
                 value: Some(Some(serde_json::json!(false))),
                 from: None,
             }];
-            match patch_identity(self.ory_config.as_ref(), &account_id.0, Some(json_patch)).await {
+            match patch_identity(self.admin_config.as_ref(), &account_id.0, Some(json_patch)).await
+            {
                 Ok(_) => {}
                 Err(_) => return Err(()),
             };
