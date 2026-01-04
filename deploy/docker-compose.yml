@@ -33,16 +33,14 @@ services:
 
   kratos-migrate:
     image: oryd/kratos:v25.4.0
+    env_file:
+      - ./ory/kratos/.env.${ENVIRONMENT}
     environment:
       - DSN=postgres://${KRATOS_POSTGRES_USER}:${KRATOS_POSTGRES_PASSWORD}@postgresd:5432/${KRATOS_POSTGRES_DB}?sslmode=disable&max_conns=20&max_idle_conns=4
       - COURIER_SMTP_CONNECTION_URI=${KRATOS_EMAIL_SMTP_URI}
-      - KRATOS_PUBLIC_BASE_URL=${KRATOS_PUBLIC_BASE_URL}
-      - KRATOS_ADMIN_BASE_URL=${KRATOS_ADMIN_BASE_URL}
-      - KRATOS_BROWSER_BASE_URL=${KRATOS_BROWSER_BASE_URL}
     volumes:
       - ./ory/kratos:/etc/config/kratos
-    command: >
-      -c <(envsubst < /etc/config/kratos/kratos.yml) migrate sql -e --yes
+    command: -c /etc/config/kratos/kratos.yml migrate sql -e --yes
     restart: on-failure
 
   kratos:
@@ -53,16 +51,13 @@ services:
       - '4433:4433' # public
       - '4434:4434' # admin
     restart: unless-stopped
+    env_file:
+      - ./ory/kratos/.env.${ENVIRONMENT}
     environment:
       - DSN=postgres://${KRATOS_POSTGRES_USER}:${KRATOS_POSTGRES_PASSWORD}@postgresd:5432/${KRATOS_POSTGRES_DB}?sslmode=disable&max_conns=20&max_idle_conns=4
       - COURIER_SMTP_CONNECTION_URI=${KRATOS_EMAIL_SMTP_URI}
-      - KRATOS_PUBLIC_BASE_URL=${KRATOS_PUBLIC_BASE_URL}
-      - KRATOS_ADMIN_BASE_URL=${KRATOS_ADMIN_BASE_URL}
-      - KRATOS_BROWSER_BASE_URL=${KRATOS_BROWSER_BASE_URL}
       - LOG_LEVEL=trace
-    command: >
-       sh -c "envsubst < /etc/config/kratos.yml.template > /tmp/kratos.yml
-       && kratos serve -c /tmp/kratos.yml --dev --watch-courier"
+    command: serve -c /etc/config/kratos/kratos.yml --dev --watch-courier
     volumes:
       - ./ory/kratos:/etc/config/kratos
 
