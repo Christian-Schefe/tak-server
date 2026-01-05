@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use lettre::{Message, SmtpTransport, Transport, message::Mailbox};
-use tak_server_app::ports::email::EmailPort;
+use tak_server_app::ports::email::{EmailPort, SendEmailError};
 
 pub struct LettreEmailAdapter {
     transport: SmtpTransport,
@@ -21,16 +21,16 @@ impl LettreEmailAdapter {
 }
 
 impl EmailPort for LettreEmailAdapter {
-    fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<(), String> {
+    fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<(), SendEmailError> {
         let email = Message::builder()
             .from(self.from.clone())
-            .to(Mailbox::from_str(to).map_err(|e| format!("Invalid to address: {}", e))?)
+            .to(Mailbox::from_str(to).map_err(|e| SendEmailError::InvalidToAddress(format!("Failed to parse address: {}", e)))?)
             .subject(subject)
             .body(body.to_string())
-            .map_err(|e| format!("Failed to build email: {}", e))?;
+            .map_err(|e| SendEmailError::SendEmailError(format!("Failed to build email: {}", e)))?;
         self.transport
             .send(&email)
-            .map_err(|e| format!("Failed to send email: {}", e))?;
+            .map_err(|e| SendEmailError::SendEmailError(format!("Failed to send email: {}", e)))?;
         Ok(())
     }
 }
@@ -38,7 +38,7 @@ impl EmailPort for LettreEmailAdapter {
 pub struct LogEmailAdapter;
 
 impl EmailPort for LogEmailAdapter {
-    fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<(), String> {
+    fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<(), SendEmailError> {
         log::info!(
             "Simulated sending email to: {}, subject: {}, body: {}",
             to,

@@ -4,7 +4,7 @@ use chrono::Utc;
 
 use crate::{
     domain::{
-        PaginatedResponse, PlayerId, RepoError,
+        PaginatedResponse, PlayerId, RepoError, RepoRetrieveError,
         rating::{PlayerRating, RatingQuery, RatingRepository, RatingService},
     },
     workflow::player::RatingView,
@@ -61,16 +61,18 @@ impl<R: RatingRepository + Send + Sync + 'static, RS: RatingService + Send + Syn
 
     async fn get_rating(&self, player_id: PlayerId) -> Option<RatingView> {
         let now = Utc::now();
-        match self
-            .rating_repository
-            .get_or_create_player_rating(player_id, move || PlayerRating::new(player_id))
-            .await
-        {
+        match self.rating_repository.get_player_rating(player_id).await {
             Ok(rating) => {
                 let participation_rating = self.rating_service.get_current_rating(&rating, now);
                 Some(RatingView::from(rating, participation_rating))
             }
-            Err(RepoError::StorageError(e)) => {
+            Err(RepoRetrieveError::NotFound) => {
+                let default_rating = PlayerRating::new(player_id);
+                let participation_rating =
+                    self.rating_service.get_current_rating(&default_rating, now);
+                Some(RatingView::from(default_rating, participation_rating))
+            }
+            Err(RepoRetrieveError::StorageError(e)) => {
                 log::error!(
                     "Error retrieving player rating for player {}: {}",
                     player_id,

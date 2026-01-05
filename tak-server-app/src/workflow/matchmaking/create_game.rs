@@ -9,7 +9,7 @@ use crate::{
     },
     ports::notification::{ListenerMessage, ListenerNotificationPort},
     processes::game_timeout_runner::GameTimeoutRunner,
-    workflow::{account::get_snapshot::GetSnapshotWorkflow, gameplay::GameView},
+    workflow::{account::get_snapshot::GetSnapshotWorkflow, gameplay::OngoingGameView},
 };
 
 #[async_trait::async_trait]
@@ -147,13 +147,10 @@ impl<
             match_entry.game_settings.clone(),
         );
 
-        GameTimeoutRunner::schedule_game_timeout_check(
-            self.game_timeout_runner.clone(),
-            game.game_id,
-        );
+        GameTimeoutRunner::schedule_game_timeout_check(self.game_timeout_runner.clone(), game_id);
 
         let msg = ListenerMessage::GameStarted {
-            game: GameView::from(&game),
+            game: OngoingGameView::from(&game),
         };
         self.listener_notification_port.notify_all(msg);
         Ok(())

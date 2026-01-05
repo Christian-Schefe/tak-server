@@ -8,11 +8,12 @@ use crate::{
     },
 };
 use tak_core::{
-    TakAction, TakActionRecord, TakDir, TakGameState, TakPos, TakVariant, ptn::game_state_to_string,
+    TakAction, TakActionRecord, TakDir, TakGameOverState, TakPos, TakVariant,
+    ptn::game_state_to_string,
 };
-use tak_server_app::domain::{
-    GameId, ListenerId, PlayerId,
-    game::{DoActionError, OfferDrawError, RequestUndoError, ResignError},
+use tak_server_app::{
+    domain::{GameId, ListenerId, PlayerId},
+    workflow::gameplay::do_action::{DoActionError, OfferDrawError, RequestUndoError, ResignError},
 };
 
 impl ProtocolV2Handler {
@@ -70,11 +71,8 @@ impl ProtocolV2Handler {
         &self,
         id: ListenerId,
         game_id: GameId,
-        game_state: &TakGameState,
+        game_state: &TakGameOverState,
     ) {
-        if *game_state == TakGameState::Ongoing {
-            return;
-        }
         let message = format!("Game#{} Over {}", game_id, game_state_to_string(game_state));
         self.send_to(id, message);
     }
@@ -128,10 +126,10 @@ impl ProtocolV2Handler {
                         err_str,
                     );
                 }
-                Err(ResignError::InvalidResign) => {
-                    let err_str = format!("Error: Invalid resign");
+                Err(ResignError::GameAlreadyEnded) => {
+                    let err_str = format!("Error: Game already ended");
                     return V2Response::ErrorMessage(
-                        ServiceError::BadRequest("Invalid resign".to_string()),
+                        ServiceError::BadRequest("Game already ended".to_string()),
                         err_str,
                     );
                 }
@@ -146,7 +144,7 @@ impl ProtocolV2Handler {
             "OfferDraw" => match self
                 .app
                 .game_do_action_use_case
-                .offer_draw(game_id, player_id)
+                .offer_draw(game_id, player_id, true)
                 .await
             {
                 Ok(_) => {}
@@ -157,10 +155,10 @@ impl ProtocolV2Handler {
                         err_str,
                     );
                 }
-                Err(OfferDrawError::InvalidOffer) => {
-                    let err_str = format!("Error: Invalid draw offer");
+                Err(OfferDrawError::GameAlreadyEnded) => {
+                    let err_str = format!("Error: Game already ended");
                     return V2Response::ErrorMessage(
-                        ServiceError::BadRequest("Invalid draw offer".to_string()),
+                        ServiceError::BadRequest("Game already ended".to_string()),
                         err_str,
                     );
                 }
@@ -175,7 +173,7 @@ impl ProtocolV2Handler {
             "RemoveDraw" => match self
                 .app
                 .game_do_action_use_case
-                .retract_draw_offer(game_id, player_id)
+                .offer_draw(game_id, player_id, false)
                 .await
             {
                 Ok(_) => {}
@@ -186,10 +184,10 @@ impl ProtocolV2Handler {
                         err_str,
                     );
                 }
-                Err(OfferDrawError::InvalidOffer) => {
-                    let err_str = format!("Error: Invalid draw removal");
+                Err(OfferDrawError::GameAlreadyEnded) => {
+                    let err_str = format!("Error: Game already ended");
                     return V2Response::ErrorMessage(
-                        ServiceError::BadRequest("Invalid draw removal".to_string()),
+                        ServiceError::BadRequest("Game already ended".to_string()),
                         err_str,
                     );
                 }
@@ -204,7 +202,7 @@ impl ProtocolV2Handler {
             "RequestUndo" => match self
                 .app
                 .game_do_action_use_case
-                .request_undo(game_id, player_id)
+                .request_undo(game_id, player_id, true)
                 .await
             {
                 Ok(_) => {}
@@ -215,10 +213,10 @@ impl ProtocolV2Handler {
                         err_str,
                     );
                 }
-                Err(RequestUndoError::InvalidRequest) => {
-                    let err_str = format!("Error: Invalid undo request");
+                Err(RequestUndoError::GameAlreadyEnded) => {
+                    let err_str = format!("Error: Game already ended");
                     return V2Response::ErrorMessage(
-                        ServiceError::BadRequest("Invalid undo request".to_string()),
+                        ServiceError::BadRequest("Game already ended".to_string()),
                         err_str,
                     );
                 }
@@ -233,7 +231,7 @@ impl ProtocolV2Handler {
             "RemoveUndo" => match self
                 .app
                 .game_do_action_use_case
-                .retract_undo_request(game_id, player_id)
+                .request_undo(game_id, player_id, false)
                 .await
             {
                 Ok(_) => {}
@@ -244,10 +242,10 @@ impl ProtocolV2Handler {
                         err_str,
                     );
                 }
-                Err(RequestUndoError::InvalidRequest) => {
-                    let err_str = format!("Error: Invalid undo retraction");
+                Err(RequestUndoError::GameAlreadyEnded) => {
+                    let err_str = format!("Error: Game already ended");
                     return V2Response::ErrorMessage(
-                        ServiceError::BadRequest("Invalid undo retraction".to_string()),
+                        ServiceError::BadRequest("Game already ended".to_string()),
                         err_str,
                     );
                 }
@@ -317,8 +315,17 @@ impl ProtocolV2Handler {
             Err(DoActionError::GameNotFound) => {
                 return Err(ServiceError::NotFound("Game not found".to_string()));
             }
-            Err(DoActionError::InvalidAction) => {
-                return Err(ServiceError::BadRequest("Invalid action".to_string()));
+            Err(DoActionError::InvalidAction(tak_core::DoActionError::InvalidAction(reason))) => {
+                return Err(ServiceError::BadRequest(format!(
+                    "Invalid action: {:?}",
+                    reason
+                )));
+            }
+            Err(DoActionError::GameAlreadyEnded) => {
+                return Err(ServiceError::BadRequest("Game already ended".to_string()));
+            }
+            Err(DoActionError::NotAPlayerInGame) => {
+                return Err(ServiceError::BadRequest("Not a player in game".to_string()));
             }
             Err(DoActionError::NotPlayersTurn) => {
                 return Err(ServiceError::BadRequest("Not player's turn".to_string()));
@@ -394,11 +401,20 @@ impl ProtocolV2Handler {
             Err(DoActionError::GameNotFound) => {
                 return Err(ServiceError::NotFound("Game not found".to_string()));
             }
-            Err(DoActionError::InvalidAction) => {
-                return Err(ServiceError::BadRequest("Invalid action".to_string()));
+            Err(DoActionError::InvalidAction(tak_core::DoActionError::InvalidAction(reason))) => {
+                return Err(ServiceError::BadRequest(format!(
+                    "Invalid action: {:?}",
+                    reason
+                )));
             }
             Err(DoActionError::NotPlayersTurn) => {
                 return Err(ServiceError::BadRequest("Not player's turn".to_string()));
+            }
+            Err(DoActionError::GameAlreadyEnded) => {
+                return Err(ServiceError::BadRequest("Game already ended".to_string()));
+            }
+            Err(DoActionError::NotAPlayerInGame) => {
+                return Err(ServiceError::BadRequest("Not a player in game".to_string()));
             }
         };
 

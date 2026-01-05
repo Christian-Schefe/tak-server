@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     domain::{
-        PlayerId, RepoError,
+        PlayerId, RepoRetrieveError,
         game_history::PlayerSnapshot,
         rating::{PlayerRating, RatingRepository, RatingService},
     },
@@ -54,13 +54,7 @@ impl<
     ) -> PlayerSnapshot {
         let username = match self.get_account_workflow.get_account(player_id).await {
             Ok(account) => Some(account.username),
-            Err(GetAccountError::AccountNotFound) => {
-                log::error!(
-                    "Failed to retrieve account for player {}: Not found",
-                    player_id.to_string(),
-                );
-                None
-            }
+            Err(GetAccountError::AccountNotFound) => None,
             Err(GetAccountError::RepositoryError) => {
                 log::error!(
                     "Failed to retrieve account for player {}: Repository error",
@@ -69,13 +63,16 @@ impl<
                 None
             }
         };
-        let current_rating = match self
-            .rating_repository
-            .get_or_create_player_rating(player_id, move || PlayerRating::new(player_id))
-            .await
-        {
+        let current_rating = match self.rating_repository.get_player_rating(player_id).await {
             Ok(rating) => Some(self.rating_service.get_current_rating(&rating, date)),
-            Err(RepoError::StorageError(e)) => {
+            Err(RepoRetrieveError::NotFound) => {
+                let default_rating = PlayerRating::new(player_id);
+                Some(
+                    self.rating_service
+                        .get_current_rating(&default_rating, date),
+                )
+            }
+            Err(RepoRetrieveError::StorageError(e)) => {
                 log::error!(
                     "Failed to retrieve rating for player {}: {}",
                     player_id.to_string(),
@@ -84,6 +81,7 @@ impl<
                 None
             }
         };
+
         PlayerSnapshot::new(player_id, username, current_rating)
     }
 }

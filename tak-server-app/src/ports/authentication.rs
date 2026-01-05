@@ -48,6 +48,10 @@ impl Account {
         matches!(self.account_type, AccountType::Bot)
     }
 
+    pub fn is_guest(&self) -> bool {
+        matches!(self.account_type, AccountType::Guest)
+    }
+
     pub fn is_flagged(&self, flag: ModerationFlag) -> bool {
         self.flags.is_flagged(flag)
     }

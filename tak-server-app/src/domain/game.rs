@@ -5,20 +5,22 @@ use std::{
 
 use crate::domain::{GameId, GameType, PlayerId};
 use dashmap::DashMap;
-use tak_core::{TakAction, TakActionRecord, TakGame, TakGameSettings, TakPlayer};
+use tak_core::{
+    MaybeTimeout, TakAction, TakActionRecord, TakFinishedGame, TakGame, TakGameSettings,
+    TakOngoingGame, TakPlayer,
+};
 
 #[derive(Clone, Debug)]
-pub struct Game {
+pub struct GameMetadata {
     pub game_id: GameId,
     pub date: chrono::DateTime<chrono::Utc>,
     pub white_id: PlayerId,
     pub black_id: PlayerId,
-    pub game: TakGame,
     pub settings: TakGameSettings,
     pub game_type: GameType,
 }
 
-impl Game {
+impl GameMetadata {
     pub fn get_opponent(&self, player: PlayerId) -> Option<PlayerId> {
         if player == self.white_id {
             Some(self.black_id)
@@ -29,6 +31,46 @@ impl Game {
         }
     }
 
+    fn get_player(&self, id: PlayerId) -> Option<TakPlayer> {
+        if id == self.white_id {
+            Some(TakPlayer::White)
+        } else if id == self.black_id {
+            Some(TakPlayer::Black)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct OngoingGame {
+    pub metadata: GameMetadata,
+    pub game: TakOngoingGame,
+}
+
+#[derive(Clone, Debug)]
+pub struct FinishedGame {
+    pub metadata: GameMetadata,
+    pub game: TakFinishedGame,
+}
+
+impl FinishedGame {
+    pub fn new(game: &OngoingGame, tak_game: TakFinishedGame) -> Self {
+        Self {
+            metadata: game.metadata.clone(),
+            game: tak_game,
+        }
+    }
+    pub fn get_time_remaining(&self) -> TimeRemaining {
+        let (white_time, black_time) = self.game.get_time_remaining();
+        TimeRemaining {
+            white_time,
+            black_time,
+        }
+    }
+}
+
+impl OngoingGame {
     pub fn get_time_remaining(&self, now: Instant) -> TimeRemaining {
         let (white_time, black_time) = self.game.get_time_remaining_both(now);
         TimeRemaining {
@@ -47,48 +89,68 @@ pub trait GameService {
         black_id: PlayerId,
         game_type: GameType,
         game_settings: TakGameSettings,
-    ) -> Game;
-    fn get_game_by_id(&self, game_id: GameId) -> Option<Game>;
-    fn get_games(&self) -> Vec<Game>;
+    ) -> OngoingGame;
+    fn get_game_by_id(&self, game_id: GameId) -> Option<OngoingGame>;
+    fn get_games(&self) -> Vec<OngoingGame>;
     fn do_action(
         &self,
         game_id: GameId,
         player: PlayerId,
         action: TakAction,
         now: Instant,
-    ) -> Result<DoActionSuccess, DoActionError>;
-    fn resign(&self, game_id: GameId, player: PlayerId, now: Instant) -> Result<Game, ResignError>;
+    ) -> DoActionResult;
+    fn resign(&self, game_id: GameId, player: PlayerId, now: Instant) -> ResignResult;
     fn request_undo(
         &self,
         game_id: GameId,
         player: PlayerId,
         now: Instant,
-    ) -> Result<RequestUndoSuccess, RequestUndoError>;
-    fn retract_undo_request(
-        &self,
-        game_id: GameId,
-        player: PlayerId,
-        now: Instant,
-    ) -> Result<bool, RequestUndoError>;
+        offer_status: bool,
+    ) -> RequestUndoResult;
     fn offer_draw(
         &self,
         game_id: GameId,
         player: PlayerId,
         now: Instant,
-    ) -> Result<OfferDrawSuccess, OfferDrawError>;
-    fn retract_draw_offer(
-        &self,
-        game_id: GameId,
-        player: PlayerId,
-        now: Instant,
-    ) -> Result<bool, OfferDrawError>;
+        offer_status: bool,
+    ) -> OfferDrawResult;
+
     fn check_timeout(&self, game_id: GameId, now: Instant) -> CheckTimoutResult;
 }
 
-pub enum DoActionError {
+pub enum DoActionResult {
+    ActionPerformed(TakActionRecord),
+    GameOver(TakActionRecord, FinishedGame),
+    Timeout(FinishedGame),
     GameNotFound,
     NotPlayersTurn,
-    InvalidAction,
+    NotAPlayerInGame,
+    InvalidAction(tak_core::DoActionError),
+}
+
+pub enum ResignResult {
+    GameNotFound,
+    NotAPlayerInGame,
+    Timeout(FinishedGame),
+    GameOver(FinishedGame),
+}
+
+pub enum OfferDrawResult {
+    Success,
+    Unchanged,
+    GameNotFound,
+    NotAPlayerInGame,
+    Timeout(FinishedGame),
+    GameDrawn(FinishedGame),
+}
+
+pub enum RequestUndoResult {
+    Success,
+    Unchanged,
+    GameNotFound,
+    NotAPlayerInGame,
+    Timeout(FinishedGame),
+    MoveUndone,
 }
 
 pub struct TimeRemaining {
@@ -96,48 +158,20 @@ pub struct TimeRemaining {
     pub black_time: Duration,
 }
 
-pub enum DoActionSuccess {
-    ActionPerformed(TakActionRecord),
-    GameOver(TakActionRecord, Game),
-}
-
-pub enum ResignError {
-    GameNotFound,
-    NotAPlayerInGame,
-    InvalidResign,
-}
-
-pub enum OfferDrawError {
-    GameNotFound,
-    NotAPlayerInGame,
-    InvalidOffer,
-}
-
-pub enum OfferDrawSuccess {
-    DrawOffered(bool),
-    GameDrawn(Game),
-}
-pub enum RequestUndoSuccess {
-    UndoRequested(bool),
-    MoveUndone,
-}
-
-pub enum RequestUndoError {
-    GameNotFound,
-    NotAPlayerInGame,
-    InvalidRequest,
-}
-
 pub enum CheckTimoutResult {
-    GameTimedOut(Game),
-    NoTimeout {
-        white_remaining: Duration,
-        black_remaining: Duration,
-    },
+    GameNotFound,
+    GameTimedOut(FinishedGame),
+    NoTimeout(TimeRemaining),
 }
 
 pub struct GameServiceImpl {
-    games: Arc<DashMap<GameId, Game>>,
+    games: Arc<DashMap<GameId, OngoingGame>>,
+}
+
+enum GameControl {
+    Unchanged,
+    Changed(TakOngoingGame),
+    Ended,
 }
 
 impl GameServiceImpl {
@@ -147,18 +181,24 @@ impl GameServiceImpl {
         }
     }
 
-    fn handle_maybe_game_over(&self, game_id: GameId) -> Option<Game> {
-        let (_, game_entry) = self
-            .games
-            .remove_if(&game_id, |_, game| !game.game.is_ongoing())?;
-        Some(game_entry)
-    }
-
-    fn with_game<F, R>(&self, game_id: GameId, f: F) -> Option<R>
+    fn with_game_might_end<F, R>(&self, game_id: GameId, f: F) -> Option<R>
     where
-        F: FnOnce(&mut Game) -> R,
+        F: FnOnce(&OngoingGame) -> (GameControl, R),
     {
-        self.games.get_mut(&game_id).map(|mut entry| f(&mut entry))
+        let mut res = None;
+        self.games.remove_if_mut(&game_id, |_, entry| {
+            let (new_game, r) = f(entry);
+            res = Some(r);
+            match new_game {
+                GameControl::Changed(g) => {
+                    entry.game = g;
+                    false
+                }
+                GameControl::Ended => true,
+                GameControl::Unchanged => false,
+            }
+        });
+        res
     }
 }
 
@@ -171,27 +211,27 @@ impl GameService for GameServiceImpl {
         black_id: PlayerId,
         game_type: GameType,
         game_settings: TakGameSettings,
-    ) -> Game {
-        let game = TakGame::new(game_settings.clone());
-        let game_struct = Game {
+    ) -> OngoingGame {
+        let game = TakOngoingGame::new(game_settings.clone());
+        let metadata = GameMetadata {
+            game_id: id,
             date,
             white_id,
             black_id,
-            game,
+            settings: game_settings.clone(),
             game_type,
-            settings: game_settings,
-            game_id: id,
         };
+        let game_struct = OngoingGame { game, metadata };
         self.games.insert(id, game_struct.clone());
 
         game_struct
     }
 
-    fn get_game_by_id(&self, game_id: GameId) -> Option<Game> {
+    fn get_game_by_id(&self, game_id: GameId) -> Option<OngoingGame> {
         self.games.get(&game_id).map(|entry| entry.clone())
     }
 
-    fn get_games(&self) -> Vec<Game> {
+    fn get_games(&self) -> Vec<OngoingGame> {
         self.games.iter().map(|entry| entry.clone()).collect()
     }
 
@@ -201,52 +241,60 @@ impl GameService for GameServiceImpl {
         player: PlayerId,
         action: TakAction,
         now: Instant,
-    ) -> Result<DoActionSuccess, DoActionError> {
-        let game_record = self
-            .with_game(game_id, |game_entry| {
-                let current_player = match player {
-                    id if id == game_entry.white_id => TakPlayer::White,
-                    id if id == game_entry.black_id => TakPlayer::Black,
-                    _ => return Err(DoActionError::NotPlayersTurn),
-                };
-
-                if game_entry.game.current_player() != current_player {
-                    return Err(DoActionError::NotPlayersTurn);
-                }
-
-                match game_entry.game.do_action(&action, now) {
-                    Ok(record) => Ok(record),
-                    Err(_) => Err(DoActionError::InvalidAction),
-                }
-            })
-            .unwrap_or(Err(DoActionError::GameNotFound))?;
-
-        if let Some(ended_game) = self.handle_maybe_game_over(game_id) {
-            return Ok(DoActionSuccess::GameOver(game_record, ended_game));
-        };
-
-        Ok(DoActionSuccess::ActionPerformed(game_record))
-    }
-
-    fn resign(&self, game_id: GameId, player: PlayerId, now: Instant) -> Result<Game, ResignError> {
-        self.with_game(game_id, |game_entry| {
-            let current_player = match player {
-                id if id == game_entry.white_id => TakPlayer::White,
-                id if id == game_entry.black_id => TakPlayer::Black,
-                _ => return Err(ResignError::NotAPlayerInGame),
+    ) -> DoActionResult {
+        self.with_game_might_end(game_id, |game_entry| {
+            let current_player = match game_entry.metadata.get_player(player) {
+                Some(p) => p,
+                None => return (GameControl::Unchanged, DoActionResult::NotAPlayerInGame),
             };
 
-            if let Err(_) = game_entry.game.resign(&current_player, now) {
-                return Err(ResignError::InvalidResign);
+            if game_entry.game.current_player() != current_player {
+                return (GameControl::Unchanged, DoActionResult::NotPlayersTurn);
             }
-            Ok(())
-        })
-        .unwrap_or(Err(ResignError::GameNotFound))?;
 
-        let Some(ended_game) = self.handle_maybe_game_over(game_id) else {
-            return Err(ResignError::GameNotFound);
-        };
-        Ok(ended_game)
+            match game_entry.game.do_action(&action, now) {
+                Ok(MaybeTimeout::Timeout(finished_game)) => {
+                    let finished_game = FinishedGame::new(game_entry, finished_game);
+                    (GameControl::Ended, DoActionResult::Timeout(finished_game))
+                }
+                Ok(MaybeTimeout::Result((action, game))) => match game {
+                    TakGame::Finished(finished_game) => {
+                        let finished_game = FinishedGame::new(game_entry, finished_game);
+                        (
+                            GameControl::Ended,
+                            DoActionResult::GameOver(action, finished_game),
+                        )
+                    }
+                    TakGame::Ongoing(ongoing_game) => (
+                        GameControl::Changed(ongoing_game),
+                        DoActionResult::ActionPerformed(action),
+                    ),
+                },
+                Err(e) => (GameControl::Unchanged, DoActionResult::InvalidAction(e)),
+            }
+        })
+        .unwrap_or(DoActionResult::GameNotFound)
+    }
+
+    fn resign(&self, game_id: GameId, player: PlayerId, now: Instant) -> ResignResult {
+        self.with_game_might_end(game_id, |game_entry| {
+            let current_player = match game_entry.metadata.get_player(player) {
+                Some(p) => p,
+                None => return (GameControl::Unchanged, ResignResult::NotAPlayerInGame),
+            };
+
+            match game_entry.game.resign(&current_player, now) {
+                MaybeTimeout::Timeout(finished_game) => {
+                    let finished_game = FinishedGame::new(game_entry, finished_game);
+                    (GameControl::Ended, ResignResult::Timeout(finished_game))
+                }
+                MaybeTimeout::Result(finished_game) => {
+                    let finished_game = FinishedGame::new(game_entry, finished_game);
+                    (GameControl::Ended, ResignResult::GameOver(finished_game))
+                }
+            }
+        })
+        .unwrap_or(ResignResult::GameNotFound)
     }
 
     fn offer_draw(
@@ -254,56 +302,36 @@ impl GameService for GameServiceImpl {
         game_id: GameId,
         player: PlayerId,
         now: Instant,
-    ) -> Result<OfferDrawSuccess, OfferDrawError> {
-        let (did_draw, changed) = self
-            .with_game(game_id, |game_entry| {
-                let current_player = match player {
-                    id if id == game_entry.white_id => TakPlayer::White,
-                    id if id == game_entry.black_id => TakPlayer::Black,
-                    _ => return Err(OfferDrawError::NotAPlayerInGame),
-                };
-
-                let changed = !game_entry.game.get_draw_offer(&current_player);
-
-                match game_entry.game.offer_draw(&current_player, true, now) {
-                    Ok(did_draw) => Ok((did_draw, changed)),
-                    Err(_) => Err(OfferDrawError::InvalidOffer),
-                }
-            })
-            .unwrap_or(Err(OfferDrawError::GameNotFound))?;
-        if did_draw {
-            let Some(ended_game) = self.handle_maybe_game_over(game_id) else {
-                return Err(OfferDrawError::GameNotFound);
+        offer_status: bool,
+    ) -> OfferDrawResult {
+        self.with_game_might_end(game_id, |game_entry| {
+            let current_player = match game_entry.metadata.get_player(player) {
+                Some(p) => p,
+                None => return (GameControl::Unchanged, OfferDrawResult::NotAPlayerInGame),
             };
-            Ok(OfferDrawSuccess::GameDrawn(ended_game))
-        } else {
-            Ok(OfferDrawSuccess::DrawOffered(changed))
-        }
-    }
 
-    fn retract_draw_offer(
-        &self,
-        game_id: GameId,
-        player: PlayerId,
-        now: Instant,
-    ) -> Result<bool, OfferDrawError> {
-        let changed = self
-            .with_game(game_id, |game_entry| {
-                let current_player = match player {
-                    id if id == game_entry.white_id => TakPlayer::White,
-                    id if id == game_entry.black_id => TakPlayer::Black,
-                    _ => return Err(OfferDrawError::NotAPlayerInGame),
-                };
-
-                let changed = game_entry.game.get_draw_offer(&current_player);
-
-                match game_entry.game.offer_draw(&current_player, false, now) {
-                    Ok(_) => Ok(changed),
-                    Err(_) => Err(OfferDrawError::InvalidOffer),
+            match game_entry
+                .game
+                .offer_draw(&current_player, offer_status, now)
+            {
+                MaybeTimeout::Timeout(finished_game) => {
+                    let finished_game = FinishedGame::new(game_entry, finished_game);
+                    (GameControl::Ended, OfferDrawResult::Timeout(finished_game))
                 }
-            })
-            .unwrap_or(Err(OfferDrawError::GameNotFound))?;
-        Ok(changed)
+                MaybeTimeout::Result(Some(TakGame::Finished(drawn_game))) => {
+                    let finished_game = FinishedGame::new(game_entry, drawn_game);
+                    (
+                        GameControl::Ended,
+                        OfferDrawResult::GameDrawn(finished_game),
+                    )
+                }
+                MaybeTimeout::Result(Some(TakGame::Ongoing(ongoing_game))) => {
+                    (GameControl::Changed(ongoing_game), OfferDrawResult::Success)
+                }
+                MaybeTimeout::Result(None) => (GameControl::Unchanged, OfferDrawResult::Unchanged),
+            }
+        })
+        .unwrap_or(OfferDrawResult::GameNotFound)
     }
 
     fn request_undo(
@@ -311,69 +339,60 @@ impl GameService for GameServiceImpl {
         game_id: GameId,
         player: PlayerId,
         now: Instant,
-    ) -> Result<RequestUndoSuccess, RequestUndoError> {
-        let result = self
-            .with_game(game_id, |game_entry| {
-                let current_player = match player {
-                    id if id == game_entry.white_id => TakPlayer::White,
-                    id if id == game_entry.black_id => TakPlayer::Black,
-                    _ => return Err(RequestUndoError::NotAPlayerInGame),
-                };
+        offer_status: bool,
+    ) -> RequestUndoResult {
+        self.with_game_might_end(game_id, |game_entry| {
+            let current_player = match game_entry.metadata.get_player(player) {
+                Some(p) => p,
+                None => return (GameControl::Unchanged, RequestUndoResult::NotAPlayerInGame),
+            };
 
-                let changed = !game_entry.game.get_undo_request(&current_player);
-
-                match game_entry.game.request_undo(&current_player, true, now) {
-                    Ok(false) => Ok(RequestUndoSuccess::UndoRequested(changed)),
-                    Ok(true) => Ok(RequestUndoSuccess::MoveUndone),
-                    Err(_) => return Err(RequestUndoError::InvalidRequest),
+            match game_entry
+                .game
+                .request_undo(&current_player, offer_status, now)
+            {
+                MaybeTimeout::Timeout(finished_game) => {
+                    let finished_game = FinishedGame::new(game_entry, finished_game);
+                    (
+                        GameControl::Ended,
+                        RequestUndoResult::Timeout(finished_game),
+                    )
                 }
-            })
-            .unwrap_or(Err(RequestUndoError::GameNotFound))?;
-
-        self.handle_maybe_game_over(game_id);
-
-        Ok(result)
-    }
-
-    fn retract_undo_request(
-        &self,
-        game_id: GameId,
-        player: PlayerId,
-        now: Instant,
-    ) -> Result<bool, RequestUndoError> {
-        let changed = self
-            .with_game(game_id, |game_entry| {
-                let current_player = match player {
-                    id if id == game_entry.white_id => TakPlayer::White,
-                    id if id == game_entry.black_id => TakPlayer::Black,
-                    _ => return Err(RequestUndoError::NotAPlayerInGame),
-                };
-
-                let changed = game_entry.game.get_undo_request(&current_player);
-
-                match game_entry.game.request_undo(&current_player, false, now) {
-                    Ok(_) => Ok(changed),
-                    Err(_) => Err(RequestUndoError::InvalidRequest),
+                MaybeTimeout::Result(Some(ongoing_game)) => (
+                    GameControl::Changed(ongoing_game),
+                    RequestUndoResult::Success,
+                ),
+                MaybeTimeout::Result(None) => {
+                    (GameControl::Unchanged, RequestUndoResult::Unchanged)
                 }
-            })
-            .unwrap_or(Err(RequestUndoError::GameNotFound))?;
-        Ok(changed)
+            }
+        })
+        .unwrap_or(RequestUndoResult::GameNotFound)
     }
 
     fn check_timeout(&self, game_id: GameId, now: Instant) -> CheckTimoutResult {
-        let mut times_remaining = None;
-        let Some((_, ended_game)) = self.games.remove_if_mut(&game_id, |_, game_ref| {
-            game_ref.game.check_timeout(now);
-            times_remaining = Some(game_ref.game.get_time_remaining_both(now));
-            !game_ref.game.is_ongoing()
-        }) else {
-            let (white_remaining, black_remaining) =
-                times_remaining.unwrap_or((Duration::ZERO, Duration::ZERO));
-            return CheckTimoutResult::NoTimeout {
-                white_remaining,
-                black_remaining,
-            };
-        };
-        CheckTimoutResult::GameTimedOut(ended_game)
+        self.with_game_might_end(game_id, |game_entry| {
+            match game_entry.game.check_timeout(now) {
+                Some(finished_game) => {
+                    let finished_game = FinishedGame::new(game_entry, finished_game);
+                    (
+                        GameControl::Ended,
+                        CheckTimoutResult::GameTimedOut(finished_game),
+                    )
+                }
+                None => {
+                    let (white_remaining, black_remaining) =
+                        game_entry.game.get_time_remaining_both(now);
+                    (
+                        GameControl::Unchanged,
+                        CheckTimoutResult::NoTimeout(TimeRemaining {
+                            white_time: white_remaining,
+                            black_time: black_remaining,
+                        }),
+                    )
+                }
+            }
+        })
+        .unwrap_or(CheckTimoutResult::GameNotFound)
     }
 }

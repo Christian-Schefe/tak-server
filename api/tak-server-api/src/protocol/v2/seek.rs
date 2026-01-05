@@ -138,8 +138,8 @@ impl ProtocolV2Handler {
             self.app.seek_cancel_use_case.cancel_seek(player_id);
         } else {
             let opponent_id = match opponent {
-                Some(ref name) => match self.acl.get_player_id_by_username(name).await {
-                    Some(id) => Some(id),
+                Some(ref name) => match self.acl.get_account_and_player_id_by_username(name).await {
+                    Some((id, _)) => Some(id),
                     None => {
                         return Err(ServiceError::BadRequest(format!("No such user: {}", name)));
                     }

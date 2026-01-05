@@ -2,11 +2,11 @@ use std::sync::Arc;
 
 use crate::{
     domain::{GameId, game::GameService},
-    workflow::gameplay::GameView,
+    workflow::gameplay::OngoingGameView,
 };
 
 pub trait GetOngoingGameUseCase {
-    fn get_game(&self, game_id: GameId) -> Option<GameView>;
+    fn get_game(&self, game_id: GameId) -> Option<OngoingGameView>;
 }
 
 pub struct GetOngoingGameUseCaseImpl<G: GameService> {
@@ -20,9 +20,9 @@ impl<G: GameService> GetOngoingGameUseCaseImpl<G> {
 }
 
 impl<G: GameService> GetOngoingGameUseCase for GetOngoingGameUseCaseImpl<G> {
-    fn get_game(&self, game_id: GameId) -> Option<GameView> {
+    fn get_game(&self, game_id: GameId) -> Option<OngoingGameView> {
         self.game_service
             .get_game_by_id(game_id)
-            .map(|game| GameView::from(game))
+            .map(|game| OngoingGameView::from(game))
     }
 }

@@ -6,7 +6,7 @@ use sea_orm::{
 };
 use serde::Deserialize;
 use tak_core::{
-    TakAction, TakActionRecord, TakGameSettings, TakGameState, TakReserve, TakTimeControl,
+    TakAction, TakActionRecord, TakGameSettings, TakReserve, TakTimeControl,
     ptn::{action_from_ptn, action_to_ptn, game_state_from_string, game_state_to_string},
 };
 use tak_persistence_sea_orm_entites::game;
@@ -139,7 +139,10 @@ impl GameRepositoryImpl {
                 })
                 .collect(),
             rating_info,
-            result: game_state_from_string(&model.result).unwrap_or(TakGameState::Ongoing),
+            result: model
+                .result
+                .as_deref()
+                .and_then(|x| game_state_from_string(x)),
         }
     }
 }
@@ -158,7 +161,7 @@ impl GameRepository for GameRepositoryImpl {
             player_white_rating: Set(game.white.rating),
             player_black_rating: Set(game.black.rating),
             notation: Set(serde_json::json!([])),
-            result: Set("0-0".to_string()),
+            result: Set(None),
             clock_contingent: Set(game.settings.time_control.contingent.as_secs() as i32),
             clock_increment: Set(game.settings.time_control.increment.as_secs() as i32),
             is_unrated: Set(game.game_type == GameType::Unrated),
@@ -212,7 +215,7 @@ impl GameRepository for GameRepositoryImpl {
         let model = game::ActiveModel {
             id: Set(game_id.0),
             notation: Set(notation),
-            result: Set(result_val),
+            result: Set(Some(result_val)),
             rating_change_white: Set(update
                 .rating_info
                 .as_ref()

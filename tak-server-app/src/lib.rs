@@ -167,6 +167,7 @@ pub async fn build_application<
         notify_player_workflow.clone(),
         spectator_service.clone(),
         listener_notification_port.clone(),
+        get_account_workflow.clone(),
     ));
     let observe_game_timeout_use_case = Arc::new(ObserveGameTimeoutUseCaseImpl::new(
         game_service.clone(),

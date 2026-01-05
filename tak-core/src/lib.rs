@@ -4,7 +4,9 @@ pub mod ptn;
 
 use std::time::Duration;
 
+pub use game::TakFinishedGame;
 pub use game::TakGame;
+pub use game::TakOngoingGame;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TakPlayer {
@@ -133,8 +135,7 @@ pub enum TakDir {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum TakGameState {
-    Ongoing,
+pub enum TakGameOverState {
     Win {
         winner: TakPlayer,
         reason: TakWinReason,
@@ -155,6 +156,39 @@ impl TakWinReason {
         TakWinReason::Flats,
         TakWinReason::Default,
     ];
+}
+
+pub enum MaybeTimeout<R> {
+    Result(R),
+    Timeout(TakFinishedGame),
+}
+
+#[derive(Clone, Debug)]
+pub enum DoActionError {
+    InvalidAction(InvalidActionReason),
+}
+
+#[derive(Clone, Debug)]
+pub enum InvalidActionReason {
+    OpeningViolation,
+    InvalidPlace(InvalidPlaceReason),
+    InvalidMove(InvalidMoveReason),
+}
+
+#[derive(Clone, Debug)]
+pub enum InvalidPlaceReason {
+    OutOfBounds,
+    PositionOccupied,
+}
+
+#[derive(Clone, Debug)]
+pub enum InvalidMoveReason {
+    OutOfBounds,
+    PositionEmpty,
+    InvalidNumberOfPieces,
+    CannotMoveOverStandingPieces,
+    CannotMoveOverCapstonePieces,
+    InvalidDropDistribution,
 }
 
 #[cfg(test)]

@@ -162,7 +162,7 @@ impl ProtocolV2Handler {
             ));
         }
         let target_username = parts[1];
-        let Some(target_player_id) = self.acl.get_player_id_by_username(target_username).await
+        let Some((target_player_id, _)) = self.acl.get_account_and_player_id_by_username(target_username).await
         else {
             return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
                 "No such user: {}",

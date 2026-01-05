@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use tak_server_app::{
     domain::{GameId, GameType, ListenerId, PlayerId},
-    workflow::gameplay::{GameView, observe::ObserveGameError},
+    workflow::gameplay::{GameMetadataView, observe::ObserveGameError},
 };
 
 use crate::{
@@ -14,7 +14,7 @@ use crate::{
 };
 
 impl ProtocolV2Handler {
-    pub async fn send_game_list_message(&self, id: ListenerId, game: &GameView, add: bool) {
+    pub async fn send_game_list_message(&self, id: ListenerId, game: &GameMetadataView, add: bool) {
         self.send_game_string_message(
             id,
             game,
@@ -29,7 +29,7 @@ impl ProtocolV2Handler {
 
     pub async fn handle_game_list_message(&self, id: ListenerId) -> V2Response {
         for game in self.app.game_list_ongoing_use_case.list_games() {
-            self.send_game_string_message(id, &game, "GameList Add")
+            self.send_game_string_message(id, &game.metadata, "GameList Add")
                 .await;
         }
         V2Response::OK
@@ -65,9 +65,10 @@ impl ProtocolV2Handler {
                     "Game ID not found".to_string(),
                 ));
             };
-            self.send_game_string_message(id, &game, "Observe").await;
+            self.send_game_string_message(id, &game.metadata, "Observe")
+                .await;
             for action in game.game.action_history() {
-                self.send_game_action_message(id, game.id, action);
+                self.send_game_action_message(id, game.metadata.id, action);
             }
             let now = Instant::now();
             let (remaining_white, remaining_black) = game.game.get_time_remaining_both(now);
@@ -78,7 +79,12 @@ impl ProtocolV2Handler {
         V2Response::OK
     }
 
-    pub async fn send_game_string_message(&self, id: ListenerId, game: &GameView, operation: &str) {
+    pub async fn send_game_string_message(
+        &self,
+        id: ListenerId,
+        game: &GameMetadataView,
+        operation: &str,
+    ) {
         let settings = &game.settings;
         let white_account = self
             .app
@@ -143,7 +149,7 @@ impl ProtocolV2Handler {
         &self,
         id: ListenerId,
         player_id: PlayerId,
-        game: &GameView,
+        game: &GameMetadataView,
     ) {
         let white_account_id = self
             .app

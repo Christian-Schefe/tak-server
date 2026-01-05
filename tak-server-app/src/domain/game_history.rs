@@ -1,11 +1,11 @@
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use tak_core::{TakActionRecord, TakGameSettings, TakGameState};
+use tak_core::{TakActionRecord, TakGameOverState, TakGameSettings};
 
 use crate::domain::{
     GameId, GameType, PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError,
-    RepoUpdateError, SortOrder, game::Game,
+    RepoUpdateError, SortOrder, game::FinishedGame,
 };
 
 pub struct GameRecord {
@@ -15,7 +15,7 @@ pub struct GameRecord {
     pub rating_info: Option<GameRatingInfo>,
     pub settings: TakGameSettings,
     pub game_type: GameType,
-    pub result: TakGameState,
+    pub result: Option<TakGameOverState>,
     pub moves: Vec<TakActionRecord>,
 }
 
@@ -47,7 +47,7 @@ pub struct GameQuery {
     pub date_selector: Option<DateSelector>,
     pub player_white: Option<GamePlayerFilter>,
     pub player_black: Option<GamePlayerFilter>,
-    pub game_states: Option<Vec<TakGameState>>,
+    pub game_states: Option<Vec<TakGameOverState>>,
     pub half_komi: Option<usize>,
     pub board_size: Option<usize>,
     pub game_type: Option<GameType>,
@@ -87,7 +87,7 @@ pub enum GamePlayerFilter {
 }
 
 pub struct GameFinishedUpdate {
-    pub result: TakGameState,
+    pub result: TakGameOverState,
     pub moves: Vec<TakActionRecord>,
     pub rating_info: Option<GameRatingInfo>,
 }
@@ -118,7 +118,7 @@ pub trait GameHistoryService {
     ) -> GameRecord;
     fn get_finished_game_record_update(
         &self,
-        game: Game,
+        game: FinishedGame,
         rating_info: Option<GameRatingInfo>,
     ) -> GameFinishedUpdate;
 }
@@ -147,18 +147,18 @@ impl GameHistoryService for GameHistoryServiceImpl {
             rating_info: None,
             settings,
             game_type,
-            result: TakGameState::Ongoing,
+            result: None,
             moves: Vec::new(),
         }
     }
 
     fn get_finished_game_record_update(
         &self,
-        game: Game,
+        game: FinishedGame,
         rating_info: Option<GameRatingInfo>,
     ) -> GameFinishedUpdate {
         GameFinishedUpdate {
-            result: game.game.game_state(),
+            result: game.game.game_state().clone(),
             moves: game.game.action_history().clone(),
             rating_info,
         }

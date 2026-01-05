@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::{TakDir, TakPlayer, TakPos, TakVariant};
+use crate::{InvalidMoveReason, InvalidPlaceReason, TakDir, TakPlayer, TakPos, TakVariant};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TakStack {
@@ -14,6 +14,7 @@ pub struct TakBoard {
     stacks: Vec<Option<TakStack>>,
 }
 
+
 impl TakBoard {
     pub fn new(size: u32) -> Self {
         let board_area = size * size;
@@ -23,13 +24,13 @@ impl TakBoard {
         }
     }
 
-    pub fn can_do_place(&self, pos: &TakPos) -> Result<(), String> {
+    pub fn can_do_place(&self, pos: &TakPos) -> Result<(), InvalidPlaceReason> {
         if !pos.is_valid(self.size) {
-            return Err("Position out of bounds".to_string());
+            return Err(InvalidPlaceReason::OutOfBounds);
         }
         let index = (pos.y * self.size as i32 + pos.x) as usize;
         if self.stacks[index].is_some() {
-            return Err("Position already occupied".to_string());
+            return Err(InvalidPlaceReason::PositionOccupied);
         }
         Ok(())
     }
@@ -39,7 +40,7 @@ impl TakBoard {
         pos: &TakPos,
         variant: &TakVariant,
         player: &TakPlayer,
-    ) -> Result<(), String> {
+    ) -> Result<(), InvalidPlaceReason> {
         self.can_do_place(&pos)?;
         let index = (pos.y * self.size as i32 + pos.x) as usize;
         self.stacks[index] = Some(TakStack {
@@ -49,27 +50,27 @@ impl TakBoard {
         Ok(())
     }
 
-    pub fn can_do_move(&self, pos: &TakPos, dir: &TakDir, drops: &[u32]) -> Result<(), String> {
+    pub fn can_do_move(&self, pos: &TakPos, dir: &TakDir, drops: &[u32]) -> Result<(), InvalidMoveReason> {
         if !pos.is_valid(self.size) {
-            return Err("Position out of bounds".to_string());
+            return Err(InvalidMoveReason::OutOfBounds);
         }
         let index = (pos.y * self.size as i32 + pos.x) as usize;
         let stack = self.stacks[index]
             .as_ref()
-            .ok_or_else(|| "No stack at the given position".to_string())?;
+            .ok_or_else(|| InvalidMoveReason::PositionEmpty)?;
         let total_pieces: u32 = stack.composition.len() as u32;
         let drops_sum: u32 = drops.iter().sum();
         if drops_sum == 0 || drops_sum > total_pieces || drops_sum > self.size {
-            return Err("Invalid number of pieces to move".to_string());
+            return Err(InvalidMoveReason::InvalidNumberOfPieces);
         }
         let drops_len = drops.len();
         let end_pos = pos.offset(dir, drops_len as i32);
         if !end_pos.is_valid(self.size) {
-            return Err("Move goes out of bounds".to_string());
+            return Err(InvalidMoveReason::OutOfBounds);
         }
         for i in 0..drops_len {
             if drops[i] == 0 {
-                return Err("Drop count cannot be zero".to_string());
+                return Err(InvalidMoveReason::InvalidDropDistribution);
             }
             let cur_pos = pos.offset(dir, i as i32 + 1);
             let cur_index = (cur_pos.y * self.size as i32 + cur_pos.x) as usize;
@@ -82,13 +83,13 @@ impl TakBoard {
                     || i < drops_len - 1
                     || drops[i] != 1 =>
                 {
-                    return Err("Cannot move over standing pieces".to_string());
+                    return Err(InvalidMoveReason::CannotMoveOverStandingPieces);
                 }
                 Some(TakStack {
                     variant: TakVariant::Capstone,
                     composition: _,
                 }) => {
-                    return Err("Cannot move over capstone pieces".to_string());
+                    return Err(InvalidMoveReason::CannotMoveOverCapstonePieces);
                 }
                 _ => {}
             }
@@ -96,7 +97,7 @@ impl TakBoard {
         Ok(())
     }
 
-    pub fn do_move(&mut self, pos: &TakPos, dir: &TakDir, drops: &[u32]) -> Result<(), String> {
+    pub fn do_move(&mut self, pos: &TakPos, dir: &TakDir, drops: &[u32]) -> Result<(), InvalidMoveReason> {
         self.can_do_move(pos, dir, drops)?;
         let index = (pos.y * self.size as i32 + pos.x) as usize;
         let stack = self.stacks[index].as_mut().unwrap();
@@ -338,7 +339,7 @@ mod tests {
                 .do_place(&cap_pos, &TakVariant::Standing, &player)
                 .is_ok()
         );
-        assert_eq!(board.can_do_move(&pos, &TakDir::Right, &[1]), Ok(()));
+        assert!(board.can_do_move(&pos, &TakDir::Right, &[1]).is_ok());
         assert!(board.do_move(&pos, &TakDir::Right, &[1]).is_ok());
     }
 

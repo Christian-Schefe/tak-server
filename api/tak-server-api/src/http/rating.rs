@@ -4,9 +4,12 @@ use axum::{
     Json,
     extract::{Path, State},
 };
-use tak_server_app::domain::{
-    Pagination, RepoError, SortOrder,
-    rating::{RatingQuery, RatingSortBy},
+use tak_server_app::{
+    domain::{
+        Pagination, RepoError, SortOrder,
+        rating::{RatingQuery, RatingSortBy},
+    },
+    workflow::account::get_account::GetAccountError,
 };
 use tokio::sync::Mutex;
 
@@ -29,8 +32,12 @@ pub async fn get_rating_by_name(
     Path(name): Path<String>,
     State(app_state): State<AppState>,
 ) -> Result<Json<JsonPlayerRatingResponse>, ServiceError> {
-    let player_id = match app_state.acl.get_player_id_by_username(&name).await {
-        Some(id) => id,
+    let (player_id, account) = match app_state
+        .acl
+        .get_account_and_player_id_by_username(&name)
+        .await
+    {
+        Some(res) => res,
         None => {
             return Err(ServiceError::NotFound(format!(
                 "Player with name '{}' not found",
@@ -38,6 +45,7 @@ pub async fn get_rating_by_name(
             )));
         }
     };
+
     let rating = match app_state
         .app
         .player_get_rating_use_case
@@ -52,26 +60,7 @@ pub async fn get_rating_by_name(
             )));
         }
     };
-    let account_id = match app_state
-        .app
-        .player_resolver_service
-        .resolve_account_id_by_player_id(player_id)
-        .await
-    {
-        Ok(account) => account,
-        Err(()) => {
-            return Err(ServiceError::NotFound(format!(
-                "Account for player '{}' not found",
-                name
-            )));
-        }
-    };
-    let Some(account) = app_state.auth.get_account(&account_id).await else {
-        return Err(ServiceError::NotFound(format!(
-            "Account for player '{}' not found",
-            name
-        )));
-    };
+
     let rating = JsonPlayerRatingResponse {
         name: name.clone(),
         rating: rating.rating.round(),
@@ -113,15 +102,15 @@ async fn query_ratings(
         .items
         .into_iter()
         .zip(usernames.into_iter())
-        .map(|(rating, account)| match account {
-            Ok(account) => (rating, account.username.clone(), account.is_bot()),
-            Err(e) => {
+        .filter_map(|(rating, account)| match account {
+            Ok(account) => Some((rating, account.username.clone(), account.is_bot())),
+            Err(GetAccountError::AccountNotFound) => None,
+            Err(GetAccountError::RepositoryError) => {
                 log::error!(
-                    "Failed to get account for player {}: {:?}",
+                    "Failed to get account for player {}: Repository error",
                     rating.player_id,
-                    e
                 );
-                (rating, "Unknown".to_string(), false)
+                None
             }
         })
         .collect::<Vec<_>>();

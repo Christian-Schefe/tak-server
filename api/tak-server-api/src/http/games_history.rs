@@ -5,7 +5,7 @@ use axum::{
     extract::{Path, Query, State},
 };
 use tak_core::{
-    TakAction, TakActionRecord, TakGameState, TakPlayer, TakPos, TakVariant, TakWinReason,
+    TakAction, TakActionRecord, TakGameOverState, TakPlayer, TakPos, TakVariant, TakWinReason,
     ptn::game_state_to_string,
 };
 use tak_server_app::{
@@ -108,43 +108,43 @@ pub async fn get_all(
             match res_str.as_str() {
                 "X-0" => Ok(TakWinReason::ALL
                     .iter()
-                    .map(|reason| TakGameState::Win {
+                    .map(|reason| TakGameOverState::Win {
                         winner: TakPlayer::White,
                         reason: reason.clone(),
                     })
                     .collect()),
-                "F-0" => Ok(vec![TakGameState::Win {
+                "F-0" => Ok(vec![TakGameOverState::Win {
                     winner: TakPlayer::White,
                     reason: TakWinReason::Flats,
                 }]),
-                "R-0" => Ok(vec![TakGameState::Win {
+                "R-0" => Ok(vec![TakGameOverState::Win {
                     winner: TakPlayer::White,
                     reason: TakWinReason::Road,
                 }]),
-                "1-0" => Ok(vec![TakGameState::Win {
+                "1-0" => Ok(vec![TakGameOverState::Win {
                     winner: TakPlayer::White,
                     reason: TakWinReason::Default,
                 }]),
                 "0-X" => Ok(TakWinReason::ALL
                     .iter()
-                    .map(|reason| TakGameState::Win {
+                    .map(|reason| TakGameOverState::Win {
                         winner: TakPlayer::Black,
                         reason: reason.clone(),
                     })
                     .collect()),
-                "0-F" => Ok(vec![TakGameState::Win {
+                "0-F" => Ok(vec![TakGameOverState::Win {
                     winner: TakPlayer::Black,
                     reason: TakWinReason::Flats,
                 }]),
-                "0-R" => Ok(vec![TakGameState::Win {
+                "0-R" => Ok(vec![TakGameOverState::Win {
                     winner: TakPlayer::Black,
                     reason: TakWinReason::Road,
                 }]),
-                "0-1" => Ok(vec![TakGameState::Win {
+                "0-1" => Ok(vec![TakGameOverState::Win {
                     winner: TakPlayer::Black,
                     reason: TakWinReason::Default,
                 }]),
-                "1/2-1/2" => Ok(vec![TakGameState::Draw]),
+                "1/2-1/2" => Ok(vec![TakGameOverState::Draw]),
                 _ => Err(ServiceError::BadRequest(
                     "Invalid game result filter".to_string(),
                 )),
@@ -233,7 +233,7 @@ pub async fn get_all(
         std::mem::swap(&mut game_filter.player_white, &mut game_filter.player_black);
         game_filter.game_states.as_mut().map(|states| {
             states.iter_mut().for_each(|state| match state {
-                TakGameState::Win { winner, .. } => {
+                TakGameOverState::Win { winner, .. } => {
                     *winner = match winner {
                         TakPlayer::White => TakPlayer::Black,
                         TakPlayer::Black => TakPlayer::White,
@@ -467,7 +467,11 @@ impl JsonGameRecord {
                 .map(|mv| action_record_to_database_string(mv))
                 .collect::<Vec<_>>()
                 .join(","),
-            result: game_state_to_string(&record.result),
+            result: record
+                .result
+                .as_ref()
+                .map(|x| game_state_to_string(x))
+                .unwrap_or_else(|| "0-0".to_string()),
             timer_time: record.settings.time_control.contingent.as_secs() as u32,
             timer_inc: record.settings.time_control.increment.as_secs() as u32,
             rating_white: record.white.rating.unwrap_or(0.0).round(),

@@ -42,12 +42,11 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
                 self.finalize_game_workflow.finalize_game(game).await;
                 ObserveOutcome::Finished
             }
-            CheckTimoutResult::NoTimeout {
-                white_remaining,
-                black_remaining,
-            } => ObserveOutcome::Continue(
-                white_remaining.min(black_remaining) + std::time::Duration::from_millis(100),
+            CheckTimoutResult::NoTimeout(remaining) => ObserveOutcome::Continue(
+                remaining.white_time.min(remaining.black_time)
+                    + std::time::Duration::from_millis(100),
             ),
+            CheckTimoutResult::GameNotFound => ObserveOutcome::Finished,
         }
     }
 }

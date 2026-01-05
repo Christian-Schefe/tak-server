@@ -1,10 +1,13 @@
 use std::time::Duration;
 
-use tak_core::{TakActionRecord, TakGameState};
+use tak_core::{TakActionRecord, TakGameOverState};
 
 use crate::{
     domain::{GameId, ListenerId, PlayerId},
-    workflow::{gameplay::GameView, matchmaking::SeekView},
+    workflow::{
+        gameplay::{FinishedGameView, OngoingGameView},
+        matchmaking::SeekView,
+    },
 };
 
 pub trait ListenerNotificationPort {
@@ -22,17 +25,17 @@ pub enum ListenerMessage {
         seek: SeekView,
     },
     GameStarted {
-        game: GameView,
+        game: OngoingGameView,
     },
     GameEnded {
-        game: GameView,
+        game: FinishedGameView,
     },
     PlayersOnline {
         players: Vec<PlayerId>,
     },
     GameOver {
         game_id: GameId,
-        game_state: TakGameState,
+        game_state: TakGameOverState,
     },
     GameAction {
         game_id: GameId,

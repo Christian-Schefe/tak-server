@@ -120,7 +120,7 @@ impl ProtocolV2Handler {
         if let Some(game) = self.app.game_get_ongoing_use_case.get_game(game_id)
             && let Some(player_id) = player_id
         {
-            return (game.white_id == player_id || game.black_id == player_id)
+            return (game.metadata.white_id == player_id || game.metadata.black_id == player_id)
                 && player_id != action_player_id;
         }
         false
@@ -141,15 +141,16 @@ impl ProtocolV2Handler {
             }
 
             ListenerMessage::GameStarted { game } => {
-                self.send_game_list_message(id, game, true).await;
+                self.send_game_list_message(id, &game.metadata, true).await;
                 if let Some(player_id) = player_id
-                    && (game.white_id == player_id || game.black_id == player_id)
+                    && (game.metadata.white_id == player_id || game.metadata.black_id == player_id)
                 {
-                    self.send_game_start_message(id, player_id, &game).await;
+                    self.send_game_start_message(id, player_id, &game.metadata)
+                        .await;
                 }
             }
             ListenerMessage::GameEnded { game } => {
-                self.send_game_list_message(id, game, false).await;
+                self.send_game_list_message(id, &game.metadata, false).await;
             }
 
             ListenerMessage::GameOver {
@@ -268,18 +269,23 @@ impl ProtocolV2Handler {
         }
         let games = self.app.game_list_ongoing_use_case.list_games();
         for game in games {
-            self.send_game_list_message(id, &game, true).await;
+            self.send_game_list_message(id, &game.metadata, true).await;
             if let Some(player_id) = player_id
-                && (game.white_id == player_id || game.black_id == player_id)
+                && (game.metadata.white_id == player_id || game.metadata.black_id == player_id)
             {
-                self.send_game_start_message(id, player_id, &game).await;
-
+                self.send_game_start_message(id, player_id, &game.metadata)
+                    .await;
                 for action in game.game.action_history() {
-                    self.send_game_action_message(id, game.id, action);
+                    self.send_game_action_message(id, game.metadata.id, action);
                 }
                 let now = Instant::now();
                 let (remaining_white, remaining_black) = game.game.get_time_remaining_both(now);
-                self.send_time_update_message(id, game.id, remaining_white, remaining_black);
+                self.send_time_update_message(
+                    id,
+                    game.metadata.id,
+                    remaining_white,
+                    remaining_black,
+                );
             }
         }
     }

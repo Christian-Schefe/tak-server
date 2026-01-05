@@ -7,7 +7,7 @@ use sea_orm::{
 };
 use tak_persistence_sea_orm_entites::rating;
 use tak_server_app::domain::{
-    PaginatedResponse, PlayerId, RepoError, RepoUpdateError, SortOrder,
+    PaginatedResponse, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError, SortOrder,
     rating::{PlayerRating, RatingQuery, RatingRepository, RatingSortBy},
 };
 
@@ -70,45 +70,24 @@ impl RatingRepositoryImpl {
 
 #[async_trait::async_trait]
 impl RatingRepository for RatingRepositoryImpl {
-    async fn get_or_create_player_rating(
+    async fn get_player_rating(
         &self,
         player_id: PlayerId,
-        create_fn: impl Fn() -> PlayerRating + Send + 'static,
-    ) -> Result<PlayerRating, RepoError> {
+    ) -> Result<PlayerRating, RepoRetrieveError> {
         if let Some(cached) = self.ratings_cache.get(&player_id) {
             return Ok(cached);
         }
-        let res = self
-            .db
-            .transaction::<_, PlayerRating, RepoError>(|c| {
-                Box::pin(async move {
-                    let rating_model = rating::Entity::find_by_id(player_id.0)
-                        .one(c)
-                        .await
-                        .map_err(|e| RepoError::StorageError(e.to_string()))?;
-
-                    if let Some(model) = rating_model {
-                        let player_rating = Self::model_to_rating(model);
-                        return Ok(player_rating);
-                    } else {
-                        let new_rating = create_fn();
-                        let new_model = Self::rating_to_model(player_id, &new_rating);
-                        new_model
-                            .insert(c)
-                            .await
-                            .map_err(|e| RepoError::StorageError(e.to_string()))?;
-                        Ok(new_rating)
-                    }
-                })
-            })
-            .await;
-        match res {
-            Ok(player_rating) => {
-                self.ratings_cache.insert(player_id, player_rating.clone());
-                Ok(player_rating)
+        let rating_model = rating::Entity::find_by_id(player_id.0)
+            .one(&self.db)
+            .await
+            .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
+        match rating_model {
+            Some(model) => {
+                let rating = Self::model_to_rating(model);
+                self.ratings_cache.insert(player_id, rating.clone());
+                Ok(rating)
             }
-            Err(TransactionError::Transaction(e)) => Err(e),
-            Err(TransactionError::Connection(e)) => Err(RepoError::StorageError(e.to_string())),
+            None => Err(RepoRetrieveError::NotFound),
         }
     }
 
@@ -116,7 +95,10 @@ impl RatingRepository for RatingRepositoryImpl {
         &self,
         white: PlayerId,
         black: PlayerId,
-        calc_fn: impl FnOnce(PlayerRating, PlayerRating) -> (PlayerRating, PlayerRating, R)
+        calc_fn: impl FnOnce(
+            Option<PlayerRating>,
+            Option<PlayerRating>,
+        ) -> (PlayerRating, PlayerRating, R)
         + Send
         + 'static,
     ) -> Result<R, RepoUpdateError> {
@@ -133,16 +115,11 @@ impl RatingRepository for RatingRepositoryImpl {
                         .await
                         .map_err(|e| RepoUpdateError::StorageError(e.to_string()))?;
 
-                    let white_rating = if let Some(model) = white_rating_model {
-                        Self::model_to_rating(model)
-                    } else {
-                        return Err(RepoUpdateError::NotFound);
-                    };
-                    let black_rating = if let Some(model) = black_rating_model {
-                        Self::model_to_rating(model)
-                    } else {
-                        return Err(RepoUpdateError::NotFound);
-                    };
+                    let white_rating = white_rating_model.map(|model| Self::model_to_rating(model));
+                    let black_rating = black_rating_model.map(|model| Self::model_to_rating(model));
+
+                    let has_white_rating = white_rating.is_some();
+                    let has_black_rating = black_rating.is_some();
 
                     let (new_white_rating, new_black_rating, res) =
                         calc_fn(white_rating, black_rating);
@@ -150,15 +127,29 @@ impl RatingRepository for RatingRepositoryImpl {
                     let white_active_model = Self::rating_to_model(white, &new_white_rating);
                     let black_active_model = Self::rating_to_model(black, &new_black_rating);
 
-                    white_active_model
-                        .update(c)
-                        .await
-                        .map_err(|e| RepoUpdateError::StorageError(e.to_string()))?;
-                    black_active_model
-                        .update(c)
-                        .await
-                        .map_err(|e| RepoUpdateError::StorageError(e.to_string()))?;
+                    if has_white_rating {
+                        white_active_model
+                            .update(c)
+                            .await
+                            .map_err(|e| RepoUpdateError::StorageError(e.to_string()))?;
+                    } else {
+                        white_active_model
+                            .insert(c)
+                            .await
+                            .map_err(|e| RepoUpdateError::StorageError(e.to_string()))?;
+                    }
 
+                    if has_black_rating {
+                        black_active_model
+                            .update(c)
+                            .await
+                            .map_err(|e| RepoUpdateError::StorageError(e.to_string()))?;
+                    } else {
+                        black_active_model
+                            .insert(c)
+                            .await
+                            .map_err(|e| RepoUpdateError::StorageError(e.to_string()))?;
+                    }
                     Ok(res)
                 })
             })

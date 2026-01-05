@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, TimeDelta, Utc};
-use tak_core::{TakActionRecord, TakGameSettings, TakGameState, TakPlayer};
+use tak_core::{TakActionRecord, TakGameOverState, TakGameSettings, TakPlayer};
 
 use crate::domain::{
-    GameType, PaginatedResponse, Pagination, PlayerId, RepoError, RepoUpdateError, SortOrder,
-    game::Game, game_history::GameRatingInfo,
+    GameType, PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError,
+    RepoUpdateError, SortOrder, game::FinishedGame, game_history::GameRatingInfo,
 };
 
 #[derive(Clone, Debug)]
@@ -37,11 +37,10 @@ impl PlayerRating {
 
 #[async_trait::async_trait]
 pub trait RatingRepository {
-    async fn get_or_create_player_rating(
+    async fn get_player_rating(
         &self,
         player_id: PlayerId,
-        create_fn: impl Fn() -> PlayerRating + Send + 'static,
-    ) -> Result<PlayerRating, RepoError>;
+    ) -> Result<PlayerRating, RepoRetrieveError>;
     async fn query_ratings(
         &self,
         query: RatingQuery,
@@ -50,7 +49,10 @@ pub trait RatingRepository {
         &self,
         white: PlayerId,
         black: PlayerId,
-        calc_fn: impl FnOnce(PlayerRating, PlayerRating) -> (PlayerRating, PlayerRating, R)
+        calc_fn: impl FnOnce(
+            Option<PlayerRating>,
+            Option<PlayerRating>,
+        ) -> (PlayerRating, PlayerRating, R)
         + Send
         + 'static,
     ) -> Result<R, RepoUpdateError>;
@@ -73,7 +75,7 @@ pub trait RatingService {
     fn get_current_rating(&self, player_rating: &PlayerRating, date: DateTime<Utc>) -> f64;
     fn calculate_ratings(
         &self,
-        game: &Game,
+        game: &FinishedGame,
         white_rating: &mut PlayerRating,
         black_rating: &mut PlayerRating,
     ) -> Option<GameRatingInfo>;
@@ -98,7 +100,6 @@ impl RatingServiceImpl {
         &self,
         settings: &TakGameSettings,
         game_type: GameType,
-        result: &TakGameState,
         moves: &Vec<TakActionRecord>,
     ) -> bool {
         match game_type {
@@ -131,11 +132,6 @@ impl RatingServiceImpl {
             return false;
         }
 
-        match result {
-            TakGameState::Ongoing => return false,
-            _ => {}
-        }
-
         if moves.len() <= 6 {
             return false;
         }
@@ -156,7 +152,9 @@ impl RatingServiceImpl {
         }
         let time_decay = rating
             .rating_age
-            .map(|dt| (date.signed_duration_since(dt).num_milliseconds() as f64) / rating_retention)
+            .map(|dt| {
+                (date.signed_duration_since(dt).num_milliseconds().max(0) as f64) / rating_retention
+            })
             .unwrap_or(1.0);
         let participation = (20.0 * (0.5f64).powf(time_decay)) / participation_limit;
 
@@ -196,7 +194,9 @@ impl RatingServiceImpl {
 
         let time_decay = player
             .rating_age
-            .map(|dt| (date.signed_duration_since(dt).num_milliseconds() as f64) / rating_retention)
+            .map(|dt| {
+                (date.signed_duration_since(dt).num_milliseconds().max(0) as f64) / rating_retention
+            })
             .unwrap_or(1.0);
         let participation = f64::min(
             20.0,
@@ -267,34 +267,33 @@ impl RatingService for RatingServiceImpl {
 
     fn calculate_ratings(
         &self,
-        game: &Game,
+        game: &FinishedGame,
         white_rating: &mut PlayerRating,
         black_rating: &mut PlayerRating,
     ) -> Option<GameRatingInfo> {
-        let white_id = game.white_id;
-        let black_id = game.black_id;
+        let metadata = &game.metadata;
+        let white_id = metadata.white_id;
+        let black_id = metadata.black_id;
         let result = game.game.game_state();
 
         if !self.is_game_eligible_for_rating(
-            &game.settings,
-            game.game_type,
-            &result,
+            &metadata.settings,
+            metadata.game_type,
             game.game.action_history(),
         ) {
             return None;
         }
 
         let result = match &result {
-            TakGameState::Win { winner, .. } => match winner {
+            TakGameOverState::Win { winner, .. } => match winner {
                 TakPlayer::White => 1.0,
                 TakPlayer::Black => 0.0,
             },
-            TakGameState::Draw => 0.5,
-            _ => return None,
+            TakGameOverState::Draw => 0.5,
         };
 
-        let old_white_rating_decayed = self.get_current_rating(&white_rating, game.date);
-        let old_black_rating_decayed = self.get_current_rating(&black_rating, game.date);
+        let old_white_rating_decayed = self.get_current_rating(&white_rating, metadata.date);
+        let old_black_rating_decayed = self.get_current_rating(&black_rating, metadata.date);
 
         let sw = 10f64.powf(white_rating.rating / 400.0);
         let sb = 10f64.powf(black_rating.rating / 400.0);
@@ -309,7 +308,7 @@ impl RatingService for RatingServiceImpl {
             adjustment,
             fairness,
             fatigue_factor,
-            game.date,
+            metadata.date,
         );
         Self::update_rating_and_fatigue(
             black_rating,
@@ -317,11 +316,11 @@ impl RatingService for RatingServiceImpl {
             -adjustment,
             fairness,
             fatigue_factor,
-            game.date,
+            metadata.date,
         );
 
-        let new_white_rating_decayed = self.get_current_rating(&white_rating, game.date);
-        let new_black_rating_decayed = self.get_current_rating(&black_rating, game.date);
+        let new_white_rating_decayed = self.get_current_rating(&white_rating, metadata.date);
+        let new_black_rating_decayed = self.get_current_rating(&black_rating, metadata.date);
 
         Some(GameRatingInfo {
             rating_change_white: new_white_rating_decayed - old_white_rating_decayed,

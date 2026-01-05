@@ -268,7 +268,7 @@ impl<
             match self.email_port.send_email(&email, &subject, &body) {
                 Ok(_) => {}
                 Err(e) => {
-                    log::error!("Failed to send ban email to {}: {}", email, e);
+                    log::error!("Failed to send ban email to {}: {:?}", email, e);
                 }
             }
         }

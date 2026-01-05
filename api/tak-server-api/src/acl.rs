@@ -27,7 +27,10 @@ impl LegacyAPIAntiCorruptionLayer {
         }
     }
 
-    pub async fn get_player_id_by_username(&self, username: &str) -> Option<PlayerId> {
+    pub async fn get_account_and_player_id_by_username(
+        &self,
+        username: &str,
+    ) -> Option<(PlayerId, Account)> {
         let account = self.auth.find_by_username(username).await?;
         let player_id = self
             .app
@@ -35,7 +38,7 @@ impl LegacyAPIAntiCorruptionLayer {
             .resolve_player_id_by_account_id(&account.account_id)
             .await
             .ok()?;
-        Some(player_id)
+        Some((player_id, account))
     }
 
     pub async fn login_username_password(
@@ -81,7 +84,9 @@ impl LegacyAPIAntiCorruptionLayer {
         The Playtak Team",
             username, username, temp_password
         );
-        self.email_port.send_email(to, &subject, &body)?;
+        self.email_port
+            .send_email(to, &subject, &body)
+            .map_err(|e| format!("Failed to send email: {:?}", e))?;
         Ok(())
     }
 

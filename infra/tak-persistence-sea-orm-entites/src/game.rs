@@ -20,7 +20,7 @@ pub struct Model {
     pub rating_change_black: Option<f64>,
 
     pub notation: serde_json::Value,
-    pub result: String,
+    pub result: Option<String>,
     pub clock_contingent: i32,
     pub clock_increment: i32,
     pub is_unrated: bool,

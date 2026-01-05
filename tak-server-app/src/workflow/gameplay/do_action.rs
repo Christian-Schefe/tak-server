@@ -6,8 +6,8 @@ use crate::{
     domain::{
         GameId, PlayerId,
         game::{
-            DoActionError, DoActionSuccess, Game, GameService, OfferDrawError, OfferDrawSuccess,
-            RequestUndoError, RequestUndoSuccess, ResignError,
+            DoActionResult, FinishedGame, GameService, OfferDrawResult, RequestUndoResult,
+            ResignResult,
         },
     },
     ports::notification::ListenerMessage,
@@ -24,23 +24,45 @@ pub trait DoActionUseCase {
         player_id: PlayerId,
         action: TakAction,
     ) -> Result<(), DoActionError>;
-    async fn offer_draw(&self, game_id: GameId, player_id: PlayerId) -> Result<(), OfferDrawError>;
-    async fn retract_draw_offer(
+    async fn offer_draw(
         &self,
         game_id: GameId,
         player_id: PlayerId,
+        offer_status: bool,
     ) -> Result<(), OfferDrawError>;
     async fn request_undo(
         &self,
         game_id: GameId,
         player_id: PlayerId,
-    ) -> Result<(), RequestUndoError>;
-    async fn retract_undo_request(
-        &self,
-        game_id: GameId,
-        player_id: PlayerId,
+        offer_status: bool,
     ) -> Result<(), RequestUndoError>;
     async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), ResignError>;
+}
+
+pub enum DoActionError {
+    GameNotFound,
+    NotAPlayerInGame,
+    InvalidAction(tak_core::DoActionError),
+    NotPlayersTurn,
+    GameAlreadyEnded,
+}
+
+pub enum OfferDrawError {
+    GameNotFound,
+    NotAPlayerInGame,
+    GameAlreadyEnded,
+}
+
+pub enum RequestUndoError {
+    GameNotFound,
+    NotAPlayerInGame,
+    GameAlreadyEnded,
+}
+
+pub enum ResignError {
+    GameNotFound,
+    NotAPlayerInGame,
+    GameAlreadyEnded,
 }
 
 pub struct DoActionUseCaseImpl<G: GameService, NP: NotifyPlayerWorkflow, F: FinalizeGameWorkflow> {
@@ -66,20 +88,34 @@ impl<G: GameService, NP: NotifyPlayerWorkflow, F: FinalizeGameWorkflow>
 
     async fn send_game_time_update(&self, game_id: GameId, now: Instant) {
         if let Some(game) = self.game_service.get_game_by_id(game_id) {
-            self.send_game_time_update_for_game(&game, now).await;
+            let time_remaining = game.get_time_remaining(now);
+            let time_update_msg = ListenerMessage::GameTimeUpdate {
+                game_id,
+                white_time: time_remaining.white_time,
+                black_time: time_remaining.black_time,
+            };
+            self.notify_player_workflow
+                .notify_players_and_observers_of_game(&game.metadata, time_update_msg)
+                .await;
         }
     }
 
-    async fn send_game_time_update_for_game(&self, game: &Game, now: Instant) {
-        let time_remaining = game.get_time_remaining(now);
+    async fn send_game_time_update_for_finished_game(&self, game: &FinishedGame) {
+        let time_remaining = game.get_time_remaining();
         let time_update_msg = ListenerMessage::GameTimeUpdate {
-            game_id: game.game_id,
+            game_id: game.metadata.game_id,
             white_time: time_remaining.white_time,
             black_time: time_remaining.black_time,
         };
         self.notify_player_workflow
-            .notify_players_and_observers_of_game(game, time_update_msg)
+            .notify_players_and_observers_of_game(&game.metadata, time_update_msg)
             .await;
+    }
+
+    async fn handle_ended_game(&self, ended_game: FinishedGame) {
+        self.send_game_time_update_for_finished_game(&ended_game)
+            .await;
+        self.finalize_game_workflow.finalize_game(ended_game).await;
     }
 }
 
@@ -103,15 +139,29 @@ impl<
             game_id
         );
         let now = Instant::now();
-        let (action_record, maybe_ended_game) = match self
-            .game_service
-            .do_action(game_id, player_id, action, now)?
-        {
-            DoActionSuccess::ActionPerformed(action_record) => (action_record, None),
-            DoActionSuccess::GameOver(action_record, ended_game) => {
-                (action_record, Some(ended_game))
-            }
-        };
+        let (action_record, maybe_ended_game) =
+            match self.game_service.do_action(game_id, player_id, action, now) {
+                DoActionResult::ActionPerformed(action_record) => (action_record, None),
+                DoActionResult::GameOver(action_record, ended_game) => {
+                    (action_record, Some(ended_game))
+                }
+                DoActionResult::Timeout(ended_game) => {
+                    self.handle_ended_game(ended_game).await;
+                    return Err(DoActionError::GameAlreadyEnded);
+                }
+                DoActionResult::NotAPlayerInGame => {
+                    return Err(DoActionError::NotAPlayerInGame);
+                }
+                DoActionResult::InvalidAction(e) => {
+                    return Err(DoActionError::InvalidAction(e));
+                }
+                DoActionResult::NotPlayersTurn => {
+                    return Err(DoActionError::NotPlayersTurn);
+                }
+                DoActionResult::GameNotFound => {
+                    return Err(DoActionError::GameNotFound);
+                }
+            };
 
         let msg = ListenerMessage::GameAction {
             game_id,
@@ -122,12 +172,10 @@ impl<
         // Needs different notification flow as game domain removes game once ended
         if let Some(ended_game) = maybe_ended_game {
             self.notify_player_workflow
-                .notify_players_and_observers_of_game(&ended_game, msg)
+                .notify_players_and_observers_of_game(&ended_game.metadata, msg)
                 .await;
 
-            self.send_game_time_update_for_game(&ended_game, now).await;
-
-            self.finalize_game_workflow.finalize_game(ended_game).await;
+            self.handle_ended_game(ended_game).await;
         } else {
             self.notify_player_workflow
                 .notify_players_and_observers(game_id, msg)
@@ -139,47 +187,45 @@ impl<
         Ok(())
     }
 
-    async fn offer_draw(&self, game_id: GameId, player_id: PlayerId) -> Result<(), OfferDrawError> {
-        let now = Instant::now();
-        match self.game_service.offer_draw(game_id, player_id, now)? {
-            OfferDrawSuccess::DrawOffered(changed) => {
-                if changed {
-                    let msg = ListenerMessage::GameDrawOffered {
-                        game_id,
-                        offering_player_id: player_id,
-                    };
-                    self.notify_player_workflow
-                        .notify_players_and_observers(game_id, msg)
-                        .await;
-                }
-            }
-            OfferDrawSuccess::GameDrawn(ended_game) => {
-                self.send_game_time_update_for_game(&ended_game, now).await;
-                self.finalize_game_workflow.finalize_game(ended_game).await;
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn retract_draw_offer(
+    async fn offer_draw(
         &self,
         game_id: GameId,
         player_id: PlayerId,
+        offer_status: bool,
     ) -> Result<(), OfferDrawError> {
         let now = Instant::now();
-        let did_retract = self
+        match self
             .game_service
-            .retract_draw_offer(game_id, player_id, now)?;
-
-        if did_retract {
-            let msg = ListenerMessage::GameDrawOfferRetracted {
-                game_id,
-                retracting_player_id: player_id,
-            };
-            self.notify_player_workflow
-                .notify_players_and_observers(game_id, msg)
-                .await;
+            .offer_draw(game_id, player_id, now, offer_status)
+        {
+            OfferDrawResult::Success => {
+                let msg = if offer_status {
+                    ListenerMessage::GameDrawOffered {
+                        game_id,
+                        offering_player_id: player_id,
+                    }
+                } else {
+                    ListenerMessage::GameDrawOfferRetracted {
+                        game_id,
+                        retracting_player_id: player_id,
+                    }
+                };
+                self.notify_player_workflow
+                    .notify_players_and_observers(game_id, msg)
+                    .await;
+            }
+            OfferDrawResult::NotAPlayerInGame => {
+                return Err(OfferDrawError::NotAPlayerInGame);
+            }
+            OfferDrawResult::Unchanged => {}
+            OfferDrawResult::GameDrawn(ended_game) => {
+                self.handle_ended_game(ended_game).await;
+            }
+            OfferDrawResult::GameNotFound => return Err(OfferDrawError::GameNotFound),
+            OfferDrawResult::Timeout(ended_game) => {
+                self.handle_ended_game(ended_game).await;
+                return Err(OfferDrawError::GameAlreadyEnded);
+            }
         }
 
         Ok(())
@@ -189,60 +235,65 @@ impl<
         &self,
         game_id: GameId,
         player_id: PlayerId,
+        request_status: bool,
     ) -> Result<(), RequestUndoError> {
         let now = Instant::now();
-        match self.game_service.request_undo(game_id, player_id, now)? {
-            RequestUndoSuccess::MoveUndone => {
+        match self
+            .game_service
+            .request_undo(game_id, player_id, now, request_status)
+        {
+            RequestUndoResult::MoveUndone => {
                 let msg = ListenerMessage::GameActionUndone { game_id };
                 self.notify_player_workflow
                     .notify_players_and_observers(game_id, msg)
                     .await;
                 self.send_game_time_update(game_id, now).await;
             }
-            RequestUndoSuccess::UndoRequested(changed) => {
-                if changed {
-                    let msg = ListenerMessage::GameUndoRequested {
+            RequestUndoResult::Success => {
+                let msg = if request_status {
+                    ListenerMessage::GameUndoRequested {
                         game_id,
                         requesting_player_id: player_id,
-                    };
-                    self.notify_player_workflow
-                        .notify_players_and_observers(game_id, msg)
-                        .await;
-                }
+                    }
+                } else {
+                    ListenerMessage::GameUndoRequestRetracted {
+                        game_id,
+                        retracting_player_id: player_id,
+                    }
+                };
+                self.notify_player_workflow
+                    .notify_players_and_observers(game_id, msg)
+                    .await;
+            }
+            RequestUndoResult::Unchanged => {}
+            RequestUndoResult::NotAPlayerInGame => {
+                return Err(RequestUndoError::NotAPlayerInGame);
+            }
+            RequestUndoResult::GameNotFound => return Err(RequestUndoError::GameNotFound),
+            RequestUndoResult::Timeout(ended_game) => {
+                self.handle_ended_game(ended_game).await;
+                return Err(RequestUndoError::GameAlreadyEnded);
             }
         }
 
         Ok(())
     }
 
-    async fn retract_undo_request(
-        &self,
-        game_id: GameId,
-        player_id: PlayerId,
-    ) -> Result<(), RequestUndoError> {
-        let now = Instant::now();
-        let did_retract = self
-            .game_service
-            .retract_undo_request(game_id, player_id, now)?;
-
-        if did_retract {
-            let msg = ListenerMessage::GameUndoRequestRetracted {
-                game_id,
-                retracting_player_id: player_id,
-            };
-            self.notify_player_workflow
-                .notify_players_and_observers(game_id, msg)
-                .await;
-        }
-        Ok(())
-    }
-
     async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), ResignError> {
         let now = Instant::now();
-        let ended_game = self.game_service.resign(game_id, player_id, now)?;
-
-        self.send_game_time_update_for_game(&ended_game, now).await;
-        self.finalize_game_workflow.finalize_game(ended_game).await;
+        match self.game_service.resign(game_id, player_id, now) {
+            ResignResult::GameOver(ended_game) => {
+                self.handle_ended_game(ended_game).await;
+            }
+            ResignResult::Timeout(ended_game) => {
+                self.handle_ended_game(ended_game).await;
+                return Err(ResignError::GameAlreadyEnded);
+            }
+            ResignResult::NotAPlayerInGame => {
+                return Err(ResignError::NotAPlayerInGame);
+            }
+            ResignResult::GameNotFound => return Err(ResignError::GameNotFound),
+        }
 
         Ok(())
     }
