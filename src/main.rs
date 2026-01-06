@@ -13,7 +13,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
     filter::threshold::ThresholdFilter,
 };
-use tak_auth_ory::OryAuthenticationService;
+use tak_auth_ory::AuthenticationService;
 use tak_email_lettre::LettreEmailAdapter;
 use tak_events_google_sheets::NoopEventRepository;
 use tak_persistence_sea_orm::{
@@ -123,7 +123,7 @@ async fn main() {
     let email_adapter = Arc::new(LettreEmailAdapter::new());
     let player_connection_adapter = transport_service_impl.clone();
     let listener_notification_adapter = transport_service_impl.clone();
-    let authentication_service = Arc::new(OryAuthenticationService::new());
+    let authentication_service = Arc::new(AuthenticationService::new());
 
     let app = Arc::new(
         build_application(

@@ -15,7 +15,7 @@ use axum::{
 use dashmap::DashMap;
 use futures_util::{SinkExt, StreamExt};
 
-use more_dashmap::one_one::OneOneDashMap;
+use more_concurrent_maps::bijection::ConcurrentBiMap;
 use tak_server_app::{
     Application,
     domain::{AccountId, ListenerId, PlayerId},
@@ -59,7 +59,7 @@ pub struct TransportServiceImpl {
     notification_listeners: Arc<DashMap<ListenerId, UnboundedSender<ServerMessage>>>,
     client_senders: Arc<DashMap<ListenerId, (UnboundedSender<String>, CancellationToken)>>,
     client_handlers: Arc<DashMap<ListenerId, Protocol>>,
-    account_associations: Arc<OneOneDashMap<ListenerId, AccountId>>,
+    account_associations: Arc<ConcurrentBiMap<ListenerId, AccountId>>,
     last_activity: Arc<DashMap<ListenerId, Instant>>,
 }
 
@@ -69,7 +69,7 @@ impl TransportServiceImpl {
             notification_listeners: Arc::new(DashMap::new()),
             client_senders: Arc::new(DashMap::new()),
             client_handlers: Arc::new(DashMap::new()),
-            account_associations: Arc::new(OneOneDashMap::new()),
+            account_associations: Arc::new(ConcurrentBiMap::new()),
             last_activity: Arc::new(DashMap::new()),
         }
     }
@@ -79,7 +79,7 @@ impl TransportServiceImpl {
         self.client_handlers.remove(&id);
         self.last_activity.remove(&id);
         self.notification_listeners.remove(&id);
-        let account_id = self.account_associations.remove_by_key(&id);
+        let account_id = self.account_associations.remove_by_left(&id);
         if let Some(account_id) = account_id {
             let app = APPLICATION.get().unwrap();
             if let Ok(player_id) = app
@@ -318,10 +318,10 @@ impl TransportServiceImpl {
         id: ListenerId,
         account_id: AccountId,
     ) -> Result<(), String> {
-        if self.account_associations.contains_key(&id) {
+        if self.account_associations.contains_left(&id) {
             return Err(format!("Account {} already logged in", account_id));
         }
-        if let Some(prev_client_id) = self.account_associations.get_by_value(&account_id) {
+        if let Some(prev_client_id) = self.account_associations.get_by_right(&account_id) {
             self.close_with_reason(prev_client_id, DisconnectReason::NewSession)
                 .await;
             // call on_disconnect directly to clean up immediately
@@ -357,7 +357,7 @@ impl TransportServiceImpl {
     }
 
     pub fn get_associated_account(&self, id: ListenerId) -> Option<AccountId> {
-        self.account_associations.get_by_key(&id)
+        self.account_associations.get_by_left(&id)
     }
 
     pub async fn get_associated_player_and_account(
@@ -365,7 +365,7 @@ impl TransportServiceImpl {
         id: ListenerId,
     ) -> Option<(PlayerId, AccountId)> {
         let app = APPLICATION.get().unwrap();
-        let account_id = self.account_associations.get_by_key(&id)?;
+        let account_id = self.account_associations.get_by_left(&id)?;
         let player_id = app
             .player_resolver_service
             .resolve_player_id_by_account_id(&account_id)
@@ -559,7 +559,7 @@ pub enum DisconnectReason {
 #[async_trait::async_trait]
 impl ListenerNotificationPort for TransportServiceImpl {
     fn notify_listener(&self, listener: ListenerId, message: ListenerMessage) {
-        if !self.account_associations.contains_key(&listener) {
+        if !self.account_associations.contains_left(&listener) {
             return;
         }
         if let Some(sender) = self.notification_listeners.get(&listener) {
@@ -584,7 +584,7 @@ impl ListenerNotificationPort for TransportServiceImpl {
         let message = ServerMessage::Notification(message);
         for entry in self.notification_listeners.iter() {
             let listener_id = *entry.key();
-            if !self.account_associations.contains_key(&listener_id) {
+            if !self.account_associations.contains_left(&listener_id) {
                 continue;
             }
             let sender = entry.value();
@@ -612,7 +612,7 @@ impl PlayerConnectionPort for TransportServiceImpl {
         else {
             return None;
         };
-        self.account_associations.get_by_value(&account_id)
+        self.account_associations.get_by_right(&account_id)
     }
 }
 

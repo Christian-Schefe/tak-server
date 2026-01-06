@@ -24,10 +24,12 @@ use crate::{
     services::player_resolver::{PlayerResolverService, PlayerResolverServiceImpl},
     workflow::{
         account::{
+            cleanup_guests::GuestCleanupJob,
             get_account::{GetAccountWorkflow, GetAccountWorkflowImpl},
             get_profile::{GetProfileUseCase, GetProfileUseCaseImpl},
             get_snapshot::{GetSnapshotWorkflow, GetSnapshotWorkflowImpl},
             moderate::{ModeratePlayerUseCase, ModeratePlayerUseCaseImpl, ModerationPolicies},
+            remove_account::RemoveAccountWorkflowImpl,
         },
         chat::{
             message::{ChatMessageUseCase, ChatMessageUseCaseImpl},
@@ -187,9 +189,17 @@ pub async fn build_application<
         get_snapshot_workflow.clone(),
     ));
 
+    let remove_account_workflow =
+        Arc::new(RemoveAccountWorkflowImpl::new(player_repository.clone()));
+
     let match_cleanup_job = MatchCleanupJob::new(match_service.clone());
+    let guest_cleanup_job = GuestCleanupJob::new(
+        authentication_service.clone(),
+        remove_account_workflow.clone(),
+    );
+
     let jobs = tokio::spawn(async move {
-        futures::join!(match_cleanup_job.run());
+        futures::join!(match_cleanup_job.run(), guest_cleanup_job.run());
     });
 
     let application = Application {

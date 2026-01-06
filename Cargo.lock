@@ -1882,10 +1882,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "more-dashmap"
+name = "more-concurrent-maps"
 version = "0.1.0"
 dependencies = [
- "dashmap",
+ "parking_lot",
 ]
 
 [[package]]
@@ -3652,7 +3652,7 @@ dependencies = [
  "futures",
  "futures-util",
  "log",
- "more-dashmap",
+ "more-concurrent-maps",
  "passwords",
  "serde",
  "serde_json",
@@ -3674,7 +3674,7 @@ dependencies = [
  "dashmap",
  "futures",
  "log",
- "more-dashmap",
+ "more-concurrent-maps",
  "rand 0.9.2",
  "rustrict",
  "tak-core",

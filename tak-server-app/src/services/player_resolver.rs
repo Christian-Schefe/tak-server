@@ -32,6 +32,7 @@ impl<PAM: PlayerAccountMappingRepository + Send + Sync + 'static> PlayerResolver
         &self,
         account_id: &AccountId,
     ) -> Result<PlayerId, ()> {
+        println!("Resolving player id for account id: {:?}", account_id);
         match self
             .player_account_mapping_repository
             .get_or_create_player_id(account_id, || Player::new().player_id)

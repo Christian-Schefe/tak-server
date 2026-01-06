@@ -62,7 +62,7 @@ impl<
     async fn accept_seek(&self, player: PlayerId, seek_id: SeekId) -> Result<(), AcceptSeekError> {
         let seek = self
             .seek_service
-            .cancel_seek(seek_id)
+            .remove_seek(seek_id)
             .ok_or(AcceptSeekError::SeekNotFound)?;
         let message = ListenerMessage::SeekCanceled {
             seek: (&seek).into(),

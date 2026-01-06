@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use passwords::PasswordGenerator;
-use tak_auth_ory::OryAuthenticationService;
+use tak_auth_ory::AuthenticationService;
 use tak_server_app::{
     Application,
     domain::PlayerId,
@@ -10,14 +10,14 @@ use tak_server_app::{
 
 pub struct LegacyAPIAntiCorruptionLayer {
     app: Arc<Application>,
-    auth: Arc<OryAuthenticationService>,
+    auth: Arc<AuthenticationService>,
     email_port: Arc<dyn EmailPort + Send + Sync + 'static>,
 }
 
 impl LegacyAPIAntiCorruptionLayer {
     pub fn new(
         app: Arc<Application>,
-        auth: Arc<OryAuthenticationService>,
+        auth: Arc<AuthenticationService>,
         email_port: Arc<dyn EmailPort + Send + Sync + 'static>,
     ) -> Self {
         Self {

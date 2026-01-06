@@ -13,7 +13,7 @@ members = [
     "infra/tak-events-google-sheets",
     "infra/tak-persistence-sea-orm",
     "infra/tak-persistence-sea-orm-entites",
-    "more-dashmap",
+    "more-concurrent-maps",
     "tak-core",
     "tak-server-app",
 ]
