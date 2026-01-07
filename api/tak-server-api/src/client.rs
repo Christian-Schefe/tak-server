@@ -1,4 +1,5 @@
 use std::{
+    collections::{HashMap, HashSet},
     sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
@@ -15,7 +16,7 @@ use axum::{
 use dashmap::DashMap;
 use futures_util::{SinkExt, StreamExt};
 
-use more_concurrent_maps::bijection::ConcurrentBiMap;
+use parking_lot::RwLock;
 use tak_server_app::{
     Application,
     domain::{AccountId, ListenerId, PlayerId},
@@ -34,6 +35,7 @@ use tokio_util::{
     codec::{Framed, LinesCodec},
     sync::CancellationToken,
 };
+use uuid::Uuid;
 
 use crate::{
     acl::LegacyAPIAntiCorruptionLayer,
@@ -54,33 +56,150 @@ pub enum ServerMessage {
 static APPLICATION: OnceLock<Arc<Application>> = OnceLock::new();
 static PROTOCOL_SERVICE: OnceLock<Arc<ProtocolService>> = OnceLock::new();
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ConnectionId(Uuid);
+
+impl ConnectionId {
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
+
+impl std::fmt::Display for ConnectionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+pub struct ClientConnection {
+    id: ConnectionId,
+    sender: UnboundedSender<String>,
+    cancellation_token: CancellationToken,
+    last_activity: Instant,
+    protocol: Protocol,
+}
+
+pub struct Client {
+    server_message_handler: UnboundedSender<ServerMessage>,
+    connections: HashSet<ConnectionId>,
+    account_id: AccountId,
+}
+
+pub struct ClientRegistry {
+    clients: HashMap<ListenerId, Client>,
+    connection_to_listener: HashMap<ConnectionId, ListenerId>,
+    account_to_listener: HashMap<AccountId, ListenerId>,
+    connections: HashMap<ConnectionId, ClientConnection>,
+}
+
+impl ClientRegistry {
+    pub fn new() -> Self {
+        Self {
+            clients: HashMap::new(),
+            account_to_listener: HashMap::new(),
+            connection_to_listener: HashMap::new(),
+            connections: HashMap::new(),
+        }
+    }
+
+    fn refresh_last_activity(&mut self, connection_id: &ConnectionId) {
+        if let Some(conn) = self.connections.get_mut(connection_id) {
+            conn.last_activity = Instant::now();
+        }
+    }
+
+    fn set_protocol(&mut self, connection_id: &ConnectionId, protocol: Protocol) {
+        if let Some(conn) = self.connections.get_mut(connection_id) {
+            conn.protocol = protocol;
+        }
+    }
+
+    fn get_listener(&self, account_id: &AccountId) -> Option<&ListenerId> {
+        self.account_to_listener.get(account_id)
+    }
+
+    fn get_connection(&self, connection_id: &ConnectionId) -> Option<&ClientConnection> {
+        self.connections.get(connection_id)
+    }
+
+    fn get_connections(&self) -> &HashMap<ConnectionId, ClientConnection> {
+        &self.connections
+    }
+
+    fn get_client(&self, listener_id: &ListenerId) -> Option<&Client> {
+        self.clients.get(listener_id)
+    }
+
+    fn get_client_by_connection(&self, connection_id: &ConnectionId) -> Option<&Client> {
+        let listener_id = self.connection_to_listener.get(connection_id)?;
+        self.clients.get(listener_id)
+    }
+
+    fn get_clients(&self) -> &HashMap<ListenerId, Client> {
+        &self.clients
+    }
+
+    fn open_connection(&mut self, connection: ClientConnection) {
+        self.connections.insert(connection.id, connection);
+    }
+
+    fn close_connection(&mut self, connection_id: &ConnectionId) -> Option<AccountId> {
+        if let Some(conn) = self.connections.remove(connection_id) {
+            conn.cancellation_token.cancel();
+        }
+        if let Some(listener_id) = self.connection_to_listener.remove(connection_id) {
+            if let Some(client) = self.clients.get_mut(&listener_id) {
+                client.connections.remove(connection_id);
+                let account_id = client.account_id.clone();
+                if client.connections.is_empty() {
+                    self.clients.remove(&listener_id);
+                    self.account_to_listener.remove(&account_id);
+                    return Some(account_id);
+                }
+            }
+        }
+        None
+    }
+
+    fn associate_connection_with_account(
+        &mut self,
+        connection_id: ConnectionId,
+        account_id: AccountId,
+        create_client: impl FnOnce(AccountId, ListenerId) -> Client,
+    ) -> bool {
+        if self.connection_to_listener.contains_key(&connection_id) {
+            return false;
+        }
+        let listener_id = *self
+            .account_to_listener
+            .entry(account_id.clone())
+            .or_insert_with(|| ListenerId::new());
+        self.connection_to_listener
+            .insert(connection_id, listener_id);
+        let client = self
+            .clients
+            .entry(listener_id)
+            .or_insert_with(move || create_client(account_id, listener_id));
+        client.connections.insert(connection_id);
+        true
+    }
+}
+
 #[derive(Clone)]
 pub struct TransportServiceImpl {
-    notification_listeners: Arc<DashMap<ListenerId, UnboundedSender<ServerMessage>>>,
-    client_senders: Arc<DashMap<ListenerId, (UnboundedSender<String>, CancellationToken)>>,
-    client_handlers: Arc<DashMap<ListenerId, Protocol>>,
-    account_associations: Arc<ConcurrentBiMap<ListenerId, AccountId>>,
-    last_activity: Arc<DashMap<ListenerId, Instant>>,
+    client_registry: Arc<RwLock<ClientRegistry>>,
 }
 
 impl TransportServiceImpl {
     pub fn new() -> Self {
         Self {
-            notification_listeners: Arc::new(DashMap::new()),
-            client_senders: Arc::new(DashMap::new()),
-            client_handlers: Arc::new(DashMap::new()),
-            account_associations: Arc::new(ConcurrentBiMap::new()),
-            last_activity: Arc::new(DashMap::new()),
+            client_registry: Arc::new(RwLock::new(ClientRegistry::new())),
         }
     }
 
-    async fn on_disconnect(&self, id: ListenerId) {
-        self.client_senders.remove(&id);
-        self.client_handlers.remove(&id);
-        self.last_activity.remove(&id);
-        self.notification_listeners.remove(&id);
-        let account_id = self.account_associations.remove_by_left(&id);
-        if let Some(account_id) = account_id {
+    async fn on_disconnect(&self, id: ConnectionId) {
+        let maybe_disconnected_account_id = self.client_registry.write().close_connection(&id);
+        if let Some(account_id) = maybe_disconnected_account_id {
             let app = APPLICATION.get().unwrap();
             if let Ok(player_id) = app
                 .player_resolver_service
@@ -91,21 +210,9 @@ impl TransportServiceImpl {
                 app.seek_cancel_use_case.cancel_seek(player_id);
             }
         }
-        /*self.application
-            .player_connection_service()
-            .on_listener_disconnected(id);
-        if let Some(username) = player {
-            self.application
-                .player_connection_service()
-                .on_player_disconnected(id, &username)
-                .await;
-            log::info!("Player {} disconnected (client {})", username, id);
-        } else {
-            log::info!("Client {} disconnected", id);
-        }*/
     }
 
-    async fn handle_client<M, S, E>(
+    async fn handle_connection<M, S, E>(
         &self,
         socket: S,
         msg_factory: impl Fn(String) -> M + Send + 'static,
@@ -120,16 +227,16 @@ impl TransportServiceImpl {
         E: Send + 'static,
     {
         let (ws_sender, ws_receiver) = socket.split();
-        let client_id = ListenerId::new();
         let cancellation_token = CancellationToken::new();
 
         let client_service = self.clone();
         let cancellation_token_clone = cancellation_token.clone();
-        self.client_handlers.insert(client_id, Protocol::V0);
+        let connection_id = ConnectionId::new();
+
         let receive_task = tokio::spawn(async move {
             client_service
                 .handle_receive::<S, M, E>(
-                    client_id,
+                    connection_id,
                     ws_receiver,
                     cancellation_token_clone,
                     msg_parser,
@@ -139,27 +246,58 @@ impl TransportServiceImpl {
 
         let client_service = self.clone();
         let cancellation_token_clone = cancellation_token.clone();
+        let (send_tx, send_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+
         let send_task = tokio::spawn(async move {
             client_service
-                .handle_send::<S, M>(client_id, ws_sender, cancellation_token_clone, msg_factory)
+                .handle_send::<S, M>(
+                    connection_id,
+                    ws_sender,
+                    cancellation_token_clone,
+                    msg_factory,
+                    send_rx,
+                )
                 .await;
         });
 
-        let (notification_tx, notification_rx) = tokio::sync::mpsc::unbounded_channel();
-        self.notification_listeners
-            .insert(client_id, notification_tx);
+        let connection = ClientConnection {
+            id: connection_id,
+            sender: send_tx,
+            cancellation_token: cancellation_token.clone(),
+            last_activity: Instant::now(),
+            protocol: Protocol::V0,
+        };
+
+        self.client_registry.write().open_connection(connection);
+
+        let _ = tokio::join!(receive_task, send_task);
+        self.on_disconnect(connection_id).await;
+        log::info!("Client {} fully disconnected", connection_id);
+    }
+
+    fn create_client(
+        &self,
+        account_id: AccountId,
+        client_id: ListenerId,
+        cancellation_token: CancellationToken,
+    ) -> Client {
+        let (notification_tx, notification_rx) =
+            tokio::sync::mpsc::unbounded_channel::<ServerMessage>();
 
         let client_service = self.clone();
         let cancellation_token_clone = cancellation_token.clone();
-        let notification_task = tokio::spawn(async move {
+        tokio::spawn(async move {
             client_service
                 .handle_notification(notification_rx, cancellation_token_clone, client_id)
                 .await;
         });
 
-        let _ = tokio::join!(receive_task, send_task, notification_task);
-        self.on_disconnect(client_id).await;
-        log::info!("Client {} fully disconnected", client_id);
+        let client = Client {
+            server_message_handler: notification_tx,
+            connections: HashSet::new(),
+            account_id,
+        };
+        client
     }
 
     async fn handle_notification(
@@ -172,15 +310,32 @@ impl TransportServiceImpl {
             msg = rx.recv() => msg,
             _ = cancellation_token.cancelled() => None,
         } {
-            if let Some(handler) = self.client_handlers.get(&id) {
-                let protocol = handler.clone();
-                drop(handler);
-
-                PROTOCOL_SERVICE
-                    .get()
-                    .unwrap()
-                    .handle_server_message(&protocol, id, &msg)
-                    .await;
+            let protocol_conn_id_pairs = {
+                let registry = self.client_registry.read();
+                if let Some(client) = registry.get_client(&id) {
+                    Some(
+                        client
+                            .connections
+                            .iter()
+                            .filter_map(|conn_id| {
+                                registry
+                                    .get_connection(conn_id)
+                                    .map(|conn| (conn.protocol.clone(), *conn_id))
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                } else {
+                    None
+                }
+            };
+            if let Some(protocol_conn_id_pairs) = protocol_conn_id_pairs {
+                for (protocol, conn_id) in &protocol_conn_id_pairs {
+                    PROTOCOL_SERVICE
+                        .get()
+                        .unwrap()
+                        .handle_server_message(&protocol, *conn_id, &msg)
+                        .await;
+                }
             }
         }
         log::info!("Client {} notification ended", id);
@@ -188,18 +343,15 @@ impl TransportServiceImpl {
 
     async fn handle_send<S, M>(
         &self,
-        id: ListenerId,
+        id: ConnectionId,
         mut ws_sender: impl SinkExt<M> + Unpin + Send + 'static,
         cancellation_token: CancellationToken,
         msg_factory: impl Fn(String) -> M + Send + 'static,
+        mut rx: UnboundedReceiver<String>,
     ) where
         S: futures_util::Sink<M> + Unpin + Send + 'static,
         M: Send + 'static,
     {
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-        self.client_senders
-            .insert(id, (tx, cancellation_token.clone()));
-
         self.on_connect(id);
 
         while let Some(msg) = select! {
@@ -218,7 +370,7 @@ impl TransportServiceImpl {
 
     async fn handle_receive<S, M, E>(
         &self,
-        id: ListenerId,
+        id: ConnectionId,
         mut ws_receiver: impl StreamExt<Item = Result<M, E>> + Unpin + Send + 'static,
         cancellation_token: CancellationToken,
         msg_parser: impl Fn(M) -> Option<ClientMessage> + Send + 'static,
@@ -231,7 +383,10 @@ impl TransportServiceImpl {
             msg = ws_receiver.next() => msg,
             _ = cancellation_token.cancelled() => None,
         } {
-            self.last_activity.insert(id, Instant::now());
+            {
+                let mut registry = self.client_registry.write();
+                registry.refresh_last_activity(&id);
+            }
 
             let msg = match msg_parser(msg) {
                 Some(m) => m,
@@ -254,17 +409,21 @@ impl TransportServiceImpl {
                         // message is still passed to handler to allow protocol to respond.
                     }
 
-                    if let Some(handler) = self.client_handlers.get(&id) {
-                        let protocol = handler.clone();
-                        drop(handler);
-                        PROTOCOL_SERVICE
-                            .get()
-                            .unwrap()
-                            .handle_client_message(&protocol, id, text)
-                            .await;
-                    } else {
-                        log::error!("Client {} has no protocol handler", id);
-                    }
+                    let protocol = {
+                        let registry = self.client_registry.read();
+                        if let Some(conn) = registry.get_connection(&id) {
+                            conn.protocol.clone()
+                        } else {
+                            log::error!("Client {} connection not found", id);
+                            continue;
+                        }
+                    };
+
+                    PROTOCOL_SERVICE
+                        .get()
+                        .unwrap()
+                        .handle_client_message(&protocol, id, text)
+                        .await;
                 }
                 ClientMessage::Close => break,
             }
@@ -273,39 +432,28 @@ impl TransportServiceImpl {
         cancellation_token.cancel();
     }
 
-    fn try_switch_protocol(&self, id: ListenerId, protocol_msg: &str) -> Result<(), String> {
+    fn try_switch_protocol(&self, id: ConnectionId, protocol_msg: &str) -> Result<(), String> {
         let parts: Vec<&str> = protocol_msg.split_whitespace().collect();
         if parts.len() == 2 {
             let protocol = Protocol::from_id(parts[1]).ok_or("Unknown protocol")?;
-            if let Some(mut handler) = self.client_handlers.get_mut(&id)
-                && protocol != *handler
-            {
-                *handler = protocol.clone();
-                drop(handler);
-                log::info!("Client {} set protocol to {:?}", id, parts[1]);
-
-                Ok(())
-            } else {
-                Err("Client handler not found".into())
-            }
+            self.client_registry.write().set_protocol(&id, protocol);
+            Ok(())
         } else {
             Err("Invalid protocol message format".into())
         }
     }
 
-    fn on_connect(&self, id: ListenerId) {
+    fn on_connect(&self, id: ConnectionId) {
         log::info!("Client {} connected", id);
-        if let Some(handler) = self.client_handlers.get(&id) {
-            let protocol = handler.clone();
-            drop(handler);
+        if let Some(conn) = self.client_registry.read().get_connection(&id) {
+            let protocol = conn.protocol.clone();
             PROTOCOL_SERVICE.get().unwrap().on_connected(&protocol, id);
         }
     }
 
-    pub fn try_send_to(&self, id: ListenerId, msg: &str) -> Result<(), String> {
-        if let Some(sender) = self.client_senders.get(&id) {
-            sender
-                .0
+    pub fn try_send_to(&self, id: ConnectionId, msg: &str) -> Result<(), String> {
+        if let Some(conn) = self.client_registry.read().get_connection(&id) {
+            conn.sender
                 .send(msg.into())
                 .map_err(|e| format!("Failed to send message: {}", e))
         } else {
@@ -315,36 +463,32 @@ impl TransportServiceImpl {
 
     pub async fn associate_account(
         &self,
-        id: ListenerId,
+        id: ConnectionId,
         account_id: AccountId,
     ) -> Result<(), String> {
-        if self.account_associations.contains_left(&id) {
-            return Err(format!("Account {} already logged in", account_id));
+        if !self
+            .client_registry
+            .write()
+            .associate_connection_with_account(id, account_id.clone(), |account_id, listener_id| {
+                self.create_client(account_id, listener_id, CancellationToken::new())
+            })
+        {
+            return Err("Already logged in".into());
         }
-        if let Some(prev_client_id) = self.account_associations.get_by_right(&account_id) {
-            self.close_with_reason(prev_client_id, DisconnectReason::NewSession)
-                .await;
-            // call on_disconnect directly to clean up immediately
-            self.on_disconnect(prev_client_id).await;
-            log::info!(
-                "Disconnected previous session of account {} (client {})",
-                account_id,
-                prev_client_id
-            );
-        }
-        if !self.account_associations.try_insert(id, account_id.clone()) {
-            return Err(format!(
-                "Failed to associate account_id {} with client {}",
-                account_id, id
-            ));
-        }
-        if let Some(handler) = self.client_handlers.get(&id) {
+
+        if let Some(protocol) = {
+            self.client_registry
+                .read()
+                .get_connection(&id)
+                .map(|c| c.protocol.clone())
+        } {
             PROTOCOL_SERVICE
                 .get()
                 .unwrap()
-                .on_authenticated(&handler, id, &account_id)
+                .on_authenticated(&protocol, id, &account_id)
                 .await;
         }
+
         let app = APPLICATION.get().unwrap();
         if let Ok(player_id) = app
             .player_resolver_service
@@ -356,16 +500,16 @@ impl TransportServiceImpl {
         Ok(())
     }
 
-    pub fn get_associated_account(&self, id: ListenerId) -> Option<AccountId> {
-        self.account_associations.get_by_left(&id)
-    }
-
     pub async fn get_associated_player_and_account(
         &self,
-        id: ListenerId,
+        id: ConnectionId,
     ) -> Option<(PlayerId, AccountId)> {
+        let account_id = {
+            let registry = self.client_registry.read();
+            let client = registry.get_client_by_connection(&id)?;
+            client.account_id.clone()
+        };
         let app = APPLICATION.get().unwrap();
-        let account_id = self.account_associations.get_by_left(&id)?;
         let player_id = app
             .player_resolver_service
             .resolve_player_id_by_account_id(&account_id)
@@ -374,38 +518,53 @@ impl TransportServiceImpl {
         Some((player_id, account_id))
     }
 
-    pub async fn close_with_reason(&self, id: ListenerId, reason: DisconnectReason) {
-        if let Some(sender) = self.notification_listeners.get(&id) {
-            if let Err(e) = sender.send(ServerMessage::ConnectionClosed { reason }) {
-                log::error!(
-                    "Failed to send close message to listener {}: {}",
-                    id,
-                    e.to_string()
-                );
+    pub async fn close_connections_with_reason(&self, id: ListenerId, reason: DisconnectReason) {
+        let connection_ids = {
+            let registry = self.client_registry.read();
+            if let Some(client) = registry.get_client(&id) {
+                client.connections.iter().cloned().collect::<Vec<_>>()
+            } else {
+                vec![]
             }
+        };
+
+        for connection_id in connection_ids {
+            self.close_with_reason(connection_id, reason.clone()).await;
         }
-        //wait a moment to allow message to be sent
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        self.close_client(id);
     }
 
-    fn close_client(&self, id: ListenerId) {
-        let Some(entry) = self.client_senders.get(&id) else {
-            log::warn!("Client {} already closed", id);
-            return;
+    pub async fn close_with_reason(&self, id: ConnectionId, reason: DisconnectReason) {
+        let (protocol, cancellation_token) = {
+            let registry = self.client_registry.read();
+            if let Some(conn) = registry.get_connection(&id) {
+                (conn.protocol.clone(), conn.cancellation_token.clone())
+            } else {
+                return;
+            }
         };
-        let token = entry.1.clone();
-        drop(entry);
-        token.cancel();
+
+        let msg = ServerMessage::ConnectionClosed { reason };
+        PROTOCOL_SERVICE
+            .get()
+            .unwrap()
+            .handle_server_message(&protocol, id, &msg)
+            .await;
+
+        //wait a moment to allow message to be sent
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        cancellation_token.cancel();
         log::info!("Client {} closed", id);
     }
 
     async fn close_all_clients(&self) {
-        let client_ids: Vec<ListenerId> = self
-            .client_senders
-            .iter()
-            .map(|entry| *entry.key())
-            .collect();
+        let client_ids = {
+            self.client_registry
+                .read()
+                .get_connections()
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>()
+        };
 
         let mut futures = vec![];
         for id in client_ids {
@@ -415,15 +574,17 @@ impl TransportServiceImpl {
         futures::future::join_all(futures).await;
     }
 
-    pub fn get_protocol(&self, id: ListenerId) -> Protocol {
-        self.client_handlers
-            .get(&id)
-            .map(|entry| entry.clone())
-            .unwrap_or(Protocol::V0)
+    pub fn get_protocol(&self, id: ConnectionId) -> Protocol {
+        let registry = self.client_registry.read();
+        if let Some(conn) = registry.get_connection(&id) {
+            conn.protocol.clone()
+        } else {
+            Protocol::V0
+        }
     }
 
     pub async fn launch_client_cleanup_task(&self, cancellation_token: CancellationToken) {
-        let timeout_duration = Duration::from_secs(300);
+        let timeout_duration = Duration::from_secs(60 * 30);
 
         loop {
             select! {
@@ -434,12 +595,14 @@ impl TransportServiceImpl {
                 _ = tokio::time::sleep(Duration::from_secs(60)) => {}
             }
             let now = Instant::now();
-            let inactive_clients: Vec<ListenerId> = self
-                .last_activity
+            let inactive_clients: Vec<ConnectionId> = self
+                .client_registry
+                .read()
+                .get_connections()
                 .iter()
-                .filter_map(|entry| {
-                    if now.duration_since(*entry.value()) > timeout_duration {
-                        Some(*entry.key())
+                .filter_map(|(id, conn)| {
+                    if now.duration_since(conn.last_activity) > timeout_duration {
+                        Some(*id)
                     } else {
                         None
                     }
@@ -454,7 +617,7 @@ impl TransportServiceImpl {
     }
 
     pub async fn handle_client_websocket(&self, ws: WebSocket) {
-        self.handle_client(
+        self.handle_connection(
             ws,
             |s| Message::Binary(s.into()),
             |m| match m {
@@ -468,7 +631,7 @@ impl TransportServiceImpl {
 
     pub async fn handle_client_tcp(&self, tcp: TcpStream) {
         let framed = Framed::new(tcp, LinesCodec::new());
-        self.handle_client(framed, |s| s.to_string(), |s| Some(ClientMessage::Text(s)))
+        self.handle_connection(framed, |s| s.to_string(), |s| Some(ClientMessage::Text(s)))
             .await;
     }
 
@@ -550,7 +713,6 @@ impl TransportServiceImpl {
 pub enum DisconnectReason {
     ClientQuit,
     Inactivity,
-    NewSession,
     ServerShutdown,
     Ban(String),
     Kick,
@@ -559,18 +721,20 @@ pub enum DisconnectReason {
 #[async_trait::async_trait]
 impl ListenerNotificationPort for TransportServiceImpl {
     fn notify_listener(&self, listener: ListenerId, message: ListenerMessage) {
-        if !self.account_associations.contains_left(&listener) {
+        let registry = self.client_registry.read();
+        let Some(client) = registry.get_client(&listener) else {
             return;
-        }
-        if let Some(sender) = self.notification_listeners.get(&listener) {
-            if let Err(e) = sender.send(ServerMessage::Notification(message.clone())) {
-                log::error!(
-                    "Failed to notify listener {}: {}, {:?}",
-                    listener,
-                    e.to_string(),
-                    message
-                );
-            }
+        };
+        if let Err(e) = client
+            .server_message_handler
+            .send(ServerMessage::Notification(message.clone()))
+        {
+            log::error!(
+                "Failed to notify listener {}: {}, {:?}",
+                listener,
+                e.to_string(),
+                message
+            );
         }
     }
 
@@ -582,13 +746,9 @@ impl ListenerNotificationPort for TransportServiceImpl {
 
     fn notify_all(&self, message: ListenerMessage) {
         let message = ServerMessage::Notification(message);
-        for entry in self.notification_listeners.iter() {
-            let listener_id = *entry.key();
-            if !self.account_associations.contains_left(&listener_id) {
-                continue;
-            }
-            let sender = entry.value();
-            if let Err(e) = sender.send(message.clone()) {
+        let registry = self.client_registry.read();
+        for (listener_id, client) in registry.get_clients() {
+            if let Err(e) = client.server_message_handler.send(message.clone()) {
                 log::error!(
                     "Failed to notify listener {} of all listeners: {}, {:?}",
                     listener_id,
@@ -612,7 +772,10 @@ impl PlayerConnectionPort for TransportServiceImpl {
         else {
             return None;
         };
-        self.account_associations.get_by_right(&account_id)
+        self.client_registry
+            .read()
+            .get_listener(&account_id)
+            .copied()
     }
 }
 

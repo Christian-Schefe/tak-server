@@ -56,6 +56,7 @@ use crate::{
             rematch::{RematchUseCase, RematchUseCaseImpl},
         },
         player::{
+            get_online::{GetOnlinePlayersUseCase, GetOnlinePlayersUseCaseImpl},
             get_rating::{PlayerGetRatingUseCase, PlayerGetRatingUseCaseImpl},
             notify_player::NotifyPlayerWorkflowImpl,
             set_online::{SetPlayerOnlineUseCase, SetPlayerOnlineUseCaseImpl},
@@ -81,6 +82,7 @@ pub struct Application {
 
     pub player_set_online_use_case: Box<dyn SetPlayerOnlineUseCase + Send + Sync + 'static>,
     pub player_get_rating_use_case: Box<dyn PlayerGetRatingUseCase + Send + Sync + 'static>,
+    pub player_get_online_use_case: Box<dyn GetOnlinePlayersUseCase + Send + Sync + 'static>,
     pub player_resolver_service: Arc<dyn PlayerResolverService + Send + Sync + 'static>,
 
     pub game_do_action_use_case: Box<dyn DoActionUseCase + Send + Sync + 'static>,
@@ -233,6 +235,9 @@ pub async fn build_application<
         player_get_rating_use_case: Box::new(PlayerGetRatingUseCaseImpl::new(
             rating_repository.clone(),
             rating_service.clone(),
+        )),
+        player_get_online_use_case: Box::new(GetOnlinePlayersUseCaseImpl::new(
+            player_service.clone(),
         )),
         player_resolver_service: Arc::new(PlayerResolverServiceImpl::new(
             player_repository.clone(),

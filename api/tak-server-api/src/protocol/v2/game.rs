@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use crate::{
     app::ServiceError,
+    client::ConnectionId,
     protocol::{
         Protocol,
         v2::{ProtocolV2Handler, V2Response},
@@ -12,12 +13,12 @@ use tak_core::{
     ptn::game_state_to_string,
 };
 use tak_server_app::{
-    domain::{GameId, ListenerId, PlayerId},
+    domain::{GameId, PlayerId},
     workflow::gameplay::do_action::{DoActionError, OfferDrawError, RequestUndoError, ResignError},
 };
 
 impl ProtocolV2Handler {
-    pub fn send_draw_offer_message(&self, id: ListenerId, game_id: GameId, offer: bool) {
+    pub fn send_draw_offer_message(&self, id: ConnectionId, game_id: GameId, offer: bool) {
         let message = format!(
             "Game#{} {}",
             game_id,
@@ -26,7 +27,7 @@ impl ProtocolV2Handler {
         self.send_to(id, message);
     }
 
-    pub fn send_undo_request_message(&self, id: ListenerId, game_id: GameId, offer: bool) {
+    pub fn send_undo_request_message(&self, id: ConnectionId, game_id: GameId, offer: bool) {
         let message = format!(
             "Game#{} {}",
             game_id,
@@ -35,14 +36,14 @@ impl ProtocolV2Handler {
         self.send_to(id, message);
     }
 
-    pub fn send_undo_message(&self, id: ListenerId, game_id: GameId) {
+    pub fn send_undo_message(&self, id: ConnectionId, game_id: GameId) {
         let message = format!("Game#{} Undo", game_id);
         self.send_to(id, message);
     }
 
     pub fn send_time_update_message(
         &self,
-        id: ListenerId,
+        id: ConnectionId,
         game_id: GameId,
         remaining_white: Duration,
         remaining_black: Duration,
@@ -69,7 +70,7 @@ impl ProtocolV2Handler {
 
     pub fn send_game_over_message(
         &self,
-        id: ListenerId,
+        id: ConnectionId,
         game_id: GameId,
         game_state: &TakGameOverState,
     ) {
@@ -423,7 +424,7 @@ impl ProtocolV2Handler {
 
     pub fn send_game_action_message(
         &self,
-        id: ListenerId,
+        id: ConnectionId,
         game_id: GameId,
         action: &TakActionRecord,
     ) {

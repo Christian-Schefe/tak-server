@@ -6,13 +6,14 @@ use tak_server_app::{
 
 use crate::{
     app::ServiceError,
+    client::ConnectionId,
     protocol::v2::{ProtocolV2Handler, V2Response, split_n_and_rest},
 };
 
 impl ProtocolV2Handler {
     pub async fn send_chat_message(
         &self,
-        id: ListenerId,
+        id: ConnectionId,
         from_player_id: PlayerId,
         message: &str,
         source: &ChatMessageSource,
@@ -43,7 +44,8 @@ impl ProtocolV2Handler {
 
     pub async fn handle_room_membership_message(
         &self,
-        id: ListenerId,
+        id: ConnectionId,
+        listener_id: ListenerId,
         parts: &[&str],
         join: bool,
     ) -> V2Response {
@@ -54,10 +56,10 @@ impl ProtocolV2Handler {
         }
         let room = parts[1].to_string();
         if join {
-            self.app.chat_room_use_case.join_room(&room, id);
+            self.app.chat_room_use_case.join_room(&room, listener_id);
             self.send_to(id, format!("Joined room {}", room));
         } else {
-            self.app.chat_room_use_case.leave_room(&room, id);
+            self.app.chat_room_use_case.leave_room(&room, listener_id);
             self.send_to(id, format!("Left room {}", room));
         }
         V2Response::OK
@@ -65,7 +67,7 @@ impl ProtocolV2Handler {
 
     pub async fn handle_shout_message(
         &self,
-        id: ListenerId,
+        id: ConnectionId,
         account_id: AccountId,
         player_id: PlayerId,
         orig_msg: &str,
@@ -107,7 +109,7 @@ impl ProtocolV2Handler {
 
     pub async fn handle_shout_room_message(
         &self,
-        id: ListenerId,
+        id: ConnectionId,
         account_id: AccountId,
         player_id: PlayerId,
         orig_msg: &str,
@@ -162,7 +164,10 @@ impl ProtocolV2Handler {
             ));
         }
         let target_username = parts[1];
-        let Some((target_player_id, _)) = self.acl.get_account_and_player_id_by_username(target_username).await
+        let Some((target_player_id, _)) = self
+            .acl
+            .get_account_and_player_id_by_username(target_username)
+            .await
         else {
             return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
                 "No such user: {}",

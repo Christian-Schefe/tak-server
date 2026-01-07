@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use crate::create_db_pool;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryTrait, Set,
-};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use tak_persistence_sea_orm_entites::player_account_mapping;
 use tak_server_app::{
     domain::{AccountId, PlayerId, RepoError, RepoRetrieveError},
@@ -105,20 +103,10 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
             account_id: Set(account_id.to_string()),
         };
 
-        println!(
-            "Creating new player_account_mapping: account_id {:?}, player_id {:?}",
-            account_id, new_player_id
-        );
-
         let res = active_model
             .insert(&self.db)
             .await
             .map_err(|e| RepoError::StorageError(e.to_string()))?;
-
-        println!(
-            "Created new player_account_mapping: account_id {:?}, player_id {:?}",
-            account_id, new_player_id
-        );
 
         let player_id = PlayerId(res.player_id);
 
@@ -129,24 +117,19 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
         Ok(player_id)
     }
 
-    async fn remove_account_id(
-        &self,
-        account_id: &AccountId,
-        player_id: PlayerId,
-    ) -> Result<(), RepoRetrieveError> {
-        let res = player_account_mapping::Entity::delete_many()
-            .filter(player_account_mapping::Column::AccountId.eq(account_id.to_string()))
-            .filter(player_account_mapping::Column::PlayerId.eq(player_id.0))
-            .exec(&self.db)
+    async fn remove_account_id(&self, account_id: &AccountId) -> Result<(), RepoError> {
+        let model = player_account_mapping::ActiveModel {
+            account_id: Set(account_id.to_string()),
+            ..Default::default()
+        };
+        model
+            .delete(&self.db)
             .await
-            .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
+            .map_err(|e| RepoError::StorageError(e.to_string()))?;
 
-        if res.rows_affected == 0 {
-            return Err(RepoRetrieveError::NotFound);
+        if let Some(player_id) = self.account_id_to_player_id_cache.remove(account_id) {
+            self.player_id_to_account_id_cache.invalidate(&player_id);
         }
-
-        self.account_id_to_player_id_cache.invalidate(account_id);
-        self.player_id_to_account_id_cache.invalidate(&player_id);
         Ok(())
     }
 }

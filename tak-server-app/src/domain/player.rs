@@ -19,6 +19,7 @@ impl Player {
 pub trait PlayerService {
     fn set_player_online(&self, player_id: PlayerId) -> Option<Vec<PlayerId>>;
     fn set_player_offline(&self, player_id: PlayerId) -> Option<Vec<PlayerId>>;
+    fn get_online_players(&self) -> Vec<PlayerId>;
 }
 
 pub struct PlayerServiceImpl {
@@ -31,20 +32,13 @@ impl PlayerServiceImpl {
             online_players: Arc::new(DashMap::new()),
         }
     }
-
-    fn get_players_online(&self) -> Vec<PlayerId> {
-        self.online_players
-            .iter()
-            .map(|entry| *entry.key())
-            .collect()
-    }
 }
 
 impl PlayerService for PlayerServiceImpl {
     fn set_player_online(&self, player_id: PlayerId) -> Option<Vec<PlayerId>> {
         if self.online_players.insert(player_id, ()).is_none() {
             // Only return updated list if the player was not already online
-            return Some(self.get_players_online());
+            return Some(self.get_online_players());
         }
         None
     }
@@ -52,8 +46,15 @@ impl PlayerService for PlayerServiceImpl {
     fn set_player_offline(&self, player_id: PlayerId) -> Option<Vec<PlayerId>> {
         if self.online_players.remove(&player_id).is_some() {
             // Only return updated list if the player was actually online
-            return Some(self.get_players_online());
+            return Some(self.get_online_players());
         }
         None
+    }
+
+    fn get_online_players(&self) -> Vec<PlayerId> {
+        self.online_players
+            .iter()
+            .map(|entry| *entry.key())
+            .collect()
     }
 }

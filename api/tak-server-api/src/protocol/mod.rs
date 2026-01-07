@@ -2,15 +2,11 @@ mod v2;
 
 use std::sync::Arc;
 
-use tak_server_app::{
-    Application,
-    domain::{AccountId, ListenerId},
-    ports::authentication::AuthenticationPort,
-};
+use tak_server_app::{Application, domain::AccountId, ports::authentication::AuthenticationPort};
 
 use crate::{
     acl::LegacyAPIAntiCorruptionLayer,
-    client::{ServerMessage, TransportServiceImpl},
+    client::{ConnectionId, ServerMessage, TransportServiceImpl},
     protocol::v2::ProtocolV2Handler,
 };
 
@@ -46,7 +42,7 @@ impl ProtocolService {
         }
     }
 
-    pub async fn handle_client_message(&self, protocol: &Protocol, id: ListenerId, msg: String) {
+    pub async fn handle_client_message(&self, protocol: &Protocol, id: ConnectionId, msg: String) {
         match protocol {
             Protocol::V0 | Protocol::V2 => self.handler_v2.handle_client_message(id, msg).await,
         }
@@ -55,7 +51,7 @@ impl ProtocolService {
     pub async fn handle_server_message(
         &self,
         protocol: &Protocol,
-        id: ListenerId,
+        id: ConnectionId,
         msg: &ServerMessage,
     ) {
         match protocol {
@@ -66,7 +62,7 @@ impl ProtocolService {
     pub async fn on_authenticated(
         &self,
         protocol: &Protocol,
-        id: ListenerId,
+        id: ConnectionId,
         account_id: &AccountId,
     ) {
         match protocol {
@@ -74,7 +70,7 @@ impl ProtocolService {
         }
     }
 
-    pub fn on_connected(&self, protocol: &Protocol, id: ListenerId) {
+    pub fn on_connected(&self, protocol: &Protocol, id: ConnectionId) {
         match protocol {
             Protocol::V0 | Protocol::V2 => self.handler_v2.on_connected(id),
         }

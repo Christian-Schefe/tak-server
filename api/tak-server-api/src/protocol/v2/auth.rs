@@ -1,7 +1,8 @@
-use tak_server_app::domain::{AccountId, ListenerId, moderation::AccountRole};
+use tak_server_app::domain::{AccountId, moderation::AccountRole};
 
 use crate::{
     app::ServiceError,
+    client::ConnectionId,
     protocol::v2::{ProtocolV2Handler, V2Response},
 };
 
@@ -10,7 +11,7 @@ fn random_guest_token() -> String {
 }
 
 impl ProtocolV2Handler {
-    pub async fn handle_login_message(&self, id: ListenerId, parts: &[&str]) -> V2Response {
+    pub async fn handle_login_message(&self, id: ConnectionId, parts: &[&str]) -> V2Response {
         if parts.len() >= 2 && parts[1] == "Guest" {
             let token = parts
                 .get(2)

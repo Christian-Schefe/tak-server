@@ -1,9 +1,10 @@
 use std::{sync::Arc, time::Instant};
 
 use tak_server_app::{
-    domain::{AccountId, GameId, ListenerId, PlayerId},
+    domain::{AccountId, GameId, PlayerId},
     ports::{
         authentication::AuthenticationPort,
+        connection::PlayerConnectionPort,
         notification::{ListenerMessage, ServerAlertMessage},
     },
 };
@@ -11,7 +12,7 @@ use tak_server_app::{
 use crate::{
     acl::LegacyAPIAntiCorruptionLayer,
     app::ServiceError,
-    client::{DisconnectReason, ServerMessage, TransportServiceImpl},
+    client::{ConnectionId, DisconnectReason, ServerMessage, TransportServiceImpl},
     protocol::Application,
 };
 
@@ -51,7 +52,7 @@ impl ProtocolV2Handler {
         }
     }
 
-    pub async fn handle_client_message(&self, id: ListenerId, msg: String) {
+    pub async fn handle_client_message(&self, id: ConnectionId, msg: String) {
         let parts = msg.split_whitespace().collect::<Vec<_>>();
         if parts.is_empty() {
             log::info!("Received empty message");
@@ -90,13 +91,10 @@ impl ProtocolV2Handler {
             }
         }
     }
-    pub async fn send_server_message(&self, id: ListenerId, msg: &ServerMessage) {
+    pub async fn send_server_message(&self, id: ConnectionId, msg: &ServerMessage) {
         match msg {
             ServerMessage::ConnectionClosed { reason } => {
                 let reason_str = match reason {
-                    DisconnectReason::NewSession => {
-                        "You've logged in from another window. Disconnecting"
-                    }
                     DisconnectReason::Inactivity => "Disconnected due to inactivity",
                     DisconnectReason::Ban(msg) => &msg,
                     DisconnectReason::Kick => "You have been kicked from the server",
@@ -126,7 +124,7 @@ impl ProtocolV2Handler {
         false
     }
 
-    async fn send_notification_message(&self, id: ListenerId, msg: &ListenerMessage) {
+    async fn send_notification_message(&self, id: ConnectionId, msg: &ListenerMessage) {
         let (player_id, _) = self
             .transport
             .get_associated_player_and_account(id)
@@ -213,23 +211,7 @@ impl ProtocolV2Handler {
             }
 
             ListenerMessage::PlayersOnline { players } => {
-                let online_message = format!("Online {}", players.len());
-                let mut username_futures = Vec::new();
-                for pid in players {
-                    let username = self.app.get_account_workflow.get_account(*pid);
-                    username_futures.push(username);
-                }
-                let usernames = futures::future::join_all(username_futures)
-                    .await
-                    .into_iter()
-                    .filter_map(|x| x.ok().map(|a| a.username))
-                    .collect::<Vec<_>>();
-                let players_message = format!(
-                    "OnlinePlayers {}",
-                    serde_json::to_string(&usernames).unwrap()
-                );
-                self.send_to(id, online_message);
-                self.send_to(id, players_message);
+                self.send_online_players_message(id, players).await;
             }
             ListenerMessage::ChatMessage {
                 from_player_id,
@@ -255,13 +237,36 @@ impl ProtocolV2Handler {
         }
     }
 
-    pub async fn on_authenticated(&self, id: ListenerId, account_id: &AccountId) {
+    async fn send_online_players_message(&self, id: ConnectionId, players: &Vec<PlayerId>) {
+        let online_message = format!("Online {}", players.len());
+        let mut username_futures = Vec::new();
+        for pid in players {
+            let username = self.app.get_account_workflow.get_account(*pid);
+            username_futures.push(username);
+        }
+        let usernames = futures::future::join_all(username_futures)
+            .await
+            .into_iter()
+            .filter_map(|x| x.ok().map(|a| a.username))
+            .collect::<Vec<_>>();
+        let players_message = format!(
+            "OnlinePlayers {}",
+            serde_json::to_string(&usernames).unwrap()
+        );
+        self.send_to(id, online_message);
+        self.send_to(id, players_message);
+    }
+
+    pub async fn on_authenticated(&self, id: ConnectionId, account_id: &AccountId) {
         let player_id = self
             .app
             .player_resolver_service
             .resolve_player_id_by_account_id(account_id)
             .await
             .ok();
+
+        let online_players = self.app.player_get_online_use_case.get_online_players();
+        self.send_online_players_message(id, &online_players).await;
 
         let seeks = self.app.seek_list_use_case.list_seeks();
         for seek in seeks {
@@ -290,20 +295,30 @@ impl ProtocolV2Handler {
         }
     }
 
-    pub fn on_connected(&self, id: ListenerId) {
+    pub fn on_connected(&self, id: ConnectionId) {
         self.send_to(id, "Welcome!");
         self.send_to(id, "Login or Register");
     }
 
     async fn handle_logged_in_client_message(
         &self,
-        id: ListenerId,
+        id: ConnectionId,
         parts: &[&str],
         msg: &str,
     ) -> V2Response {
         let Some((player_id, account_id)) =
             self.transport.get_associated_player_and_account(id).await
         else {
+            return V2Response::ErrorNOK(ServiceError::Unauthorized(
+                "Client is not logged in".to_string(),
+            ));
+        };
+
+        let Some(listener_id) = self.transport.get_connection_id(player_id).await else {
+            log::warn!(
+                "No listener ID found for player ID {} when handling logged-in message",
+                player_id
+            );
             return V2Response::ErrorNOK(ServiceError::Unauthorized(
                 "Client is not logged in".to_string(),
             ));
@@ -319,8 +334,14 @@ impl ProtocolV2Handler {
             "list" => self.handle_seek_list_message(id).await,
             "gamelist" => self.handle_game_list_message(id).await,
             "accept" => self.handle_accept_message(player_id, &parts).await,
-            "observe" => self.handle_observe_message(id, &parts, true).await,
-            "unobserve" => self.handle_observe_message(id, &parts, false).await,
+            "observe" => {
+                self.handle_observe_message(id, listener_id, &parts, true)
+                    .await
+            }
+            "unobserve" => {
+                self.handle_observe_message(id, listener_id, &parts, false)
+                    .await
+            }
             "shout" => {
                 self.handle_shout_message(id, account_id, player_id, &msg)
                     .await
@@ -330,8 +351,14 @@ impl ProtocolV2Handler {
                     .await
             }
             "tell" => self.handle_tell_message(account_id, player_id, &msg).await,
-            "joinroom" => self.handle_room_membership_message(id, &parts, true).await,
-            "leaveroom" => self.handle_room_membership_message(id, &parts, false).await,
+            "joinroom" => {
+                self.handle_room_membership_message(id, listener_id, &parts, true)
+                    .await
+            }
+            "leaveroom" => {
+                self.handle_room_membership_message(id, listener_id, &parts, false)
+                    .await
+            }
             "sudo" => self.handle_sudo_message(id, player_id, msg, &parts).await,
             s if s.starts_with("game#") => self.handle_game_message(player_id, &parts).await,
             _ => V2Response::ErrorNOK(ServiceError::BadRequest(format!(
@@ -341,7 +368,7 @@ impl ProtocolV2Handler {
         }
     }
 
-    fn send_to<T>(&self, id: ListenerId, msg: T)
+    fn send_to<T>(&self, id: ConnectionId, msg: T)
     where
         T: AsRef<str>,
     {

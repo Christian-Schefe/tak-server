@@ -17,7 +17,7 @@ pub struct PlayerResolverServiceImpl<PAM: PlayerAccountMappingRepository> {
 }
 
 impl<PAM: PlayerAccountMappingRepository> PlayerResolverServiceImpl<PAM> {
-    pub fn new(player_account_mapping_repository: std::sync::Arc<PAM>) -> Self {
+    pub fn new(player_account_mapping_repository: Arc<PAM>) -> Self {
         Self {
             player_account_mapping_repository,
         }
@@ -32,7 +32,6 @@ impl<PAM: PlayerAccountMappingRepository + Send + Sync + 'static> PlayerResolver
         &self,
         account_id: &AccountId,
     ) -> Result<PlayerId, ()> {
-        println!("Resolving player id for account id: {:?}", account_id);
         match self
             .player_account_mapping_repository
             .get_or_create_player_id(account_id, || Player::new().player_id)

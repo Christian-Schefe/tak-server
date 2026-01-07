@@ -2,12 +2,13 @@ use std::time::Duration;
 
 use crate::{
     app::ServiceError,
+    client::ConnectionId,
     protocol::v2::{ProtocolV2Handler, V2Response},
 };
 
 use tak_core::{TakGameSettings, TakPlayer, TakReserve, TakTimeControl};
 use tak_server_app::{
-    domain::{GameId, GameType, ListenerId, PlayerId, SeekId},
+    domain::{GameId, GameType, PlayerId, SeekId},
     workflow::matchmaking::accept::AcceptSeekError,
 };
 use tak_server_app::{
@@ -23,7 +24,7 @@ impl ProtocolV2Handler {
         }
     }
 
-    pub async fn handle_seek_list_message(&self, id: ListenerId) -> V2Response {
+    pub async fn handle_seek_list_message(&self, id: ConnectionId) -> V2Response {
         for seek in self.app.seek_list_use_case.list_seeks() {
             self.send_seek_list_message(id, &seek, true).await;
         }
@@ -138,12 +139,17 @@ impl ProtocolV2Handler {
             self.app.seek_cancel_use_case.cancel_seek(player_id);
         } else {
             let opponent_id = match opponent {
-                Some(ref name) => match self.acl.get_account_and_player_id_by_username(name).await {
-                    Some((id, _)) => Some(id),
-                    None => {
-                        return Err(ServiceError::BadRequest(format!("No such user: {}", name)));
+                Some(ref name) => {
+                    match self.acl.get_account_and_player_id_by_username(name).await {
+                        Some((id, _)) => Some(id),
+                        None => {
+                            return Err(ServiceError::BadRequest(format!(
+                                "No such user: {}",
+                                name
+                            )));
+                        }
                     }
-                },
+                }
                 None => None,
             };
             if let Err(e) = self.app.seek_create_use_case.create_seek(
@@ -233,7 +239,7 @@ impl ProtocolV2Handler {
         }
     }
 
-    pub async fn send_seek_list_message(&self, id: ListenerId, seek: &SeekView, add: bool) {
+    pub async fn send_seek_list_message(&self, id: ConnectionId, seek: &SeekView, add: bool) {
         let opponent_username = if let Some(opponent_id) = seek.opponent_id {
             match self.app.get_account_workflow.get_account(opponent_id).await {
                 Ok(account) => Some(account.get_username().to_string()),
