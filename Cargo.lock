@@ -3570,6 +3570,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "tak-server-api",
  "tak-server-app",
 ]
 
@@ -3639,6 +3640,7 @@ dependencies = [
  "tak-persistence-sea-orm",
  "tak-server-api",
  "tak-server-app",
+ "tak-server-legacy-api",
  "tokio",
 ]
 
@@ -3648,17 +3650,14 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "axum",
- "bcrypt",
  "dashmap",
  "futures",
  "futures-util",
  "log",
  "more-concurrent-maps",
  "parking_lot",
- "passwords",
  "serde",
  "serde_json",
- "tak-auth-ory",
  "tak-core",
  "tak-server-app",
  "tokio",
@@ -3681,6 +3680,30 @@ dependencies = [
  "rustrict",
  "tak-core",
  "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "tak-server-legacy-api"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "bcrypt",
+ "dashmap",
+ "futures",
+ "futures-util",
+ "log",
+ "more-concurrent-maps",
+ "parking_lot",
+ "passwords",
+ "serde",
+ "serde_json",
+ "tak-auth-ory",
+ "tak-core",
+ "tak-server-app",
+ "tokio",
+ "tokio-util",
  "uuid",
 ]
 

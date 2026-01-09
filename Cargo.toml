@@ -8,6 +8,7 @@ default-run = "tak-server"
 resolver = "3"
 members = [
     "api/tak-server-api",
+    "api/tak-server-legacy-api",
     "infra/tak-auth-ory",
     "infra/tak-email-lettre",
     "infra/tak-events-google-sheets",
@@ -26,6 +27,7 @@ tak-auth-ory = { path = "./infra/tak-auth-ory" }
 tak-email-lettre = { path = "./infra/tak-email-lettre" }
 tak-events-google-sheets = { path = "./infra/tak-events-google-sheets" }
 tak-persistence-sea-orm = { path = "./infra/tak-persistence-sea-orm" }
+tak-server-legacy-api = { path = "./api/tak-server-legacy-api" }
 tak-server-api = { path = "./api/tak-server-api" }
 tak-server-app = { path = "./tak-server-app" }
 tokio = { version = "1.47.1", features = ["full"] }

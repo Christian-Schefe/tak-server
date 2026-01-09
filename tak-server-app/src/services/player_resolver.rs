@@ -7,9 +7,18 @@ use crate::{
 
 #[async_trait::async_trait]
 pub trait PlayerResolverService {
-    async fn resolve_player_id_by_account_id(&self, account_id: &AccountId)
-    -> Result<PlayerId, ()>;
-    async fn resolve_account_id_by_player_id(&self, player_id: PlayerId) -> Result<AccountId, ()>;
+    async fn resolve_player_id_by_account_id(
+        &self,
+        account_id: &AccountId,
+    ) -> Result<PlayerId, ResolveError>;
+    async fn resolve_account_id_by_player_id(
+        &self,
+        player_id: PlayerId,
+    ) -> Result<AccountId, ResolveError>;
+}
+
+pub enum ResolveError {
+    Internal,
 }
 
 pub struct PlayerResolverServiceImpl<PAM: PlayerAccountMappingRepository> {
@@ -31,7 +40,7 @@ impl<PAM: PlayerAccountMappingRepository + Send + Sync + 'static> PlayerResolver
     async fn resolve_player_id_by_account_id(
         &self,
         account_id: &AccountId,
-    ) -> Result<PlayerId, ()> {
+    ) -> Result<PlayerId, ResolveError> {
         match self
             .player_account_mapping_repository
             .get_or_create_player_id(account_id, || Player::new().player_id)
@@ -40,12 +49,15 @@ impl<PAM: PlayerAccountMappingRepository + Send + Sync + 'static> PlayerResolver
             Ok(player_id) => Ok(player_id),
             Err(e) => {
                 log::error!("Failed to resolve player id by account id: {}", e);
-                Err(())
+                Err(ResolveError::Internal)
             }
         }
     }
 
-    async fn resolve_account_id_by_player_id(&self, player_id: PlayerId) -> Result<AccountId, ()> {
+    async fn resolve_account_id_by_player_id(
+        &self,
+        player_id: PlayerId,
+    ) -> Result<AccountId, ResolveError> {
         match self
             .player_account_mapping_repository
             .get_account_id(player_id)
@@ -54,7 +66,7 @@ impl<PAM: PlayerAccountMappingRepository + Send + Sync + 'static> PlayerResolver
             Ok(account_id) => Ok(account_id),
             Err(e) => {
                 log::error!("Failed to resolve account id by player id: {}", e);
-                Err(())
+                Err(ResolveError::Internal)
             }
         }
     }

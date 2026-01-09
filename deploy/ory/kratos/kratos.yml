@@ -24,13 +24,18 @@ selfservice:
     registration:
       enabled: true
       ui_url: set_by_env_variable
+      after:
+        password:
+          hooks:
+            - hook: show_verification_ui
     settings:
       ui_url: set_by_env_variable
     recovery:
       enabled: true
       ui_url: set_by_env_variable
     verification:
-      enabled: false
+      enabled: true
+      ui_url: set_by_env_variable
 
 log:
   level: debug

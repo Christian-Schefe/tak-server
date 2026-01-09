@@ -35,10 +35,10 @@ pub async fn run(
             .route("/ratings/{name}", get(rating::get_rating_by_name)),
     );
 
-    let port = std::env::var("TAK_HTTP_API_PORT")
-        .expect("TAK_HTTP_API_PORT must be set")
+    let port = std::env::var("TAK_LEGACY_HTTP_API_PORT")
+        .expect("TAK_LEGACY_HTTP_API_PORT must be set")
         .parse::<u16>()
-        .expect("TAK_HTTP_API_PORT must be a valid u16");
+        .expect("TAK_LEGACY_HTTP_API_PORT must be a valid u16");
     let host = std::env::var("TAK_HOST").expect("TAK_HOST must be set");
 
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port))

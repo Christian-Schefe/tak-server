@@ -20,8 +20,8 @@ use tak_persistence_sea_orm::{
     games::GameRepositoryImpl, player_account_mapping::PlayerAccountMappingRepositoryImpl,
     profile::ProfileRepositoryImpl, ratings::RatingRepositoryImpl,
 };
-use tak_server_api::{acl::LegacyAPIAntiCorruptionLayer, client::TransportServiceImpl};
 use tak_server_app::build_application;
+use tak_server_legacy_api::{acl::LegacyAPIAntiCorruptionLayer, client::TransportServiceImpl};
 
 const LOG_SIZE_LIMIT: u64 = 10 * 1024 * 1024; // 10 MB
 
@@ -151,8 +151,14 @@ async fn main() {
     let app_clone = app.clone();
     let auth_clone = authentication_service.clone();
     let acl_clone = acl.clone();
+    let legacy_http_app = tokio::spawn(async move {
+        tak_server_legacy_api::http::run(app_clone, auth_clone, acl_clone, shutdown_signal()).await;
+    });
+
+    let app_clone = app.clone();
+    let auth_clone = authentication_service.clone();
     let http_app = tokio::spawn(async move {
-        tak_server_api::http::run(app_clone, auth_clone, acl_clone, shutdown_signal()).await;
+        tak_server_api::serve(app_clone, auth_clone).await;
     });
 
     let transport_app = tokio::spawn(async move {
@@ -166,13 +172,17 @@ async fn main() {
         .await;
     });
 
-    let (r1, r2) = tokio::join!(http_app, transport_app);
+    let (r1, r2, r3) = tokio::join!(legacy_http_app, http_app, transport_app);
 
     if let Err(e) = r1 {
-        log::error!("HTTP API task failed: {}", e);
+        log::error!("HTTP Legacy API task failed: {}", e);
     }
 
     if let Err(e) = r2 {
+        log::error!("HTTP API task failed: {}", e);
+    }
+
+    if let Err(e) = r3 {
         log::error!("Transport service task failed: {}", e);
     }
 }

@@ -8,6 +8,9 @@
         reverse_proxy kratos:4433
     }
     handle_path /api/* {
+        reverse_proxy tak_server:{$TAK_LEGACY_HTTP_API_PORT}
+    }
+    handle_path /api2/* {
         reverse_proxy tak_server:{$TAK_HTTP_API_PORT}
     }
     handle_path /ws {

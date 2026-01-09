@@ -1,5 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
+use tak_server_api::ApiAuthPort;
 use tak_server_app::{
     domain::{
         AccountId,
@@ -70,6 +71,17 @@ impl AuthenticationService {
             return Some(guest_account);
         }
         self.ory_service.find_by_username(username).await
+    }
+}
+
+#[async_trait::async_trait]
+impl ApiAuthPort for AuthenticationService {
+    async fn get_account_by_kratos_cookie(&self, token: &str) -> Option<Account> {
+        self.ory_service.get_account_by_cookie(token).await
+    }
+
+    async fn get_account_by_guest_jwt(&self, _token: &str) -> Option<Account> {
+        None
     }
 }
 

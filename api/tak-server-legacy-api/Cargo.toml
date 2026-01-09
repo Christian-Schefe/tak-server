@@ -1,16 +1,18 @@
 [package]
-name = "tak-server-api"
+name = "tak-server-legacy-api"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 async-trait = "0.1.89"
 axum = { version = "0.8.4", features = ["ws", "macros"] }
+bcrypt = "0.17.1"
 dashmap = "6.1.0"
 futures = "0.3.31"
 futures-util = "0.3.31"
 log = "0.4.28"
 more-concurrent-maps = { path = "../../more-concurrent-maps" }
+passwords = "3.1.16"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"
 tak-core = { path = "../../tak-core" }
@@ -19,3 +21,4 @@ tokio = { version = "1.47.1", features = ["full"] }
 tokio-util = { version = "0.7.16", features = ["full"] }
 uuid = { version = "1.18.1", features = ["v4"] }
 parking_lot = "0.12.5"
+tak-auth-ory = { path = "../../infra/tak-auth-ory" }

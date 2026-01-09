@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ory_kratos_client::{
     apis::{
         configuration::Configuration,
-        frontend_api::update_login_flow,
+        frontend_api::{to_session, update_login_flow},
         identity_api::{create_identity, get_identity, list_identities, patch_identity},
     },
     models::{
@@ -109,6 +109,16 @@ impl OryAuthenticationService {
                 ..Default::default()
             }),
         }
+    }
+
+    pub async fn get_account_by_cookie(&self, cookie: &str) -> Option<Account> {
+        to_session(&self.public_config, None, Some(cookie), None)
+            .await
+            .ok()
+            .and_then(|session| {
+                let identity = session.identity?;
+                Self::identity_to_account(*identity)
+            })
     }
 
     pub async fn create_account(
