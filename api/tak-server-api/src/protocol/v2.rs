@@ -1,5 +1,6 @@
 use std::{sync::Arc, time::Instant};
 
+use dashmap::DashMap;
 use tak_server_app::{
     domain::{AccountId, GameId, PlayerId},
     ports::{
@@ -28,6 +29,7 @@ pub struct ProtocolV2Handler {
     transport: Arc<TransportServiceImpl>,
     auth: Arc<dyn AuthenticationPort + Send + Sync + 'static>,
     acl: Arc<LegacyAPIAntiCorruptionLayer>,
+    connection_that_did_last_move: Arc<DashMap<(GameId, PlayerId), ConnectionId>>,
 }
 
 pub enum V2Response {
@@ -49,6 +51,7 @@ impl ProtocolV2Handler {
             transport,
             auth,
             acl,
+            connection_that_did_last_move: Arc::new(DashMap::new()),
         }
     }
 
@@ -58,7 +61,12 @@ impl ProtocolV2Handler {
             log::info!("Received empty message");
             return;
         }
-        let res: V2Response = match parts[0].to_ascii_lowercase().as_str() {
+        let subject = parts[0].to_ascii_lowercase();
+        let sensitive = matches!(
+            subject.as_str(),
+            "login" | "register" | "changepassword" | "resetpassword"
+        );
+        let res: V2Response = match subject.as_str() {
             "ping" => V2Response::OK,
             "protocol" => V2Response::OK, // Noop, ignore
             "client" => V2Response::OK,   // Noop, ignore
@@ -82,11 +90,19 @@ impl ProtocolV2Handler {
                 self.send_to(id, "OK");
             }
             V2Response::ErrorMessage(err, msg) => {
-                log::error!("Error handling message {:?}: {}", parts, err);
+                if !sensitive {
+                    log::error!("Error handling message {:?}: {}", parts, err);
+                } else {
+                    log::error!("Error handling sensitive message {:?}: {}", subject, err);
+                }
                 self.send_to(id, msg);
             }
             V2Response::ErrorNOK(err) => {
-                log::error!("Error handling message {:?}: {}", parts, err);
+                if !sensitive {
+                    log::error!("Error handling message {:?}: {}", parts, err);
+                } else {
+                    log::error!("Error handling sensitive message {:?}: {}", subject, err);
+                }
                 self.send_to(id, "NOK");
             }
         }
@@ -104,7 +120,7 @@ impl ProtocolV2Handler {
                 let disconnect_message = format!("Message {}", reason_str);
                 self.send_to(id, disconnect_message);
             }
-            ServerMessage::Notification(notif) => self.send_notification_message(id, notif).await,
+            ServerMessage::Notification(msg) => self.send_notification_message(id, msg).await,
         }
     }
 
@@ -163,7 +179,13 @@ impl ProtocolV2Handler {
                 player_id: moving_player_id,
             } => {
                 // legacy api expects only opponent to receive action messages
-                if player_id.is_none_or(|x| x != *moving_player_id) {
+                if player_id.is_none_or(|x| {
+                    x != *moving_player_id
+                        || self
+                            .connection_that_did_last_move
+                            .get(&(*game_id, x))
+                            .is_none_or(|c| *c != id)
+                }) {
                     self.send_game_action_message(id, *game_id, action);
                 }
             }
@@ -360,7 +382,7 @@ impl ProtocolV2Handler {
                     .await
             }
             "sudo" => self.handle_sudo_message(id, player_id, msg, &parts).await,
-            s if s.starts_with("game#") => self.handle_game_message(player_id, &parts).await,
+            s if s.starts_with("game#") => self.handle_game_message(id, player_id, &parts).await,
             _ => V2Response::ErrorNOK(ServiceError::BadRequest(format!(
                 "Unknown V2 message type: {}",
                 parts[0]

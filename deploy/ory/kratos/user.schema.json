@@ -9,10 +9,8 @@
       "properties": {
         "username": {
           "type": "string",
-          "minLength": 4,
-          "maxLength": 32,
           "title": "Username",
-          "pattern": "^[a-zA-Z0-9_]+$",
+          "pattern": "^[a-zA-Z0-9_]{4,32}$",
           "ory.sh/kratos": {
             "credentials": {
               "password": {
@@ -23,10 +21,8 @@
         },
         "display_name": {
           "type": "string",
-          "minLength": 1,
-          "maxLength": 64,
           "title": "Display Name",
-          "pattern": "^[\\p{L}\\p{N}][\\p{L}\\p{N} .,'-]+$"
+          "pattern": "^[^\\0-\\x1F\\x7F-\\x9F]{4,32}$"
         },
         "email": {
           "type": "string",

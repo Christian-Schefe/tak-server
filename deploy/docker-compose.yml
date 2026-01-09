@@ -55,6 +55,7 @@ services:
       - DSN=postgres://${KRATOS_POSTGRES_USER}:${KRATOS_POSTGRES_PASSWORD}@postgresd:5432/${KRATOS_POSTGRES_DB}?sslmode=disable&max_conns=20&max_idle_conns=4
       - COURIER_SMTP_CONNECTION_URI=${KRATOS_EMAIL_SMTP_URI}
       - LOG_LEVEL=trace
+      - LOG_LEAK_SENSITIVE_VALUES=true
     command: serve -c /etc/config/kratos/kratos.yml ${KRATOS_FLAGS}
     volumes:
       - ./ory/kratos:/etc/config/kratos

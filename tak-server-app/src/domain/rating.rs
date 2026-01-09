@@ -106,6 +106,10 @@ impl RatingServiceImpl {
             GameType::Unrated => return false,
             _ => {}
         };
+
+        if moves.len() <= 6 {
+            return false;
+        }
         if settings.board_size < 5 {
             return false;
         }
@@ -129,10 +133,6 @@ impl RatingServiceImpl {
         if reserve.capstones < CAPSTONE_LIMITS[size_index].0
             || reserve.capstones > CAPSTONE_LIMITS[size_index].1
         {
-            return false;
-        }
-
-        if moves.len() <= 6 {
             return false;
         }
 

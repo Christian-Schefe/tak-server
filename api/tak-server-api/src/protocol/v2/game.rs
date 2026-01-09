@@ -78,7 +78,12 @@ impl ProtocolV2Handler {
         self.send_to(id, message);
     }
 
-    pub async fn handle_game_message(&self, player_id: PlayerId, parts: &[&str]) -> V2Response {
+    pub async fn handle_game_message(
+        &self,
+        id: ConnectionId,
+        player_id: PlayerId,
+        parts: &[&str],
+    ) -> V2Response {
         if parts.len() < 2 {
             return V2Response::ErrorNOK(ServiceError::BadRequest(
                 "Invalid Game message format".to_string(),
@@ -96,6 +101,8 @@ impl ProtocolV2Handler {
 
         match parts[1] {
             "P" => {
+                self.connection_that_did_last_move
+                    .insert((game_id, player_id), id);
                 if let Err(e) = self
                     .handle_game_place_message(player_id, game_id, &parts[2..])
                     .await
@@ -109,6 +116,8 @@ impl ProtocolV2Handler {
                     .handle_game_move_message(player_id, game_id, &parts[2..])
                     .await
                 {
+                    self.connection_that_did_last_move
+                        .insert((game_id, player_id), id);
                     let err_str = format!("Error: {}", e);
                     return V2Response::ErrorMessage(e, err_str);
                 }

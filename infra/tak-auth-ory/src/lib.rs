@@ -87,9 +87,7 @@ impl AuthenticationPort for AuthenticationService {
         if let Some(cached_account) = self.account_cache.get(account_id) {
             return Some(cached_account);
         }
-        let account = if let Some(guest_account) =
-            self.guest_registry.get_by_username(&account_id.to_string())
-        {
+        let account = if let Some(guest_account) = self.guest_registry.get_by_id(account_id) {
             guest_account
         } else {
             self.ory_service.get_account(account_id).await?

@@ -84,6 +84,14 @@ impl GuestRegistry {
         None
     }
 
+    pub fn get_by_id(&self, account_id: &AccountId) -> Option<Account> {
+        let registry = self.inner.read().unwrap();
+        if let Some(guest) = registry.guest_accounts.get(&account_id) {
+            return Some(guest.account.clone());
+        }
+        None
+    }
+
     pub fn clean_up_guest_accounts(&self) -> Vec<AccountId> {
         let mut registry = self.inner.write().unwrap();
         let removed_accounts: Vec<_> = registry
