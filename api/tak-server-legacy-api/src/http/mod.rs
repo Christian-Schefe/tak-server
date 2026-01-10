@@ -45,13 +45,13 @@ pub async fn run(
         .await
         .unwrap();
 
-    info!("API server listening on port {}", port);
+    info!("Legacy API server listening on port {}", port);
     axum::serve(listener, router.with_state(AppState { app, auth, acl }))
         .with_graceful_shutdown(shutdown_signal)
         .await
         .unwrap();
 
-    info!("HTTP API shut down gracefully");
+    info!("Legacy HTTP API shut down gracefully");
 }
 
 #[derive(serde::Serialize)]

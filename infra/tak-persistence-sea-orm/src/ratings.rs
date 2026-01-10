@@ -35,7 +35,6 @@ impl RatingRepositoryImpl {
             boost: model.boost,
             max_rating: model.max_rating,
             rated_games_played: model.rated_games as u32,
-            is_unrated: model.is_unrated,
             rating_age: model.rating_age,
             fatigue: serde_json::from_value::<HashMap<uuid::Uuid, f64>>(model.fatigue)
                 .unwrap_or_default()
@@ -52,7 +51,6 @@ impl RatingRepositoryImpl {
             boost: sea_orm::Set(rating.boost),
             max_rating: sea_orm::Set(rating.max_rating),
             rated_games: sea_orm::Set(rating.rated_games_played as i32),
-            is_unrated: sea_orm::Set(rating.is_unrated),
             rating_age: sea_orm::Set(rating.rating_age),
             fatigue: sea_orm::Set(
                 serde_json::to_value(

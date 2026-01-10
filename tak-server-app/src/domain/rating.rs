@@ -15,7 +15,6 @@ pub struct PlayerRating {
     pub boost: f64,
     pub max_rating: f64,
     pub rated_games_played: u32,
-    pub is_unrated: bool,
     pub rating_age: Option<DateTime<Utc>>,
     pub fatigue: HashMap<PlayerId, f64>,
 }
@@ -28,7 +27,6 @@ impl PlayerRating {
             boost: 750.0,
             max_rating: 1000.0,
             rated_games_played: 0,
-            is_unrated: false,
             rating_age: None,
             fatigue: HashMap::new(),
         }

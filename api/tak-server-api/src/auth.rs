@@ -1,12 +1,20 @@
 use axum::{
+    RequestPartsExt,
     extract::FromRequestParts,
     http::{header::COOKIE, request::Parts},
+};
+use axum_extra::{
+    TypedHeader,
+    headers::{Authorization, authorization::Bearer},
 };
 use tak_server_app::ports::authentication::Account;
 
 use crate::{AppState, ServiceError};
 
-pub struct Auth(pub Account);
+pub struct Auth {
+    pub account: Account,
+    pub guest_jwt: Option<String>,
+}
 
 impl FromRequestParts<AppState> for Auth {
     type Rejection = ServiceError;
@@ -21,15 +29,21 @@ impl FromRequestParts<AppState> for Auth {
             && let Ok(cookie) = cookie.to_str()
         {
             if let Ok(acc) = verify_kratos_cookie(app, cookie).await {
-                return Ok(Auth(acc));
+                return Ok(Auth {
+                    account: acc,
+                    guest_jwt: None,
+                });
             }
         }
 
-        if let Some(auth_header) = parts.headers.get("authorization") {
-            if let Ok(token) = auth_header.to_str() {
-                if let Ok(acc) = verify_guest_jwt(app, token).await {
-                    return Ok(Auth(acc));
-                }
+        if let Ok(TypedHeader(Authorization(bearer))) =
+            parts.extract::<TypedHeader<Authorization<Bearer>>>().await
+        {
+            if let Ok(acc) = verify_guest_jwt(app, bearer.token()).await {
+                return Ok(Auth {
+                    account: acc,
+                    guest_jwt: Some(bearer.token().to_string()),
+                });
             }
         }
 
@@ -49,12 +63,13 @@ async fn verify_kratos_cookie(app: &AppState, cookie: &str) -> Result<Account, (
 }
 
 async fn verify_guest_jwt(app: &AppState, _token: &str) -> Result<Account, ()> {
-    let account = app.auth.get_account_by_guest_jwt(_token).await.ok_or(())?;
+    let account = app.auth.get_account_by_guest_jwt(_token).ok_or(())?;
     Ok(account)
 }
 
 #[async_trait::async_trait]
 pub trait ApiAuthPort {
     async fn get_account_by_kratos_cookie(&self, token: &str) -> Option<Account>;
-    async fn get_account_by_guest_jwt(&self, token: &str) -> Option<Account>;
+    fn get_account_by_guest_jwt(&self, token: &str) -> Option<Account>;
+    fn generate_or_refresh_guest_jwt(&self, token: Option<&str>) -> String;
 }

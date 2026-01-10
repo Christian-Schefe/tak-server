@@ -9,7 +9,6 @@ pub struct Model {
     pub rating: f64,
     pub boost: f64,
     pub rated_games: i32,
-    pub is_unrated: bool,
     pub max_rating: f64,
     pub rating_age: Option<chrono::DateTime<Utc>>,
     pub fatigue: serde_json::Value,

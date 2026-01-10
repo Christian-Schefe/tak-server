@@ -12,6 +12,7 @@ use tak_server_app::{
 use crate::{guest::GuestRegistry, ory::OryAuthenticationService};
 
 mod guest;
+mod jwt;
 mod ory;
 
 pub struct AuthenticationService {
@@ -80,15 +81,33 @@ impl ApiAuthPort for AuthenticationService {
         self.ory_service.get_account_by_cookie(token).await
     }
 
-    async fn get_account_by_guest_jwt(&self, _token: &str) -> Option<Account> {
-        None
+    fn get_account_by_guest_jwt(&self, token: &str) -> Option<Account> {
+        if let Ok(claims) = jwt::Claims::from_token(token)
+            && let Some(account) = self.guest_registry.get_by_id(&AccountId(claims.sub))
+        {
+            Some(account)
+        } else {
+            None
+        }
+    }
+
+    fn generate_or_refresh_guest_jwt(&self, token: Option<&str>) -> String {
+        let account_id = if let Some(token) = token
+            && let Some(account) = self.get_account_by_guest_jwt(token)
+        {
+            account.account_id
+        } else {
+            let account = self.guest_registry.get_or_create_guest(None);
+            account.account_id
+        };
+        jwt::generate_jwt(&account_id)
     }
 }
 
 #[async_trait::async_trait]
 impl AuthenticationPort for AuthenticationService {
     async fn get_or_create_guest_account(&self, token: &str) -> Account {
-        self.guest_registry.get_or_create_guest(token)
+        self.guest_registry.get_or_create_guest(Some(token))
     }
 
     async fn clean_up_guest_accounts(&self) -> Vec<AccountId> {

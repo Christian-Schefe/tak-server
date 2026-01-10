@@ -158,7 +158,7 @@ async fn main() {
     let app_clone = app.clone();
     let auth_clone = authentication_service.clone();
     let http_app = tokio::spawn(async move {
-        tak_server_api::serve(app_clone, auth_clone).await;
+        tak_server_api::serve(app_clone, auth_clone, shutdown_signal()).await;
     });
 
     let transport_app = tokio::spawn(async move {

@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 async-trait = "0.1.89"
 axum = { version = "0.8.4", features = ["ws", "macros"] }
+axum-extra = { version = "0.12.5", features = ["typed-header"] }
 dashmap = "6.1.0"
 futures = "0.3.31"
 futures-util = "0.3.31"

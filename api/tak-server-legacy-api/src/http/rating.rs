@@ -9,7 +9,7 @@ use tak_server_app::{
         Pagination, RepoError, SortOrder,
         rating::{RatingQuery, RatingSortBy},
     },
-    workflow::account::get_account::GetAccountError,
+    workflow::{account::get_account::GetAccountError, player::get_rating::GetRatingError},
 };
 use tokio::sync::Mutex;
 
@@ -52,22 +52,25 @@ pub async fn get_rating_by_name(
         .get_rating(player_id)
         .await
     {
-        Some(rating) => rating,
-        None => {
+        Ok(Some(rating_view)) => JsonPlayerRatingResponse {
+            name: name.clone(),
+            rating: rating_view.rating.round(),
+            ratedgames: rating_view.rated_games_played as i32,
+            maxrating: rating_view.max_rating.round(),
+            participation_rating: rating_view.participation_rating.round(),
+            isbot: account.is_bot(),
+        },
+        Ok(None) => {
             return Err(ServiceError::NotFound(format!(
-                "Rating for player '{}' not found",
+                "Player '{}' is unrated",
                 name
             )));
         }
-    };
-
-    let rating = JsonPlayerRatingResponse {
-        name: name.clone(),
-        rating: rating.rating.round(),
-        ratedgames: rating.rated_games_played as i32,
-        maxrating: rating.max_rating.round(),
-        participation_rating: rating.participation_rating.round(),
-        isbot: account.is_bot(),
+        Err(GetRatingError::Internal) => {
+            return Err(ServiceError::Internal(
+                "Failed to retrieve player rating".to_string(),
+            ));
+        }
     };
 
     Ok(Json(rating))

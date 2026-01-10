@@ -18,7 +18,7 @@ struct SharedGuestRegistry {
 #[derive(Debug, Clone)]
 pub struct GuestAccount {
     pub account: Account,
-    pub token: String,
+    pub token: Option<String>,
     pub last_access: std::time::Instant,
 }
 
@@ -38,14 +38,18 @@ impl GuestRegistry {
         }
     }
 
-    pub fn get_or_create_guest(&self, token: &str) -> Account {
+    pub fn get_or_create_guest(&self, token: Option<&str>) -> Account {
         let mut registry = self.inner.write().unwrap();
 
-        let id = registry
-            .guest_account_ids
-            .entry(token.to_string())
-            .or_insert_with(|| AccountId::new())
-            .clone();
+        let id = if let Some(token) = token {
+            registry
+                .guest_account_ids
+                .entry(token.to_string())
+                .or_insert_with(|| AccountId::new())
+                .clone()
+        } else {
+            AccountId::new()
+        };
         if let Some(guest) = registry.guest_accounts.get_mut(&id) {
             guest.last_access = std::time::Instant::now();
             return guest.account.clone();
@@ -63,7 +67,7 @@ impl GuestRegistry {
                 format!("Guest{}", next_id),
                 None,
             ),
-            token: token.to_string(),
+            token: token.map(|t| t.to_string()),
             last_access: std::time::Instant::now(),
         };
         registry.guest_accounts.insert(id.clone(), guest.clone());
@@ -103,7 +107,9 @@ impl GuestRegistry {
         for (account_id, guest) in removed_accounts {
             registry.guest_accounts.remove(&account_id);
             registry.guest_usernames.remove(&guest.account.username);
-            registry.guest_account_ids.remove(&guest.token);
+            if let Some(guest_token) = &guest.token {
+                registry.guest_account_ids.remove(guest_token);
+            }
             removed_account_ids.push(account_id);
         }
 
