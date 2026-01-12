@@ -1,4 +1,5 @@
 use log::error;
+use tak_player_connection::ConnectionId;
 use tak_server_app::{
     domain::{AccountId, ListenerId, PlayerId, moderation::ModerationFlag},
     ports::notification::ChatMessageSource,
@@ -6,7 +7,6 @@ use tak_server_app::{
 
 use crate::{
     app::ServiceError,
-    client::ConnectionId,
     protocol::v2::{ProtocolV2Handler, V2Response, split_n_and_rest},
 };
 

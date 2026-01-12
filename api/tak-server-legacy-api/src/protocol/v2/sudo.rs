@@ -1,7 +1,8 @@
+use tak_player_connection::ConnectionId;
 use tak_server_app::{
     domain::PlayerId,
     ports::{
-        connection::PlayerConnectionPort,
+        connection::AccountConnectionPort,
         notification::{ListenerMessage, ListenerNotificationPort, ServerAlertMessage},
     },
     workflow::account::moderate::ModerationError,
@@ -9,7 +10,7 @@ use tak_server_app::{
 
 use crate::{
     app::ServiceError,
-    client::{ConnectionId, DisconnectReason},
+    client::DisconnectReason,
     protocol::v2::{ProtocolV2Handler, V2Response, split_n_and_rest},
 };
 
@@ -269,7 +270,7 @@ impl ProtocolV2Handler {
         };
 
         self.transport
-            .close_connections_with_reason(target_listener_id, DisconnectReason::Kick)
+            .close_with_reason(target_player_id, DisconnectReason::Kick)
             .await;
         V2Response::Message(format!("{} kicked", target_username))
     }

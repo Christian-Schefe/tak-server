@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 
 use tak_core::{TakGameSettings, TakPlayer};
 
-use crate::domain::{GameType, PlayerId, SeekId, seek::Seek};
+use crate::domain::{PlayerId, SeekId, seek::Seek};
 
 pub mod accept;
 pub mod cancel;
@@ -20,7 +20,7 @@ pub struct SeekView {
     pub opponent_id: Option<PlayerId>,
     pub color: Option<TakPlayer>,
     pub game_settings: TakGameSettings,
-    pub game_type: GameType,
+    pub is_rated: bool,
 }
 
 impl<T: Borrow<Seek>> From<T> for SeekView {
@@ -32,7 +32,7 @@ impl<T: Borrow<Seek>> From<T> for SeekView {
             opponent_id: seek.opponent_id,
             color: seek.color,
             game_settings: seek.game_settings.clone(),
-            game_type: seek.game_type,
+            is_rated: seek.is_rated,
         }
     }
 }

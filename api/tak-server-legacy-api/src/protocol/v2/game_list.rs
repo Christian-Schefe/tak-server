@@ -1,13 +1,13 @@
 use std::time::Instant;
 
+use tak_player_connection::ConnectionId;
 use tak_server_app::{
-    domain::{GameId, GameType, ListenerId, PlayerId},
+    domain::{GameId, ListenerId, PlayerId},
     workflow::gameplay::{GameMetadataView, observe::ObserveGameError},
 };
 
 use crate::{
     app::ServiceError,
-    client::ConnectionId,
     protocol::{
         Protocol,
         v2::{ProtocolV2Handler, V2Response},
@@ -131,16 +131,8 @@ impl ProtocolV2Handler {
             settings.half_komi,
             settings.reserve.pieces,
             settings.reserve.capstones,
-            match game.game_type {
-                GameType::Unrated => "1",
-                GameType::Rated => "0",
-                GameType::Tournament => "0",
-            },
-            match game.game_type {
-                GameType::Unrated => "0",
-                GameType::Rated => "0",
-                GameType::Tournament => "1",
-            },
+            if game.is_rated { "0" } else { "1" }, // protocol has "is_unrated" flag, so invert
+            "0",
             settings
                 .time_control
                 .extra
@@ -235,16 +227,8 @@ impl ProtocolV2Handler {
                 settings.half_komi,
                 settings.reserve.pieces,
                 settings.reserve.capstones,
-                match game.game_type {
-                    GameType::Unrated => "1",
-                    GameType::Rated => "0",
-                    GameType::Tournament => "0",
-                },
-                match game.game_type {
-                    GameType::Unrated => "0",
-                    GameType::Rated => "0",
-                    GameType::Tournament => "1",
-                },
+                if game.is_rated { "0" } else { "1" }, // protocol has "is_unrated" flag, so invert
+                "0",
                 settings
                     .time_control
                     .extra

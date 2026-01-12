@@ -35,7 +35,7 @@ impl std::fmt::Display for AccountId {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct MatchId(u32);
+pub struct MatchId(u64);
 
 impl std::fmt::Display for MatchId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -44,10 +44,10 @@ impl std::fmt::Display for MatchId {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct SeekId(u32);
+pub struct SeekId(pub u64);
 
 impl SeekId {
-    pub fn new(id: u32) -> Self {
+    pub fn new(id: u64) -> Self {
         SeekId(id)
     }
 }
@@ -86,13 +86,6 @@ impl std::fmt::Display for ListenerId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.as_hyphenated())
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum GameType {
-    Unrated,
-    Rated,
-    Tournament,
 }
 
 #[derive(Debug, Clone)]

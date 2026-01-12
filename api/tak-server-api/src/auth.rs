@@ -7,7 +7,7 @@ use axum_extra::{
     TypedHeader,
     headers::{Authorization, authorization::Bearer},
 };
-use tak_server_app::ports::authentication::Account;
+use tak_server_app::{domain::AccountId, ports::authentication::Account};
 
 use crate::{AppState, ServiceError};
 
@@ -72,4 +72,7 @@ pub trait ApiAuthPort {
     async fn get_account_by_kratos_cookie(&self, token: &str) -> Option<Account>;
     fn get_account_by_guest_jwt(&self, token: &str) -> Option<Account>;
     fn generate_or_refresh_guest_jwt(&self, token: Option<&str>) -> String;
+
+    fn generate_account_jwt(&self, id: &AccountId) -> String;
+    fn validate_account_jwt(&self, token: &str) -> Option<AccountId>;
 }

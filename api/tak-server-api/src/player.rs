@@ -7,10 +7,10 @@ use uuid::Uuid;
 
 use crate::{AppState, ServiceError};
 
-pub async fn get_rating(
+pub async fn get_player_info(
     State(app): State<AppState>,
     Path(player_id): Path<String>,
-) -> Result<Json<RatingResponse>, ServiceError> {
+) -> Result<Json<PlayerInfo>, ServiceError> {
     let player_id = PlayerId(
         Uuid::parse_str(&player_id)
             .map_err(|_| ServiceError::BadRequest("Invalid player ID".to_string()))?,
@@ -20,18 +20,33 @@ pub async fn get_rating(
         .player_get_rating_use_case
         .get_rating(player_id)
         .await;
-    match rating {
-        Ok(Some(rating_view)) => Ok(Json(RatingResponse::Rated {
+    let rating = match rating {
+        Ok(Some(rating_view)) => RatingResponse::Rated {
             rating: rating_view.rating,
             max_rating: rating_view.max_rating,
             rated_games_played: rating_view.rated_games_played,
             participation_rating: rating_view.participation_rating,
-        })),
-        Ok(None) => Ok(Json(RatingResponse::Unrated)),
-        Err(_) => Err(ServiceError::Internal(
-            "Failed to retrieve player rating".to_string(),
-        )),
-    }
+        },
+        Ok(None) => RatingResponse::Unrated,
+        Err(_) => {
+            return Err(ServiceError::Internal(
+                "Failed to retrieve player rating".to_string(),
+            ));
+        }
+    };
+    let account = app
+        .app
+        .get_account_workflow
+        .get_account(player_id)
+        .await
+        .map_err(|_| ServiceError::Internal("Failed to retrieve player account".to_string()))?;
+
+    Ok(Json(PlayerInfo {
+        id: player_id.to_string(),
+        username: account.username,
+        display_name: account.display_name,
+        rating,
+    }))
 }
 
 #[derive(serde::Serialize)]
@@ -48,4 +63,13 @@ pub enum RatingResponse {
         rated_games_played: u32,
         participation_rating: f64,
     },
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerInfo {
+    pub id: String,
+    pub username: String,
+    pub display_name: String,
+    pub rating: RatingResponse,
 }

@@ -3,7 +3,7 @@ use std::borrow::Borrow;
 use tak_core::{TakFinishedGame, TakGameSettings, TakOngoingGame};
 
 use crate::domain::{
-    GameId, GameType, PlayerId,
+    GameId, PlayerId,
     game::{FinishedGame, GameMetadata, OngoingGame},
 };
 
@@ -19,7 +19,7 @@ pub struct GameMetadataView {
     pub id: GameId,
     pub white_id: PlayerId,
     pub black_id: PlayerId,
-    pub game_type: GameType,
+    pub is_rated: bool,
     pub settings: TakGameSettings,
 }
 
@@ -42,7 +42,7 @@ impl GameMetadataView {
             id: game.game_id,
             white_id: game.white_id,
             black_id: game.black_id,
-            game_type: game.game_type,
+            is_rated: game.is_rated,
             settings: game.settings.clone(),
         }
     }

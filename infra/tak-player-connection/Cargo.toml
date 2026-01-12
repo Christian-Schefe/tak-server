@@ -1,0 +1,12 @@
+[package]
+name = "tak-player-connection"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-trait = "0.1.89"
+tak-server-app = { path = "../../tak-server-app" }
+parking_lot = "0.12.5"
+more-concurrent-maps = { path = "../../more-concurrent-maps" }
+uuid = { version = "1.18.1", features = ["v4"] }
+log = "0.4.28"

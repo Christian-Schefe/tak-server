@@ -1,8 +1,8 @@
+use tak_player_connection::ConnectionId;
 use tak_server_app::domain::{AccountId, moderation::AccountRole};
 
 use crate::{
     app::ServiceError,
-    client::ConnectionId,
     protocol::v2::{ProtocolV2Handler, V2Response},
 };
 

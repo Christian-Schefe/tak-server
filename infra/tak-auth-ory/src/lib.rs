@@ -102,6 +102,18 @@ impl ApiAuthPort for AuthenticationService {
         };
         jwt::generate_jwt(&account_id)
     }
+
+    fn generate_account_jwt(&self, id: &AccountId) -> String {
+        jwt::generate_jwt(id)
+    }
+
+    fn validate_account_jwt(&self, token: &str) -> Option<AccountId> {
+        if let Ok(claims) = jwt::Claims::from_token(token) {
+            Some(AccountId(claims.sub))
+        } else {
+            None
+        }
+    }
 }
 
 #[async_trait::async_trait]

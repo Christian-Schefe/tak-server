@@ -111,7 +111,7 @@ impl<
             snapshot_white,
             snapshot_black,
             match_entry.game_settings.clone(),
-            match_entry.game_type,
+            match_entry.is_rated,
         );
 
         let game_id = match self.game_repository.save_ongoing_game(game_record).await {
@@ -143,7 +143,7 @@ impl<
             date,
             white_id,
             black_id,
-            match_entry.game_type,
+            match_entry.is_rated,
             match_entry.game_settings.clone(),
         );
 

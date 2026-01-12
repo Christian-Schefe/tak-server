@@ -26,6 +26,11 @@ This is a rewrite of the java server at https://github.com/USTakAssociation/play
 
   Reason: Rematches are automatically started by the server, no need for the client to accept a rematch seek.
 
+### Other Changes
+
+Removed "Tournament" flag from seeks and games (api still supports it, but ignores it)
+Reason: Tournament system will be reworked, and tournament games won't be created by seeks
+
 ## Feature wishlist
 
 - Async games (easy)

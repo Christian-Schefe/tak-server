@@ -10,7 +10,7 @@ use tak_core::{
 };
 use tak_server_app::{
     domain::{
-        GameId, GameType, Pagination, SortOrder,
+        GameId, Pagination, SortOrder,
         game_history::{
             DateSelector, GameIdSelector, GamePlayerFilter, GameQuery, GameRecord, GameSortBy,
         },
@@ -151,16 +151,15 @@ pub async fn get_all(
             }
         })
         .transpose()?;
-    let game_type = filter
+    let is_rated = filter
         .game_type
         .as_ref()
         .and_then(|type_str| {
             let type_str = type_str.trim().to_lowercase();
             match type_str.as_str() {
                 "" => None,
-                "normal" => Some(Ok(GameType::Rated)),
-                "unrated" => Some(Ok(GameType::Unrated)),
-                "tournament" => Some(Ok(GameType::Tournament)),
+                "normal" => Some(Ok(true)),
+                "unrated" => Some(Ok(false)),
                 _ => Some(Err(ServiceError::BadRequest(
                     "Invalid game type filter".to_string(),
                 ))),
@@ -220,7 +219,7 @@ pub async fn get_all(
         game_states,
         half_komi: filter.komi,
         board_size: filter.size,
-        game_type,
+        is_rated,
         clock_contingent,
         clock_increment,
         clock_extra_trigger: filter.extra_time_trigger,
@@ -476,8 +475,8 @@ impl JsonGameRecord {
             timer_inc: record.settings.time_control.increment.as_secs() as u32,
             rating_white: record.white.rating.unwrap_or(0.0).round(),
             rating_black: record.black.rating.unwrap_or(0.0).round(),
-            unrated: matches!(record.game_type, GameType::Unrated),
-            tournament: matches!(record.game_type, GameType::Tournament),
+            unrated: !record.is_rated,
+            tournament: false,
             komi: record.settings.half_komi,
             pieces: record.settings.reserve.pieces as i32,
             capstones: record.settings.reserve.capstones as i32,

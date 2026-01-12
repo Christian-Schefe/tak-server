@@ -4,8 +4,8 @@ use chrono::{DateTime, TimeDelta, Utc};
 use tak_core::{TakActionRecord, TakGameOverState, TakGameSettings, TakPlayer};
 
 use crate::domain::{
-    GameType, PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError,
-    RepoUpdateError, SortOrder, game::FinishedGame, game_history::GameRatingInfo,
+    PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
+    SortOrder, game::FinishedGame, game_history::GameRatingInfo,
 };
 
 #[derive(Clone, Debug)]
@@ -97,14 +97,8 @@ impl RatingServiceImpl {
     fn is_game_eligible_for_rating(
         &self,
         settings: &TakGameSettings,
-        game_type: GameType,
         moves: &Vec<TakActionRecord>,
     ) -> bool {
-        match game_type {
-            GameType::Unrated => return false,
-            _ => {}
-        };
-
         if moves.len() <= 6 {
             return false;
         }
@@ -270,15 +264,14 @@ impl RatingService for RatingServiceImpl {
         black_rating: &mut PlayerRating,
     ) -> Option<GameRatingInfo> {
         let metadata = &game.metadata;
+        if !metadata.is_rated {
+            return None;
+        }
         let white_id = metadata.white_id;
         let black_id = metadata.black_id;
         let result = game.game.game_state();
 
-        if !self.is_game_eligible_for_rating(
-            &metadata.settings,
-            metadata.game_type,
-            game.game.action_history(),
-        ) {
+        if !self.is_game_eligible_for_rating(&metadata.settings, game.game.action_history()) {
             return None;
         }
 

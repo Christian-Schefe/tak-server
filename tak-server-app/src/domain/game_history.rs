@@ -4,8 +4,8 @@ use chrono::{DateTime, Utc};
 use tak_core::{TakActionRecord, TakGameOverState, TakGameSettings};
 
 use crate::domain::{
-    GameId, GameType, PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError,
-    RepoUpdateError, SortOrder, game::FinishedGame,
+    GameId, PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
+    SortOrder, game::FinishedGame,
 };
 
 pub struct GameRecord {
@@ -14,7 +14,7 @@ pub struct GameRecord {
     pub black: PlayerSnapshot,
     pub rating_info: Option<GameRatingInfo>,
     pub settings: TakGameSettings,
-    pub game_type: GameType,
+    pub is_rated: bool,
     pub result: Option<TakGameOverState>,
     pub moves: Vec<TakActionRecord>,
 }
@@ -50,7 +50,7 @@ pub struct GameQuery {
     pub game_states: Option<Vec<TakGameOverState>>,
     pub half_komi: Option<usize>,
     pub board_size: Option<usize>,
-    pub game_type: Option<GameType>,
+    pub is_rated: Option<bool>,
     pub clock_contingent: Option<Duration>,
     pub clock_increment: Option<Duration>,
     pub clock_extra_trigger: Option<usize>,
@@ -114,7 +114,7 @@ pub trait GameHistoryService {
         white: PlayerSnapshot,
         black: PlayerSnapshot,
         settings: TakGameSettings,
-        game_type: GameType,
+        is_rated: bool,
     ) -> GameRecord;
     fn get_finished_game_record_update(
         &self,
@@ -138,7 +138,7 @@ impl GameHistoryService for GameHistoryServiceImpl {
         white: PlayerSnapshot,
         black: PlayerSnapshot,
         settings: TakGameSettings,
-        game_type: GameType,
+        is_rated: bool,
     ) -> GameRecord {
         GameRecord {
             date,
@@ -146,7 +146,7 @@ impl GameHistoryService for GameHistoryServiceImpl {
             black,
             rating_info: None,
             settings,
-            game_type,
+            is_rated,
             result: None,
             moves: Vec::new(),
         }

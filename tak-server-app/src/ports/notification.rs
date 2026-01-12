@@ -3,7 +3,7 @@ use std::time::Duration;
 use tak_core::{TakActionRecord, TakGameOverState};
 
 use crate::{
-    domain::{GameId, ListenerId, PlayerId},
+    domain::{AccountId, GameId, ListenerId, PlayerId},
     workflow::{
         gameplay::{FinishedGameView, OngoingGameView},
         matchmaking::SeekView,
@@ -30,8 +30,8 @@ pub enum ListenerMessage {
     GameEnded {
         game: FinishedGameView,
     },
-    PlayersOnline {
-        players: Vec<PlayerId>,
+    AccountsOnline {
+        accounts: Vec<AccountId>,
     },
     GameOver {
         game_id: GameId,
@@ -73,7 +73,7 @@ pub enum ListenerMessage {
         game_id: GameId,
     },
     ChatMessage {
-        from_player_id: PlayerId,
+        from_account_id: AccountId,
         message: String,
         source: ChatMessageSource,
     },

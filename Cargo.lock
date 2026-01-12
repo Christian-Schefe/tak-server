@@ -3910,9 +3910,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "tak-player-connection"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "log",
+ "more-concurrent-maps",
+ "parking_lot",
+ "tak-server-app",
+ "uuid",
+]
+
+[[package]]
 name = "tak-server"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "dotenvy",
  "log",
  "log4rs",
@@ -3920,6 +3933,7 @@ dependencies = [
  "tak-email-lettre",
  "tak-events-google-sheets",
  "tak-persistence-sea-orm",
+ "tak-player-connection",
  "tak-server-api",
  "tak-server-app",
  "tak-server-legacy-api",
@@ -3984,6 +3998,7 @@ dependencies = [
  "serde_json",
  "tak-auth-ory",
  "tak-core",
+ "tak-player-connection",
  "tak-server-app",
  "tokio",
  "tokio-util",

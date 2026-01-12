@@ -86,7 +86,7 @@ impl<
             seek.color,
             MatchColorRule::Alternate,
             seek.game_settings.clone(),
-            seek.game_type,
+            seek.is_rated,
         );
 
         match self

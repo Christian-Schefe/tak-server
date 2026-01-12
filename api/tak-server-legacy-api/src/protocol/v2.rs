@@ -1,11 +1,12 @@
 use std::{sync::Arc, time::Instant};
 
 use dashmap::DashMap;
+use tak_player_connection::ConnectionId;
 use tak_server_app::{
     domain::{AccountId, GameId, PlayerId},
     ports::{
         authentication::AuthenticationPort,
-        connection::PlayerConnectionPort,
+        connection::AccountConnectionPort,
         notification::{ListenerMessage, ServerAlertMessage},
     },
 };
@@ -13,7 +14,7 @@ use tak_server_app::{
 use crate::{
     acl::LegacyAPIAntiCorruptionLayer,
     app::ServiceError,
-    client::{ConnectionId, DisconnectReason, ServerMessage, TransportServiceImpl},
+    client::{DisconnectReason, ServerMessage, TransportServiceImpl},
     protocol::Application,
 };
 
@@ -232,11 +233,11 @@ impl ProtocolV2Handler {
                 self.send_time_update_message(id, *game_id, *white_time, *black_time);
             }
 
-            ListenerMessage::PlayersOnline { players } => {
+            ListenerMessage::AccountsOnline { accounts: players } => {
                 self.send_online_players_message(id, players).await;
             }
             ListenerMessage::ChatMessage {
-                from_player_id,
+                from_account_id,
                 message,
                 source,
             } => {
@@ -287,7 +288,7 @@ impl ProtocolV2Handler {
             .await
             .ok();
 
-        let online_players = self.app.player_get_online_use_case.get_online_players();
+        let online_players = self.app.account_get_online_use_case.get_online_accounts();
         self.send_online_players_message(id, &online_players).await;
 
         let seeks = self.app.seek_list_use_case.list_seeks();

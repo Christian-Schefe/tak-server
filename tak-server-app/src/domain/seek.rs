@@ -4,7 +4,7 @@ use std::{
 };
 use tak_core::{TakGameSettings, TakPlayer};
 
-use crate::domain::{GameType, PlayerId, SeekId};
+use crate::domain::{PlayerId, SeekId};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Seek {
@@ -13,7 +13,7 @@ pub struct Seek {
     pub opponent_id: Option<PlayerId>,
     pub color: Option<TakPlayer>,
     pub game_settings: TakGameSettings,
-    pub game_type: GameType,
+    pub is_rated: bool,
 }
 
 pub enum CreateSeekError {
@@ -28,7 +28,7 @@ pub trait SeekService {
         opponent: Option<PlayerId>,
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
-        game_type: GameType,
+        is_rated: bool,
     ) -> Result<Seek, CreateSeekError>;
     fn cancel_all_player_seeks(&self, player: PlayerId) -> Vec<Seek>;
     fn get_seek(&self, seek_id: SeekId) -> Option<Seek>;
@@ -120,7 +120,7 @@ impl SeekService for SeekServiceImpl {
         opponent: Option<PlayerId>,
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
-        game_type: GameType,
+        is_rated: bool,
     ) -> Result<Seek, CreateSeekError> {
         if !game_settings.is_valid() {
             return Err(CreateSeekError::InvalidGameSettings);
@@ -138,7 +138,7 @@ impl SeekService for SeekServiceImpl {
                 opponent_id: opponent,
                 color,
                 game_settings,
-                game_type,
+                is_rated,
             }))
     }
 

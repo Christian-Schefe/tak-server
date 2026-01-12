@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use crate::{
     app::ServiceError,
-    client::ConnectionId,
     protocol::{
         Protocol,
         v2::{ProtocolV2Handler, V2Response},
@@ -12,6 +11,7 @@ use tak_core::{
     TakAction, TakActionRecord, TakDir, TakGameOverState, TakPos, TakVariant,
     ptn::game_state_to_string,
 };
+use tak_player_connection::ConnectionId;
 use tak_server_app::{
     domain::{GameId, PlayerId},
     workflow::gameplay::do_action::{DoActionError, OfferDrawError, RequestUndoError, ResignError},

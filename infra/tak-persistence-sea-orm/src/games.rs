@@ -11,8 +11,7 @@ use tak_core::{
 };
 use tak_persistence_sea_orm_entites::game;
 use tak_server_app::domain::{
-    GameId, GameType, PaginatedResponse, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
-    SortOrder,
+    GameId, PaginatedResponse, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError, SortOrder,
     game_history::{
         DateSelector, GameFinishedUpdate, GameIdSelector, GamePlayerFilter, GameQuery,
         GameRatingInfo, GameRecord, GameRepository, GameSortBy, PlayerSnapshot,
@@ -121,13 +120,7 @@ impl GameRepositoryImpl {
             },
             white: white_snapshot,
             black: black_snapshot,
-            game_type: if model.is_unrated {
-                GameType::Unrated
-            } else if model.is_tournament {
-                GameType::Tournament
-            } else {
-                GameType::Rated
-            },
+            is_rated: model.is_rated,
             moves: json_moves
                 .into_iter()
                 .map(|jm| TakActionRecord {
@@ -164,8 +157,7 @@ impl GameRepository for GameRepositoryImpl {
             result: Set(None),
             clock_contingent: Set(game.settings.time_control.contingent.as_secs() as i32),
             clock_increment: Set(game.settings.time_control.increment.as_secs() as i32),
-            is_unrated: Set(game.game_type == GameType::Unrated),
-            is_tournament: Set(game.game_type == GameType::Tournament),
+            is_rated: Set(game.is_rated),
             half_komi: Set(game.settings.half_komi as i32),
             pieces: Set(game.settings.reserve.pieces as i32),
             capstones: Set(game.settings.reserve.capstones as i32),
@@ -297,14 +289,8 @@ impl GameRepository for GameRepositoryImpl {
                 }
             };
         }
-        if let Some(game_type) = filter.game_type {
-            query = match game_type {
-                GameType::Rated => query
-                    .filter(game::Column::IsUnrated.eq(false))
-                    .filter(game::Column::IsTournament.eq(false)),
-                GameType::Unrated => query.filter(game::Column::IsUnrated.eq(true)),
-                GameType::Tournament => query.filter(game::Column::IsTournament.eq(true)),
-            }
+        if let Some(is_rated) = filter.is_rated {
+            query = query.filter(game::Column::IsRated.eq(is_rated));
         }
         if let Some(game_states) = filter.game_states {
             let state_strings: Vec<String> = game_states

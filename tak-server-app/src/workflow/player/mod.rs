@@ -1,9 +1,7 @@
 use crate::domain::{PlayerId, rating::PlayerRating};
 
-pub mod get_online;
 pub mod get_rating;
 pub mod notify_player;
-pub mod set_online;
 
 #[derive(Clone, Debug)]
 pub struct RatedPlayerView {

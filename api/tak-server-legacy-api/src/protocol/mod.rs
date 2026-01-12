@@ -2,15 +2,16 @@ mod v2;
 
 use std::sync::Arc;
 
+use tak_player_connection::ConnectionId;
 use tak_server_app::{Application, domain::AccountId, ports::authentication::AuthenticationPort};
 
 use crate::{
     acl::LegacyAPIAntiCorruptionLayer,
-    client::{ConnectionId, ServerMessage, TransportServiceImpl},
+    client::{ServerMessage, TransportServiceImpl},
     protocol::v2::ProtocolV2Handler,
 };
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Protocol {
     V0,
     V2,

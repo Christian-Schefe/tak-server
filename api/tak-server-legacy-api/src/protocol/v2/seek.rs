@@ -2,13 +2,13 @@ use std::time::Duration;
 
 use crate::{
     app::ServiceError,
-    client::ConnectionId,
     protocol::v2::{ProtocolV2Handler, V2Response},
 };
 
 use tak_core::{TakGameSettings, TakPlayer, TakReserve, TakTimeControl};
+use tak_player_connection::ConnectionId;
 use tak_server_app::{
-    domain::{GameId, GameType, PlayerId, SeekId},
+    domain::{GameId, PlayerId, SeekId},
     workflow::matchmaking::accept::AcceptSeekError,
 };
 use tak_server_app::{
@@ -34,7 +34,7 @@ impl ProtocolV2Handler {
     fn parse_seek_from_parts(
         &self,
         parts: &[&str],
-    ) -> Result<(Option<TakPlayer>, GameType, Option<String>, TakGameSettings), ServiceError> {
+    ) -> Result<(Option<TakPlayer>, bool, Option<String>, TakGameSettings), ServiceError> {
         if parts.len() != 13 && parts.len() != 12 && parts.len() != 11 && parts.len() != 10 {
             return Err(ServiceError::BadRequest(
                 "Invalid Seek message format".to_string(),
@@ -73,16 +73,12 @@ impl ProtocolV2Handler {
                 ));
             }
         };
-        let is_tournament = match parts[9] {
+        let _is_tournament = match parts[9] {
             "1" => true,
             "0" => false,
             _ => return Err(ServiceError::BadRequest("Invalid tournament flag".into())),
         };
-        let game_type = match (is_unrated, is_tournament) {
-            (true, false) => GameType::Unrated,
-            (false, false) => GameType::Rated,
-            (_, true) => GameType::Tournament,
-        };
+        let is_rated = !is_unrated;
         let time_extra_trigger_move = if parts.len() >= 12 {
             parts[10]
                 .parse::<u32>()
@@ -124,7 +120,7 @@ impl ProtocolV2Handler {
                 extra: time_extra,
             },
         };
-        Ok((color, game_type, opponent, game_settings))
+        Ok((color, is_rated, opponent, game_settings))
     }
 
     // TODO: Support V0 seek messages
@@ -213,7 +209,7 @@ impl ProtocolV2Handler {
                 "Invalid Accept message format".to_string(),
             ));
         }
-        let Ok(seek_id) = parts[1].parse::<u32>() else {
+        let Ok(seek_id) = parts[1].parse::<u64>() else {
             return V2Response::ErrorNOK(ServiceError::BadRequest(
                 "Invalid Seek ID in Accept message".to_string(),
             ));
@@ -282,16 +278,8 @@ impl ProtocolV2Handler {
             seek.game_settings.half_komi,
             seek.game_settings.reserve.pieces,
             seek.game_settings.reserve.capstones,
-            match seek.game_type {
-                GameType::Unrated => "1",
-                GameType::Rated => "0",
-                GameType::Tournament => "0",
-            },
-            match seek.game_type {
-                GameType::Unrated => "0",
-                GameType::Rated => "0",
-                GameType::Tournament => "1",
-            },
+            if seek.is_rated { "0" } else { "1" }, // protocol has "is_unrated" flag, so invert
+            "0",
             seek.game_settings
                 .time_control
                 .extra

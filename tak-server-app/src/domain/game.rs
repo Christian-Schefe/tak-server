@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::domain::{GameId, GameType, PlayerId};
+use crate::domain::{GameId, PlayerId};
 use dashmap::DashMap;
 use tak_core::{
     MaybeTimeout, TakAction, TakActionRecord, TakFinishedGame, TakGame, TakGameSettings,
@@ -17,7 +17,7 @@ pub struct GameMetadata {
     pub white_id: PlayerId,
     pub black_id: PlayerId,
     pub settings: TakGameSettings,
-    pub game_type: GameType,
+    pub is_rated: bool,
 }
 
 impl GameMetadata {
@@ -87,7 +87,7 @@ pub trait GameService {
         date: chrono::DateTime<chrono::Utc>,
         white_id: PlayerId,
         black_id: PlayerId,
-        game_type: GameType,
+        is_rated: bool,
         game_settings: TakGameSettings,
     ) -> OngoingGame;
     fn get_game_by_id(&self, game_id: GameId) -> Option<OngoingGame>;
@@ -209,7 +209,7 @@ impl GameService for GameServiceImpl {
         date: chrono::DateTime<chrono::Utc>,
         white_id: PlayerId,
         black_id: PlayerId,
-        game_type: GameType,
+        is_rated: bool,
         game_settings: TakGameSettings,
     ) -> OngoingGame {
         let game = TakOngoingGame::new(game_settings.clone());
@@ -219,7 +219,7 @@ impl GameService for GameServiceImpl {
             white_id,
             black_id,
             settings: game_settings.clone(),
-            game_type,
+            is_rated,
         };
         let game_struct = OngoingGame { game, metadata };
         self.games.insert(id, game_struct.clone());

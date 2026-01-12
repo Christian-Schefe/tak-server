@@ -14,6 +14,7 @@ members = [
     "infra/tak-events-google-sheets",
     "infra/tak-persistence-sea-orm",
     "infra/tak-persistence-sea-orm-entites",
+    "infra/tak-player-connection",
     "more-concurrent-maps",
     "tak-core",
     "tak-server-app",
@@ -30,4 +31,6 @@ tak-persistence-sea-orm = { path = "./infra/tak-persistence-sea-orm" }
 tak-server-legacy-api = { path = "./api/tak-server-legacy-api" }
 tak-server-api = { path = "./api/tak-server-api" }
 tak-server-app = { path = "./tak-server-app" }
+tak-player-connection = { path = "./infra/tak-player-connection" }
 tokio = { version = "1.47.1", features = ["full"] }
+async-trait = "0.1.89"

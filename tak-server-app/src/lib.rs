@@ -10,15 +10,17 @@ use crate::{
         game_history::{GameHistoryServiceImpl, GameRepository},
         r#match::MatchServiceImpl,
         moderation::{AdminAccountPolicy, HigherRoleAccountPolicy, ModeratorAccountPolicy},
-        player::PlayerServiceImpl,
         profile::AccountProfileRepository,
         rating::{RatingRepository, RatingServiceImpl},
         seek::SeekServiceImpl,
         spectator::SpectatorServiceImpl,
     },
     ports::{
-        authentication::AuthenticationPort, connection::PlayerConnectionPort, email::EmailPort,
-        notification::ListenerNotificationPort, player_mapping::PlayerAccountMappingRepository,
+        authentication::AuthenticationPort,
+        connection::{AccountConnectionPort, AccountOnlineStatusPort},
+        email::EmailPort,
+        notification::ListenerNotificationPort,
+        player_mapping::PlayerAccountMappingRepository,
     },
     processes::game_timeout_runner::GameTimeoutRunnerImpl,
     services::player_resolver::{PlayerResolverService, PlayerResolverServiceImpl},
@@ -26,10 +28,12 @@ use crate::{
         account::{
             cleanup_guests::GuestCleanupJob,
             get_account::{GetAccountWorkflow, GetAccountWorkflowImpl},
+            get_online::{GetOnlineAccountsUseCase, GetOnlineAccountsUseCaseImpl},
             get_profile::{GetProfileUseCase, GetProfileUseCaseImpl},
             get_snapshot::{GetSnapshotWorkflow, GetSnapshotWorkflowImpl},
             moderate::{ModeratePlayerUseCase, ModeratePlayerUseCaseImpl, ModerationPolicies},
             remove_account::RemoveAccountWorkflowImpl,
+            set_online::{SetAccountOnlineUseCase, SetAccountOnlineUseCaseImpl},
         },
         chat::{
             message::{ChatMessageUseCase, ChatMessageUseCaseImpl},
@@ -56,10 +60,8 @@ use crate::{
             rematch::{RematchUseCase, RematchUseCaseImpl},
         },
         player::{
-            get_online::{GetOnlinePlayersUseCase, GetOnlinePlayersUseCaseImpl},
             get_rating::{PlayerGetRatingUseCase, PlayerGetRatingUseCaseImpl},
             notify_player::NotifyPlayerWorkflowImpl,
-            set_online::{SetPlayerOnlineUseCase, SetPlayerOnlineUseCaseImpl},
         },
     },
 };
@@ -80,9 +82,10 @@ pub struct Application {
     pub seek_list_use_case: Box<dyn ListSeeksUseCase + Send + Sync + 'static>,
     pub match_rematch_use_case: Box<dyn RematchUseCase + Send + Sync + 'static>,
 
-    pub player_set_online_use_case: Box<dyn SetPlayerOnlineUseCase + Send + Sync + 'static>,
+    pub account_set_online_use_case: Box<dyn SetAccountOnlineUseCase + Send + Sync + 'static>,
+    pub account_get_online_use_case: Box<dyn GetOnlineAccountsUseCase + Send + Sync + 'static>,
+
     pub player_get_rating_use_case: Box<dyn PlayerGetRatingUseCase + Send + Sync + 'static>,
-    pub player_get_online_use_case: Box<dyn GetOnlinePlayersUseCase + Send + Sync + 'static>,
     pub player_resolver_service: Arc<dyn PlayerResolverService + Send + Sync + 'static>,
 
     pub game_do_action_use_case: Box<dyn DoActionUseCase + Send + Sync + 'static>,
@@ -106,7 +109,7 @@ pub struct Application {
 
 pub async fn build_application<
     L: ListenerNotificationPort + Send + Sync + 'static,
-    C: PlayerConnectionPort + Send + Sync + 'static,
+    C: AccountConnectionPort + Send + Sync + 'static,
     G: GameRepository + Send + Sync + 'static,
     R: RatingRepository + Send + Sync + 'static,
     AS: AuthenticationPort + Send + Sync + 'static,
@@ -114,6 +117,7 @@ pub async fn build_application<
     ER: EventRepository + Send + Sync + 'static,
     PR: PlayerAccountMappingRepository + Send + Sync + 'static,
     PF: AccountProfileRepository + Send + Sync + 'static,
+    AC: AccountOnlineStatusPort + Send + Sync + 'static,
 >(
     game_repository: Arc<G>,
     player_repository: Arc<PR>,
@@ -124,10 +128,10 @@ pub async fn build_application<
     player_connection_port: Arc<C>,
     authentication_service: Arc<AS>,
     profile_repository: Arc<PF>,
+    account_online_status_port: Arc<AC>,
 ) -> Application {
     let seek_service = Arc::new(SeekServiceImpl::new());
     let game_service = Arc::new(GameServiceImpl::new());
-    let player_service = Arc::new(PlayerServiceImpl::new());
     let spectator_service = Arc::new(SpectatorServiceImpl::new());
     let chat_room_service = Arc::new(ChatRoomServiceImpl::new());
     let game_history_service = Arc::new(GameHistoryServiceImpl::new());
@@ -143,6 +147,9 @@ pub async fn build_application<
         set_admin_policy: Arc::new(HigherRoleAccountPolicy),
         set_user_policy: Arc::new(HigherRoleAccountPolicy),
     };
+
+    let player_resolver_service =
+        Arc::new(PlayerResolverServiceImpl::new(player_repository.clone()));
 
     let get_account_workflow = Arc::new(GetAccountWorkflowImpl::new(
         authentication_service.clone(),
@@ -160,6 +167,7 @@ pub async fn build_application<
         player_connection_port.clone(),
         game_service.clone(),
         spectator_service.clone(),
+        player_resolver_service.clone(),
     ));
 
     let finalize_game_workflow = Arc::new(FinalizeGameWorkflowImpl::new(
@@ -228,20 +236,19 @@ pub async fn build_application<
             create_game_from_match_workflow.clone(),
         )),
 
-        player_set_online_use_case: Box::new(SetPlayerOnlineUseCaseImpl::new(
-            player_service.clone(),
+        account_set_online_use_case: Box::new(SetAccountOnlineUseCaseImpl::new(
+            account_online_status_port.clone(),
             listener_notification_port.clone(),
         )),
+        account_get_online_use_case: Box::new(GetOnlineAccountsUseCaseImpl::new(
+            account_online_status_port.clone(),
+        )),
+
         player_get_rating_use_case: Box::new(PlayerGetRatingUseCaseImpl::new(
             rating_repository.clone(),
             rating_service.clone(),
         )),
-        player_get_online_use_case: Box::new(GetOnlinePlayersUseCaseImpl::new(
-            player_service.clone(),
-        )),
-        player_resolver_service: Arc::new(PlayerResolverServiceImpl::new(
-            player_repository.clone(),
-        )),
+        player_resolver_service,
 
         game_do_action_use_case: Box::new(DoActionUseCaseImpl::new(
             game_service.clone(),
