@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, sync::Arc};
+use std::sync::Arc;
 
 use axum::{
     extract::{
@@ -7,31 +7,29 @@ use axum::{
     },
     response::Response,
 };
+use dashmap::DashMap;
 use futures::{
     SinkExt, StreamExt,
     stream::{SplitSink, SplitStream},
 };
-use more_concurrent_maps::bijection::BiMap;
-use parking_lot::RwLock;
+use tak_core::ptn::{action_from_ptn, action_to_ptn};
+use tak_player_connection::{ConnectionId, PlayerSimpleConnectionPort};
 use tak_server_app::{
-    domain::{AccountId, ListenerId, PlayerId},
-    ports::{
-        connection::AccountConnectionPort,
-        notification::{ListenerMessage, ListenerNotificationPort},
-    },
+    domain::{AccountId, GameId, PlayerId},
+    ports::notification::ListenerMessage,
 };
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::{AppState, ServiceError, seek::SeekInfo};
+use crate::{AppState, ServiceError, game::GameInfo, seek::SeekInfo};
 
 pub async fn ws_handler(ws: WebSocketUpgrade, State(app): State<AppState>) -> Response {
     ws.on_upgrade(move |socket| async move {
         let (ws_sender, ws_receiver) = socket.split();
         let cancellation_token = CancellationToken::new();
         let cancellation_token_clone = cancellation_token.clone();
-        let conn_id = Uuid::new_v4();
+        let conn_id = ConnectionId::new();
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let tx_clone = tx.clone();
         let app_clone = app.clone();
@@ -61,6 +59,8 @@ pub async fn ws_handler(ws: WebSocketUpgrade, State(app): State<AppState>) -> Re
         }
 
         app.ws.remove_connection(conn_id);
+        app.connection_driver.remove_connection(&conn_id).await;
+        log::info!("WebSocket connection {} handler finished", conn_id);
     })
 }
 
@@ -68,7 +68,7 @@ async fn receive_ws(
     app: AppState,
     mut ws_receiver: SplitStream<WebSocket>,
     cancellation_token: CancellationToken,
-    connection_id: Uuid,
+    connection_id: ConnectionId,
     sender: tokio::sync::mpsc::UnboundedSender<ServerMessage>,
 ) {
     while let Some(msg) = select! {
@@ -140,30 +140,85 @@ async fn send_ws(
 async fn handle_client_message(
     app: &AppState,
     msg: ClientMessage,
-    connection_id: Uuid,
+    connection_id: ConnectionId,
 ) -> Result<(), ServiceError> {
     match msg {
         ClientMessage::Authenticate { token } => {
-            let player_id = authenticate_ws_token(app, &token).await?;
-            app.ws.set_connection_owner(connection_id, player_id);
+            let account_id = authenticate_ws_token(app, &token).await?;
+            app.connection_driver
+                .add_connection(&account_id, connection_id)
+                .await;
+            log::info!(
+                "WS connection {} associated with account {}",
+                connection_id,
+                &account_id
+            );
+            Ok(())
+        }
+        _ => {
+            let account_id = app
+                .connection_driver
+                .get_account_id(&connection_id)
+                .ok_or_else(|| {
+                    ServiceError::Unauthorized(
+                        "WebSocket connection is not authenticated".to_string(),
+                    )
+                })?;
+            let player_id = app
+                .app
+                .player_resolver_service
+                .resolve_player_id_by_account_id(&account_id)
+                .await
+                .map_err(|_| {
+                    ServiceError::Internal(
+                        "Failed to resolve player ID for authenticated account".to_string(),
+                    )
+                })?;
+            handle_authenticated_client_message(app, account_id, player_id, msg, connection_id)
+                .await
+        }
+    }
+}
+
+async fn handle_authenticated_client_message(
+    app: &AppState,
+    _account_id: AccountId,
+    player_id: PlayerId,
+    msg: ClientMessage,
+    _connection_id: ConnectionId,
+) -> Result<(), ServiceError> {
+    match msg {
+        ClientMessage::Authenticate { .. } => Err(ServiceError::BadRequest(
+            "Already authenticated".to_string(),
+        )),
+        ClientMessage::GameAction { game_id, action } => {
+            log::info!("Received GameAction for game {}: {}", game_id, action);
+            let Some(action) = action_from_ptn(&action) else {
+                return Err(ServiceError::BadRequest(
+                    "Invalid action format".to_string(),
+                ));
+            };
+            if let Err(e) = app
+                .app
+                .game_do_action_use_case
+                .do_action(GameId(game_id), player_id, action)
+                .await
+            {
+                return Err(ServiceError::BadRequest(format!(
+                    "Failed to perform game action: {:?}",
+                    e
+                )));
+            }
             Ok(())
         }
     }
 }
 
-async fn authenticate_ws_token(app: &AppState, token: &str) -> Result<PlayerId, ServiceError> {
+async fn authenticate_ws_token(app: &AppState, token: &str) -> Result<AccountId, ServiceError> {
     let account_id = app.auth.validate_account_jwt(token).ok_or_else(|| {
         ServiceError::Unauthorized("Invalid or expired authentication token".to_string())
     })?;
-    let player_id = app
-        .app
-        .player_resolver_service
-        .resolve_player_id_by_account_id(&account_id)
-        .await
-        .map_err(|_| {
-            ServiceError::Internal("Failed to resolve player ID for account".to_string())
-        })?;
-    Ok(player_id)
+    Ok(account_id)
 }
 
 struct ConnectionEntry {
@@ -171,80 +226,37 @@ struct ConnectionEntry {
     sender: tokio::sync::mpsc::UnboundedSender<ServerMessage>,
 }
 
-struct ConnectionRegistry {
-    connections: HashMap<Uuid, ConnectionEntry>,
-    listener_to_connection: HashMap<ListenerId, HashSet<Uuid>>,
-    connection_to_listeners: HashMap<Uuid, ListenerId>,
-    listener_player_map: BiMap<ListenerId, PlayerId>,
-}
-
 pub struct WsService {
-    registry: Arc<RwLock<ConnectionRegistry>>,
+    connections: Arc<DashMap<ConnectionId, ConnectionEntry>>,
 }
 
 impl WsService {
     pub fn new() -> Self {
         Self {
-            registry: Arc::new(RwLock::new(ConnectionRegistry {
-                connections: HashMap::new(),
-                listener_to_connection: HashMap::new(),
-                connection_to_listeners: HashMap::new(),
-                listener_player_map: BiMap::new(),
-            })),
+            connections: Arc::new(DashMap::new()),
         }
     }
 
-    fn add_connection(&self, id: Uuid, entry: ConnectionEntry) {
-        let mut registry = self.registry.write();
-        registry.connections.insert(id, entry);
+    fn add_connection(&self, id: ConnectionId, entry: ConnectionEntry) {
+        self.connections.insert(id, entry);
     }
 
-    fn remove_connection(&self, id: Uuid) {
-        let mut registry = self.registry.write();
-        if let Some(entry) = registry.connections.remove(&id) {
+    fn remove_connection(&self, id: ConnectionId) {
+        if let Some((_, entry)) = self.connections.remove(&id) {
             entry.cancellation_token.cancel();
         }
     }
-
-    fn set_connection_owner(&self, connection_id: Uuid, player: PlayerId) {
-        let mut registry = self.registry.write();
-        if let Some(old_listener_id) = registry
-            .connection_to_listeners
-            .get(&connection_id)
-            .copied()
-        {
-            if let Some(connections) = registry.listener_to_connection.get_mut(&old_listener_id) {
-                connections.remove(&connection_id);
-                if connections.is_empty() {
-                    registry.listener_to_connection.remove(&old_listener_id);
-                    registry
-                        .listener_player_map
-                        .remove_by_left(&old_listener_id);
-                }
-            }
-        }
-        let listener_id = if let Some(existing_listener_id) =
-            registry.listener_player_map.get_by_right(&player)
-        {
-            *existing_listener_id
-        } else {
-            let new_listener_id = ListenerId::new();
-            registry
-                .listener_player_map
-                .try_insert(new_listener_id, player);
-            new_listener_id
-        };
-        registry
-            .listener_to_connection
-            .entry(listener_id)
-            .or_insert_with(HashSet::new)
-            .insert(connection_id);
-        registry
-            .connection_to_listeners
-            .insert(connection_id, listener_id);
-    }
 }
 
+impl PlayerSimpleConnectionPort for WsService {
+    fn notify_connection(&self, connection_id: ConnectionId, message: &ListenerMessage) {
+        if let Some(entry) = self.connections.get(&connection_id) {
+            if let Some(server_msg) = ServerMessage::from_listener_message(message.clone()) {
+                let _ = entry.sender.send(server_msg);
+            }
+        }
+    }
+}
 
 #[derive(serde::Deserialize, Debug)]
 #[serde(
@@ -254,6 +266,7 @@ impl WsService {
 )]
 pub enum ClientMessage {
     Authenticate { token: String },
+    GameAction { game_id: i64, action: String },
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -285,6 +298,17 @@ pub enum ServerMessage {
     SeekRemoved {
         seek_id: u64,
     },
+    GameAction {
+        game_id: i64,
+        ply_index: usize,
+        action: String,
+    },
+    GameStarted {
+        game: GameInfo,
+    },
+    GameEnded {
+        game_id: i64,
+    },
 }
 
 impl ServerMessage {
@@ -296,6 +320,21 @@ impl ServerMessage {
             ListenerMessage::SeekCanceled { seek } => {
                 Some(ServerMessage::SeekRemoved { seek_id: seek.id.0 })
             }
+            ListenerMessage::GameAction {
+                game_id,
+                player_id: _,
+                action,
+            } => Some(ServerMessage::GameAction {
+                game_id: game_id.0,
+                ply_index: action.ply_index,
+                action: action_to_ptn(&action.action.action),
+            }),
+            ListenerMessage::GameStarted { game } => Some(ServerMessage::GameStarted {
+                game: GameInfo::from_ongoing_game_view(&game.metadata),
+            }),
+            ListenerMessage::GameEnded { game } => Some(ServerMessage::GameEnded {
+                game_id: game.metadata.id.0,
+            }),
             _ => None,
         }
     }

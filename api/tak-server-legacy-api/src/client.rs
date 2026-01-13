@@ -18,8 +18,11 @@ use futures_util::{SinkExt, StreamExt};
 use tak_player_connection::{ConnectionId, PlayerConnectionDriver, PlayerSimpleConnectionPort};
 use tak_server_app::{
     Application,
-    domain::{AccountId, PlayerId},
-    ports::{authentication::AuthenticationPort, notification::ListenerMessage},
+    domain::{AccountId, ListenerId, PlayerId},
+    ports::{
+        authentication::AuthenticationPort,
+        notification::{ListenerMessage, ListenerNotificationPort},
+    },
 };
 use tokio::{
     net::TcpStream,
@@ -53,10 +56,10 @@ struct AppState {
     app: Arc<Application>,
     protocol_service: Arc<ProtocolService>,
     connection_driver: Arc<PlayerConnectionDriver>,
+    listener_notification_service: Arc<dyn ListenerNotificationPort + Send + Sync + 'static>,
 }
 
 pub struct ClientConnection {
-    id: ConnectionId,
     sender: UnboundedSender<String>,
     notification_sender: UnboundedSender<ListenerMessage>,
     cancellation_token: CancellationToken,
@@ -134,7 +137,6 @@ impl TransportServiceImpl {
         });
 
         let connection = ClientConnection {
-            id: connection_id,
             sender: send_tx,
             notification_sender: notify_tx,
             cancellation_token: cancellation_token.clone(),
@@ -147,6 +149,13 @@ impl TransportServiceImpl {
         let _ = tokio::join!(receive_task, send_task, notification_task);
 
         self.connections.remove(&connection_id);
+
+        APPLICATION
+            .get()
+            .unwrap()
+            .connection_driver
+            .remove_connection(&connection_id)
+            .await;
 
         log::info!("Client {} fully disconnected", connection_id);
     }
@@ -344,6 +353,28 @@ impl TransportServiceImpl {
         Some((player_id, account_id))
     }
 
+    pub fn notify_all(&self, msg: ListenerMessage) {
+        let app = APPLICATION.get().unwrap();
+        app.listener_notification_service.notify_all(msg);
+    }
+
+    pub fn get_listener_id(&self, account_id: &AccountId) -> Option<ListenerId> {
+        let app = APPLICATION.get().unwrap();
+        app.connection_driver.get_listener_id(account_id)
+    }
+
+    pub async fn close_account_with_reason(
+        &self,
+        account_id: &AccountId,
+        reason: DisconnectReason,
+    ) {
+        let app = APPLICATION.get().unwrap();
+        let connection_ids = app.connection_driver.get_connection_ids(account_id);
+        for connection_id in connection_ids {
+            self.close_with_reason(connection_id, reason.clone()).await;
+        }
+    }
+
     pub async fn close_with_reason(&self, id: ConnectionId, reason: DisconnectReason) {
         let Some(conn) = self.connections.get(&id) else {
             log::info!("Client {} already disconnected", id);
@@ -450,6 +481,7 @@ impl TransportServiceImpl {
         auth: Arc<dyn AuthenticationPort + Send + Sync + 'static>,
         acl: Arc<LegacyAPIAntiCorruptionLayer>,
         connection_driver: Arc<PlayerConnectionDriver>,
+        listener_notification_service: Arc<dyn ListenerNotificationPort + Send + Sync + 'static>,
         shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
     ) {
         let protocol_service = Arc::new(ProtocolService::new(
@@ -463,6 +495,7 @@ impl TransportServiceImpl {
             app: app.clone(),
             protocol_service,
             connection_driver,
+            listener_notification_service,
         });
 
         APPLICATION.set(app_state.clone()).ok().unwrap();

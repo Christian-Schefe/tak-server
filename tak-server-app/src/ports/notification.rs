@@ -1,9 +1,9 @@
 use std::time::Duration;
 
-use tak_core::{TakActionRecord, TakGameOverState};
+use tak_core::TakGameOverState;
 
 use crate::{
-    domain::{AccountId, GameId, ListenerId, PlayerId},
+    domain::{AccountId, GameId, ListenerId, PlayerId, game::GameActionRecord},
     workflow::{
         gameplay::{FinishedGameView, OngoingGameView},
         matchmaking::SeekView,
@@ -40,7 +40,7 @@ pub enum ListenerMessage {
     GameAction {
         game_id: GameId,
         player_id: PlayerId,
-        action: TakActionRecord,
+        action: GameActionRecord,
     },
     GameActionUndone {
         game_id: GameId,

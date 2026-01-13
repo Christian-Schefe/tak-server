@@ -9,7 +9,7 @@ use tak_server_app::{
     Application,
     domain::{AccountId, ListenerId},
     ports::{
-        connection::AccountConnectionPort,
+        connection::{AccountConnectionPort, AccountOnlineStatusPort},
         notification::{ListenerMessage, ListenerNotificationPort},
     },
 };
@@ -42,11 +42,11 @@ struct ConnectionRegistry {
 
 pub struct PlayerConnectionDriver {
     app: Arc<Application>,
-    inner: Arc<PlayerNotificationService>,
+    inner: Arc<PlayerConnectionService>,
 }
 
 impl PlayerConnectionDriver {
-    pub fn new(app: Arc<Application>, inner: Arc<PlayerNotificationService>) -> Self {
+    pub fn new(app: Arc<Application>, inner: Arc<PlayerConnectionService>) -> Self {
         Self { app, inner }
     }
 
@@ -59,18 +59,16 @@ impl PlayerConnectionDriver {
         if registry.connection_to_listener.contains_key(&connection_id) {
             return false;
         }
-        let listener_id = if let Some(listener_id) = registry.listener_map.get_by_left(&account_id)
-        {
-            *listener_id
-        } else {
-            let new_listener_id = ListenerId::new();
-            registry
-                .listener_map
-                .try_insert(account_id.clone(), new_listener_id);
-            //Set account online
-            self.app.account_set_online_use_case.set_online(account_id);
-            new_listener_id
-        };
+        let (listener_id, set_online) =
+            if let Some(listener_id) = registry.listener_map.get_by_left(&account_id) {
+                (*listener_id, false)
+            } else {
+                let new_listener_id = ListenerId::new();
+                registry
+                    .listener_map
+                    .try_insert(account_id.clone(), new_listener_id);
+                (new_listener_id, true)
+            };
         registry
             .connection_to_listener
             .insert(connection_id, listener_id);
@@ -79,22 +77,44 @@ impl PlayerConnectionDriver {
             .entry(listener_id)
             .or_insert_with(HashSet::new)
             .insert(connection_id);
+        if set_online {
+            drop(registry);
+            self.app.account_set_online_use_case.set_online(account_id);
+        }
         true
     }
 
     pub async fn remove_connection(&self, connection_id: &ConnectionId) {
-        let mut registry = self.inner.registry.write();
-        if let Some(listener_id) = registry.connection_to_listener.remove(connection_id) {
-            if let Some(connections) = registry.listener_to_connections.get_mut(&listener_id) {
-                connections.remove(connection_id);
-                if connections.is_empty() {
-                    registry.listener_to_connections.remove(&listener_id);
-                    if let Some(account_id) = registry.listener_map.remove_by_right(&listener_id) {
-                        self.set_player_offline(&account_id).await;
+        let mut set_account_offline = None;
+        {
+            let mut registry = self.inner.registry.write();
+            if let Some(listener_id) = registry.connection_to_listener.remove(connection_id) {
+                if let Some(connections) = registry.listener_to_connections.get_mut(&listener_id) {
+                    connections.remove(connection_id);
+                    if connections.is_empty() {
+                        registry.listener_to_connections.remove(&listener_id);
+                        if let Some(account_id) =
+                            registry.listener_map.remove_by_right(&listener_id)
+                        {
+                            set_account_offline = Some(account_id);
+                        }
                     }
                 }
             }
+        };
+        if let Some(account_id) = set_account_offline {
+            self.set_player_offline(&account_id).await;
         }
+    }
+
+    pub fn get_connection_ids(&self, account_id: &AccountId) -> Vec<ConnectionId> {
+        let registry = self.inner.registry.read();
+        if let Some(listener_id) = registry.listener_map.get_by_left(account_id) {
+            if let Some(conn_set) = registry.listener_to_connections.get(listener_id) {
+                return conn_set.iter().cloned().collect();
+            }
+        }
+        Vec::new()
     }
 
     pub fn get_account_id(&self, connection_id: &ConnectionId) -> Option<AccountId> {
@@ -105,6 +125,11 @@ impl PlayerConnectionDriver {
             }
         }
         None
+    }
+
+    pub fn get_listener_id(&self, account_id: &AccountId) -> Option<ListenerId> {
+        let registry = self.inner.registry.read();
+        registry.listener_map.get_by_left(account_id).cloned()
     }
 
     async fn set_player_offline(&self, account_id: &AccountId) {
@@ -121,7 +146,7 @@ impl PlayerConnectionDriver {
 }
 
 #[async_trait::async_trait]
-impl AccountConnectionPort for PlayerNotificationService {
+impl AccountConnectionPort for PlayerConnectionService {
     async fn get_connection_id(&self, account_id: &AccountId) -> Option<ListenerId> {
         let registry = self.registry.read();
 
@@ -129,12 +154,12 @@ impl AccountConnectionPort for PlayerNotificationService {
     }
 }
 
-pub struct PlayerNotificationService {
+pub struct PlayerConnectionService {
     services: Vec<Arc<dyn PlayerSimpleConnectionPort + Send + Sync>>,
     registry: Arc<RwLock<ConnectionRegistry>>,
 }
 
-impl PlayerNotificationService {
+impl PlayerConnectionService {
     pub fn new(services: Vec<Arc<dyn PlayerSimpleConnectionPort + Send + Sync>>) -> Self {
         Self {
             services,
@@ -147,7 +172,7 @@ impl PlayerNotificationService {
     }
 }
 
-impl ListenerNotificationPort for PlayerNotificationService {
+impl ListenerNotificationPort for PlayerConnectionService {
     fn notify_listener(&self, listener: ListenerId, message: ListenerMessage) {
         let registry = self.registry.read();
         if let Some(connections) = registry.listener_to_connections.get(&listener) {
@@ -181,5 +206,41 @@ impl ListenerNotificationPort for PlayerNotificationService {
                 }
             }
         }
+    }
+}
+
+pub struct AccountOnlineStatusService {
+    online_accounts: Arc<RwLock<HashSet<AccountId>>>,
+}
+
+impl AccountOnlineStatusService {
+    pub fn new() -> Self {
+        Self {
+            online_accounts: Arc::new(RwLock::new(HashSet::new())),
+        }
+    }
+}
+
+impl AccountOnlineStatusPort for AccountOnlineStatusService {
+    fn set_account_online(&self, account_id: &AccountId) -> Option<Vec<AccountId>> {
+        let mut online_accounts = self.online_accounts.write();
+        if online_accounts.insert(account_id.clone()) {
+            Some(online_accounts.iter().cloned().collect())
+        } else {
+            None
+        }
+    }
+
+    fn set_account_offline(&self, account_id: &AccountId) -> Option<Vec<AccountId>> {
+        let mut online_accounts = self.online_accounts.write();
+        if online_accounts.remove(account_id) {
+            Some(online_accounts.iter().cloned().collect())
+        } else {
+            None
+        }
+    }
+
+    fn get_online_accounts(&self) -> Vec<AccountId> {
+        self.online_accounts.read().iter().cloned().collect()
     }
 }

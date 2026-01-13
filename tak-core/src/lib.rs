@@ -164,11 +164,6 @@ pub enum MaybeTimeout<R> {
 }
 
 #[derive(Clone, Debug)]
-pub enum DoActionError {
-    InvalidAction(InvalidActionReason),
-}
-
-#[derive(Clone, Debug)]
 pub enum InvalidActionReason {
     OpeningViolation,
     InvalidPlace(InvalidPlaceReason),
@@ -179,6 +174,7 @@ pub enum InvalidActionReason {
 pub enum InvalidPlaceReason {
     OutOfBounds,
     PositionOccupied,
+    NoPiecesRemaining,
 }
 
 #[derive(Clone, Debug)]

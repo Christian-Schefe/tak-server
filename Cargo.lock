@@ -3914,6 +3914,7 @@ name = "tak-player-connection"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "dashmap",
  "log",
  "more-concurrent-maps",
  "parking_lot",
@@ -3956,6 +3957,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tak-core",
+ "tak-player-connection",
  "tak-server-app",
  "tokio",
  "tokio-util",

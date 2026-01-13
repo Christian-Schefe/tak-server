@@ -325,7 +325,7 @@ impl ProtocolV2Handler {
             Err(DoActionError::GameNotFound) => {
                 return Err(ServiceError::NotFound("Game not found".to_string()));
             }
-            Err(DoActionError::InvalidAction(tak_core::DoActionError::InvalidAction(reason))) => {
+            Err(DoActionError::InvalidAction(reason)) => {
                 return Err(ServiceError::BadRequest(format!(
                     "Invalid action: {:?}",
                     reason
@@ -411,7 +411,7 @@ impl ProtocolV2Handler {
             Err(DoActionError::GameNotFound) => {
                 return Err(ServiceError::NotFound("Game not found".to_string()));
             }
-            Err(DoActionError::InvalidAction(tak_core::DoActionError::InvalidAction(reason))) => {
+            Err(DoActionError::InvalidAction(reason)) => {
                 return Err(ServiceError::BadRequest(format!(
                     "Invalid action: {:?}",
                     reason

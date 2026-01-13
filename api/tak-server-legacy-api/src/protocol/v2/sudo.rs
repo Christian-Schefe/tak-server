@@ -1,10 +1,7 @@
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
-    domain::PlayerId,
-    ports::{
-        connection::AccountConnectionPort,
-        notification::{ListenerMessage, ListenerNotificationPort, ServerAlertMessage},
-    },
+    domain::AccountId,
+    ports::notification::{ListenerMessage, ServerAlertMessage},
     workflow::account::moderate::ModerationError,
 };
 
@@ -18,7 +15,7 @@ impl ProtocolV2Handler {
     pub async fn handle_sudo_message(
         &self,
         id: ConnectionId,
-        player_id: PlayerId,
+        account_id: &AccountId,
         msg: &str,
         parts: &[&str],
     ) -> V2Response {
@@ -30,41 +27,41 @@ impl ProtocolV2Handler {
         let command = parts[1];
         self.send_to(id, format!("sudoReply > {}", msg));
         let response = match command {
-            "ban" => self.handle_ban_message(player_id, msg, true).await,
-            "unban" => self.handle_ban_message(player_id, msg, false).await,
+            "ban" => self.handle_ban_message(account_id, msg, true).await,
+            "unban" => self.handle_ban_message(account_id, msg, false).await,
             "gag" => {
-                self.handle_player_update(player_id, parts, Some(true), None, None, None)
+                self.handle_player_update(account_id, parts, Some(true), None, None, None)
                     .await
             }
             "ungag" => {
-                self.handle_player_update(player_id, parts, Some(false), None, None, None)
+                self.handle_player_update(account_id, parts, Some(false), None, None, None)
                     .await
             }
             "mod" => {
-                self.handle_player_update(player_id, parts, None, Some(true), None, None)
+                self.handle_player_update(account_id, parts, None, Some(true), None, None)
                     .await
             }
             "unmod" => {
-                self.handle_player_update(player_id, parts, None, Some(false), None, None)
+                self.handle_player_update(account_id, parts, None, Some(false), None, None)
                     .await
             }
             "admin" => {
-                self.handle_player_update(player_id, parts, None, None, Some(true), None)
+                self.handle_player_update(account_id, parts, None, None, Some(true), None)
                     .await
             }
             "unadmin" => {
-                self.handle_player_update(player_id, parts, None, None, Some(false), None)
+                self.handle_player_update(account_id, parts, None, None, Some(false), None)
                     .await
             }
             "bot" => {
-                self.handle_player_update(player_id, parts, None, None, None, Some(true))
+                self.handle_player_update(account_id, parts, None, None, None, Some(true))
                     .await
             }
             "unbot" => {
-                self.handle_player_update(player_id, parts, None, None, None, Some(false))
+                self.handle_player_update(account_id, parts, None, None, None, Some(false))
                     .await
             }
-            "kick" => self.handle_kick_message(player_id, parts).await,
+            "kick" => self.handle_kick_message(account_id, parts).await,
             "list" => V2Response::OK,   // Not supported anymore
             "reload" => V2Response::OK, // Was used in legacy profanity filter, no-op here.
             "broadcast" => self.handle_broadcast_message(parts, msg).await,
@@ -86,7 +83,7 @@ impl ProtocolV2Handler {
 
     async fn handle_player_update(
         &self,
-        player_id: PlayerId,
+        account_id: &AccountId,
         parts: &[&str],
         silenced: Option<bool>,
         modded: Option<bool>,
@@ -99,11 +96,7 @@ impl ProtocolV2Handler {
             ));
         }
         let target_username = parts[2].to_string();
-        let Some((target_player_id, _)) = self
-            .acl
-            .get_account_and_player_id_by_username(&target_username)
-            .await
-        else {
+        let Some(target_account) = self.acl.get_account_by_username(&target_username).await else {
             return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
                 "No such user: {}",
                 target_username
@@ -114,12 +107,12 @@ impl ProtocolV2Handler {
             let res = if silenced {
                 self.app
                     .account_moderate_use_case
-                    .silence_player(player_id, target_player_id)
+                    .silence_player(account_id, &target_account.account_id)
                     .await
             } else {
                 self.app
                     .account_moderate_use_case
-                    .unsilence_player(player_id, target_player_id)
+                    .unsilence_player(account_id, &target_account.account_id)
                     .await
             };
             match res {
@@ -146,12 +139,12 @@ impl ProtocolV2Handler {
             let res = if modded {
                 self.app
                     .account_moderate_use_case
-                    .set_moderator(player_id, target_player_id)
+                    .set_moderator(account_id, &target_account.account_id)
                     .await
             } else {
                 self.app
                     .account_moderate_use_case
-                    .set_user(player_id, target_player_id)
+                    .set_user(account_id, &target_account.account_id)
                     .await
             };
 
@@ -180,12 +173,12 @@ impl ProtocolV2Handler {
             let res = if admin {
                 self.app
                     .account_moderate_use_case
-                    .set_admin(player_id, target_player_id)
+                    .set_admin(account_id, &target_account.account_id)
                     .await
             } else {
                 self.app
                     .account_moderate_use_case
-                    .set_user(player_id, target_player_id)
+                    .set_user(account_id, &target_account.account_id)
                     .await
             };
 
@@ -218,19 +211,15 @@ impl ProtocolV2Handler {
         }
     }
 
-    async fn handle_kick_message(&self, player_id: PlayerId, parts: &[&str]) -> V2Response {
+    async fn handle_kick_message(&self, account_id: &AccountId, parts: &[&str]) -> V2Response {
         if parts.len() != 3 {
             return V2Response::ErrorNOK(ServiceError::BadRequest(
                 "Invalid Sudo kick command format".to_string(),
             ));
         }
         let target_username = parts[2].to_string();
-        let (target_player_id, _) = match self
-            .acl
-            .get_account_and_player_id_by_username(&target_username)
-            .await
-        {
-            Some(pid) => pid,
+        let target_account = match self.acl.get_account_by_username(&target_username).await {
+            Some(account) => account,
             None => {
                 return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
                     "No such user: {}",
@@ -242,7 +231,7 @@ impl ProtocolV2Handler {
         match self
             .app
             .account_moderate_use_case
-            .kick_player(player_id, target_player_id)
+            .kick_player(account_id, &target_account.account_id)
             .await
         {
             Ok(()) => {}
@@ -259,25 +248,15 @@ impl ProtocolV2Handler {
             }
         }
 
-        let target_listener_id = match self.transport.get_connection_id(target_player_id).await {
-            Some(lid) => lid,
-            None => {
-                return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
-                    "User {} is not currently connected",
-                    target_username
-                )));
-            }
-        };
-
         self.transport
-            .close_with_reason(target_player_id, DisconnectReason::Kick)
+            .close_account_with_reason(&target_account.account_id, DisconnectReason::Kick)
             .await;
         V2Response::Message(format!("{} kicked", target_username))
     }
 
     async fn handle_ban_message(
         &self,
-        player_id: PlayerId,
+        account_id: &AccountId,
         orig_msg: &str,
         ban: bool,
     ) -> V2Response {
@@ -288,11 +267,7 @@ impl ProtocolV2Handler {
             ));
         }
         let target_username = parts[2].to_string();
-        let Some((target_player_id, _)) = self
-            .acl
-            .get_account_and_player_id_by_username(&target_username)
-            .await
-        else {
+        let Some(target_account) = self.acl.get_account_by_username(&target_username).await else {
             return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
                 "No such user: {}",
                 target_username
@@ -302,12 +277,12 @@ impl ProtocolV2Handler {
         let res = if ban {
             self.app
                 .account_moderate_use_case
-                .ban_player(player_id, target_player_id, msg)
+                .ban_player(account_id, &target_account.account_id, msg)
                 .await
         } else {
             self.app
                 .account_moderate_use_case
-                .unban_player(player_id, target_player_id)
+                .unban_player(account_id, &target_account.account_id)
                 .await
         };
         match res {

@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use log::info;
-
 use tak_auth_ory::AuthenticationService;
 use tak_email_lettre::LettreEmailAdapter;
 use tak_events_google_sheets::NoopEventRepository;
@@ -9,7 +7,9 @@ use tak_persistence_sea_orm::{
     games::GameRepositoryImpl, player_account_mapping::PlayerAccountMappingRepositoryImpl,
     profile::ProfileRepositoryImpl, ratings::RatingRepositoryImpl,
 };
-use tak_player_connection::PlayerNotificationService;
+use tak_player_connection::{
+    AccountOnlineStatusService, PlayerConnectionDriver, PlayerConnectionService,
+};
 use tak_server_api::WsService;
 use tak_server_app::build_application;
 use tak_server_legacy_api::{acl::LegacyAPIAntiCorruptionLayer, client::TransportServiceImpl};
@@ -42,7 +42,7 @@ async fn shutdown_signal() {
         _ = terminate => {},
     }
 
-    info!("Shutdown signal received. Preparing graceful exit...");
+    log::info!("Shutdown signal received. Preparing graceful exit...");
 }
 
 fn try_load_env() {
@@ -63,13 +63,7 @@ async fn main() {
     init_logger();
 
     let legacy_transport_service = Arc::new(TransportServiceImpl::new());
-
     let ws_service = Arc::new(WsService::new());
-
-    let player_notification_service = Arc::new(PlayerNotificationService::new(vec![
-        legacy_transport_service.clone(),
-        ws_service.clone(),
-    ]));
 
     let game_repo = Arc::new(GameRepositoryImpl::new().await);
     let player_repo = Arc::new(PlayerAccountMappingRepositoryImpl::new().await);
@@ -77,11 +71,15 @@ async fn main() {
     let profile_repo = Arc::new(ProfileRepositoryImpl::new().await);
     let event_repo = Arc::new(NoopEventRepository);
     let email_adapter = Arc::new(LettreEmailAdapter::new());
-    let player_connection_adapter = player_notification_service.clone();
+    let player_connection_adapter = Arc::new(PlayerConnectionService::new(vec![
+        legacy_transport_service.clone(),
+        ws_service.clone(),
+    ]));
     let listener_notification_adapter = Arc::new(ComposedListenerNotificationService::new(vec![
         player_connection_adapter.clone(), //for now only one adapter
     ]));
-    let authentication_service = Arc::new(AuthenticationService::new());
+    let authentication_adapter = Arc::new(AuthenticationService::new());
+    let account_online_status_adapter = Arc::new(AccountOnlineStatusService::new());
 
     let app = Arc::new(
         build_application(
@@ -90,41 +88,57 @@ async fn main() {
             rating_repo,
             event_repo,
             email_adapter.clone(),
-            listener_notification_adapter,
-            player_connection_adapter,
-            authentication_service.clone(),
+            listener_notification_adapter.clone(),
+            player_connection_adapter.clone(),
+            authentication_adapter.clone(),
             profile_repo,
+            account_online_status_adapter,
         )
         .await,
     );
 
+    let connection_driver = Arc::new(PlayerConnectionDriver::new(
+        app.clone(),
+        player_connection_adapter.clone(),
+    ));
+
     let acl = Arc::new(LegacyAPIAntiCorruptionLayer::new(
         app.clone(),
-        authentication_service.clone(),
+        authentication_adapter.clone(),
         email_adapter.clone(),
     ));
 
-    info!("Starting application");
+    log::info!("Starting application");
 
     let app_clone = app.clone();
-    let auth_clone = authentication_service.clone();
+    let auth_clone = authentication_adapter.clone();
     let acl_clone = acl.clone();
     let legacy_http_app = tokio::spawn(async move {
         tak_server_legacy_api::http::run(app_clone, auth_clone, acl_clone, shutdown_signal()).await;
     });
 
     let app_clone = app.clone();
-    let auth_clone = authentication_service.clone();
+    let auth_clone = authentication_adapter.clone();
+    let connection_driver_clone = connection_driver.clone();
     let http_app = tokio::spawn(async move {
-        tak_server_api::serve(app_clone, auth_clone, ws_service, shutdown_signal()).await;
+        tak_server_api::serve(
+            app_clone,
+            auth_clone,
+            ws_service,
+            connection_driver_clone,
+            shutdown_signal(),
+        )
+        .await;
     });
 
     let transport_app = tokio::spawn(async move {
         TransportServiceImpl::run(
             legacy_transport_service,
             app,
-            authentication_service.clone(),
+            authentication_adapter.clone(),
             acl,
+            connection_driver,
+            listener_notification_adapter.clone(),
             shutdown_signal(),
         )
         .await;

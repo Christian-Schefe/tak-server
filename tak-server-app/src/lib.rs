@@ -277,7 +277,6 @@ pub async fn build_application<
         account_moderate_use_case: Box::new(ModeratePlayerUseCaseImpl::new(
             email_port.clone(),
             policies,
-            player_repository.clone(),
             authentication_service.clone(),
         )),
 

@@ -27,6 +27,10 @@ impl LegacyAPIAntiCorruptionLayer {
         }
     }
 
+    pub async fn get_account_by_username(&self, username: &str) -> Option<Account> {
+        self.auth.find_by_username(username).await
+    }
+
     pub async fn get_account_and_player_id_by_username(
         &self,
         username: &str,

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use axum::{Json, Router, extract::State, response::IntoResponse, routing::get};
+use tak_player_connection::PlayerConnectionDriver;
 use tak_server_app::{Application, services::player_resolver::ResolveError};
 
 use crate::auth::Auth;
@@ -8,6 +9,7 @@ pub use auth::ApiAuthPort;
 pub use ws::WsService;
 
 mod auth;
+mod game;
 mod player;
 mod seek;
 mod ws;
@@ -16,6 +18,7 @@ mod ws;
 pub struct AppState {
     pub app: Arc<Application>,
     pub auth: Arc<dyn ApiAuthPort + Send + Sync + 'static>,
+    pub connection_driver: Arc<PlayerConnectionDriver>,
     pub ws: Arc<WsService>,
 }
 
@@ -23,14 +26,22 @@ pub async fn serve(
     app: Arc<Application>,
     auth: Arc<dyn ApiAuthPort + Send + Sync + 'static>,
     ws: Arc<WsService>,
+    connection_driver: Arc<PlayerConnectionDriver>,
     shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
 ) {
-    let state = AppState { app, auth, ws };
+    let state = AppState {
+        app,
+        auth,
+        ws,
+        connection_driver,
+    };
     let router = Router::new()
         .route("/whoami", get(who_am_i))
         .route("/guest", get(get_guest))
         .route("/ws", get(ws::ws_handler))
         .route("/seeks", get(seek::get_seeks))
+        .route("/seeks/accept", axum::routing::post(seek::accept_seek))
+        .route("/games", get(game::get_games))
         .route("/players/{player_id}", get(player::get_player_info));
 
     let port = std::env::var("TAK_HTTP_API_PORT")

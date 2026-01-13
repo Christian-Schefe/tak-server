@@ -118,14 +118,26 @@ pub trait GameService {
     fn check_timeout(&self, game_id: GameId, now: Instant) -> CheckTimoutResult;
 }
 
+#[derive(Clone, Debug)]
+pub struct GameActionRecord {
+    pub action: TakActionRecord,
+    pub ply_index: usize,
+}
+
+impl GameActionRecord {
+    pub fn new(action: TakActionRecord, ply_index: usize) -> Self {
+        Self { action, ply_index }
+    }
+}
+
 pub enum DoActionResult {
-    ActionPerformed(TakActionRecord),
-    GameOver(TakActionRecord, FinishedGame),
+    ActionPerformed(GameActionRecord),
+    GameOver(GameActionRecord, FinishedGame),
     Timeout(FinishedGame),
     GameNotFound,
     NotPlayersTurn,
     NotAPlayerInGame,
-    InvalidAction(tak_core::DoActionError),
+    InvalidAction(tak_core::InvalidActionReason),
 }
 
 pub enum ResignResult {
@@ -251,7 +263,7 @@ impl GameService for GameServiceImpl {
             if game_entry.game.current_player() != current_player {
                 return (GameControl::Unchanged, DoActionResult::NotPlayersTurn);
             }
-
+            let ply_index = game_entry.game.ply_index();
             match game_entry.game.do_action(&action, now) {
                 Ok(MaybeTimeout::Timeout(finished_game)) => {
                     let finished_game = FinishedGame::new(game_entry, finished_game);
@@ -262,12 +274,15 @@ impl GameService for GameServiceImpl {
                         let finished_game = FinishedGame::new(game_entry, finished_game);
                         (
                             GameControl::Ended,
-                            DoActionResult::GameOver(action, finished_game),
+                            DoActionResult::GameOver(
+                                GameActionRecord::new(action, ply_index),
+                                finished_game,
+                            ),
                         )
                     }
                     TakGame::Ongoing(ongoing_game) => (
                         GameControl::Changed(ongoing_game),
-                        DoActionResult::ActionPerformed(action),
+                        DoActionResult::ActionPerformed(GameActionRecord::new(action, ply_index)),
                     ),
                 },
                 Err(e) => (GameControl::Unchanged, DoActionResult::InvalidAction(e)),

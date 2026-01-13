@@ -14,7 +14,6 @@ pub struct TakBoard {
     stacks: Vec<Option<TakStack>>,
 }
 
-
 impl TakBoard {
     pub fn new(size: u32) -> Self {
         let board_area = size * size;
@@ -50,7 +49,12 @@ impl TakBoard {
         Ok(())
     }
 
-    pub fn can_do_move(&self, pos: &TakPos, dir: &TakDir, drops: &[u32]) -> Result<(), InvalidMoveReason> {
+    pub fn can_do_move(
+        &self,
+        pos: &TakPos,
+        dir: &TakDir,
+        drops: &[u32],
+    ) -> Result<(), InvalidMoveReason> {
         if !pos.is_valid(self.size) {
             return Err(InvalidMoveReason::OutOfBounds);
         }
@@ -60,7 +64,10 @@ impl TakBoard {
             .ok_or_else(|| InvalidMoveReason::PositionEmpty)?;
         let total_pieces: u32 = stack.composition.len() as u32;
         let drops_sum: u32 = drops.iter().sum();
-        if drops_sum == 0 || drops_sum > total_pieces || drops_sum > self.size {
+        if drops_sum == 0 || drops_sum > self.size {
+            return Err(InvalidMoveReason::InvalidDropDistribution);
+        }
+        if drops_sum > total_pieces {
             return Err(InvalidMoveReason::InvalidNumberOfPieces);
         }
         let drops_len = drops.len();
@@ -97,7 +104,12 @@ impl TakBoard {
         Ok(())
     }
 
-    pub fn do_move(&mut self, pos: &TakPos, dir: &TakDir, drops: &[u32]) -> Result<(), InvalidMoveReason> {
+    pub fn do_move(
+        &mut self,
+        pos: &TakPos,
+        dir: &TakDir,
+        drops: &[u32],
+    ) -> Result<(), InvalidMoveReason> {
         self.can_do_move(pos, dir, drops)?;
         let index = (pos.y * self.size as i32 + pos.x) as usize;
         let stack = self.stacks[index].as_mut().unwrap();

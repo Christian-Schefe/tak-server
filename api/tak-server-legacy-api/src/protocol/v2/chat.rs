@@ -1,8 +1,9 @@
 use log::error;
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
-    domain::{AccountId, ListenerId, PlayerId, moderation::ModerationFlag},
+    domain::{AccountId, ListenerId, moderation::ModerationFlag},
     ports::notification::ChatMessageSource,
+    workflow::chat::message::MessageTarget,
 };
 
 use crate::{
@@ -14,30 +15,20 @@ impl ProtocolV2Handler {
     pub async fn send_chat_message(
         &self,
         id: ConnectionId,
-        from_player_id: PlayerId,
+        from_account_id: &AccountId,
         message: &str,
         source: &ChatMessageSource,
     ) {
-        let Some(username) = self
-            .app
-            .get_account_workflow
-            .get_account(from_player_id)
-            .await
-            .ok()
-            .map(|a| a.username)
-        else {
-            error!(
-                "Failed to get username for player ID {} when handling chat message",
-                from_player_id
-            );
+        let Some(account) = self.auth.get_account(from_account_id).await else {
+            error!("Failed to retrieve account information for sending chat message");
             return;
         };
         let msg = match source {
-            ChatMessageSource::Global => format!("Shout <{}> {}", username, message),
+            ChatMessageSource::Global => format!("Shout <{}> {}", account.username, message),
             ChatMessageSource::Room(name) => {
-                format!("ShoutRoom {} <{}> {}", name, username, message)
+                format!("ShoutRoom {} <{}> {}", name, account.username, message)
             }
-            ChatMessageSource::Private => format!("Tell <{}> {}", username, message),
+            ChatMessageSource::Private => format!("Tell <{}> {}", account.username, message),
         };
         self.send_to(id, msg);
     }
@@ -68,8 +59,7 @@ impl ProtocolV2Handler {
     pub async fn handle_shout_message(
         &self,
         id: ConnectionId,
-        account_id: AccountId,
-        player_id: PlayerId,
+        account_id: &AccountId,
         orig_msg: &str,
     ) -> V2Response {
         let (parts, msg) = split_n_and_rest(orig_msg, 1);
@@ -78,23 +68,16 @@ impl ProtocolV2Handler {
                 "Invalid Shout message format".to_string(),
             ));
         }
-        let Some(account) = self.auth.get_account(&account_id).await else {
+        let Some(account) = self.auth.get_account(account_id).await else {
             return V2Response::ErrorNOK(ServiceError::Internal(
                 "Failed to retrieve account information".to_string(),
             ));
         };
         if account.is_flagged(ModerationFlag::Silenced) {
-            let username = match self.app.get_account_workflow.get_account(player_id).await {
-                Ok(account) => account.username,
-                Err(_) => {
-                    return V2Response::ErrorNOK(ServiceError::Internal(
-                        "Failed to retrieve username".to_string(),
-                    ));
-                }
-            };
             let msg = format!(
                 "Shout <{}> {}",
-                username, "<Server: You have been silenced for inappropriate chat behavior.>"
+                account.username,
+                "<Server: You have been silenced for inappropriate chat behavior.>"
             );
             self.send_to(id, msg);
             return V2Response::OK;
@@ -102,7 +85,7 @@ impl ProtocolV2Handler {
 
         self.app
             .chat_message_use_case
-            .send_global_message(player_id, &msg)
+            .send_message(account_id, MessageTarget::Global, &msg)
             .await;
         V2Response::OK
     }
@@ -110,8 +93,7 @@ impl ProtocolV2Handler {
     pub async fn handle_shout_room_message(
         &self,
         id: ConnectionId,
-        account_id: AccountId,
-        player_id: PlayerId,
+        account_id: &AccountId,
         orig_msg: &str,
     ) -> V2Response {
         let (parts, msg) = split_n_and_rest(orig_msg, 2);
@@ -128,17 +110,11 @@ impl ProtocolV2Handler {
             ));
         };
         if account.is_flagged(ModerationFlag::Silenced) {
-            let username = match self.app.get_account_workflow.get_account(player_id).await {
-                Ok(account) => account.username,
-                Err(_) => {
-                    return V2Response::ErrorNOK(ServiceError::Internal(
-                        "Failed to retrieve username".to_string(),
-                    ));
-                }
-            };
             let msg = format!(
                 "ShoutRoom {} <{}> {}",
-                room, username, "<Server: You have been silenced for inappropriate chat behavior.>"
+                room,
+                account.username,
+                "<Server: You have been silenced for inappropriate chat behavior.>"
             );
             self.send_to(id, msg);
             return V2Response::OK;
@@ -146,17 +122,12 @@ impl ProtocolV2Handler {
 
         self.app
             .chat_message_use_case
-            .send_room_message(player_id, &room, &msg)
+            .send_message(account_id, MessageTarget::Room(room), &msg)
             .await;
         V2Response::OK
     }
 
-    pub async fn handle_tell_message(
-        &self,
-        account_id: AccountId,
-        player_id: PlayerId,
-        orig_msg: &str,
-    ) -> V2Response {
+    pub async fn handle_tell_message(&self, account_id: &AccountId, orig_msg: &str) -> V2Response {
         let (parts, msg) = split_n_and_rest(orig_msg, 2);
         if parts.len() != 2 || msg.is_empty() {
             return V2Response::ErrorNOK(ServiceError::BadRequest(
@@ -164,11 +135,7 @@ impl ProtocolV2Handler {
             ));
         }
         let target_username = parts[1];
-        let Some((target_player_id, _)) = self
-            .acl
-            .get_account_and_player_id_by_username(target_username)
-            .await
-        else {
+        let Some(target_account) = self.acl.get_account_by_username(target_username).await else {
             return V2Response::ErrorNOK(ServiceError::BadRequest(format!(
                 "No such user: {}",
                 target_username
@@ -188,7 +155,11 @@ impl ProtocolV2Handler {
         let sent_msg = self
             .app
             .chat_message_use_case
-            .send_private_message(player_id, target_player_id, &msg)
+            .send_message(
+                account_id,
+                MessageTarget::Private(target_account.account_id),
+                &msg,
+            )
             .await;
         V2Response::Message(format!("Told <{}> {}", target_username, sent_msg))
     }

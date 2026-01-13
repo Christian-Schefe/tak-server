@@ -39,10 +39,11 @@ pub trait DoActionUseCase {
     async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), ResignError>;
 }
 
+#[derive(Debug)]
 pub enum DoActionError {
     GameNotFound,
     NotAPlayerInGame,
-    InvalidAction(tak_core::DoActionError),
+    InvalidAction(tak_core::InvalidActionReason),
     NotPlayersTurn,
     GameAlreadyEnded,
 }

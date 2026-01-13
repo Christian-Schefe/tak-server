@@ -4,8 +4,9 @@ use std::{
 };
 
 use crate::{
-    DoActionError, InvalidActionReason, MaybeTimeout, TakAction, TakActionRecord, TakGameOverState,
-    TakGameSettings, TakPlayer, TakReserve, TakVariant, TakWinReason, board::TakBoard,
+    InvalidActionReason, InvalidPlaceReason, MaybeTimeout, TakAction, TakActionRecord,
+    TakGameOverState, TakGameSettings, TakPlayer, TakReserve, TakVariant, TakWinReason,
+    board::TakBoard,
 };
 
 #[derive(Clone, Debug)]
@@ -49,18 +50,11 @@ impl TakOngoingBaseGame {
         }
     }
 
-    fn can_do_action(&self, action: &TakAction) -> Result<(), DoActionError> {
+    fn can_do_action(&self, action: &TakAction) -> Result<(), InvalidActionReason> {
         match action {
             TakAction::Place { pos, variant } => {
-                if let Err(e) = self.board.can_do_place(pos) {
-                    return Err(DoActionError::InvalidAction(
-                        InvalidActionReason::InvalidPlace(e),
-                    ));
-                }
                 if self.ply_index < 2 && *variant != TakVariant::Flat {
-                    return Err(DoActionError::InvalidAction(
-                        InvalidActionReason::OpeningViolation,
-                    ));
+                    return Err(InvalidActionReason::OpeningViolation);
                 }
                 let reserve = match self.current_player {
                     TakPlayer::White => &self.reserves.0,
@@ -71,29 +65,28 @@ impl TakOngoingBaseGame {
                     TakVariant::Capstone => reserve.capstones,
                 };
                 if amount == 0 {
-                    return Err(DoActionError::InvalidAction(
-                        InvalidActionReason::OpeningViolation,
+                    return Err(InvalidActionReason::InvalidPlace(
+                        InvalidPlaceReason::NoPiecesRemaining,
                     ));
+                }
+                if let Err(e) = self.board.can_do_place(pos) {
+                    return Err(InvalidActionReason::InvalidPlace(e));
                 }
                 Ok(())
             }
             TakAction::Move { pos, dir, drops } => {
                 if self.ply_index < 2 {
-                    return Err(DoActionError::InvalidAction(
-                        InvalidActionReason::OpeningViolation,
-                    ));
+                    return Err(InvalidActionReason::OpeningViolation);
                 }
                 if let Err(e) = self.board.can_do_move(pos, dir, drops) {
-                    return Err(DoActionError::InvalidAction(
-                        InvalidActionReason::InvalidMove(e),
-                    ));
+                    return Err(InvalidActionReason::InvalidMove(e));
                 }
                 Ok(())
             }
         }
     }
 
-    fn do_action(&self, action: &TakAction) -> Result<TakBaseGame, DoActionError> {
+    fn do_action(&self, action: &TakAction) -> Result<TakBaseGame, InvalidActionReason> {
         if let Err(e) = self.can_do_action(&action) {
             return Err(e);
         }
@@ -105,11 +98,6 @@ impl TakOngoingBaseGame {
                 } else {
                     self.current_player.clone()
                 };
-                if let Err(e) = new_state.board.do_place(pos, variant, &placing_player) {
-                    return Err(DoActionError::InvalidAction(
-                        InvalidActionReason::InvalidPlace(e),
-                    ));
-                }
                 let reserve = match new_state.current_player {
                     TakPlayer::White => &mut new_state.reserves.0,
                     TakPlayer::Black => &mut new_state.reserves.1,
@@ -119,23 +107,27 @@ impl TakOngoingBaseGame {
                     TakVariant::Capstone => &mut reserve.capstones,
                 };
                 *amount -= 1;
+                new_state
+                    .board
+                    .do_place(pos, variant, &placing_player)
+                    .expect("can_do_action should have prevented invalid place due to board state");
             }
             TakAction::Move { pos, dir, drops } => {
-                if let Err(e) = new_state.board.do_move(pos, dir, drops) {
-                    return Err(DoActionError::InvalidAction(
-                        InvalidActionReason::InvalidMove(e),
-                    ));
-                }
+                new_state
+                    .board
+                    .do_move(pos, dir, drops)
+                    .expect("can_do_action should have prevented invalid move due to board state");
             }
         }
 
+        let board_hash = self.board.compute_hash_string();
         new_state
             .board_hash_history
-            .entry(self.board.compute_hash_string())
+            .entry(board_hash.clone())
             .and_modify(|e| *e += 1)
             .or_insert(1);
 
-        match new_state.check_game_over() {
+        match new_state.check_game_over(board_hash) {
             TakBaseGame::Finished(finished_game) => {
                 return Ok(TakBaseGame::Finished(finished_game));
             }
@@ -148,7 +140,7 @@ impl TakOngoingBaseGame {
         }
     }
 
-    fn check_game_over(self) -> TakBaseGame {
+    fn check_game_over(self, board_hash: String) -> TakBaseGame {
         let white_reserve_empty = self.reserves.0.pieces == 0 && self.reserves.0.capstones == 0;
         let black_reserve_empty = self.reserves.1.pieces == 0 && self.reserves.1.capstones == 0;
 
@@ -177,16 +169,12 @@ impl TakOngoingBaseGame {
                 },
                 std::cmp::Ordering::Equal => TakGameOverState::Draw,
             })
+        } else if let Some(repeat_count) = self.board_hash_history.get(&board_hash)
+            && *repeat_count >= 3
+        {
+            Some(TakGameOverState::Draw)
         } else {
-            if let Some(repeat_count) = self
-                .board_hash_history
-                .get(&self.board.compute_hash_string())
-                && *repeat_count >= 3
-            {
-                Some(TakGameOverState::Draw)
-            } else {
-                None
-            }
+            None
         };
         match game_state {
             Some(state) => TakBaseGame::Finished(TakFinishedBaseGame::new(self, state)),
@@ -275,6 +263,10 @@ impl TakOngoingGame {
                 is_ticking: false,
             },
         }
+    }
+
+    pub fn ply_index(&self) -> usize {
+        self.base.ply_index
     }
 
     pub fn action_history(&self) -> &Vec<TakActionRecord> {
@@ -383,7 +375,7 @@ impl TakOngoingGame {
         &self,
         action: &TakAction,
         now: Instant,
-    ) -> Result<MaybeTimeout<(TakActionRecord, TakGame)>, DoActionError> {
+    ) -> Result<MaybeTimeout<(TakActionRecord, TakGame)>, InvalidActionReason> {
         if let Some(finished_game) = self.check_timeout(now) {
             return Ok(MaybeTimeout::Timeout(finished_game));
         };
@@ -397,7 +389,7 @@ impl TakOngoingGame {
                 new_state.start_or_update_clock(now, &player);
                 let record = TakActionRecord {
                     action: action.clone(),
-                    time_remaining: new_state.get_time_remaining_both(now),
+                    time_remaining: new_state.clock.remaining_time,
                 };
                 new_state.action_history.push(record.clone());
                 Ok(MaybeTimeout::Result((record, TakGame::Ongoing(new_state))))
@@ -407,7 +399,7 @@ impl TakOngoingGame {
                 new_state.stop_clock(now, &player);
                 let record = TakActionRecord {
                     action: action.clone(),
-                    time_remaining: new_state.get_time_remaining_both(now),
+                    time_remaining: new_state.clock.remaining_time,
                 };
                 let finished_game = TakFinishedGame::from_finished_base(finished_base, new_state);
                 Ok(MaybeTimeout::Result((

@@ -6,7 +6,6 @@ use tak_server_app::{
     domain::{AccountId, GameId, PlayerId},
     ports::{
         authentication::AuthenticationPort,
-        connection::AccountConnectionPort,
         notification::{ListenerMessage, ServerAlertMessage},
     },
 };
@@ -187,7 +186,7 @@ impl ProtocolV2Handler {
                             .get(&(*game_id, x))
                             .is_none_or(|c| *c != id)
                 }) {
-                    self.send_game_action_message(id, *game_id, action);
+                    self.send_game_action_message(id, *game_id, &action.action);
                 }
             }
             ListenerMessage::GameDrawOffered {
@@ -241,7 +240,7 @@ impl ProtocolV2Handler {
                 message,
                 source,
             } => {
-                self.send_chat_message(id, *from_player_id, message, source)
+                self.send_chat_message(id, from_account_id, message, source)
                     .await
             }
             ListenerMessage::GameRematchRequested { .. } => {} //legacy api does not support rematch messages
@@ -260,17 +259,17 @@ impl ProtocolV2Handler {
         }
     }
 
-    async fn send_online_players_message(&self, id: ConnectionId, players: &Vec<PlayerId>) {
+    async fn send_online_players_message(&self, id: ConnectionId, players: &Vec<AccountId>) {
         let online_message = format!("Online {}", players.len());
-        let mut username_futures = Vec::new();
-        for pid in players {
-            let username = self.app.get_account_workflow.get_account(*pid);
-            username_futures.push(username);
+        let mut account_futures = Vec::new();
+        for account_id in players {
+            let accounts = self.auth.get_account(account_id);
+            account_futures.push(accounts);
         }
-        let usernames = futures::future::join_all(username_futures)
+        let usernames = futures::future::join_all(account_futures)
             .await
             .into_iter()
-            .filter_map(|x| x.ok().map(|a| a.username))
+            .filter_map(|x| x.map(|a| a.username))
             .collect::<Vec<_>>();
         let players_message = format!(
             "OnlinePlayers {}",
@@ -337,7 +336,7 @@ impl ProtocolV2Handler {
             ));
         };
 
-        let Some(listener_id) = self.transport.get_connection_id(player_id).await else {
+        let Some(listener_id) = self.transport.get_listener_id(&account_id) else {
             log::warn!(
                 "No listener ID found for player ID {} when handling logged-in message",
                 player_id
@@ -365,15 +364,9 @@ impl ProtocolV2Handler {
                 self.handle_observe_message(id, listener_id, &parts, false)
                     .await
             }
-            "shout" => {
-                self.handle_shout_message(id, account_id, player_id, &msg)
-                    .await
-            }
-            "shoutroom" => {
-                self.handle_shout_room_message(id, account_id, player_id, &msg)
-                    .await
-            }
-            "tell" => self.handle_tell_message(account_id, player_id, &msg).await,
+            "shout" => self.handle_shout_message(id, &account_id, &msg).await,
+            "shoutroom" => self.handle_shout_room_message(id, &account_id, &msg).await,
+            "tell" => self.handle_tell_message(&account_id, &msg).await,
             "joinroom" => {
                 self.handle_room_membership_message(id, listener_id, &parts, true)
                     .await
@@ -382,7 +375,7 @@ impl ProtocolV2Handler {
                 self.handle_room_membership_message(id, listener_id, &parts, false)
                     .await
             }
-            "sudo" => self.handle_sudo_message(id, player_id, msg, &parts).await,
+            "sudo" => self.handle_sudo_message(id, &account_id, msg, &parts).await,
             s if s.starts_with("game#") => self.handle_game_message(id, player_id, &parts).await,
             _ => V2Response::ErrorNOK(ServiceError::BadRequest(format!(
                 "Unknown V2 message type: {}",

@@ -1,8 +1,12 @@
 use axum::{Json, extract::State};
 use tak_core::TakPlayer;
-use tak_server_app::workflow::matchmaking::SeekView;
+use tak_server_app::{
+    domain::SeekId,
+    services::player_resolver::ResolveError,
+    workflow::matchmaking::{SeekView, accept::AcceptSeekError},
+};
 
-use crate::AppState;
+use crate::{AppState, ServiceError, auth::Auth, game::GameSettingsInfo};
 
 pub async fn get_seeks(State(app): State<AppState>) -> Json<Vec<SeekInfo>> {
     let seeks = app.app.seek_list_use_case.list_seeks();
@@ -14,6 +18,49 @@ pub async fn get_seeks(State(app): State<AppState>) -> Json<Vec<SeekInfo>> {
     )
 }
 
+#[derive(serde::Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AcceptSeekRequest {
+    pub seek_id: u64,
+}
+
+pub async fn accept_seek(
+    auth: Auth,
+    State(app): State<AppState>,
+    Json(request): Json<AcceptSeekRequest>,
+) -> Result<(), ServiceError> {
+    let player_id = match app
+        .app
+        .player_resolver_service
+        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .await
+    {
+        Ok(id) => id,
+        Err(ResolveError::Internal) => {
+            return Err(ServiceError::Internal(
+                "Failed to resolve player ID".to_string(),
+            ));
+        }
+    };
+    match app
+        .app
+        .seek_accept_use_case
+        .accept_seek(player_id, SeekId(request.seek_id))
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(AcceptSeekError::SeekNotFound) => {
+            Err(ServiceError::NotFound("Seek not found".to_string()))
+        }
+        Err(AcceptSeekError::InvalidOpponent) => Err(ServiceError::BadRequest(
+            "You are not allowed to accept this seek".to_string(),
+        )),
+        Err(AcceptSeekError::FailedToCreateGame) => {
+            Err(ServiceError::Internal("Failed to accept seek".to_string()))
+        }
+    }
+}
+
 #[derive(serde::Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SeekInfo {
@@ -21,14 +68,9 @@ pub struct SeekInfo {
     pub creator_id: String,
     pub opponent_id: Option<String>,
     pub color: String,
-    pub board_size: u32,
-    pub half_komi: u32,
-    pub pieces: u32,
-    pub capstones: u32,
-    pub contingent_ms: u64,
-    pub increment_ms: u64,
-    pub extra: Option<ExtraTime>,
     pub is_rated: bool,
+    #[serde(flatten)]
+    pub game_settings: GameSettingsInfo,
 }
 
 impl SeekInfo {
@@ -42,28 +84,8 @@ impl SeekInfo {
                 Some(TakPlayer::White) => "white".to_string(),
                 Some(TakPlayer::Black) => "black".to_string(),
             },
-            board_size: seek.game_settings.board_size as u32,
-            half_komi: seek.game_settings.half_komi as u32,
-            pieces: seek.game_settings.reserve.pieces as u32,
-            capstones: seek.game_settings.reserve.capstones as u32,
-            contingent_ms: seek.game_settings.time_control.contingent.as_millis() as u64,
-            increment_ms: seek.game_settings.time_control.increment.as_millis() as u64,
-            extra: seek
-                .game_settings
-                .time_control
-                .extra
-                .map(|(on_move, extra_time)| ExtraTime {
-                    on_move: on_move as u32,
-                    extra_ms: extra_time.as_millis() as u64,
-                }),
+            game_settings: GameSettingsInfo::from_game_settings(&seek.game_settings),
             is_rated: seek.is_rated,
         }
     }
-}
-
-#[derive(serde::Serialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ExtraTime {
-    pub on_move: u32,
-    pub extra_ms: u64,
 }
