@@ -8,5 +8,8 @@ pub trait PlayerAccountMappingRepository {
         create_fn: impl FnOnce() -> PlayerId + Send + 'static,
     ) -> Result<PlayerId, RepoError>;
     async fn get_account_id(&self, player_id: PlayerId) -> Result<AccountId, RepoRetrieveError>;
-    async fn remove_account_id(&self, account_id: &AccountId) -> Result<(), RepoError>;
+    async fn remove_account_id(
+        &self,
+        account_id: &AccountId,
+    ) -> Result<Option<PlayerId>, RepoError>;
 }

@@ -26,9 +26,9 @@ impl<
         let mut interval = tokio::time::interval(Duration::from_secs(60 * 60));
         loop {
             let removed_guests = self.auth_port.clean_up_guest_accounts().await;
-            for guest_id in removed_guests {
-                if let Err(e) = self.remove_account_workflow.remove_account(&guest_id).await {
-                    log::error!("Failed to remove guest account {}: {:?}", guest_id, e);
+            for account_id in removed_guests {
+                if let Err(e) = self.remove_account_workflow.remove_account(&account_id).await {
+                    log::error!("Failed to remove guest account {}: {:?}", account_id, e);
                 }
             }
             interval.tick().await;

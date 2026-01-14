@@ -38,6 +38,8 @@ Reason: Tournament system will be reworked, and tournament games won't be create
 - Player game history (easy)
 - Native tournaments (medium because of scope. Architecturally it should be easy)
 - Replay move timings (server side implemented)
+- Rating history
+- Player stats
 
 # Todo Notes
 

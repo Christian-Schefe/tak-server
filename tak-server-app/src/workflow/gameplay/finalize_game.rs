@@ -1,12 +1,15 @@
 use std::sync::Arc;
 
+use tak_core::{TakGameOverState, TakPlayer};
+
 use crate::{
     domain::{
         game::FinishedGame,
-        game_history::{GameHistoryService, GameRepository},
+        game_history::{GameHistoryService, GameRatingInfo, GameRepository},
         r#match::MatchService,
         rating::{PlayerRating, RatingRepository, RatingService},
         spectator::SpectatorService,
+        stats::{GameOutcome, StatsRepository},
     },
     ports::notification::{ListenerMessage, ListenerNotificationPort},
     workflow::{
@@ -30,6 +33,7 @@ pub struct FinalizeGameWorkflowImpl<
     SPS: SpectatorService,
     L: ListenerNotificationPort,
     A: GetAccountWorkflow,
+    S: StatsRepository,
 > {
     game_repository: Arc<G>,
     rating_service: Arc<R>,
@@ -40,6 +44,7 @@ pub struct FinalizeGameWorkflowImpl<
     spectator_service: Arc<SPS>,
     listener_notification_port: Arc<L>,
     get_account_workflow: Arc<A>,
+    stats_repository: Arc<S>,
 }
 
 impl<
@@ -52,7 +57,8 @@ impl<
     SPS: SpectatorService,
     L: ListenerNotificationPort,
     A: GetAccountWorkflow,
-> FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, A>
+    S: StatsRepository,
+> FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, A, S>
 {
     pub fn new(
         game_repository: Arc<G>,
@@ -64,6 +70,7 @@ impl<
         spectator_service: Arc<SPS>,
         listener_notification_port: Arc<L>,
         get_account_workflow: Arc<A>,
+        stats_repository: Arc<S>,
     ) -> Self {
         Self {
             game_repository,
@@ -75,6 +82,7 @@ impl<
             spectator_service,
             listener_notification_port,
             get_account_workflow,
+            stats_repository,
         }
     }
 }
@@ -90,7 +98,8 @@ impl<
     SPS: SpectatorService + Send + Sync + 'static,
     L: ListenerNotificationPort + Send + Sync + 'static,
     A: GetAccountWorkflow + Send + Sync + 'static,
-> FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, A>
+    S: StatsRepository + Send + Sync + 'static,
+> FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, A, S>
 {
     async fn finalize_game(&self, ended_game: FinishedGame) {
         let game_id = ended_game.metadata.game_id;
@@ -117,55 +126,13 @@ impl<
 
         self.spectator_service.remove_game(game_id);
 
-        let white_account = self
-            .get_account_workflow
-            .get_account(ended_game.metadata.white_id)
-            .await
-            .ok();
-        let black_account = self
-            .get_account_workflow
-            .get_account(ended_game.metadata.black_id)
-            .await
-            .ok();
-
-        let game_rating_info = if white_account.is_none_or(|x| x.is_guest())
-            || black_account.is_none_or(|x| x.is_guest())
-        {
-            None
-        } else {
-            let white_id = ended_game.metadata.white_id;
-            let black_id = ended_game.metadata.black_id;
-            let ended_game_clone = ended_game.clone();
-            let rating_service = self.rating_service.clone();
-            match self
-                .rating_repository
-                .update_player_ratings(
-                    ended_game.metadata.white_id,
-                    ended_game.metadata.black_id,
-                    move |w_rating, b_rating| {
-                        let mut w_rating = w_rating.unwrap_or(PlayerRating::new(white_id));
-                        let mut b_rating = b_rating.unwrap_or(PlayerRating::new(black_id));
-                        let res = rating_service.calculate_ratings(
-                            &ended_game_clone,
-                            &mut w_rating,
-                            &mut b_rating,
-                        );
-                        (w_rating, b_rating, res)
-                    },
-                )
-                .await
-            {
-                Ok(info) => info,
-                Err(e) => {
-                    log::error!(
-                        "Failed to update player ratings for game {}: {}",
-                        game_id,
-                        e
-                    );
-                    None
-                }
-            }
-        };
+        let game_rating_info = update_ratings(
+            &self.get_account_workflow,
+            &self.rating_service,
+            &self.rating_repository,
+            &ended_game,
+        )
+        .await;
 
         if let Some(match_id) = self.match_service.get_match_id_by_game_id(game_id) {
             log::info!("Finalizing game {} in match {}", game_id, match_id);
@@ -175,6 +142,8 @@ impl<
         } else {
             log::info!("Game {} is not part of a match", game_id);
         }
+
+        update_stats(&self.stats_repository, &ended_game).await;
 
         let game_record_update = self
             .game_history_service
@@ -190,5 +159,105 @@ impl<
                 e
             );
         }
+    }
+}
+
+async fn update_ratings<
+    A: GetAccountWorkflow,
+    RS: RatingService + Send + Sync + 'static,
+    RR: RatingRepository,
+>(
+    get_account_workflow: &Arc<A>,
+    rating_service: &Arc<RS>,
+    rating_repository: &Arc<RR>,
+    ended_game: &FinishedGame,
+) -> Option<GameRatingInfo> {
+    let white_account = get_account_workflow
+        .get_account(ended_game.metadata.white_id)
+        .await
+        .ok();
+    let black_account = get_account_workflow
+        .get_account(ended_game.metadata.black_id)
+        .await
+        .ok();
+
+    if white_account.is_none_or(|x| x.is_guest()) || black_account.is_none_or(|x| x.is_guest()) {
+        None
+    } else {
+        let white_id = ended_game.metadata.white_id;
+        let black_id = ended_game.metadata.black_id;
+        let ended_game_clone = ended_game.clone();
+        let rating_service = rating_service.clone();
+        match rating_repository
+            .update_player_ratings(
+                ended_game.metadata.white_id,
+                ended_game.metadata.black_id,
+                move |w_rating, b_rating| {
+                    let mut w_rating = w_rating.unwrap_or(PlayerRating::new(white_id));
+                    let mut b_rating = b_rating.unwrap_or(PlayerRating::new(black_id));
+                    let res = rating_service.calculate_ratings(
+                        &ended_game_clone,
+                        &mut w_rating,
+                        &mut b_rating,
+                    );
+                    (w_rating, b_rating, res)
+                },
+            )
+            .await
+        {
+            Ok(info) => info,
+            Err(e) => {
+                log::error!(
+                    "Failed to update player ratings for game {}: {}",
+                    ended_game.metadata.game_id,
+                    e
+                );
+                None
+            }
+        }
+    }
+}
+
+async fn update_stats<S: StatsRepository>(stats_repository: &Arc<S>, ended_game: &FinishedGame) {
+    let (white_outcome, black_outcome) = match ended_game.game.game_state() {
+        TakGameOverState::Draw => (GameOutcome::Draw, GameOutcome::Draw),
+        TakGameOverState::Win {
+            winner: TakPlayer::White,
+            ..
+        } => (GameOutcome::Win, GameOutcome::Loss),
+        TakGameOverState::Win {
+            winner: TakPlayer::Black,
+            ..
+        } => (GameOutcome::Loss, GameOutcome::Win),
+    };
+
+    if let Err(e) = stats_repository
+        .update_player_game(
+            ended_game.metadata.white_id,
+            white_outcome,
+            ended_game.metadata.is_rated,
+        )
+        .await
+    {
+        log::error!(
+            "Failed to update stats for player {}: {}",
+            ended_game.metadata.white_id,
+            e
+        );
+    }
+
+    if let Err(e) = stats_repository
+        .update_player_game(
+            ended_game.metadata.black_id,
+            black_outcome,
+            ended_game.metadata.is_rated,
+        )
+        .await
+    {
+        log::error!(
+            "Failed to update stats for player {}: {}",
+            ended_game.metadata.black_id,
+            e
+        );
     }
 }

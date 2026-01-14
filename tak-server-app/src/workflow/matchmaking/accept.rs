@@ -64,14 +64,18 @@ impl<
             .seek_service
             .remove_seek(seek_id)
             .ok_or(AcceptSeekError::SeekNotFound)?;
-        let message = ListenerMessage::SeekCanceled {
-            seek: (&seek).into(),
-        };
-        self.notification_port.notify_all(message);
 
         if seek.opponent_id.is_some_and(|opp| opp != player) {
             return Err(AcceptSeekError::InvalidOpponent);
         }
+        if player == seek.creator_id {
+            return Err(AcceptSeekError::InvalidOpponent);
+        }
+
+        let message = ListenerMessage::SeekCanceled {
+            seek: (&seek).into(),
+        };
+        self.notification_port.notify_all(message);
 
         for cancelled_seek in self.seek_service.cancel_all_player_seeks(player) {
             let message = ListenerMessage::SeekCanceled {

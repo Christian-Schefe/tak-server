@@ -5,6 +5,7 @@ pub mod games;
 pub mod player_account_mapping;
 pub mod profile;
 pub mod ratings;
+pub mod stats;
 
 static DB_POOL: OnceCell<DatabaseConnection> = OnceCell::new();
 
@@ -50,6 +51,7 @@ pub async fn create_db_pool() -> DatabaseConnection {
                 .register(tak_persistence_sea_orm_entites::player_account_mapping::Entity)
                 .register(tak_persistence_sea_orm_entites::profile::Entity)
                 .register(tak_persistence_sea_orm_entites::rating::Entity)
+                .register(tak_persistence_sea_orm_entites::stats::Entity)
                 .sync(&db)
                 .await
                 .expect("Failed to apply entity sync");

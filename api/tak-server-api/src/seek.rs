@@ -1,10 +1,11 @@
 use axum::{Json, extract::State};
 use tak_core::TakPlayer;
 use tak_server_app::{
-    domain::SeekId,
+    domain::{PlayerId, SeekId, seek::CreateSeekError},
     services::player_resolver::ResolveError,
     workflow::matchmaking::{SeekView, accept::AcceptSeekError},
 };
+use uuid::Uuid;
 
 use crate::{AppState, ServiceError, auth::Auth, game::GameSettingsInfo};
 
@@ -16,6 +17,70 @@ pub async fn get_seeks(State(app): State<AppState>) -> Json<Vec<SeekInfo>> {
             .map(|seek| SeekInfo::from_seek_view(seek))
             .collect(),
     )
+}
+
+pub async fn create_seek(
+    auth: Auth,
+    State(app): State<AppState>,
+    Json(payload): Json<CreateSeekPayload>,
+) -> Result<(), ServiceError> {
+    let player_id = match app
+        .app
+        .player_resolver_service
+        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .await
+    {
+        Ok(id) => id,
+        Err(ResolveError::Internal) => {
+            return Err(ServiceError::Internal(
+                "Failed to resolve player ID".to_string(),
+            ));
+        }
+    };
+    let opponent_id = payload
+        .opponent_id
+        .map(|x| {
+            Uuid::parse_str(&x)
+                .map_err(|_| ServiceError::BadRequest("Invalid opponent ID".to_string()))
+                .map(|uuid| PlayerId(uuid))
+        })
+        .transpose()?;
+
+    let color = match payload.color.as_str() {
+        "white" => Some(TakPlayer::White),
+        "black" => Some(TakPlayer::Black),
+        "random" => None,
+        _ => {
+            return Err(ServiceError::BadRequest("Invalid color choice".to_string()));
+        }
+    };
+
+    let game_settings = payload.game_settings.to_game_settings();
+
+    match app.app.seek_create_use_case.create_seek(
+        player_id,
+        opponent_id,
+        color,
+        game_settings,
+        payload.is_rated,
+    ) {
+        Ok(_) => Ok(()),
+        Err(CreateSeekError::InvalidGameSettings) => Err(ServiceError::BadRequest(
+            "Invalid game settings".to_string(),
+        )),
+        Err(CreateSeekError::InvalidOpponent) => Err(ServiceError::BadRequest(
+            "You are not allowed to create a seek for this opponent".to_string(),
+        )),
+    }
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateSeekPayload {
+    pub opponent_id: Option<String>,
+    pub color: String,
+    pub is_rated: bool,
+    pub game_settings: GameSettingsInfo,
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
@@ -69,7 +134,6 @@ pub struct SeekInfo {
     pub opponent_id: Option<String>,
     pub color: String,
     pub is_rated: bool,
-    #[serde(flatten)]
     pub game_settings: GameSettingsInfo,
 }
 

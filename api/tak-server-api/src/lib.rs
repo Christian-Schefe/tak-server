@@ -1,6 +1,11 @@
 use std::sync::Arc;
 
-use axum::{Json, Router, extract::State, response::IntoResponse, routing::get};
+use axum::{
+    Json, Router,
+    extract::State,
+    response::IntoResponse,
+    routing::{get, post},
+};
 use tak_player_connection::PlayerConnectionDriver;
 use tak_server_app::{Application, services::player_resolver::ResolveError};
 
@@ -40,9 +45,12 @@ pub async fn serve(
         .route("/guest", get(get_guest))
         .route("/ws", get(ws::ws_handler))
         .route("/seeks", get(seek::get_seeks))
-        .route("/seeks/accept", axum::routing::post(seek::accept_seek))
+        .route("/seeks", post(seek::create_seek))
+        .route("/seeks/accept", post(seek::accept_seek))
         .route("/games", get(game::get_games))
-        .route("/players/{player_id}", get(player::get_player_info));
+        .route("/games/{game_id}", get(game::get_ongoing_game_status))
+        .route("/players/{player_id}", get(player::get_player_info))
+        .route("/players/{player_id}/stats", get(player::get_player_stats));
 
     let port = std::env::var("TAK_HTTP_API_PORT")
         .expect("TAK_HTTP_API_PORT must be set")

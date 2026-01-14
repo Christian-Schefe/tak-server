@@ -9,6 +9,7 @@ pub mod profile;
 pub mod rating;
 pub mod seek;
 pub mod spectator;
+pub mod stats;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PlayerId(pub uuid::Uuid);

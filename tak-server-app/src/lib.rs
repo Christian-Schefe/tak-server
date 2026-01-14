@@ -14,6 +14,7 @@ use crate::{
         rating::{RatingRepository, RatingServiceImpl},
         seek::SeekServiceImpl,
         spectator::SpectatorServiceImpl,
+        stats::StatsRepository,
     },
     ports::{
         authentication::AuthenticationPort,
@@ -61,6 +62,7 @@ use crate::{
         },
         player::{
             get_rating::{PlayerGetRatingUseCase, PlayerGetRatingUseCaseImpl},
+            get_stats::{GetPlayerStatsUseCase, GetPlayerStatsUseCaseImpl},
             notify_player::NotifyPlayerWorkflowImpl,
         },
     },
@@ -105,6 +107,7 @@ pub struct Application {
     pub get_snapshot_workflow: Arc<dyn GetSnapshotWorkflow + Send + Sync + 'static>,
     pub get_account_workflow: Arc<dyn GetAccountWorkflow + Send + Sync + 'static>,
     pub get_profile_use_case: Arc<dyn GetProfileUseCase + Send + Sync + 'static>,
+    pub get_stats_use_case: Arc<dyn GetPlayerStatsUseCase + Send + Sync + 'static>,
 }
 
 pub async fn build_application<
@@ -112,6 +115,7 @@ pub async fn build_application<
     C: AccountConnectionPort + Send + Sync + 'static,
     G: GameRepository + Send + Sync + 'static,
     R: RatingRepository + Send + Sync + 'static,
+    S: StatsRepository + Send + Sync + 'static,
     AS: AuthenticationPort + Send + Sync + 'static,
     E: EmailPort + Send + Sync + 'static,
     ER: EventRepository + Send + Sync + 'static,
@@ -123,6 +127,7 @@ pub async fn build_application<
     player_repository: Arc<PR>,
     rating_repository: Arc<R>,
     event_repository: Arc<ER>,
+    stats_repository: Arc<S>,
     email_port: Arc<E>,
     listener_notification_port: Arc<L>,
     player_connection_port: Arc<C>,
@@ -180,6 +185,7 @@ pub async fn build_application<
         spectator_service.clone(),
         listener_notification_port.clone(),
         get_account_workflow.clone(),
+        stats_repository.clone(),
     ));
     let observe_game_timeout_use_case = Arc::new(ObserveGameTimeoutUseCaseImpl::new(
         game_service.clone(),
@@ -199,8 +205,10 @@ pub async fn build_application<
         get_snapshot_workflow.clone(),
     ));
 
-    let remove_account_workflow =
-        Arc::new(RemoveAccountWorkflowImpl::new(player_repository.clone()));
+    let remove_account_workflow = Arc::new(RemoveAccountWorkflowImpl::new(
+        player_repository.clone(),
+        stats_repository.clone(),
+    ));
 
     let match_cleanup_job = MatchCleanupJob::new(match_service.clone());
     let guest_cleanup_job = GuestCleanupJob::new(
@@ -288,6 +296,8 @@ pub async fn build_application<
             player_repository.clone(),
             profile_repository.clone(),
         )),
+
+        get_stats_use_case: Arc::new(GetPlayerStatsUseCaseImpl::new(stats_repository.clone())),
     };
 
     application

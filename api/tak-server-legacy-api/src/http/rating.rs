@@ -101,6 +101,7 @@ async fn query_ratings(
         username_futures.push(username);
     }
     let usernames = futures::future::join_all(username_futures).await;
+
     let ratings_with_usernames = res
         .items
         .into_iter()

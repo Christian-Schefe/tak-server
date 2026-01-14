@@ -117,19 +117,31 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
         Ok(player_id)
     }
 
-    async fn remove_account_id(&self, account_id: &AccountId) -> Result<(), RepoError> {
-        let model = player_account_mapping::ActiveModel {
-            account_id: Set(account_id.to_string()),
-            ..Default::default()
+    async fn remove_account_id(
+        &self,
+        account_id: &AccountId,
+    ) -> Result<Option<PlayerId>, RepoError> {
+        // This is in theory a race condition, but an assigned player id never changes, so nothing bad
+        // can happen.
+        let Some(player_id) = self.get_by_account_id(account_id).await? else {
+            return Ok(None);
         };
-        model
-            .delete(&self.db)
+        let res = player_account_mapping::Entity::delete_by_id(account_id.to_string())
+            .exec(&self.db)
             .await
             .map_err(|e| RepoError::StorageError(e.to_string()))?;
 
-        if let Some(player_id) = self.account_id_to_player_id_cache.remove(account_id) {
-            self.player_id_to_account_id_cache.invalidate(&player_id);
+        self.account_id_to_player_id_cache.invalidate(account_id);
+        self.player_id_to_account_id_cache.invalidate(&player_id);
+
+        if res.rows_affected == 0 {
+            log::warn!(
+                "Tried to remove player mapping for account_id {:?}, but no rows were affected",
+                account_id
+            );
+            return Ok(None);
         }
-        Ok(())
+
+        Ok(Some(player_id))
     }
 }

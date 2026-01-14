@@ -5,7 +5,7 @@ use tak_email_lettre::LettreEmailAdapter;
 use tak_events_google_sheets::NoopEventRepository;
 use tak_persistence_sea_orm::{
     games::GameRepositoryImpl, player_account_mapping::PlayerAccountMappingRepositoryImpl,
-    profile::ProfileRepositoryImpl, ratings::RatingRepositoryImpl,
+    profile::ProfileRepositoryImpl, ratings::RatingRepositoryImpl, stats::StatsRepositoryImpl,
 };
 use tak_player_connection::{
     AccountOnlineStatusService, PlayerConnectionDriver, PlayerConnectionService,
@@ -70,6 +70,7 @@ async fn main() {
     let rating_repo = Arc::new(RatingRepositoryImpl::new().await);
     let profile_repo = Arc::new(ProfileRepositoryImpl::new().await);
     let event_repo = Arc::new(NoopEventRepository);
+    let stats_repo = Arc::new(StatsRepositoryImpl::new().await);
     let email_adapter = Arc::new(LettreEmailAdapter::new());
     let player_connection_adapter = Arc::new(PlayerConnectionService::new(vec![
         legacy_transport_service.clone(),
@@ -87,6 +88,7 @@ async fn main() {
             player_repo,
             rating_repo,
             event_repo,
+            stats_repo,
             email_adapter.clone(),
             listener_notification_adapter.clone(),
             player_connection_adapter.clone(),

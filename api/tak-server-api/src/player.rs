@@ -2,7 +2,7 @@ use axum::{
     Json,
     extract::{Path, State},
 };
-use tak_server_app::domain::PlayerId;
+use tak_server_app::{domain::PlayerId, workflow::player::PlayerStatsView};
 use uuid::Uuid;
 
 use crate::{AppState, ServiceError};
@@ -15,31 +15,30 @@ pub async fn get_player_info(
         Uuid::parse_str(&player_id)
             .map_err(|_| ServiceError::BadRequest("Invalid player ID".to_string()))?,
     );
-    let rating = app
-        .app
-        .player_get_rating_use_case
-        .get_rating(player_id)
-        .await;
-    let rating = match rating {
-        Ok(Some(rating_view)) => RatingResponse::Rated {
-            rating: rating_view.rating,
-            max_rating: rating_view.max_rating,
-            rated_games_played: rating_view.rated_games_played,
-            participation_rating: rating_view.participation_rating,
-        },
-        Ok(None) => RatingResponse::Unrated,
-        Err(_) => {
-            return Err(ServiceError::Internal(
-                "Failed to retrieve player rating".to_string(),
-            ));
-        }
-    };
     let account = app
         .app
         .get_account_workflow
         .get_account(player_id)
         .await
         .map_err(|_| ServiceError::Internal("Failed to retrieve player account".to_string()))?;
+
+    let rating = app
+        .app
+        .player_get_rating_use_case
+        .get_rating(player_id)
+        .await;
+    let rating = match rating {
+        Ok(Some(rating_view)) => Some(RatingResponse {
+            rating: rating_view.rating,
+            participation_rating: rating_view.participation_rating,
+        }),
+        Ok(None) => None,
+        Err(_) => {
+            return Err(ServiceError::Internal(
+                "Failed to retrieve player rating".to_string(),
+            ));
+        }
+    };
 
     Ok(Json(PlayerInfo {
         id: player_id.to_string(),
@@ -49,20 +48,29 @@ pub async fn get_player_info(
     }))
 }
 
+pub async fn get_player_stats(
+    State(app): State<AppState>,
+    Path(player_id): Path<String>,
+) -> Result<Json<PlayerStatsInfo>, ServiceError> {
+    let player_id = PlayerId(
+        Uuid::parse_str(&player_id)
+            .map_err(|_| ServiceError::BadRequest("Invalid player ID".to_string()))?,
+    );
+    let stats = app
+        .app
+        .get_stats_use_case
+        .get_stats(player_id)
+        .await
+        .map_err(|_| ServiceError::Internal("Failed to retrieve player stats".to_string()))?;
+
+    Ok(Json(stats.into()))
+}
+
 #[derive(serde::Serialize)]
-#[serde(
-    rename_all = "camelCase",
-    tag = "type",
-    rename_all_fields = "camelCase"
-)]
-pub enum RatingResponse {
-    Unrated,
-    Rated {
-        rating: f64,
-        max_rating: f64,
-        rated_games_played: u32,
-        participation_rating: f64,
-    },
+#[serde(rename_all = "camelCase", tag = "type")]
+pub struct RatingResponse {
+    rating: f64,
+    participation_rating: f64,
 }
 
 #[derive(serde::Serialize)]
@@ -71,5 +79,27 @@ pub struct PlayerInfo {
     pub id: String,
     pub username: String,
     pub display_name: String,
-    pub rating: RatingResponse,
+    pub rating: Option<RatingResponse>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerStatsInfo {
+    pub games_played: u32,
+    pub rated_games_played: u32,
+    pub games_won: u32,
+    pub games_lost: u32,
+    pub games_drawn: u32,
+}
+
+impl From<PlayerStatsView> for PlayerStatsInfo {
+    fn from(stats: PlayerStatsView) -> Self {
+        PlayerStatsInfo {
+            games_played: stats.games_played,
+            rated_games_played: stats.rated_games_played,
+            games_won: stats.games_won,
+            games_lost: stats.games_lost,
+            games_drawn: stats.games_drawn,
+        }
+    }
 }

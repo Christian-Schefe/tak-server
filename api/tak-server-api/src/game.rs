@@ -1,8 +1,11 @@
-use axum::{Json, extract::State};
-use tak_core::TakGameSettings;
-use tak_server_app::workflow::gameplay::GameMetadataView;
+use axum::{
+    Json,
+    extract::{Path, State},
+};
+use tak_core::{TakGameSettings, ptn::action_to_ptn};
+use tak_server_app::{domain::GameId, workflow::gameplay::GameMetadataView};
 
-use crate::AppState;
+use crate::{AppState, ServiceError};
 
 pub async fn get_games(State(app): State<AppState>) -> Json<Vec<GameInfo>> {
     let games = app.app.game_list_ongoing_use_case.list_games();
@@ -14,6 +17,36 @@ pub async fn get_games(State(app): State<AppState>) -> Json<Vec<GameInfo>> {
     )
 }
 
+pub async fn get_ongoing_game_status(
+    State(app): State<AppState>,
+    Path(game_id): Path<i64>,
+) -> Result<Json<OngoingGameStatus>, ServiceError> {
+    let game = app
+        .app
+        .game_get_ongoing_use_case
+        .get_game(GameId(game_id))
+        .ok_or_else(|| {
+            ServiceError::NotFound(format!("Ongoing game with id {} not found", game_id))
+        })?;
+
+    Ok(Json(OngoingGameStatus {
+        id: game.metadata.id.0,
+        actions: game
+            .game
+            .action_history()
+            .iter()
+            .map(|a| action_to_ptn(&a.action))
+            .collect(),
+    }))
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OngoingGameStatus {
+    pub id: i64,
+    pub actions: Vec<String>,
+}
+
 #[derive(serde::Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct GameInfo {
@@ -21,8 +54,7 @@ pub struct GameInfo {
     pub white_id: String,
     pub black_id: String,
     pub is_rated: bool,
-    #[serde(flatten)]
-    pub settings: GameSettingsInfo,
+    pub game_settings: GameSettingsInfo,
 }
 
 impl GameInfo {
@@ -32,12 +64,12 @@ impl GameInfo {
             white_id: view.white_id.to_string(),
             black_id: view.black_id.to_string(),
             is_rated: view.is_rated,
-            settings: GameSettingsInfo::from_game_settings(&view.settings),
+            game_settings: GameSettingsInfo::from_game_settings(&view.settings),
         }
     }
 }
 
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct GameSettingsInfo {
     pub board_size: u32,
@@ -67,9 +99,30 @@ impl GameSettingsInfo {
                 }),
         }
     }
+
+    pub fn to_game_settings(&self) -> TakGameSettings {
+        TakGameSettings {
+            board_size: self.board_size,
+            half_komi: self.half_komi,
+            reserve: tak_core::TakReserve {
+                pieces: self.pieces,
+                capstones: self.capstones,
+            },
+            time_control: tak_core::TakTimeControl {
+                contingent: std::time::Duration::from_millis(self.contingent_ms),
+                increment: std::time::Duration::from_millis(self.increment_ms),
+                extra: self.extra.as_ref().map(|extra| {
+                    (
+                        extra.on_move,
+                        std::time::Duration::from_millis(extra.extra_ms),
+                    )
+                }),
+            },
+        }
+    }
 }
 
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ExtraTime {
     pub on_move: u32,
