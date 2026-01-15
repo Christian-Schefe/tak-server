@@ -1,9 +1,17 @@
+use std::time::Instant;
+
 use axum::{
     Json,
     extract::{Path, State},
 };
-use tak_core::{TakGameSettings, ptn::action_to_ptn};
-use tak_server_app::{domain::GameId, workflow::gameplay::GameMetadataView};
+use tak_core::{
+    TakGameSettings,
+    ptn::{action_to_ptn, game_state_to_string},
+};
+use tak_server_app::{
+    domain::GameId,
+    workflow::{gameplay::GameMetadataView, history::query::GameQueryError},
+};
 
 use crate::{AppState, ServiceError};
 
@@ -17,42 +25,125 @@ pub async fn get_games(State(app): State<AppState>) -> Json<Vec<GameInfo>> {
     )
 }
 
-pub async fn get_ongoing_game_status(
+pub async fn get_game_status(
     State(app): State<AppState>,
     Path(game_id): Path<i64>,
-) -> Result<Json<OngoingGameStatus>, ServiceError> {
-    let game = app
-        .app
-        .game_get_ongoing_use_case
-        .get_game(GameId(game_id))
-        .ok_or_else(|| {
-            ServiceError::NotFound(format!("Ongoing game with id {} not found", game_id))
-        })?;
+) -> Result<Json<GameStatus>, ServiceError> {
+    let game_id = GameId(game_id);
+    let game = app.app.game_get_ongoing_use_case.get_game(game_id);
 
-    Ok(Json(OngoingGameStatus {
-        id: game.metadata.id.0,
-        actions: game
-            .game
-            .action_history()
-            .iter()
-            .map(|a| action_to_ptn(&a.action))
-            .collect(),
-    }))
+    if let Some(ongoing_game) = game {
+        let (draw_offer_white, draw_offer_black) = ongoing_game.game.draw_offers();
+        let (undo_request_white, undo_request_black) = ongoing_game.game.undo_requests();
+        let (white_remaining, black_remaining) =
+            ongoing_game.game.get_time_remaining_both(Instant::now());
+        return Ok(Json(GameStatus {
+            id: ongoing_game.metadata.id.0,
+            player_ids: ForPlayer {
+                white: ongoing_game.metadata.white_id.to_string(),
+                black: ongoing_game.metadata.black_id.to_string(),
+            },
+            is_rated: ongoing_game.metadata.is_rated,
+            game_settings: GameSettingsInfo::from_game_settings(&ongoing_game.metadata.settings),
+            actions: ongoing_game
+                .game
+                .action_history()
+                .iter()
+                .map(|a| action_to_ptn(&a))
+                .collect(),
+            status: GameStatusType::Ongoing {
+                draw_offers: ForPlayer {
+                    white: draw_offer_white,
+                    black: draw_offer_black,
+                },
+                undo_requests: ForPlayer {
+                    white: undo_request_white,
+                    black: undo_request_black,
+                },
+            },
+            remaining_ms: ForPlayer {
+                white: white_remaining.as_millis() as u64,
+                black: black_remaining.as_millis() as u64,
+            },
+        }));
+    }
+    match app.app.game_history_query_use_case.get_game(game_id).await {
+        Ok(Some(ended_game)) => {
+            let Some(result) = &ended_game.result else {
+                log::warn!("Ended game {} has no result", game_id.0);
+                return Err(ServiceError::NotPossible(
+                    "Game finished but not processed yet".to_string(),
+                ));
+            };
+            Ok(Json(GameStatus {
+                id: game_id.0,
+                player_ids: ForPlayer {
+                    white: ended_game.white.player_id.to_string(),
+                    black: ended_game.black.player_id.to_string(),
+                },
+                is_rated: ended_game.is_rated,
+                game_settings: GameSettingsInfo::from_game_settings(&ended_game.settings),
+                actions: ended_game
+                    .reconstruct_action_history()
+                    .iter()
+                    .map(|a| action_to_ptn(&a))
+                    .collect(),
+                status: GameStatusType::Ended {
+                    result: game_state_to_string(&result),
+                },
+                remaining_ms: ForPlayer { white: 0, black: 0 },
+            }))
+        }
+        Ok(None) => Err(ServiceError::NotFound(format!(
+            "Game with id {} not found",
+            game_id.0
+        ))),
+        Err(GameQueryError::RepositoryError) => Err(ServiceError::Internal(
+            "Failed to retrieve game record".to_string(),
+        )),
+    }
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct OngoingGameStatus {
+pub struct GameStatus {
     pub id: i64,
+    pub player_ids: ForPlayer<String>,
+    pub is_rated: bool,
+    pub game_settings: GameSettingsInfo,
     pub actions: Vec<String>,
+    pub status: GameStatusType,
+    pub remaining_ms: ForPlayer<u64>,
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
+#[serde(
+    rename_all = "camelCase",
+    tag = "type",
+    rename_all_fields = "camelCase"
+)]
+pub enum GameStatusType {
+    Ongoing {
+        draw_offers: ForPlayer<bool>,
+        undo_requests: ForPlayer<bool>,
+    },
+    Ended {
+        result: String,
+    },
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ForPlayer<R> {
+    white: R,
+    black: R,
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct GameInfo {
     pub id: i64,
-    pub white_id: String,
-    pub black_id: String,
+    pub player_ids: ForPlayer<String>,
     pub is_rated: bool,
     pub game_settings: GameSettingsInfo,
 }
@@ -61,8 +152,10 @@ impl GameInfo {
     pub fn from_ongoing_game_view(view: &GameMetadataView) -> Self {
         GameInfo {
             id: view.id.0,
-            white_id: view.white_id.to_string(),
-            black_id: view.black_id.to_string(),
+            player_ids: ForPlayer {
+                white: view.white_id.to_string(),
+                black: view.black_id.to_string(),
+            },
             is_rated: view.is_rated,
             game_settings: GameSettingsInfo::from_game_settings(&view.settings),
         }

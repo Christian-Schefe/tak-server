@@ -4,7 +4,7 @@ use axum::{
     Json, Router,
     extract::State,
     response::IntoResponse,
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use tak_player_connection::PlayerConnectionDriver;
 use tak_server_app::{Application, services::player_resolver::ResolveError};
@@ -46,9 +46,10 @@ pub async fn serve(
         .route("/ws", get(ws::ws_handler))
         .route("/seeks", get(seek::get_seeks))
         .route("/seeks", post(seek::create_seek))
-        .route("/seeks/accept", post(seek::accept_seek))
+        .route("/seeks/{seek_id}", delete(seek::cancel_seek))
+        .route("/seeks/{seek_id}/accept", post(seek::accept_seek))
         .route("/games", get(game::get_games))
-        .route("/games/{game_id}", get(game::get_ongoing_game_status))
+        .route("/games/{game_id}", get(game::get_game_status))
         .route("/players/{player_id}", get(player::get_player_info))
         .route("/players/{player_id}/stats", get(player::get_player_stats));
 

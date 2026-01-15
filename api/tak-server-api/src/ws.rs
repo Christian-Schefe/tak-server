@@ -303,6 +303,11 @@ pub enum ServerMessage {
         ply_index: usize,
         action: String,
     },
+    GameTimeUpdate {
+        game_id: i64,
+        white_ms: u64,
+        black_ms: u64,
+    },
     GameStarted {
         game: GameInfo,
     },
@@ -327,13 +332,22 @@ impl ServerMessage {
             } => Some(ServerMessage::GameAction {
                 game_id: game_id.0,
                 ply_index: action.ply_index,
-                action: action_to_ptn(&action.action.action),
+                action: action_to_ptn(&action.action),
             }),
             ListenerMessage::GameStarted { game } => Some(ServerMessage::GameStarted {
                 game: GameInfo::from_ongoing_game_view(&game.metadata),
             }),
             ListenerMessage::GameEnded { game } => Some(ServerMessage::GameEnded {
                 game_id: game.metadata.id.0,
+            }),
+            ListenerMessage::GameTimeUpdate {
+                game_id,
+                white_time,
+                black_time,
+            } => Some(ServerMessage::GameTimeUpdate {
+                game_id: game_id.0,
+                white_ms: white_time.as_millis() as u64,
+                black_ms: black_time.as_millis() as u64,
             }),
             _ => None,
         }

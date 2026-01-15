@@ -19,10 +19,10 @@ pub struct Model {
     pub rating_change_white: Option<f64>,
     pub rating_change_black: Option<f64>,
 
-    pub notation: serde_json::Value,
+    pub events: serde_json::Value,
     pub result: Option<String>,
-    pub clock_contingent: i32,
-    pub clock_increment: i32,
+    pub clock_contingent_ms: i64,
+    pub clock_increment_ms: i64,
     pub is_rated: bool,
     pub half_komi: i32,
     pub pieces: i32,

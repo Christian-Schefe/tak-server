@@ -6,9 +6,40 @@ use std::{
 use crate::domain::{GameId, PlayerId};
 use dashmap::DashMap;
 use tak_core::{
-    MaybeTimeout, TakAction, TakActionRecord, TakFinishedGame, TakGame, TakGameSettings,
-    TakOngoingGame, TakPlayer,
+    MaybeTimeout, TakAction, TakFinishedGame, TakGame, TakGameSettings, TakOngoingGame, TakPlayer,
 };
+
+#[derive(Clone, Debug)]
+pub struct GameEvent {
+    pub event_type: GameEventType,
+    pub date: chrono::DateTime<chrono::Utc>,
+}
+
+impl GameEvent {
+    pub fn new(event_type: GameEventType) -> Self {
+        Self {
+            event_type,
+            date: chrono::Utc::now(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum GameEventType {
+    Action {
+        action: TakAction,
+        white_remaining: Duration,
+        black_remaining: Duration,
+    },
+    UndoRequested(TakPlayer),
+    UndoRequestWithdrawn(TakPlayer),
+    UndoAccepted,
+    DrawOffered(TakPlayer),
+    DrawOfferWithdrawn(TakPlayer),
+    DrawAgreed,
+    Timeout,
+    Resigned(TakPlayer),
+}
 
 #[derive(Clone, Debug)]
 pub struct GameMetadata {
@@ -46,12 +77,14 @@ impl GameMetadata {
 pub struct OngoingGame {
     pub metadata: GameMetadata,
     pub game: TakOngoingGame,
+    pub events: Vec<GameEvent>,
 }
 
 #[derive(Clone, Debug)]
 pub struct FinishedGame {
     pub metadata: GameMetadata,
     pub game: TakFinishedGame,
+    pub events: Vec<GameEvent>,
 }
 
 impl FinishedGame {
@@ -59,6 +92,7 @@ impl FinishedGame {
         Self {
             metadata: game.metadata.clone(),
             game: tak_game,
+            events: game.events.clone(),
         }
     }
     pub fn get_time_remaining(&self) -> TimeRemaining {
@@ -120,12 +154,12 @@ pub trait GameService {
 
 #[derive(Clone, Debug)]
 pub struct GameActionRecord {
-    pub action: TakActionRecord,
+    pub action: TakAction,
     pub ply_index: usize,
 }
 
 impl GameActionRecord {
-    pub fn new(action: TakActionRecord, ply_index: usize) -> Self {
+    pub fn new(action: TakAction, ply_index: usize) -> Self {
         Self { action, ply_index }
     }
 }
@@ -195,12 +229,14 @@ impl GameServiceImpl {
 
     fn with_game_might_end<F, R>(&self, game_id: GameId, f: F) -> Option<R>
     where
-        F: FnOnce(&OngoingGame) -> (GameControl, R),
+        F: FnOnce(&OngoingGame, &mut Vec<GameEvent>) -> (GameControl, R),
     {
         let mut res = None;
         self.games.remove_if_mut(&game_id, |_, entry| {
-            let (new_game, r) = f(entry);
+            let mut events = Vec::new();
+            let (new_game, r) = f(entry, &mut events);
             res = Some(r);
+            entry.events.extend(events);
             match new_game {
                 GameControl::Changed(g) => {
                     entry.game = g;
@@ -233,7 +269,11 @@ impl GameService for GameServiceImpl {
             settings: game_settings.clone(),
             is_rated,
         };
-        let game_struct = OngoingGame { game, metadata };
+        let game_struct = OngoingGame {
+            game,
+            metadata,
+            events: Vec::new(),
+        };
         self.games.insert(id, game_struct.clone());
 
         game_struct
@@ -254,23 +294,32 @@ impl GameService for GameServiceImpl {
         action: TakAction,
         now: Instant,
     ) -> DoActionResult {
-        self.with_game_might_end(game_id, |game_entry| {
+        self.with_game_might_end(game_id, |game_entry, events| {
             let current_player = match game_entry.metadata.get_player(player) {
                 Some(p) => p,
-                None => return (GameControl::Unchanged, DoActionResult::NotAPlayerInGame),
+                None => {
+                    return (GameControl::Unchanged, DoActionResult::NotAPlayerInGame);
+                }
             };
 
             if game_entry.game.current_player() != current_player {
                 return (GameControl::Unchanged, DoActionResult::NotPlayersTurn);
             }
-            let ply_index = game_entry.game.ply_index();
-            match game_entry.game.do_action(&action, now) {
+            let ply_index = game_entry.game.action_history().len();
+            match game_entry.game.do_action(action.clone(), now) {
                 Ok(MaybeTimeout::Timeout(finished_game)) => {
+                    events.push(GameEvent::new(GameEventType::Timeout));
                     let finished_game = FinishedGame::new(game_entry, finished_game);
                     (GameControl::Ended, DoActionResult::Timeout(finished_game))
                 }
-                Ok(MaybeTimeout::Result((action, game))) => match game {
+                Ok(MaybeTimeout::Result(game)) => match game {
                     TakGame::Finished(finished_game) => {
+                        let (white_remaining, black_remaining) = finished_game.get_time_remaining();
+                        events.push(GameEvent::new(GameEventType::Action {
+                            action: action.clone(),
+                            white_remaining,
+                            black_remaining,
+                        }));
                         let finished_game = FinishedGame::new(game_entry, finished_game);
                         (
                             GameControl::Ended,
@@ -280,10 +329,21 @@ impl GameService for GameServiceImpl {
                             ),
                         )
                     }
-                    TakGame::Ongoing(ongoing_game) => (
-                        GameControl::Changed(ongoing_game),
-                        DoActionResult::ActionPerformed(GameActionRecord::new(action, ply_index)),
-                    ),
+                    TakGame::Ongoing(ongoing_game) => {
+                        let (white_remaining, black_remaining) =
+                            ongoing_game.get_time_remaining_both(now);
+                        events.push(GameEvent::new(GameEventType::Action {
+                            action: action.clone(),
+                            white_remaining,
+                            black_remaining,
+                        }));
+                        (
+                            GameControl::Changed(ongoing_game),
+                            DoActionResult::ActionPerformed(GameActionRecord::new(
+                                action, ply_index,
+                            )),
+                        )
+                    }
                 },
                 Err(e) => (GameControl::Unchanged, DoActionResult::InvalidAction(e)),
             }
@@ -292,7 +352,7 @@ impl GameService for GameServiceImpl {
     }
 
     fn resign(&self, game_id: GameId, player: PlayerId, now: Instant) -> ResignResult {
-        self.with_game_might_end(game_id, |game_entry| {
+        self.with_game_might_end(game_id, |game_entry, events| {
             let current_player = match game_entry.metadata.get_player(player) {
                 Some(p) => p,
                 None => return (GameControl::Unchanged, ResignResult::NotAPlayerInGame),
@@ -300,10 +360,12 @@ impl GameService for GameServiceImpl {
 
             match game_entry.game.resign(&current_player, now) {
                 MaybeTimeout::Timeout(finished_game) => {
+                    events.push(GameEvent::new(GameEventType::Timeout));
                     let finished_game = FinishedGame::new(game_entry, finished_game);
                     (GameControl::Ended, ResignResult::Timeout(finished_game))
                 }
                 MaybeTimeout::Result(finished_game) => {
+                    events.push(GameEvent::new(GameEventType::Resigned(current_player)));
                     let finished_game = FinishedGame::new(game_entry, finished_game);
                     (GameControl::Ended, ResignResult::GameOver(finished_game))
                 }
@@ -319,7 +381,7 @@ impl GameService for GameServiceImpl {
         now: Instant,
         offer_status: bool,
     ) -> OfferDrawResult {
-        self.with_game_might_end(game_id, |game_entry| {
+        self.with_game_might_end(game_id, |game_entry, events| {
             let current_player = match game_entry.metadata.get_player(player) {
                 Some(p) => p,
                 None => return (GameControl::Unchanged, OfferDrawResult::NotAPlayerInGame),
@@ -330,10 +392,12 @@ impl GameService for GameServiceImpl {
                 .offer_draw(&current_player, offer_status, now)
             {
                 MaybeTimeout::Timeout(finished_game) => {
+                    events.push(GameEvent::new(GameEventType::Timeout));
                     let finished_game = FinishedGame::new(game_entry, finished_game);
                     (GameControl::Ended, OfferDrawResult::Timeout(finished_game))
                 }
                 MaybeTimeout::Result(Some(TakGame::Finished(drawn_game))) => {
+                    events.push(GameEvent::new(GameEventType::DrawAgreed));
                     let finished_game = FinishedGame::new(game_entry, drawn_game);
                     (
                         GameControl::Ended,
@@ -341,6 +405,13 @@ impl GameService for GameServiceImpl {
                     )
                 }
                 MaybeTimeout::Result(Some(TakGame::Ongoing(ongoing_game))) => {
+                    if offer_status {
+                        events.push(GameEvent::new(GameEventType::DrawOffered(current_player)));
+                    } else {
+                        events.push(GameEvent::new(GameEventType::DrawOfferWithdrawn(
+                            current_player,
+                        )));
+                    }
                     (GameControl::Changed(ongoing_game), OfferDrawResult::Success)
                 }
                 MaybeTimeout::Result(None) => (GameControl::Unchanged, OfferDrawResult::Unchanged),
@@ -356,7 +427,7 @@ impl GameService for GameServiceImpl {
         now: Instant,
         offer_status: bool,
     ) -> RequestUndoResult {
-        self.with_game_might_end(game_id, |game_entry| {
+        self.with_game_might_end(game_id, |game_entry, events| {
             let current_player = match game_entry.metadata.get_player(player) {
                 Some(p) => p,
                 None => return (GameControl::Unchanged, RequestUndoResult::NotAPlayerInGame),
@@ -367,16 +438,26 @@ impl GameService for GameServiceImpl {
                 .request_undo(&current_player, offer_status, now)
             {
                 MaybeTimeout::Timeout(finished_game) => {
+                    events.push(GameEvent::new(GameEventType::Timeout));
                     let finished_game = FinishedGame::new(game_entry, finished_game);
                     (
                         GameControl::Ended,
                         RequestUndoResult::Timeout(finished_game),
                     )
                 }
-                MaybeTimeout::Result(Some(ongoing_game)) => (
-                    GameControl::Changed(ongoing_game),
-                    RequestUndoResult::Success,
-                ),
+                MaybeTimeout::Result(Some(ongoing_game)) => {
+                    if offer_status {
+                        events.push(GameEvent::new(GameEventType::UndoRequested(current_player)));
+                    } else {
+                        events.push(GameEvent::new(GameEventType::UndoRequestWithdrawn(
+                            current_player,
+                        )));
+                    }
+                    (
+                        GameControl::Changed(ongoing_game),
+                        RequestUndoResult::Success,
+                    )
+                }
                 MaybeTimeout::Result(None) => {
                     (GameControl::Unchanged, RequestUndoResult::Unchanged)
                 }
@@ -386,10 +467,11 @@ impl GameService for GameServiceImpl {
     }
 
     fn check_timeout(&self, game_id: GameId, now: Instant) -> CheckTimoutResult {
-        self.with_game_might_end(game_id, |game_entry| {
+        self.with_game_might_end(game_id, |game_entry, events| {
             match game_entry.game.check_timeout(now) {
                 Some(finished_game) => {
                     let finished_game = FinishedGame::new(game_entry, finished_game);
+                    events.push(GameEvent::new(GameEventType::Timeout));
                     (
                         GameControl::Ended,
                         CheckTimoutResult::GameTimedOut(finished_game),

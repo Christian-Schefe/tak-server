@@ -4,19 +4,22 @@ use std::{
 };
 
 use crate::{
-    InvalidActionReason, InvalidPlaceReason, MaybeTimeout, TakAction, TakActionRecord,
-    TakGameOverState, TakGameSettings, TakPlayer, TakReserve, TakVariant, TakWinReason,
-    board::TakBoard,
+    InvalidActionReason, InvalidPlaceReason, MaybeTimeout, TakAction, TakGameOverState,
+    TakGameSettings, TakPlayer, TakReserve, TakVariant, TakWinReason, board::TakBoard,
 };
 
 #[derive(Clone, Debug)]
 pub struct TakFinishedBaseGame {
     game_state: TakGameOverState,
+    action_history: Vec<TakAction>,
 }
 
 impl TakFinishedBaseGame {
-    fn new(_ended_game: TakOngoingBaseGame, game_state: TakGameOverState) -> Self {
-        TakFinishedBaseGame { game_state }
+    fn new(ended_game: TakOngoingBaseGame, game_state: TakGameOverState) -> Self {
+        TakFinishedBaseGame {
+            game_state,
+            action_history: ended_game.action_history,
+        }
     }
 }
 
@@ -27,7 +30,7 @@ pub struct TakOngoingBaseGame {
     current_player: TakPlayer,
     reserves: (TakReserve, TakReserve),
     board_hash_history: HashMap<String, u32>,
-    ply_index: usize,
+    action_history: Vec<TakAction>,
 }
 
 #[derive(Clone, Debug)]
@@ -46,14 +49,14 @@ impl TakOngoingBaseGame {
             current_player: TakPlayer::White,
             reserves,
             board_hash_history: HashMap::new(),
-            ply_index: 0,
+            action_history: Vec::new(),
         }
     }
 
     fn can_do_action(&self, action: &TakAction) -> Result<(), InvalidActionReason> {
         match action {
             TakAction::Place { pos, variant } => {
-                if self.ply_index < 2 && *variant != TakVariant::Flat {
+                if self.action_history.len() < 2 && *variant != TakVariant::Flat {
                     return Err(InvalidActionReason::OpeningViolation);
                 }
                 let reserve = match self.current_player {
@@ -75,7 +78,7 @@ impl TakOngoingBaseGame {
                 Ok(())
             }
             TakAction::Move { pos, dir, drops } => {
-                if self.ply_index < 2 {
+                if self.action_history.len() < 2 {
                     return Err(InvalidActionReason::OpeningViolation);
                 }
                 if let Err(e) = self.board.can_do_move(pos, dir, drops) {
@@ -86,14 +89,14 @@ impl TakOngoingBaseGame {
         }
     }
 
-    fn do_action(&self, action: &TakAction) -> Result<TakBaseGame, InvalidActionReason> {
+    fn do_action(&self, action: TakAction) -> Result<TakBaseGame, InvalidActionReason> {
         if let Err(e) = self.can_do_action(&action) {
             return Err(e);
         }
         let mut new_state = self.clone();
         match &action {
             TakAction::Place { pos, variant } => {
-                let placing_player = if self.ply_index < 2 {
+                let placing_player = if self.action_history.len() < 2 {
                     self.current_player.opponent()
                 } else {
                     self.current_player.clone()
@@ -133,7 +136,7 @@ impl TakOngoingBaseGame {
             }
             TakBaseGame::Ongoing(mut ongoing_game) => {
                 ongoing_game.current_player = ongoing_game.current_player.opponent();
-                ongoing_game.ply_index += 1;
+                ongoing_game.action_history.push(action);
 
                 Ok(TakBaseGame::Ongoing(ongoing_game))
             }
@@ -186,7 +189,6 @@ impl TakOngoingBaseGame {
 #[derive(Clone, Debug)]
 pub struct TakFinishedGame {
     base: TakFinishedBaseGame,
-    action_history: Vec<TakActionRecord>,
     time_remaining: (Duration, Duration),
 }
 
@@ -194,7 +196,6 @@ impl TakFinishedGame {
     fn new(ongoing_game: TakOngoingGame, game_state: TakGameOverState) -> Self {
         TakFinishedGame {
             base: TakFinishedBaseGame::new(ongoing_game.base, game_state),
-            action_history: ongoing_game.action_history,
             time_remaining: ongoing_game.clock.remaining_time,
         }
     }
@@ -205,13 +206,12 @@ impl TakFinishedGame {
     ) -> Self {
         TakFinishedGame {
             base: finished_base,
-            action_history: ongoing_game.action_history,
             time_remaining: ongoing_game.clock.remaining_time,
         }
     }
 
-    pub fn action_history(&self) -> &Vec<TakActionRecord> {
-        &self.action_history
+    pub fn action_history(&self) -> &Vec<TakAction> {
+        &self.base.action_history
     }
 
     pub fn game_state(&self) -> &TakGameOverState {
@@ -226,7 +226,6 @@ impl TakFinishedGame {
 #[derive(Clone, Debug)]
 pub struct TakOngoingGame {
     base: TakOngoingBaseGame,
-    action_history: Vec<TakActionRecord>,
     draw_offered: (bool, bool),
     undo_requested: (bool, bool),
     clock: TakClock,
@@ -250,7 +249,6 @@ impl TakOngoingGame {
         let base_game = TakOngoingBaseGame::new(settings.clone());
         TakOngoingGame {
             base: base_game,
-            action_history: Vec::new(),
             draw_offered: (false, false),
             undo_requested: (false, false),
             clock: TakClock {
@@ -265,12 +263,16 @@ impl TakOngoingGame {
         }
     }
 
-    pub fn ply_index(&self) -> usize {
-        self.base.ply_index
+    pub fn action_history(&self) -> &Vec<TakAction> {
+        &self.base.action_history
     }
 
-    pub fn action_history(&self) -> &Vec<TakActionRecord> {
-        &self.action_history
+    pub fn draw_offers(&self) -> (bool, bool) {
+        self.draw_offered
+    }
+
+    pub fn undo_requests(&self) -> (bool, bool) {
+        self.undo_requested
     }
 
     pub fn current_player(&self) -> TakPlayer {
@@ -350,7 +352,7 @@ impl TakOngoingGame {
             // ply index is incremented before clock update, which means it is odd for white moves and starts at 1 for move 1
             // move 1: white 1, black 2 ---(+1)--> (2, 3) ---(/2)--> (1, 1)
             // move 2: white 3, black 4 ---(+1)--> (4, 5) ---(/2)--> (2, 2)
-            let move_index = (self.base.ply_index + 1) / 2;
+            let move_index = (self.base.action_history.len() + 1) / 2;
             if !*has_gained_extra_time && extra_move_index as usize == move_index {
                 *remaining = remaining.saturating_add(extra_time);
                 *has_gained_extra_time = true;
@@ -373,9 +375,9 @@ impl TakOngoingGame {
 
     pub fn do_action(
         &self,
-        action: &TakAction,
+        action: TakAction,
         now: Instant,
-    ) -> Result<MaybeTimeout<(TakActionRecord, TakGame)>, InvalidActionReason> {
+    ) -> Result<MaybeTimeout<TakGame>, InvalidActionReason> {
         if let Some(finished_game) = self.check_timeout(now) {
             return Ok(MaybeTimeout::Timeout(finished_game));
         };
@@ -387,25 +389,13 @@ impl TakOngoingGame {
                 let mut new_state = self.clone();
                 new_state.base = new_base;
                 new_state.start_or_update_clock(now, &player);
-                let record = TakActionRecord {
-                    action: action.clone(),
-                    time_remaining: new_state.clock.remaining_time,
-                };
-                new_state.action_history.push(record.clone());
-                Ok(MaybeTimeout::Result((record, TakGame::Ongoing(new_state))))
+                Ok(MaybeTimeout::Result(TakGame::Ongoing(new_state)))
             }
             Ok(TakBaseGame::Finished(finished_base)) => {
                 let mut new_state = self.clone();
                 new_state.stop_clock(now, &player);
-                let record = TakActionRecord {
-                    action: action.clone(),
-                    time_remaining: new_state.clock.remaining_time,
-                };
                 let finished_game = TakFinishedGame::from_finished_base(finished_base, new_state);
-                Ok(MaybeTimeout::Result((
-                    record,
-                    TakGame::Finished(finished_game),
-                )))
+                Ok(MaybeTimeout::Result(TakGame::Finished(finished_game)))
             }
             Err(e) => Err(e),
         }
@@ -413,26 +403,26 @@ impl TakOngoingGame {
 
     //TODO: maybe only accept request if there is a move to undo
     fn undo_action(&mut self, now: Instant) -> bool {
-        if self.action_history.pop().is_none() {
+        if self.base.action_history.pop().is_none() {
             return false;
         };
         let player = self.base.current_player.clone();
         let mut game_clone = TakOngoingBaseGame::new(self.base.settings.clone());
-        for record in &self.action_history {
-            match game_clone.do_action(&record.action) {
+        for record in &self.base.action_history {
+            match game_clone.do_action(record.clone()) {
                 Ok(TakBaseGame::Ongoing(ongoing_base_game)) => game_clone = ongoing_base_game,
                 Ok(TakBaseGame::Finished(_)) => {
                     //This should never happen, and the module is closed to preserve invariants, so we panic here
                     panic!(
                         "Finished game encountered when replaying action during undo: {:?}",
-                        record.action
+                        record
                     );
                 }
                 Err(e) => {
                     //This should never happen, and the module is closed to preserve invariants, so we panic here
                     panic!(
                         "Failed to replay action during undo: {:?}, error: {:?}",
-                        record.action, e
+                        record, e
                     );
                 }
             }
@@ -539,12 +529,12 @@ mod tests {
     use super::*;
 
     fn do_move(game: &mut TakOngoingGame, action: TakAction, now: Instant) {
-        match game.do_action(&action, now) {
+        match game.do_action(action, now) {
             Ok(MaybeTimeout::Timeout(_)) => {
                 panic!("Game finished unexpectedly due to timeout")
             }
-            Ok(MaybeTimeout::Result((_, TakGame::Ongoing(g)))) => *game = g,
-            Ok(MaybeTimeout::Result((_, TakGame::Finished(_)))) => {
+            Ok(MaybeTimeout::Result(TakGame::Ongoing(g))) => *game = g,
+            Ok(MaybeTimeout::Result(TakGame::Finished(_))) => {
                 panic!("Game finished unexpectedly")
             }
             Err(e) => panic!("Failed to do action: {:?}", e),
@@ -557,14 +547,14 @@ mod tests {
         now: Instant,
         expected_result: TakGameOverState,
     ) {
-        match game.do_action(&action, now) {
-            Ok(MaybeTimeout::Result((_, TakGame::Ongoing(_)))) => {
+        match game.do_action(action, now) {
+            Ok(MaybeTimeout::Result(TakGame::Ongoing(_))) => {
                 panic!("Game should have finished, but is ongoing")
             }
             Ok(MaybeTimeout::Timeout(_)) => {
                 panic!("Game finished unexpectedly due to timeout")
             }
-            Ok(MaybeTimeout::Result((_, TakGame::Finished(g)))) => {
+            Ok(MaybeTimeout::Result(TakGame::Finished(g))) => {
                 assert_eq!(g.base.game_state, expected_result)
             }
             Err(e) => panic!("Failed to do action: {:?}", e),
@@ -629,7 +619,7 @@ mod tests {
         // player 2 has placed one flat and one capstone, has two flat left
         assert!(
             game.do_action(
-                &TakAction::Place {
+                TakAction::Place {
                     pos: TakPos::new(0, 1),
                     variant: TakVariant::Capstone,
                 },
@@ -649,7 +639,7 @@ mod tests {
         // player 1 has placed all flats and has a capstone left
         assert!(
             game.do_action(
-                &TakAction::Place {
+                TakAction::Place {
                     pos: TakPos::new(0, 2),
                     variant: TakVariant::Flat,
                 },
@@ -808,7 +798,7 @@ mod tests {
         // first move must be flat stone
         assert!(
             game.do_action(
-                &TakAction::Place {
+                TakAction::Place {
                     pos: TakPos::new(0, 0),
                     variant: TakVariant::Capstone,
                 },
@@ -818,7 +808,7 @@ mod tests {
         );
         assert!(
             game.do_action(
-                &TakAction::Place {
+                TakAction::Place {
                     pos: TakPos::new(0, 0),
                     variant: TakVariant::Standing,
                 },
@@ -838,7 +828,7 @@ mod tests {
         // second move must be flat stone
         assert!(
             game.do_action(
-                &TakAction::Place {
+                TakAction::Place {
                     pos: TakPos::new(1, 0),
                     variant: TakVariant::Capstone,
                 },
@@ -848,7 +838,7 @@ mod tests {
         );
         assert!(
             game.do_action(
-                &TakAction::Place {
+                TakAction::Place {
                     pos: TakPos::new(1, 0),
                     variant: TakVariant::Standing,
                 },
@@ -859,7 +849,7 @@ mod tests {
         // moving piece from first place is not allowed either
         assert!(
             game.do_action(
-                &TakAction::Move {
+                TakAction::Move {
                     pos: TakPos::new(0, 0),
                     dir: TakDir::Right,
                     drops: vec![1],

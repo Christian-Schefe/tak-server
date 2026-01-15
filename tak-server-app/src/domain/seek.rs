@@ -31,6 +31,7 @@ pub trait SeekService {
         is_rated: bool,
     ) -> Result<Seek, CreateSeekError>;
     fn cancel_all_player_seeks(&self, player: PlayerId) -> Vec<Seek>;
+    fn cancel_seek(&self, player: PlayerId, seek_id: SeekId) -> Option<Seek>;
     fn get_seek(&self, seek_id: SeekId) -> Option<Seek>;
     fn list_seeks(&self) -> Vec<Seek>;
     fn remove_seek(&self, seek_id: SeekId) -> Option<Seek>;
@@ -78,6 +79,21 @@ impl SeekRegistry {
             }
         }
         canceled_seeks
+    }
+
+    fn cancel_player_seek(&mut self, player: PlayerId, seek_id: SeekId) -> Option<Seek> {
+        if let Some(seek) = self.seeks.get(&seek_id) {
+            if seek.creator_id == player {
+                if let Some(seek_ids) = self.seeks_by_player.get_mut(&player) {
+                    seek_ids.remove(&seek_id);
+                    if seek_ids.is_empty() {
+                        self.seeks_by_player.remove(&player);
+                    }
+                }
+                return self.seeks.remove(&seek_id);
+            }
+        }
+        None
     }
 
     fn get_seek(&self, seek_id: SeekId) -> Option<&Seek> {
@@ -147,6 +163,13 @@ impl SeekService for SeekServiceImpl {
             .write()
             .unwrap()
             .cancel_all_player_seeks(player)
+    }
+
+    fn cancel_seek(&self, player: PlayerId, seek_id: SeekId) -> Option<Seek> {
+        self.seek_registry
+            .write()
+            .unwrap()
+            .cancel_player_seek(player, seek_id)
     }
 
     fn get_seek(&self, seek_id: SeekId) -> Option<Seek> {

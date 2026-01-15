@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, TimeDelta, Utc};
-use tak_core::{TakActionRecord, TakGameOverState, TakGameSettings, TakPlayer};
+use tak_core::{TakGameOverState, TakGameSettings, TakPlayer};
 
 use crate::domain::{
     PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
@@ -94,12 +94,8 @@ impl RatingServiceImpl {
         Self {}
     }
 
-    fn is_game_eligible_for_rating(
-        &self,
-        settings: &TakGameSettings,
-        moves: &Vec<TakActionRecord>,
-    ) -> bool {
-        if moves.len() <= 6 {
+    fn is_game_eligible_for_rating(&self, settings: &TakGameSettings, ply_count: usize) -> bool {
+        if ply_count <= 6 {
             return false;
         }
         if settings.board_size < 5 {
@@ -271,7 +267,7 @@ impl RatingService for RatingServiceImpl {
         let black_id = metadata.black_id;
         let result = game.game.game_state();
 
-        if !self.is_game_eligible_for_rating(&metadata.settings, game.game.action_history()) {
+        if !self.is_game_eligible_for_rating(&metadata.settings, game.game.action_history().len()) {
             return None;
         }
 

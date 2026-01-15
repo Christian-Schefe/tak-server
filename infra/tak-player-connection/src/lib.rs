@@ -140,7 +140,7 @@ impl PlayerConnectionDriver {
             .resolve_player_id_by_account_id(account_id)
             .await
         {
-            self.app.seek_cancel_use_case.cancel_seek(player_id);
+            self.app.seek_cancel_use_case.cancel_seeks(player_id);
         }
     }
 }

@@ -5,7 +5,7 @@ use axum::{
     extract::{Path, Query, State},
 };
 use tak_core::{
-    TakAction, TakActionRecord, TakGameOverState, TakPlayer, TakPos, TakVariant, TakWinReason,
+    TakAction, TakGameOverState, TakPlayer, TakPos, TakVariant, TakWinReason,
     ptn::game_state_to_string,
 };
 use tak_server_app::{
@@ -349,10 +349,11 @@ pub async fn get_ptn_by_id(
         }
     };
     if let Some(record) = res {
+        let action_history = record.reconstruct_action_history();
         let ptn = tak_core::ptn::game_to_ptn(
             &record.settings,
             record.result,
-            record.moves.into_iter().map(|mv| mv.action).collect(),
+            action_history,
             (
                 record
                     .white
@@ -407,7 +408,7 @@ pub struct JsonGameRecord {
     extra_time_trigger: u32,
 }
 
-fn action_record_to_database_string(record: &TakActionRecord) -> String {
+fn action_record_to_database_string(record: &TakAction) -> String {
     fn square_to_string(pos: &TakPos) -> String {
         format!(
             "{}{}",
@@ -415,7 +416,7 @@ fn action_record_to_database_string(record: &TakActionRecord) -> String {
             (b'1' + pos.y as u8) as char,
         )
     }
-    match &record.action {
+    match &record {
         TakAction::Place { pos, variant } => format!(
             "P {} {}",
             square_to_string(pos),
@@ -461,9 +462,9 @@ impl JsonGameRecord {
                 .unwrap_or("Anonymous")
                 .to_string(),
             notation: record
-                .moves
-                .iter()
-                .map(|mv| action_record_to_database_string(mv))
+                .reconstruct_action_history()
+                .into_iter()
+                .map(|mv| action_record_to_database_string(&mv))
                 .collect::<Vec<_>>()
                 .join(","),
             result: record

@@ -36,12 +36,6 @@ pub enum TakAction {
     },
 }
 
-#[derive(Clone, Debug)]
-pub struct TakActionRecord {
-    pub action: TakAction,
-    pub time_remaining: (Duration, Duration),
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct TakReserve {
     pub pieces: u32,

@@ -132,7 +132,7 @@ impl ProtocolV2Handler {
         let (color, game_type, opponent, game_settings) = self.parse_seek_from_parts(parts)?;
 
         if !game_settings.is_valid() {
-            self.app.seek_cancel_use_case.cancel_seek(player_id);
+            self.app.seek_cancel_use_case.cancel_seeks(player_id);
         } else {
             let opponent_id = match opponent {
                 Some(ref name) => {

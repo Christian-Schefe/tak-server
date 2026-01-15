@@ -8,8 +8,7 @@ use crate::{
     },
 };
 use tak_core::{
-    TakAction, TakActionRecord, TakDir, TakGameOverState, TakPos, TakVariant,
-    ptn::game_state_to_string,
+    TakAction, TakDir, TakGameOverState, TakPos, TakVariant, ptn::game_state_to_string,
 };
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
@@ -431,13 +430,8 @@ impl ProtocolV2Handler {
         Ok(())
     }
 
-    pub fn send_game_action_message(
-        &self,
-        id: ConnectionId,
-        game_id: GameId,
-        action: &TakActionRecord,
-    ) {
-        let message = match &action.action {
+    pub fn send_game_action_message(&self, id: ConnectionId, game_id: GameId, action: &TakAction) {
+        let message = match &action {
             TakAction::Place { pos, variant } => format!(
                 "Game#{} P {}{} {}",
                 game_id,

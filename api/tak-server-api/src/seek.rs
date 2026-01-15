@@ -1,4 +1,7 @@
-use axum::{Json, extract::State};
+use axum::{
+    Json,
+    extract::{Path, State},
+};
 use tak_core::TakPlayer;
 use tak_server_app::{
     domain::{PlayerId, SeekId, seek::CreateSeekError},
@@ -74,6 +77,34 @@ pub async fn create_seek(
     }
 }
 
+pub async fn cancel_seek(
+    auth: Auth,
+    State(app): State<AppState>,
+    Path(seek_id): Path<u64>,
+) -> Result<(), ServiceError> {
+    let player_id = match app
+        .app
+        .player_resolver_service
+        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .await
+    {
+        Ok(id) => id,
+        Err(ResolveError::Internal) => {
+            return Err(ServiceError::Internal(
+                "Failed to resolve player ID".to_string(),
+            ));
+        }
+    };
+    if !app
+        .app
+        .seek_cancel_use_case
+        .cancel_seek(player_id, SeekId(seek_id))
+    {
+        return Err(ServiceError::NotFound("Seek not found".to_string()));
+    }
+    Ok(())
+}
+
 #[derive(serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateSeekPayload {
@@ -83,16 +114,10 @@ pub struct CreateSeekPayload {
     pub game_settings: GameSettingsInfo,
 }
 
-#[derive(serde::Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct AcceptSeekRequest {
-    pub seek_id: u64,
-}
-
 pub async fn accept_seek(
     auth: Auth,
     State(app): State<AppState>,
-    Json(request): Json<AcceptSeekRequest>,
+    Path(seek_id): Path<u64>,
 ) -> Result<(), ServiceError> {
     let player_id = match app
         .app
@@ -110,7 +135,7 @@ pub async fn accept_seek(
     match app
         .app
         .seek_accept_use_case
-        .accept_seek(player_id, SeekId(request.seek_id))
+        .accept_seek(player_id, SeekId(seek_id))
         .await
     {
         Ok(_) => Ok(()),

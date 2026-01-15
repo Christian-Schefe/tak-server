@@ -1,11 +1,12 @@
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use tak_core::{TakActionRecord, TakGameOverState, TakGameSettings};
+use tak_core::{TakAction, TakGameOverState, TakGameSettings};
 
 use crate::domain::{
     GameId, PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
-    SortOrder, game::FinishedGame,
+    SortOrder,
+    game::{FinishedGame, GameEvent, GameEventType},
 };
 
 pub struct GameRecord {
@@ -16,7 +17,42 @@ pub struct GameRecord {
     pub settings: TakGameSettings,
     pub is_rated: bool,
     pub result: Option<TakGameOverState>,
-    pub moves: Vec<TakActionRecord>,
+    pub events: Vec<GameEvent>,
+}
+
+impl GameRecord {
+    pub fn reconstruct_action_history(&self) -> Vec<TakAction> {
+        let mut actions = Vec::new();
+        for event in &self.events {
+            if let GameEventType::Action { action, .. } = &event.event_type {
+                actions.push(action.clone());
+            } else if let GameEventType::UndoAccepted { .. } = &event.event_type {
+                actions.pop();
+            }
+        }
+        actions
+    }
+
+    pub fn reconstruct_time_remaining(&self) -> (Duration, Duration) {
+        let mut white_remaining = self.settings.time_control.contingent;
+        let mut black_remaining = self.settings.time_control.contingent;
+
+        for event in &self.events {
+            match &event.event_type {
+                GameEventType::Action {
+                    white_remaining: w,
+                    black_remaining: b,
+                    ..
+                } => {
+                    white_remaining = *w;
+                    black_remaining = *b;
+                }
+                _ => {}
+            }
+        }
+
+        (white_remaining, black_remaining)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -88,7 +124,7 @@ pub enum GamePlayerFilter {
 
 pub struct GameFinishedUpdate {
     pub result: TakGameOverState,
-    pub moves: Vec<TakActionRecord>,
+    pub events: Vec<GameEvent>,
     pub rating_info: Option<GameRatingInfo>,
 }
 
@@ -148,7 +184,7 @@ impl GameHistoryService for GameHistoryServiceImpl {
             settings,
             is_rated,
             result: None,
-            moves: Vec::new(),
+            events: Vec::new(),
         }
     }
 
@@ -159,7 +195,7 @@ impl GameHistoryService for GameHistoryServiceImpl {
     ) -> GameFinishedUpdate {
         GameFinishedUpdate {
             result: game.game.game_state().clone(),
-            moves: game.game.action_history().clone(),
+            events: game.events.clone(),
             rating_info,
         }
     }
