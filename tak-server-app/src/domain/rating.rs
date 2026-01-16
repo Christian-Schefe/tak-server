@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, TimeDelta, Utc};
-use tak_core::{TakGameOverState, TakGameSettings, TakPlayer};
+use tak_core::{TakGameResult, TakGameSettings, TakPlayer};
 
 use crate::domain::{
     PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
@@ -265,18 +265,18 @@ impl RatingService for RatingServiceImpl {
         }
         let white_id = metadata.white_id;
         let black_id = metadata.black_id;
-        let result = game.game.game_state();
+        let result = game.game.game_result();
 
         if !self.is_game_eligible_for_rating(&metadata.settings, game.game.action_history().len()) {
             return None;
         }
 
         let result = match &result {
-            TakGameOverState::Win { winner, .. } => match winner {
+            TakGameResult::Win { winner, .. } => match winner {
                 TakPlayer::White => 1.0,
                 TakPlayer::Black => 0.0,
             },
-            TakGameOverState::Draw => 0.5,
+            TakGameResult::Draw => 0.5,
         };
 
         let old_white_rating_decayed = self.get_current_rating(&white_rating, metadata.date);

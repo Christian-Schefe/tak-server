@@ -5,8 +5,8 @@ use axum::{
     extract::{Path, Query, State},
 };
 use tak_core::{
-    TakAction, TakGameOverState, TakPlayer, TakPos, TakVariant, TakWinReason,
-    ptn::game_state_to_string,
+    TakAction, TakGameResult, TakPlayer, TakPos, TakVariant, TakWinReason,
+    ptn::game_result_to_string,
 };
 use tak_server_app::{
     domain::{
@@ -100,7 +100,7 @@ pub async fn get_all(
             }
         })
         .transpose()?;
-    let game_states = filter
+    let game_results = filter
         .game_result
         .as_ref()
         .map(|res_str| {
@@ -108,43 +108,43 @@ pub async fn get_all(
             match res_str.as_str() {
                 "X-0" => Ok(TakWinReason::ALL
                     .iter()
-                    .map(|reason| TakGameOverState::Win {
+                    .map(|reason| TakGameResult::Win {
                         winner: TakPlayer::White,
                         reason: reason.clone(),
                     })
                     .collect()),
-                "F-0" => Ok(vec![TakGameOverState::Win {
+                "F-0" => Ok(vec![TakGameResult::Win {
                     winner: TakPlayer::White,
                     reason: TakWinReason::Flats,
                 }]),
-                "R-0" => Ok(vec![TakGameOverState::Win {
+                "R-0" => Ok(vec![TakGameResult::Win {
                     winner: TakPlayer::White,
                     reason: TakWinReason::Road,
                 }]),
-                "1-0" => Ok(vec![TakGameOverState::Win {
+                "1-0" => Ok(vec![TakGameResult::Win {
                     winner: TakPlayer::White,
                     reason: TakWinReason::Default,
                 }]),
                 "0-X" => Ok(TakWinReason::ALL
                     .iter()
-                    .map(|reason| TakGameOverState::Win {
+                    .map(|reason| TakGameResult::Win {
                         winner: TakPlayer::Black,
                         reason: reason.clone(),
                     })
                     .collect()),
-                "0-F" => Ok(vec![TakGameOverState::Win {
+                "0-F" => Ok(vec![TakGameResult::Win {
                     winner: TakPlayer::Black,
                     reason: TakWinReason::Flats,
                 }]),
-                "0-R" => Ok(vec![TakGameOverState::Win {
+                "0-R" => Ok(vec![TakGameResult::Win {
                     winner: TakPlayer::Black,
                     reason: TakWinReason::Road,
                 }]),
-                "0-1" => Ok(vec![TakGameOverState::Win {
+                "0-1" => Ok(vec![TakGameResult::Win {
                     winner: TakPlayer::Black,
                     reason: TakWinReason::Default,
                 }]),
-                "1/2-1/2" => Ok(vec![TakGameOverState::Draw]),
+                "1/2-1/2" => Ok(vec![TakGameResult::Draw]),
                 _ => Err(ServiceError::BadRequest(
                     "Invalid game result filter".to_string(),
                 )),
@@ -216,7 +216,7 @@ pub async fn get_all(
         date_selector,
         player_white: filter.player_white.map(|s| GamePlayerFilter::Contains(s)),
         player_black: filter.player_black.map(|s| GamePlayerFilter::Contains(s)),
-        game_states,
+        game_results,
         half_komi: filter.komi,
         board_size: filter.size,
         is_rated,
@@ -230,9 +230,9 @@ pub async fn get_all(
 
     if filter.mirror {
         std::mem::swap(&mut game_filter.player_white, &mut game_filter.player_black);
-        game_filter.game_states.as_mut().map(|states| {
+        game_filter.game_results.as_mut().map(|states| {
             states.iter_mut().for_each(|state| match state {
-                TakGameOverState::Win { winner, .. } => {
+                TakGameResult::Win { winner, .. } => {
                     *winner = match winner {
                         TakPlayer::White => TakPlayer::Black,
                         TakPlayer::Black => TakPlayer::White,
@@ -470,7 +470,7 @@ impl JsonGameRecord {
             result: record
                 .result
                 .as_ref()
-                .map(|x| game_state_to_string(x))
+                .map(|x| game_result_to_string(x))
                 .unwrap_or_else(|| "0-0".to_string()),
             timer_time: record.settings.time_control.contingent.as_secs() as u32,
             timer_inc: record.settings.time_control.increment.as_secs() as u32,

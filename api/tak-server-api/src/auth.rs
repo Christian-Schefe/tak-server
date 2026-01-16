@@ -75,4 +75,6 @@ pub trait ApiAuthPort {
 
     fn generate_account_jwt(&self, id: &AccountId) -> String;
     fn validate_account_jwt(&self, token: &str) -> Option<AccountId>;
+
+    async fn get_account_by_username(&self, username: &str) -> Option<Account>;
 }

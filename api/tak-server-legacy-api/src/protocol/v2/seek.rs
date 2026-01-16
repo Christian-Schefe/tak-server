@@ -129,7 +129,7 @@ impl ProtocolV2Handler {
         player_id: PlayerId,
         parts: &[&str],
     ) -> Result<(), ServiceError> {
-        let (color, game_type, opponent, game_settings) = self.parse_seek_from_parts(parts)?;
+        let (color, is_rated, opponent, game_settings) = self.parse_seek_from_parts(parts)?;
 
         if !game_settings.is_valid() {
             self.app.seek_cancel_use_case.cancel_seeks(player_id);
@@ -153,7 +153,7 @@ impl ProtocolV2Handler {
                 opponent_id,
                 color,
                 game_settings,
-                game_type,
+                is_rated,
             ) {
                 match e {
                     CreateSeekError::InvalidGameSettings => {

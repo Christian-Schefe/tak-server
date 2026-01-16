@@ -129,7 +129,7 @@ pub enum TakDir {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum TakGameOverState {
+pub enum TakGameResult {
     Win {
         winner: TakPlayer,
         reason: TakWinReason,

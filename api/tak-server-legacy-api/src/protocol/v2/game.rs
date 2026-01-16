@@ -7,9 +7,7 @@ use crate::{
         v2::{ProtocolV2Handler, V2Response},
     },
 };
-use tak_core::{
-    TakAction, TakDir, TakGameOverState, TakPos, TakVariant, ptn::game_state_to_string,
-};
+use tak_core::{TakAction, TakDir, TakGameResult, TakPos, TakVariant, ptn::game_result_to_string};
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
     domain::{GameId, PlayerId},
@@ -71,9 +69,13 @@ impl ProtocolV2Handler {
         &self,
         id: ConnectionId,
         game_id: GameId,
-        game_state: &TakGameOverState,
+        game_result: &TakGameResult,
     ) {
-        let message = format!("Game#{} Over {}", game_id, game_state_to_string(game_state));
+        let message = format!(
+            "Game#{} Over {}",
+            game_id,
+            game_result_to_string(game_result)
+        );
         self.send_to(id, message);
     }
 

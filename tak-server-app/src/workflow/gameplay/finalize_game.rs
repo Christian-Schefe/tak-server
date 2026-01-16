@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tak_core::{TakGameOverState, TakPlayer};
+use tak_core::{TakGameResult, TakPlayer};
 
 use crate::{
     domain::{
@@ -105,7 +105,7 @@ impl<
         let game_id = ended_game.metadata.game_id;
         let over_msg = ListenerMessage::GameOver {
             game_id: game_id,
-            game_state: ended_game.game.game_state().clone(),
+            game_result: ended_game.game.game_result().clone(),
         };
 
         let ended_msg = ListenerMessage::GameEnded {
@@ -219,13 +219,13 @@ async fn update_ratings<
 }
 
 async fn update_stats<S: StatsRepository>(stats_repository: &Arc<S>, ended_game: &FinishedGame) {
-    let (white_outcome, black_outcome) = match ended_game.game.game_state() {
-        TakGameOverState::Draw => (GameOutcome::Draw, GameOutcome::Draw),
-        TakGameOverState::Win {
+    let (white_outcome, black_outcome) = match ended_game.game.game_result() {
+        TakGameResult::Draw => (GameOutcome::Draw, GameOutcome::Draw),
+        TakGameResult::Win {
             winner: TakPlayer::White,
             ..
         } => (GameOutcome::Win, GameOutcome::Loss),
-        TakGameOverState::Win {
+        TakGameResult::Win {
             winner: TakPlayer::Black,
             ..
         } => (GameOutcome::Loss, GameOutcome::Win),

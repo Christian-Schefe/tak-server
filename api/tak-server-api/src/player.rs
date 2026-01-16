@@ -7,14 +7,10 @@ use uuid::Uuid;
 
 use crate::{AppState, ServiceError};
 
-pub async fn get_player_info(
-    State(app): State<AppState>,
-    Path(player_id): Path<String>,
-) -> Result<Json<PlayerInfo>, ServiceError> {
-    let player_id = PlayerId(
-        Uuid::parse_str(&player_id)
-            .map_err(|_| ServiceError::BadRequest("Invalid player ID".to_string()))?,
-    );
+async fn get_player_info_helper(
+    app: &AppState,
+    player_id: PlayerId,
+) -> Result<PlayerInfo, ServiceError> {
     let account = app
         .app
         .get_account_workflow
@@ -40,12 +36,23 @@ pub async fn get_player_info(
         }
     };
 
-    Ok(Json(PlayerInfo {
+    Ok(PlayerInfo {
         id: player_id.to_string(),
         username: account.username,
         display_name: account.display_name,
         rating,
-    }))
+    })
+}
+
+pub async fn get_player_info(
+    State(app): State<AppState>,
+    Path(player_id): Path<String>,
+) -> Result<Json<PlayerInfo>, ServiceError> {
+    let player_id = PlayerId(
+        Uuid::parse_str(&player_id)
+            .map_err(|_| ServiceError::BadRequest("Invalid player ID".to_string()))?,
+    );
+    get_player_info_helper(&app, player_id).await.map(Json)
 }
 
 pub async fn get_player_stats(
@@ -64,6 +71,24 @@ pub async fn get_player_stats(
         .map_err(|_| ServiceError::Internal("Failed to retrieve player stats".to_string()))?;
 
     Ok(Json(stats.into()))
+}
+
+pub async fn get_player_by_username(
+    State(app): State<AppState>,
+    Path(username): Path<String>,
+) -> Result<Json<PlayerInfo>, ServiceError> {
+    let Some(account) = app.auth.get_account_by_username(&username).await else {
+        return Err(ServiceError::NotFound("Player not found".to_string()));
+    };
+
+    let player_id = app
+        .app
+        .player_resolver_service
+        .resolve_player_id_by_account_id(&account.account_id)
+        .await
+        .map_err(|_| ServiceError::Internal("Failed to resolve player ID".to_string()))?;
+
+    get_player_info_helper(&app, player_id).await.map(Json)
 }
 
 #[derive(serde::Serialize)]

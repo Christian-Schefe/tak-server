@@ -6,7 +6,7 @@ use axum::{
 };
 use tak_core::{
     TakGameSettings,
-    ptn::{action_to_ptn, game_state_to_string},
+    ptn::{action_to_ptn, game_result_to_string},
 };
 use tak_server_app::{
     domain::GameId,
@@ -89,7 +89,7 @@ pub async fn get_game_status(
                     .map(|a| action_to_ptn(&a))
                     .collect(),
                 status: GameStatusType::Ended {
-                    result: game_state_to_string(&result),
+                    result: game_result_to_string(&result),
                 },
                 remaining_ms: ForPlayer { white: 0, black: 0 },
             }))
@@ -135,8 +135,8 @@ pub enum GameStatusType {
 #[derive(serde::Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ForPlayer<R> {
-    white: R,
-    black: R,
+    pub white: R,
+    pub black: R,
 }
 
 #[derive(serde::Serialize, Debug, Clone)]

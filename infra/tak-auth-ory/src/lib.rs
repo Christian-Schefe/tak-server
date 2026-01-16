@@ -19,6 +19,7 @@ pub struct AuthenticationService {
     guest_registry: Arc<GuestRegistry>,
     ory_service: Arc<OryAuthenticationService>,
     account_cache: Arc<moka::sync::Cache<AccountId, Account>>,
+    username_cache: Arc<moka::sync::Cache<String, Account>>,
 }
 
 impl AuthenticationService {
@@ -27,6 +28,12 @@ impl AuthenticationService {
             guest_registry: Arc::new(GuestRegistry::new()),
             ory_service: Arc::new(OryAuthenticationService::new()),
             account_cache: Arc::new(
+                moka::sync::Cache::builder()
+                    .max_capacity(10_000)
+                    .time_to_live(Duration::from_secs(60 * 10))
+                    .build(),
+            ),
+            username_cache: Arc::new(
                 moka::sync::Cache::builder()
                     .max_capacity(10_000)
                     .time_to_live(Duration::from_secs(60 * 10))
@@ -68,10 +75,17 @@ impl AuthenticationService {
     }
 
     pub async fn find_by_username(&self, username: &str) -> Option<Account> {
-        if let Some(guest_account) = self.guest_registry.get_by_username(username) {
-            return Some(guest_account);
+        if let Some(cached_account) = self.username_cache.get(username) {
+            return Some(cached_account);
         }
-        self.ory_service.find_by_username(username).await
+        let acc = if let Some(guest_account) = self.guest_registry.get_by_username(username) {
+            Some(guest_account)
+        } else {
+            self.ory_service.find_by_username(username).await
+        }?;
+        self.username_cache
+            .insert(username.to_string(), acc.clone());
+        Some(acc)
     }
 }
 
@@ -113,6 +127,10 @@ impl ApiAuthPort for AuthenticationService {
         } else {
             None
         }
+    }
+
+    async fn get_account_by_username(&self, username: &str) -> Option<Account> {
+        self.find_by_username(username).await
     }
 }
 

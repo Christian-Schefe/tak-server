@@ -51,6 +51,7 @@ pub async fn serve(
         .route("/games", get(game::get_games))
         .route("/games/{game_id}", get(game::get_game_status))
         .route("/players/{player_id}", get(player::get_player_info))
+        .route("/usernames/{username}", get(player::get_player_by_username))
         .route("/players/{player_id}/stats", get(player::get_player_stats));
 
     let port = std::env::var("TAK_HTTP_API_PORT")

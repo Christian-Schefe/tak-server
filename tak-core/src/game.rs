@@ -4,20 +4,20 @@ use std::{
 };
 
 use crate::{
-    InvalidActionReason, InvalidPlaceReason, MaybeTimeout, TakAction, TakGameOverState,
+    InvalidActionReason, InvalidPlaceReason, MaybeTimeout, TakAction, TakGameResult,
     TakGameSettings, TakPlayer, TakReserve, TakVariant, TakWinReason, board::TakBoard,
 };
 
 #[derive(Clone, Debug)]
 pub struct TakFinishedBaseGame {
-    game_state: TakGameOverState,
+    game_result: TakGameResult,
     action_history: Vec<TakAction>,
 }
 
 impl TakFinishedBaseGame {
-    fn new(ended_game: TakOngoingBaseGame, game_state: TakGameOverState) -> Self {
+    fn new(ended_game: TakOngoingBaseGame, game_result: TakGameResult) -> Self {
         TakFinishedBaseGame {
-            game_state,
+            game_result,
             action_history: ended_game.action_history,
         }
     }
@@ -147,13 +147,13 @@ impl TakOngoingBaseGame {
         let white_reserve_empty = self.reserves.0.pieces == 0 && self.reserves.0.capstones == 0;
         let black_reserve_empty = self.reserves.1.pieces == 0 && self.reserves.1.capstones == 0;
 
-        let game_state = if self.board.check_for_road(&self.current_player) {
-            Some(TakGameOverState::Win {
+        let game_result = if self.board.check_for_road(&self.current_player) {
+            Some(TakGameResult::Win {
                 winner: self.current_player.clone(),
                 reason: TakWinReason::Road,
             })
         } else if self.board.check_for_road(&self.current_player.opponent()) {
-            Some(TakGameOverState::Win {
+            Some(TakGameResult::Win {
                 winner: self.current_player.opponent(),
                 reason: TakWinReason::Road,
             })
@@ -162,24 +162,24 @@ impl TakOngoingBaseGame {
             let (white_score, black_score) =
                 (white_flats * 2, black_flats * 2 + self.settings.half_komi);
             Some(match white_score.cmp(&black_score) {
-                std::cmp::Ordering::Greater => TakGameOverState::Win {
+                std::cmp::Ordering::Greater => TakGameResult::Win {
                     winner: TakPlayer::White,
                     reason: TakWinReason::Flats,
                 },
-                std::cmp::Ordering::Less => TakGameOverState::Win {
+                std::cmp::Ordering::Less => TakGameResult::Win {
                     winner: TakPlayer::Black,
                     reason: TakWinReason::Flats,
                 },
-                std::cmp::Ordering::Equal => TakGameOverState::Draw,
+                std::cmp::Ordering::Equal => TakGameResult::Draw,
             })
         } else if let Some(repeat_count) = self.board_hash_history.get(&board_hash)
             && *repeat_count >= 3
         {
-            Some(TakGameOverState::Draw)
+            Some(TakGameResult::Draw)
         } else {
             None
         };
-        match game_state {
+        match game_result {
             Some(state) => TakBaseGame::Finished(TakFinishedBaseGame::new(self, state)),
             None => TakBaseGame::Ongoing(self),
         }
@@ -193,9 +193,9 @@ pub struct TakFinishedGame {
 }
 
 impl TakFinishedGame {
-    fn new(ongoing_game: TakOngoingGame, game_state: TakGameOverState) -> Self {
+    fn new(ongoing_game: TakOngoingGame, game_result: TakGameResult) -> Self {
         TakFinishedGame {
-            base: TakFinishedBaseGame::new(ongoing_game.base, game_state),
+            base: TakFinishedBaseGame::new(ongoing_game.base, game_result),
             time_remaining: ongoing_game.clock.remaining_time,
         }
     }
@@ -214,8 +214,8 @@ impl TakFinishedGame {
         &self.base.action_history
     }
 
-    pub fn game_state(&self) -> &TakGameOverState {
-        &self.base.game_state
+    pub fn game_result(&self) -> &TakGameResult {
+        &self.base.game_result
     }
 
     pub fn get_time_remaining(&self) -> (Duration, Duration) {
@@ -279,23 +279,23 @@ impl TakOngoingGame {
         self.base.current_player
     }
 
-    fn set_game_over(mut self, now: Instant, game_state: TakGameOverState) -> TakFinishedGame {
+    fn set_game_over(mut self, now: Instant, game_result: TakGameResult) -> TakFinishedGame {
         let player = self.base.current_player.clone();
         self.stop_clock(now, &player);
-        TakFinishedGame::new(self, game_state)
+        TakFinishedGame::new(self, game_result)
     }
 
     pub fn check_timeout(&self, now: Instant) -> Option<TakFinishedGame> {
         let player = self.base.current_player.clone();
         let time_remaining = self.get_time_remaining(&player, now);
         if time_remaining.is_zero() {
-            let game_state = TakGameOverState::Win {
+            let game_result = TakGameResult::Win {
                 winner: player.opponent(),
                 reason: TakWinReason::Default,
             };
             let mut new_state = self.clone();
             new_state.stop_clock(now, &player);
-            Some(TakFinishedGame::new(new_state, game_state))
+            Some(TakFinishedGame::new(new_state, game_result))
         } else {
             None
         }
@@ -456,7 +456,7 @@ impl TakOngoingGame {
         };
         MaybeTimeout::Result(self.clone().set_game_over(
             now,
-            TakGameOverState::Win {
+            TakGameResult::Win {
                 winner: player.opponent(),
                 reason: TakWinReason::Default,
             },
@@ -484,7 +484,7 @@ impl TakOngoingGame {
         *current_offer = offer;
 
         if new_state.draw_offered.0 && new_state.draw_offered.1 {
-            let finished_game = new_state.set_game_over(now, TakGameOverState::Draw);
+            let finished_game = new_state.set_game_over(now, TakGameResult::Draw);
             MaybeTimeout::Result(Some(TakGame::Finished(finished_game)))
         } else {
             MaybeTimeout::Result(Some(TakGame::Ongoing(new_state)))
@@ -545,7 +545,7 @@ mod tests {
         game: &mut TakOngoingGame,
         action: TakAction,
         now: Instant,
-        expected_result: TakGameOverState,
+        expected_result: TakGameResult,
     ) {
         match game.do_action(action, now) {
             Ok(MaybeTimeout::Result(TakGame::Ongoing(_))) => {
@@ -555,7 +555,7 @@ mod tests {
                 panic!("Game finished unexpectedly due to timeout")
             }
             Ok(MaybeTimeout::Result(TakGame::Finished(g))) => {
-                assert_eq!(g.base.game_state, expected_result)
+                assert_eq!(g.base.game_result, expected_result)
             }
             Err(e) => panic!("Failed to do action: {:?}", e),
         }
@@ -657,7 +657,7 @@ mod tests {
                 variant: TakVariant::Capstone,
             },
             now,
-            TakGameOverState::Win {
+            TakGameResult::Win {
                 winner: TakPlayer::White,
                 reason: TakWinReason::Flats,
             },
@@ -670,38 +670,38 @@ mod tests {
         for (half_komi, result, result2) in [
             (
                 0,
-                TakGameOverState::Win {
+                TakGameResult::Win {
                     winner: TakPlayer::White,
                     reason: TakWinReason::Flats,
                 },
-                TakGameOverState::Draw,
+                TakGameResult::Draw,
             ),
             (
                 1,
-                TakGameOverState::Win {
+                TakGameResult::Win {
                     winner: TakPlayer::White,
                     reason: TakWinReason::Flats,
                 },
-                TakGameOverState::Win {
+                TakGameResult::Win {
                     winner: TakPlayer::Black,
                     reason: TakWinReason::Flats,
                 },
             ),
             (
                 2,
-                TakGameOverState::Draw,
-                TakGameOverState::Win {
+                TakGameResult::Draw,
+                TakGameResult::Win {
                     winner: TakPlayer::Black,
                     reason: TakWinReason::Flats,
                 },
             ),
             (
                 3,
-                TakGameOverState::Win {
+                TakGameResult::Win {
                     winner: TakPlayer::Black,
                     reason: TakWinReason::Flats,
                 },
-                TakGameOverState::Win {
+                TakGameResult::Win {
                     winner: TakPlayer::Black,
                     reason: TakWinReason::Flats,
                 },

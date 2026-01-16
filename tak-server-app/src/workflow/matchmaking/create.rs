@@ -35,8 +35,8 @@ impl<S: SeekService, L: ListenerNotificationPort> CreateSeekUseCaseImpl<S, L> {
     }
 }
 
-impl<S: SeekService, L: ListenerNotificationPort> CreateSeekUseCase
-    for CreateSeekUseCaseImpl<S, L>
+impl<S: SeekService + Send + Sync + 'static, L: ListenerNotificationPort + Send + Sync + 'static>
+    CreateSeekUseCase for CreateSeekUseCaseImpl<S, L>
 {
     fn create_seek(
         &self,
@@ -52,6 +52,7 @@ impl<S: SeekService, L: ListenerNotificationPort> CreateSeekUseCase
         let message = ListenerMessage::SeekCreated {
             seek: created_seek.into(),
         };
+
         self.notification_port.notify_all(message);
 
         Ok(())

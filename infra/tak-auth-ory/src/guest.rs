@@ -64,7 +64,7 @@ impl GuestRegistry {
                 AccountRole::User,
                 ModerationFlags::new(),
                 format!("Guest{}", next_id),
-                format!("Guest{}", next_id),
+                format!("Guest {}", next_id),
                 None,
             ),
             token: token.map(|t| t.to_string()),

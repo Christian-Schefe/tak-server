@@ -7,7 +7,7 @@ use sea_orm::{
 use serde::Deserialize;
 use tak_core::{
     TakAction, TakGameSettings, TakPlayer, TakReserve, TakTimeControl,
-    ptn::{action_from_ptn, action_to_ptn, game_state_from_string, game_state_to_string},
+    ptn::{action_from_ptn, action_to_ptn, game_result_from_string, game_result_to_string},
 };
 use tak_persistence_sea_orm_entites::game;
 use tak_server_app::domain::{
@@ -209,7 +209,7 @@ impl GameRepositoryImpl {
             result: model
                 .result
                 .as_deref()
-                .and_then(|x| game_state_from_string(x)),
+                .and_then(|x| game_result_from_string(x)),
         }
     }
 }
@@ -322,7 +322,7 @@ impl GameRepository for GameRepositoryImpl {
         let events = serde_json::to_value(&events)
             .map_err(|e| RepoUpdateError::StorageError(e.to_string()))?;
 
-        let result_val = game_state_to_string(&update.result);
+        let result_val = game_result_to_string(&update.result);
 
         let model = game::ActiveModel {
             id: Set(game_id.0),
@@ -412,12 +412,12 @@ impl GameRepository for GameRepositoryImpl {
         if let Some(is_rated) = filter.is_rated {
             query = query.filter(game::Column::IsRated.eq(is_rated));
         }
-        if let Some(game_states) = filter.game_states {
-            let state_strings: Vec<String> = game_states
+        if let Some(game_results) = filter.game_results {
+            let result_strings: Vec<String> = game_results
                 .iter()
-                .map(|state| game_state_to_string(state))
+                .map(|result| game_result_to_string(result))
                 .collect();
-            query = query.filter(game::Column::Result.is_in(state_strings));
+            query = query.filter(game::Column::Result.is_in(result_strings));
         }
         if let Some(half_komi) = filter.half_komi {
             query = query.filter(game::Column::HalfKomi.eq(half_komi as i32));

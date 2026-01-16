@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use crate::{
-    TakAction, TakDir, TakGameOverState, TakGameSettings, TakPlayer, TakPos, TakReserve,
+    TakAction, TakDir, TakGameResult, TakGameSettings, TakPlayer, TakPos, TakReserve,
     TakTimeControl, TakVariant, TakWinReason,
 };
 
@@ -12,7 +12,7 @@ pub enum PtnHeader {
     Rating(TakPlayer, f64),
     TimeControl(TakTimeControl),
     Date(chrono::DateTime<chrono::Utc>),
-    Result(TakGameOverState),
+    Result(TakGameResult),
     Reserve(TakReserve),
 }
 
@@ -71,7 +71,7 @@ impl PtnHeader {
                 date.format("%H:%M:%S")
             ),
             PtnHeader::Result(result) => {
-                format!("[Result \"{}\"]", game_state_to_string(result))
+                format!("[Result \"{}\"]", game_result_to_string(result))
             }
             PtnHeader::Reserve(reserve) => format!(
                 "[Flats \"{}\"]\n[Caps \"{}\"]",
@@ -132,7 +132,7 @@ impl Ptn {
 
 pub fn game_to_ptn(
     settings: &TakGameSettings,
-    result: Option<TakGameOverState>,
+    result: Option<TakGameResult>,
     moves: Vec<TakAction>,
     player_white: (String, Option<f64>),
     player_black: (String, Option<f64>),
@@ -254,9 +254,9 @@ pub fn action_from_ptn(ptn: &str) -> Option<TakAction> {
     }
 }
 
-pub fn game_state_to_string(game_state: &TakGameOverState) -> String {
-    match game_state {
-        TakGameOverState::Win { winner, reason } => {
+pub fn game_result_to_string(game_result: &TakGameResult) -> String {
+    match game_result {
+        TakGameResult::Win { winner, reason } => {
             let letter = match reason {
                 TakWinReason::Road => "R",
                 TakWinReason::Flats => "F",
@@ -267,37 +267,37 @@ pub fn game_state_to_string(game_state: &TakGameOverState) -> String {
                 TakPlayer::Black => format!("0-{}", letter),
             }
         }
-        TakGameOverState::Draw => "1/2-1/2".to_string(),
+        TakGameResult::Draw => "1/2-1/2".to_string(),
     }
 }
 
-pub fn game_state_from_string(s: &str) -> Option<TakGameOverState> {
+pub fn game_result_from_string(s: &str) -> Option<TakGameResult> {
     match s {
-        "R-0" => Some(TakGameOverState::Win {
+        "R-0" => Some(TakGameResult::Win {
             winner: TakPlayer::White,
             reason: TakWinReason::Road,
         }),
-        "0-R" => Some(TakGameOverState::Win {
+        "0-R" => Some(TakGameResult::Win {
             winner: TakPlayer::Black,
             reason: TakWinReason::Road,
         }),
-        "F-0" => Some(TakGameOverState::Win {
+        "F-0" => Some(TakGameResult::Win {
             winner: TakPlayer::White,
             reason: TakWinReason::Flats,
         }),
-        "0-F" => Some(TakGameOverState::Win {
+        "0-F" => Some(TakGameResult::Win {
             winner: TakPlayer::Black,
             reason: TakWinReason::Flats,
         }),
-        "1-0" => Some(TakGameOverState::Win {
+        "1-0" => Some(TakGameResult::Win {
             winner: TakPlayer::White,
             reason: TakWinReason::Default,
         }),
-        "0-1" => Some(TakGameOverState::Win {
+        "0-1" => Some(TakGameResult::Win {
             winner: TakPlayer::Black,
             reason: TakWinReason::Default,
         }),
-        "1/2-1/2" => Some(TakGameOverState::Draw),
+        "1/2-1/2" => Some(TakGameResult::Draw),
         _ => None,
     }
 }
@@ -462,26 +462,26 @@ mod tests {
     }
 
     #[test]
-    fn test_game_state_to_string() {
-        let state = TakGameOverState::Win {
+    fn test_game_result_to_string() {
+        let state = TakGameResult::Win {
             winner: TakPlayer::White,
             reason: TakWinReason::Road,
         };
-        assert_eq!(game_state_to_string(&state), "R-0");
+        assert_eq!(game_result_to_string(&state), "R-0");
 
-        let state = TakGameOverState::Win {
+        let state = TakGameResult::Win {
             winner: TakPlayer::Black,
             reason: TakWinReason::Flats,
         };
-        assert_eq!(game_state_to_string(&state), "0-F");
+        assert_eq!(game_result_to_string(&state), "0-F");
 
-        let state = TakGameOverState::Win {
+        let state = TakGameResult::Win {
             winner: TakPlayer::White,
             reason: TakWinReason::Default,
         };
-        assert_eq!(game_state_to_string(&state), "1-0");
+        assert_eq!(game_result_to_string(&state), "1-0");
 
-        let state = TakGameOverState::Draw;
-        assert_eq!(game_state_to_string(&state), "1/2-1/2");
+        let state = TakGameResult::Draw;
+        assert_eq!(game_result_to_string(&state), "1/2-1/2");
     }
 }

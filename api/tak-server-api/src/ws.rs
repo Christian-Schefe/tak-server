@@ -12,7 +12,7 @@ use futures::{
     SinkExt, StreamExt,
     stream::{SplitSink, SplitStream},
 };
-use tak_core::ptn::{action_from_ptn, action_to_ptn};
+use tak_core::ptn::{action_from_ptn, action_to_ptn, game_result_to_string};
 use tak_player_connection::{ConnectionId, PlayerSimpleConnectionPort};
 use tak_server_app::{
     domain::{AccountId, GameId, PlayerId},
@@ -22,7 +22,11 @@ use tokio::select;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::{AppState, ServiceError, game::GameInfo, seek::SeekInfo};
+use crate::{
+    AppState, ServiceError,
+    game::{ForPlayer, GameInfo},
+    seek::SeekInfo,
+};
 
 pub async fn ws_handler(ws: WebSocketUpgrade, State(app): State<AppState>) -> Response {
     ws.on_upgrade(move |socket| async move {
@@ -251,8 +255,11 @@ impl WsService {
 impl PlayerSimpleConnectionPort for WsService {
     fn notify_connection(&self, connection_id: ConnectionId, message: &ListenerMessage) {
         if let Some(entry) = self.connections.get(&connection_id) {
-            if let Some(server_msg) = ServerMessage::from_listener_message(message.clone()) {
-                let _ = entry.sender.send(server_msg);
+            match ServerMessage::from_listener_message(message.clone()) {
+                MessageTransformation::Transform(server_msg) => {
+                    let _ = entry.sender.send(server_msg);
+                }
+                MessageTransformation::Ignore => {}
             }
         }
     }
@@ -305,51 +312,65 @@ pub enum ServerMessage {
     },
     GameTimeUpdate {
         game_id: i64,
-        white_ms: u64,
-        black_ms: u64,
+        remaining_ms: ForPlayer<u64>,
     },
     GameStarted {
         game: GameInfo,
     },
     GameEnded {
         game_id: i64,
+        result: String,
     },
 }
 
+enum MessageTransformation {
+    Ignore,
+    Transform(ServerMessage),
+}
+
 impl ServerMessage {
-    pub fn from_listener_message(message: ListenerMessage) -> Option<Self> {
+    fn from_listener_message(message: ListenerMessage) -> MessageTransformation {
         match message {
-            ListenerMessage::SeekCreated { seek } => Some(ServerMessage::SeekCreated {
-                seek: SeekInfo::from_seek_view(seek),
-            }),
+            ListenerMessage::SeekCreated { seek } => {
+                MessageTransformation::Transform(ServerMessage::SeekCreated {
+                    seek: SeekInfo::from_seek_view(seek),
+                })
+            }
             ListenerMessage::SeekCanceled { seek } => {
-                Some(ServerMessage::SeekRemoved { seek_id: seek.id.0 })
+                MessageTransformation::Transform(ServerMessage::SeekRemoved { seek_id: seek.id.0 })
             }
             ListenerMessage::GameAction {
                 game_id,
                 player_id: _,
                 action,
-            } => Some(ServerMessage::GameAction {
+            } => MessageTransformation::Transform(ServerMessage::GameAction {
                 game_id: game_id.0,
                 ply_index: action.ply_index,
                 action: action_to_ptn(&action.action),
             }),
-            ListenerMessage::GameStarted { game } => Some(ServerMessage::GameStarted {
-                game: GameInfo::from_ongoing_game_view(&game.metadata),
-            }),
-            ListenerMessage::GameEnded { game } => Some(ServerMessage::GameEnded {
-                game_id: game.metadata.id.0,
-            }),
+            ListenerMessage::GameStarted { game } => {
+                MessageTransformation::Transform(ServerMessage::GameStarted {
+                    game: GameInfo::from_ongoing_game_view(&game.metadata),
+                })
+            }
+            ListenerMessage::GameEnded { game } => {
+                MessageTransformation::Transform(ServerMessage::GameEnded {
+                    game_id: game.metadata.id.0,
+                    result: game_result_to_string(game.game.game_result()),
+                })
+            }
             ListenerMessage::GameTimeUpdate {
                 game_id,
                 white_time,
                 black_time,
-            } => Some(ServerMessage::GameTimeUpdate {
+            } => MessageTransformation::Transform(ServerMessage::GameTimeUpdate {
                 game_id: game_id.0,
-                white_ms: white_time.as_millis() as u64,
-                black_ms: black_time.as_millis() as u64,
+                remaining_ms: ForPlayer {
+                    white: white_time.as_millis() as u64,
+                    black: black_time.as_millis() as u64,
+                },
             }),
-            _ => None,
+            _ => MessageTransformation::Ignore,
         }
     }
 }

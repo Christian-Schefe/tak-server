@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use tak_core::TakGameOverState;
+use tak_core::TakGameResult;
 
 use crate::{
     domain::{AccountId, GameId, ListenerId, PlayerId, game::GameActionRecord},
@@ -35,7 +35,7 @@ pub enum ListenerMessage {
     },
     GameOver {
         game_id: GameId,
-        game_state: TakGameOverState,
+        game_result: TakGameResult,
     },
     GameAction {
         game_id: GameId,

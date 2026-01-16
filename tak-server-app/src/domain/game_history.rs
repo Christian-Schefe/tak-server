@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use tak_core::{TakAction, TakGameOverState, TakGameSettings};
+use tak_core::{TakAction, TakGameResult, TakGameSettings};
 
 use crate::domain::{
     GameId, PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
@@ -16,7 +16,7 @@ pub struct GameRecord {
     pub rating_info: Option<GameRatingInfo>,
     pub settings: TakGameSettings,
     pub is_rated: bool,
-    pub result: Option<TakGameOverState>,
+    pub result: Option<TakGameResult>,
     pub events: Vec<GameEvent>,
 }
 
@@ -83,7 +83,7 @@ pub struct GameQuery {
     pub date_selector: Option<DateSelector>,
     pub player_white: Option<GamePlayerFilter>,
     pub player_black: Option<GamePlayerFilter>,
-    pub game_states: Option<Vec<TakGameOverState>>,
+    pub game_results: Option<Vec<TakGameResult>>,
     pub half_komi: Option<usize>,
     pub board_size: Option<usize>,
     pub is_rated: Option<bool>,
@@ -123,7 +123,7 @@ pub enum GamePlayerFilter {
 }
 
 pub struct GameFinishedUpdate {
-    pub result: TakGameOverState,
+    pub result: TakGameResult,
     pub events: Vec<GameEvent>,
     pub rating_info: Option<GameRatingInfo>,
 }
@@ -194,7 +194,7 @@ impl GameHistoryService for GameHistoryServiceImpl {
         rating_info: Option<GameRatingInfo>,
     ) -> GameFinishedUpdate {
         GameFinishedUpdate {
-            result: game.game.game_state().clone(),
+            result: game.game.game_result().clone(),
             events: game.events.clone(),
             rating_info,
         }

@@ -169,9 +169,9 @@ impl ProtocolV2Handler {
 
             ListenerMessage::GameOver {
                 game_id,
-                game_state,
+                game_result,
             } => {
-                self.send_game_over_message(id, *game_id, game_state);
+                self.send_game_over_message(id, *game_id, game_result);
             }
             ListenerMessage::GameAction {
                 game_id,
