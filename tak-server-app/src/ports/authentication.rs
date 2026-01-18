@@ -5,7 +5,6 @@ use crate::domain::{
 
 #[async_trait::async_trait]
 pub trait AuthenticationPort {
-    async fn get_or_create_guest_account(&self, token: &str) -> Account;
     async fn clean_up_guest_accounts(&self) -> Vec<AccountId>;
     async fn get_account(&self, account_id: &AccountId) -> Option<Account>;
     async fn set_role(&self, account_id: &AccountId, role: AccountRole) -> Result<(), ()>;

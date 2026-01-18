@@ -19,10 +19,7 @@ use tak_player_connection::{ConnectionId, PlayerConnectionDriver, PlayerSimpleCo
 use tak_server_app::{
     Application,
     domain::{AccountId, ListenerId, PlayerId},
-    ports::{
-        authentication::AuthenticationPort,
-        notification::{ListenerMessage, ListenerNotificationPort},
-    },
+    ports::notification::{ListenerMessage, ListenerNotificationPort},
 };
 use tokio::{
     net::TcpStream,
@@ -35,7 +32,7 @@ use tokio_util::{
 };
 
 use crate::{
-    acl::LegacyAPIAntiCorruptionLayer,
+    acl::{LegacyAPIAntiCorruptionLayer, LegacyApiAuthPort},
     protocol::{Protocol, ProtocolService},
 };
 
@@ -478,7 +475,7 @@ impl TransportServiceImpl {
     pub async fn run(
         this: Arc<TransportServiceImpl>,
         app: Arc<Application>,
-        auth: Arc<dyn AuthenticationPort + Send + Sync + 'static>,
+        auth: Arc<dyn LegacyApiAuthPort + Send + Sync + 'static>,
         acl: Arc<LegacyAPIAntiCorruptionLayer>,
         connection_driver: Arc<PlayerConnectionDriver>,
         listener_notification_service: Arc<dyn ListenerNotificationPort + Send + Sync + 'static>,

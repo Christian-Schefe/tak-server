@@ -3854,6 +3854,7 @@ dependencies = [
  "serde_json",
  "tak-server-api",
  "tak-server-app",
+ "tak-server-legacy-api",
 ]
 
 [[package]]
@@ -3999,7 +4000,6 @@ dependencies = [
  "passwords",
  "serde",
  "serde_json",
- "tak-auth-ory",
  "tak-core",
  "tak-player-connection",
  "tak-server-app",

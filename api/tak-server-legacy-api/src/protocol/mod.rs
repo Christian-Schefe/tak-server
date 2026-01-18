@@ -3,10 +3,10 @@ mod v2;
 use std::sync::Arc;
 
 use tak_player_connection::ConnectionId;
-use tak_server_app::{Application, domain::AccountId, ports::authentication::AuthenticationPort};
+use tak_server_app::{Application, domain::AccountId};
 
 use crate::{
-    acl::LegacyAPIAntiCorruptionLayer,
+    acl::{LegacyAPIAntiCorruptionLayer, LegacyApiAuthPort},
     client::{ServerMessage, TransportServiceImpl},
     protocol::v2::ProtocolV2Handler,
 };
@@ -35,7 +35,7 @@ impl ProtocolService {
     pub fn new(
         app: Arc<Application>,
         transport: Arc<TransportServiceImpl>,
-        auth: Arc<dyn AuthenticationPort + Send + Sync + 'static>,
+        auth: Arc<dyn LegacyApiAuthPort + Send + Sync + 'static>,
         acl: Arc<LegacyAPIAntiCorruptionLayer>,
     ) -> Self {
         Self {

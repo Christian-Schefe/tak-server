@@ -52,6 +52,10 @@ pub async fn serve(
         .route("/games/{game_id}", get(game::get_game_status))
         .route("/players/{player_id}", get(player::get_player_info))
         .route("/usernames/{username}", get(player::get_player_by_username))
+        .route(
+            "/accounts/{account_id}",
+            get(player::get_player_by_account_id),
+        )
         .route("/players/{player_id}/stats", get(player::get_player_stats));
 
     let port = std::env::var("TAK_HTTP_API_PORT")
@@ -94,9 +98,9 @@ pub struct GuestInfo {
 async fn who_am_i(
     auth: Result<Auth, ServiceError>,
     State(app): State<AppState>,
-) -> Result<Json<IdentityInfo>, ServiceError> {
+) -> Result<Json<Option<IdentityInfo>>, ServiceError> {
     let Ok(auth) = auth else {
-        return Ok(Json(IdentityInfo::Unauthenticated));
+        return Ok(Json(None));
     };
     let player_id = app
         .app
@@ -107,28 +111,21 @@ async fn who_am_i(
             ServiceError::Internal("Failed to resolve player ID".to_string())
         })?;
 
-    Ok(Json(IdentityInfo::Authenticated {
+    Ok(Json(Some(IdentityInfo {
         account_id: auth.account.account_id.to_string(),
         player_id: player_id.to_string(),
         is_guest: false,
         ws_jwt: app.auth.generate_account_jwt(&auth.account.account_id),
-    }))
+    })))
 }
 
 #[derive(serde::Serialize)]
-#[serde(
-    tag = "type",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-pub enum IdentityInfo {
-    Authenticated {
-        account_id: String,
-        player_id: String,
-        is_guest: bool,
-        ws_jwt: String,
-    },
-    Unauthenticated,
+#[serde(tag = "type", rename_all = "camelCase")]
+pub struct IdentityInfo {
+    account_id: String,
+    player_id: String,
+    is_guest: bool,
+    ws_jwt: String,
 }
 
 #[allow(unused)]

@@ -2,7 +2,10 @@ use axum::{
     Json,
     extract::{Path, State},
 };
-use tak_server_app::{domain::PlayerId, workflow::player::PlayerStatsView};
+use tak_server_app::{
+    domain::{AccountId, PlayerId},
+    workflow::player::PlayerStatsView,
+};
 use uuid::Uuid;
 
 use crate::{AppState, ServiceError};
@@ -38,6 +41,7 @@ async fn get_player_info_helper(
 
     Ok(PlayerInfo {
         id: player_id.to_string(),
+        account_id: account.account_id.to_string(),
         username: account.username,
         display_name: account.display_name,
         rating,
@@ -91,6 +95,25 @@ pub async fn get_player_by_username(
     get_player_info_helper(&app, player_id).await.map(Json)
 }
 
+pub async fn get_player_by_account_id(
+    State(app): State<AppState>,
+    Path(account_id): Path<String>,
+) -> Result<Json<PlayerInfo>, ServiceError> {
+    let account_id = AccountId(account_id);
+    let Some(account) = app.auth.get_account(&account_id).await else {
+        return Err(ServiceError::NotFound("Player not found".to_string()));
+    };
+
+    let player_id = app
+        .app
+        .player_resolver_service
+        .resolve_player_id_by_account_id(&account.account_id)
+        .await
+        .map_err(|_| ServiceError::Internal("Failed to resolve player ID".to_string()))?;
+
+    get_player_info_helper(&app, player_id).await.map(Json)
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub struct RatingResponse {
@@ -102,6 +125,7 @@ pub struct RatingResponse {
 #[serde(rename_all = "camelCase")]
 pub struct PlayerInfo {
     pub id: String,
+    pub account_id: String,
     pub username: String,
     pub display_name: String,
     pub rating: Option<RatingResponse>,

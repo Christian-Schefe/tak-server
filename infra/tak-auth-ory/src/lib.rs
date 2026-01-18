@@ -8,6 +8,7 @@ use tak_server_app::{
     },
     ports::authentication::{Account, AuthenticationPort},
 };
+use tak_server_legacy_api::acl::LegacyApiAuthPort;
 
 use crate::{guest::GuestRegistry, ory::OryAuthenticationService};
 
@@ -40,38 +41,6 @@ impl AuthenticationService {
                     .build(),
             ),
         }
-    }
-
-    pub async fn create_account(
-        &self,
-        username: &str,
-        email: &str,
-        password_hash: &str,
-    ) -> Result<Account, String> {
-        self.ory_service
-            .create_account(username, email, password_hash)
-            .await
-    }
-
-    pub async fn login_username_password(
-        &self,
-        username: &str,
-        password: &str,
-    ) -> Result<Account, String> {
-        self.ory_service
-            .login_username_password(username, password)
-            .await
-    }
-
-    pub async fn change_password(
-        &self,
-        username: &str,
-        old_password: &str,
-        new_password: &str,
-    ) -> Result<(), String> {
-        self.ory_service
-            .change_password(username, old_password, new_password)
-            .await
     }
 
     pub async fn find_by_username(&self, username: &str) -> Option<Account> {
@@ -135,11 +104,50 @@ impl ApiAuthPort for AuthenticationService {
 }
 
 #[async_trait::async_trait]
-impl AuthenticationPort for AuthenticationService {
+impl LegacyApiAuthPort for AuthenticationService {
     async fn get_or_create_guest_account(&self, token: &str) -> Account {
         self.guest_registry.get_or_create_guest(Some(token))
     }
 
+    async fn find_by_username(&self, username: &str) -> Option<Account> {
+        self.find_by_username(username).await
+    }
+
+    async fn create_account(
+        &self,
+        username: &str,
+        email: &str,
+        password_hash: &str,
+    ) -> Result<Account, String> {
+        self.ory_service
+            .create_account(username, email, password_hash)
+            .await
+    }
+
+    async fn login_username_password(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<Account, String> {
+        self.ory_service
+            .login_username_password(username, password)
+            .await
+    }
+
+    async fn change_password(
+        &self,
+        username: &str,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), String> {
+        self.ory_service
+            .change_password(username, old_password, new_password)
+            .await
+    }
+}
+
+#[async_trait::async_trait]
+impl AuthenticationPort for AuthenticationService {
     async fn clean_up_guest_accounts(&self) -> Vec<AccountId> {
         self.guest_registry.clean_up_guest_accounts()
     }

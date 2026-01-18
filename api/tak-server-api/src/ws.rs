@@ -17,6 +17,7 @@ use tak_player_connection::{ConnectionId, PlayerSimpleConnectionPort};
 use tak_server_app::{
     domain::{AccountId, GameId, PlayerId},
     ports::notification::ListenerMessage,
+    workflow::chat::message::MessageTarget,
 };
 use tokio::select;
 use tokio_util::sync::CancellationToken;
@@ -186,7 +187,7 @@ async fn handle_client_message(
 
 async fn handle_authenticated_client_message(
     app: &AppState,
-    _account_id: AccountId,
+    account_id: AccountId,
     player_id: PlayerId,
     msg: ClientMessage,
     _connection_id: ConnectionId,
@@ -213,6 +214,21 @@ async fn handle_authenticated_client_message(
                     e
                 )));
             }
+            Ok(())
+        }
+        ClientMessage::ChatMessage { message, target } => {
+            log::info!("Received ChatMessage: {:?} -> {}", target, message);
+            let message_target = match target {
+                JsonChatMessageTarget::Global => MessageTarget::Global,
+                JsonChatMessageTarget::Room { room_name } => MessageTarget::Room(room_name),
+                JsonChatMessageTarget::Private { to_account_id } => {
+                    MessageTarget::Private(AccountId(to_account_id))
+                }
+            };
+            app.app
+                .chat_message_use_case
+                .send_message(&account_id, message_target, &message)
+                .await;
             Ok(())
         }
     }
@@ -272,8 +288,17 @@ impl PlayerSimpleConnectionPort for WsService {
     rename_all_fields = "camelCase"
 )]
 pub enum ClientMessage {
-    Authenticate { token: String },
-    GameAction { game_id: i64, action: String },
+    Authenticate {
+        token: String,
+    },
+    GameAction {
+        game_id: i64,
+        action: String,
+    },
+    ChatMessage {
+        message: String,
+        target: JsonChatMessageTarget,
+    },
 }
 
 #[derive(serde::Deserialize, Debug)]
@@ -321,6 +346,23 @@ pub enum ServerMessage {
         game_id: i64,
         result: String,
     },
+    ChatMessage {
+        from_account_id: String,
+        message: String,
+        target: JsonChatMessageTarget,
+    },
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum JsonChatMessageTarget {
+    Global,
+    Room { room_name: String },
+    Private { to_account_id: String },
 }
 
 enum MessageTransformation {
@@ -370,6 +412,24 @@ impl ServerMessage {
                     black: black_time.as_millis() as u64,
                 },
             }),
+            ListenerMessage::ChatMessage {
+                from_account_id,
+                message,
+                target: source,
+            } => {
+                let target = match source {
+                    MessageTarget::Global => JsonChatMessageTarget::Global,
+                    MessageTarget::Room(room_name) => JsonChatMessageTarget::Room { room_name },
+                    MessageTarget::Private(to_account_id) => JsonChatMessageTarget::Private {
+                        to_account_id: to_account_id.to_string(),
+                    },
+                };
+                MessageTransformation::Transform(ServerMessage::ChatMessage {
+                    from_account_id: from_account_id.to_string(),
+                    message,
+                    target,
+                })
+            }
             _ => MessageTransformation::Ignore,
         }
     }

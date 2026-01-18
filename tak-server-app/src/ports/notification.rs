@@ -5,6 +5,7 @@ use tak_core::TakGameResult;
 use crate::{
     domain::{AccountId, GameId, ListenerId, PlayerId, game::GameActionRecord},
     workflow::{
+        chat::message::MessageTarget,
         gameplay::{FinishedGameView, OngoingGameView},
         matchmaking::SeekView,
     },
@@ -75,7 +76,7 @@ pub enum ListenerMessage {
     ChatMessage {
         from_account_id: AccountId,
         message: String,
-        source: ChatMessageSource,
+        target: MessageTarget,
     },
     ServerAlert {
         message: ServerAlertMessage,
@@ -86,11 +87,4 @@ pub enum ListenerMessage {
 pub enum ServerAlertMessage {
     Shutdown,
     Custom(String),
-}
-
-#[derive(Clone, Debug)]
-pub enum ChatMessageSource {
-    Private,
-    Global,
-    Room(String),
 }

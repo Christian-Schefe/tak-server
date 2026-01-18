@@ -4,14 +4,11 @@ use dashmap::DashMap;
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
     domain::{AccountId, GameId, PlayerId},
-    ports::{
-        authentication::AuthenticationPort,
-        notification::{ListenerMessage, ServerAlertMessage},
-    },
+    ports::notification::{ListenerMessage, ServerAlertMessage},
 };
 
 use crate::{
-    acl::LegacyAPIAntiCorruptionLayer,
+    acl::{LegacyAPIAntiCorruptionLayer, LegacyApiAuthPort},
     app::ServiceError,
     client::{DisconnectReason, ServerMessage, TransportServiceImpl},
     protocol::Application,
@@ -27,7 +24,7 @@ mod sudo;
 pub struct ProtocolV2Handler {
     app: Arc<Application>,
     transport: Arc<TransportServiceImpl>,
-    auth: Arc<dyn AuthenticationPort + Send + Sync + 'static>,
+    auth: Arc<dyn LegacyApiAuthPort + Send + Sync + 'static>,
     acl: Arc<LegacyAPIAntiCorruptionLayer>,
     connection_that_did_last_move: Arc<DashMap<(GameId, PlayerId), ConnectionId>>,
 }
@@ -43,7 +40,7 @@ impl ProtocolV2Handler {
     pub fn new(
         app: Arc<Application>,
         transport: Arc<TransportServiceImpl>,
-        auth: Arc<dyn AuthenticationPort + Send + Sync + 'static>,
+        auth: Arc<dyn LegacyApiAuthPort + Send + Sync + 'static>,
         acl: Arc<LegacyAPIAntiCorruptionLayer>,
     ) -> Self {
         Self {
@@ -141,7 +138,7 @@ impl ProtocolV2Handler {
     }
 
     async fn send_notification_message(&self, id: ConnectionId, msg: &ListenerMessage) {
-        let (player_id, _) = self
+        let (player_id, account_id) = self
             .transport
             .get_associated_player_and_account(id)
             .await
@@ -238,10 +235,10 @@ impl ProtocolV2Handler {
             ListenerMessage::ChatMessage {
                 from_account_id,
                 message,
-                source,
+                target: source,
             } => {
-                self.send_chat_message(id, from_account_id, message, source)
-                    .await
+                self.send_chat_message(id, account_id.as_ref(), from_account_id, message, source)
+                    .await;
             }
             ListenerMessage::GameRematchRequested { .. } => {} //legacy api does not support rematch messages
             ListenerMessage::GameRematchRequestRetracted { .. } => {} //legacy api does not support rematch messages

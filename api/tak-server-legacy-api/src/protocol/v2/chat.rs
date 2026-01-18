@@ -2,7 +2,6 @@ use log::error;
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
     domain::{AccountId, ListenerId, moderation::ModerationFlag},
-    ports::notification::ChatMessageSource,
     workflow::chat::message::MessageTarget,
 };
 
@@ -15,20 +14,27 @@ impl ProtocolV2Handler {
     pub async fn send_chat_message(
         &self,
         id: ConnectionId,
+        this_account_id: Option<&AccountId>,
         from_account_id: &AccountId,
         message: &str,
-        source: &ChatMessageSource,
+        target: &MessageTarget,
     ) {
         let Some(account) = self.auth.get_account(from_account_id).await else {
             error!("Failed to retrieve account information for sending chat message");
             return;
         };
-        let msg = match source {
-            ChatMessageSource::Global => format!("Shout <{}> {}", account.username, message),
-            ChatMessageSource::Room(name) => {
+        let msg = match target {
+            MessageTarget::Global => format!("Shout <{}> {}", account.username, message),
+            MessageTarget::Room(name) => {
                 format!("ShoutRoom {} <{}> {}", name, account.username, message)
             }
-            ChatMessageSource::Private => format!("Tell <{}> {}", account.username, message),
+            MessageTarget::Private(to_account_id) => {
+                if this_account_id.is_some_and(|x| x != to_account_id) {
+                    format!("Told <{}> {}", account.username, message)
+                } else {
+                    format!("Tell <{}> {}", account.username, message)
+                }
+            }
         };
         self.send_to(id, msg);
     }
@@ -152,8 +158,7 @@ impl ProtocolV2Handler {
                 target_username
             ));
         }
-        let sent_msg = self
-            .app
+        self.app
             .chat_message_use_case
             .send_message(
                 account_id,
@@ -161,6 +166,6 @@ impl ProtocolV2Handler {
                 &msg,
             )
             .await;
-        V2Response::Message(format!("Told <{}> {}", target_username, sent_msg))
+        V2Response::OK
     }
 }

@@ -1,23 +1,48 @@
 use std::sync::Arc;
 
 use passwords::PasswordGenerator;
-use tak_auth_ory::AuthenticationService;
 use tak_server_app::{
     Application,
     domain::PlayerId,
-    ports::{authentication::Account, email::EmailPort},
+    ports::{
+        authentication::{Account, AuthenticationPort},
+        email::EmailPort,
+    },
 };
+
+#[async_trait::async_trait]
+pub trait LegacyApiAuthPort: AuthenticationPort {
+    async fn get_or_create_guest_account(&self, token: &str) -> Account;
+    async fn find_by_username(&self, username: &str) -> Option<Account>;
+    async fn create_account(
+        &self,
+        username: &str,
+        email: &str,
+        password_hash: &str,
+    ) -> Result<Account, String>;
+    async fn change_password(
+        &self,
+        username: &str,
+        old_password: &str,
+        new_password: &str,
+    ) -> Result<(), String>;
+    async fn login_username_password(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<Account, String>;
+}
 
 pub struct LegacyAPIAntiCorruptionLayer {
     app: Arc<Application>,
-    auth: Arc<AuthenticationService>,
+    auth: Arc<dyn LegacyApiAuthPort + Send + Sync + 'static>,
     email_port: Arc<dyn EmailPort + Send + Sync + 'static>,
 }
 
 impl LegacyAPIAntiCorruptionLayer {
     pub fn new(
         app: Arc<Application>,
-        auth: Arc<AuthenticationService>,
+        auth: Arc<dyn LegacyApiAuthPort + Send + Sync + 'static>,
         email_port: Arc<dyn EmailPort + Send + Sync + 'static>,
     ) -> Self {
         Self {

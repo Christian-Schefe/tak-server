@@ -7,16 +7,18 @@ use crate::{
     },
     ports::{
         connection::AccountConnectionPort,
-        notification::{ChatMessageSource, ListenerMessage, ListenerNotificationPort},
+        notification::{ListenerMessage, ListenerNotificationPort},
     },
 };
 
 #[async_trait::async_trait]
 pub trait ChatMessageUseCase {
-    async fn send_message(&self, from: &AccountId, target: MessageTarget, message: &str) -> String;
+    async fn send_message(&self, from: &AccountId, target: MessageTarget, message: &str);
 }
 
 //TODO: get rid of arbitrary rooms and introduce "match" contexts etc.
+
+#[derive(Clone, Debug)]
 pub enum MessageTarget {
     Private(AccountId),
     Room(String),
@@ -66,20 +68,26 @@ impl<
         from_account_id: &AccountId,
         target: MessageTarget,
         message: &str,
-    ) -> String {
+    ) {
         let filtered_message = self.content_policy.filter_message(&message);
         match target {
             MessageTarget::Private(to_account_id) => {
-                let to_account_connection = self
-                    .player_connection_port
-                    .get_connection_id(&to_account_id)
-                    .await;
+                let (from_account_connection, to_account_connection) = futures::join!(
+                    self.player_connection_port
+                        .get_connection_id(from_account_id),
+                    self.player_connection_port
+                        .get_connection_id(&to_account_id)
+                );
+                let msg = ListenerMessage::ChatMessage {
+                    from_account_id: from_account_id.clone(),
+                    message: filtered_message.clone(),
+                    target: MessageTarget::Private(to_account_id.clone()),
+                };
+                if let Some(connection_id) = from_account_connection {
+                    self.listener_notification_port
+                        .notify_listener(connection_id, msg.clone());
+                }
                 if let Some(connection_id) = to_account_connection {
-                    let msg = ListenerMessage::ChatMessage {
-                        from_account_id: from_account_id.clone(),
-                        message: filtered_message.clone(),
-                        source: ChatMessageSource::Private,
-                    };
                     self.listener_notification_port
                         .notify_listener(connection_id, msg);
                 }
@@ -88,7 +96,7 @@ impl<
                 let msg = ListenerMessage::ChatMessage {
                     from_account_id: from_account_id.clone(),
                     message: filtered_message.clone(),
-                    source: ChatMessageSource::Global,
+                    target: MessageTarget::Global,
                 };
                 self.listener_notification_port.notify_all(msg);
             }
@@ -97,57 +105,11 @@ impl<
                 let msg = ListenerMessage::ChatMessage {
                     from_account_id: from_account_id.clone(),
                     message: filtered_message.clone(),
-                    source: ChatMessageSource::Room(room_name),
+                    target: MessageTarget::Room(room_name),
                 };
                 self.listener_notification_port
                     .notify_listeners(&listeners_in_room, msg);
             }
         }
-        filtered_message
     }
-
-    /* async fn send_private_message(
-        &self,
-        from_account_id: &AccountId,
-        to_account_id: &AccountId,
-        message: &str,
-    ) -> String {
-        let to_account_connection = self
-            .player_connection_port
-            .get_connection_id(to_account_id)
-            .await;
-        let filtered_message = self.content_policy.filter_message(&message);
-        if let Some(connection_id) = to_account_connection {
-            let msg = ListenerMessage::ChatMessage {
-                from_account_id,
-                message: filtered_message.clone(),
-                source: ChatMessageSource::Private,
-            };
-            self.listener_notification_port
-                .notify_listener(connection_id, msg);
-        }
-        filtered_message
-    }
-
-    async fn send_global_message(&self, from_player_id: PlayerId, message: &str) {
-        let filtered_message = self.content_policy.filter_message(&message);
-        let msg = ListenerMessage::ChatMessage {
-            from_player_id,
-            message: filtered_message,
-            source: ChatMessageSource::Global,
-        };
-        self.listener_notification_port.notify_all(msg);
-    }
-
-    async fn send_room_message(&self, from_player_id: PlayerId, room_name: &String, message: &str) {
-        let filtered_message = self.content_policy.filter_message(&message);
-        let players_in_room = self.chat_room_service.get_listeners_in_room(room_name);
-        let msg = ListenerMessage::ChatMessage {
-            from_player_id,
-            message: filtered_message,
-            source: ChatMessageSource::Room(room_name.to_string()),
-        };
-        self.listener_notification_port
-            .notify_listeners(&players_in_room, msg);
-    }*/
 }
