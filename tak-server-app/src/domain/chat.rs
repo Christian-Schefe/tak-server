@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use more_concurrent_maps::multi::ConcurrentMultiMap;
-use rustrict::CensorStr;
+use rustrict::{Censor, Type};
 
 use crate::domain::ListenerId;
 
@@ -56,6 +56,13 @@ impl RustrictContentPolicy {
 
 impl ContentPolicy for RustrictContentPolicy {
     fn filter_message(&self, message: &str) -> String {
-        message.censor()
+        let (censored, censor_type) = Censor::from_str(message)
+            .with_censor_threshold(Type::INAPPROPRIATE)
+            .censor_and_analyze();
+        if censor_type.is(Type::INAPPROPRIATE) {
+            censored
+        } else {
+            message.to_string()
+        }
     }
 }

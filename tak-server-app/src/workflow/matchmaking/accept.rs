@@ -75,13 +75,13 @@ impl<
         let message = ListenerMessage::SeekCanceled {
             seek: (&seek).into(),
         };
-        self.notification_port.notify_all(message);
+        self.notification_port.notify_all(&message);
 
         for cancelled_seek in self.seek_service.cancel_all_player_seeks(player) {
             let message = ListenerMessage::SeekCanceled {
                 seek: cancelled_seek.into(),
             };
-            self.notification_port.notify_all(message);
+            self.notification_port.notify_all(&message);
         }
 
         let match_id = self.match_service.create_match(

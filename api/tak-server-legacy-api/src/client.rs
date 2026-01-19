@@ -18,7 +18,7 @@ use futures_util::{SinkExt, StreamExt};
 use tak_player_connection::{ConnectionId, PlayerConnectionDriver, PlayerSimpleConnectionPort};
 use tak_server_app::{
     Application,
-    domain::{AccountId, ListenerId, PlayerId},
+    domain::{AccountId, PlayerId},
     ports::notification::{ListenerMessage, ListenerNotificationPort},
 };
 use tokio::{
@@ -226,7 +226,9 @@ impl TransportServiceImpl {
             msg = ws_receiver.next() => msg,
             _ = cancellation_token.cancelled() => None,
         } {
-            //TODO: update last activity time
+            if let Some(mut conn) = self.connections.get_mut(&id) {
+                conn.last_activity = Instant::now();
+            }
 
             let msg = match msg_parser(msg) {
                 Some(m) => m,
@@ -352,12 +354,7 @@ impl TransportServiceImpl {
 
     pub fn notify_all(&self, msg: ListenerMessage) {
         let app = APPLICATION.get().unwrap();
-        app.listener_notification_service.notify_all(msg);
-    }
-
-    pub fn get_listener_id(&self, account_id: &AccountId) -> Option<ListenerId> {
-        let app = APPLICATION.get().unwrap();
-        app.connection_driver.get_listener_id(account_id)
+        app.listener_notification_service.notify_all(&msg);
     }
 
     pub async fn close_account_with_reason(

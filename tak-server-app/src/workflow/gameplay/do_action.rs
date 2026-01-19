@@ -96,7 +96,7 @@ impl<G: GameService, NP: NotifyPlayerWorkflow, F: FinalizeGameWorkflow>
                 black_time: time_remaining.black_time,
             };
             self.notify_player_workflow
-                .notify_players_and_observers_of_game(&game.metadata, time_update_msg)
+                .notify_players_and_observers_of_game(&game.metadata, &time_update_msg)
                 .await;
         }
     }
@@ -109,7 +109,7 @@ impl<G: GameService, NP: NotifyPlayerWorkflow, F: FinalizeGameWorkflow>
             black_time: time_remaining.black_time,
         };
         self.notify_player_workflow
-            .notify_players_and_observers_of_game(&game.metadata, time_update_msg)
+            .notify_players_and_observers_of_game(&game.metadata, &time_update_msg)
             .await;
     }
 
@@ -173,13 +173,13 @@ impl<
         // Needs different notification flow as game domain removes game once ended
         if let Some(ended_game) = maybe_ended_game {
             self.notify_player_workflow
-                .notify_players_and_observers_of_game(&ended_game.metadata, msg)
+                .notify_players_and_observers_of_game(&ended_game.metadata, &msg)
                 .await;
 
             self.handle_ended_game(ended_game).await;
         } else {
             self.notify_player_workflow
-                .notify_players_and_observers(game_id, msg)
+                .notify_players_and_observers(game_id, &msg)
                 .await;
 
             self.send_game_time_update(game_id, now).await;
@@ -212,7 +212,7 @@ impl<
                     }
                 };
                 self.notify_player_workflow
-                    .notify_players_and_observers(game_id, msg)
+                    .notify_players_and_observers(game_id, &msg)
                     .await;
             }
             OfferDrawResult::NotAPlayerInGame => {
@@ -246,7 +246,7 @@ impl<
             RequestUndoResult::MoveUndone => {
                 let msg = ListenerMessage::GameActionUndone { game_id };
                 self.notify_player_workflow
-                    .notify_players_and_observers(game_id, msg)
+                    .notify_players_and_observers(game_id, &msg)
                     .await;
                 self.send_game_time_update(game_id, now).await;
             }
@@ -263,7 +263,7 @@ impl<
                     }
                 };
                 self.notify_player_workflow
-                    .notify_players_and_observers(game_id, msg)
+                    .notify_players_and_observers(game_id, &msg)
                     .await;
             }
             RequestUndoResult::Unchanged => {}

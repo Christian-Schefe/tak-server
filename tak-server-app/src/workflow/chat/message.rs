@@ -85,11 +85,11 @@ impl<
                 };
                 if let Some(connection_id) = from_account_connection {
                     self.listener_notification_port
-                        .notify_listener(connection_id, msg.clone());
+                        .notify_listener(connection_id, &msg);
                 }
                 if let Some(connection_id) = to_account_connection {
                     self.listener_notification_port
-                        .notify_listener(connection_id, msg);
+                        .notify_listener(connection_id, &msg);
                 }
             }
             MessageTarget::Global => {
@@ -98,7 +98,7 @@ impl<
                     message: filtered_message.clone(),
                     target: MessageTarget::Global,
                 };
-                self.listener_notification_port.notify_all(msg);
+                self.listener_notification_port.notify_all(&msg);
             }
             MessageTarget::Room(room_name) => {
                 let listeners_in_room = self.chat_room_service.get_listeners_in_room(&room_name);
@@ -108,7 +108,7 @@ impl<
                     target: MessageTarget::Room(room_name),
                 };
                 self.listener_notification_port
-                    .notify_listeners(&listeners_in_room, msg);
+                    .notify_listeners(&listeners_in_room, &msg);
             }
         }
     }

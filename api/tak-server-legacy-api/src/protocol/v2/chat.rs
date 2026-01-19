@@ -1,7 +1,7 @@
 use log::error;
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
-    domain::{AccountId, ListenerId, moderation::ModerationFlag},
+    domain::{AccountId, moderation::ModerationFlag},
     workflow::chat::message::MessageTarget,
 };
 
@@ -42,7 +42,6 @@ impl ProtocolV2Handler {
     pub async fn handle_room_membership_message(
         &self,
         id: ConnectionId,
-        listener_id: ListenerId,
         parts: &[&str],
         join: bool,
     ) -> V2Response {
@@ -53,10 +52,10 @@ impl ProtocolV2Handler {
         }
         let room = parts[1].to_string();
         if join {
-            self.app.chat_room_use_case.join_room(&room, listener_id);
+            self.app.chat_room_use_case.join_room(&room, id.0);
             self.send_to(id, format!("Joined room {}", room));
         } else {
-            self.app.chat_room_use_case.leave_room(&room, listener_id);
+            self.app.chat_room_use_case.leave_room(&room, id.0);
             self.send_to(id, format!("Left room {}", room));
         }
         V2Response::OK

@@ -111,18 +111,18 @@ impl<
         let ended_msg = ListenerMessage::GameEnded {
             game: FinishedGameView::from(&ended_game),
         };
-        self.listener_notification_port.notify_all(ended_msg);
+        self.listener_notification_port.notify_all(&ended_msg);
 
         self.notify_player_workflow
             .notify_players(
                 &[ended_game.metadata.white_id, ended_game.metadata.black_id],
-                over_msg.clone(),
+                &over_msg,
             )
             .await;
 
         let observers = self.spectator_service.get_spectators_for_game(game_id);
         self.listener_notification_port
-            .notify_listeners(&observers, over_msg);
+            .notify_listeners(&observers, &over_msg);
 
         self.spectator_service.remove_game(game_id);
 

@@ -152,7 +152,7 @@ impl<
         let msg = ListenerMessage::GameStarted {
             game: OngoingGameView::from(&game),
         };
-        self.listener_notification_port.notify_all(msg);
+        self.listener_notification_port.notify_all(&msg);
         Ok(())
     }
 }

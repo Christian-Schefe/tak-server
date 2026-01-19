@@ -18,10 +18,10 @@ pub trait NotifyPlayerWorkflow {
     async fn notify_players_and_observers_of_game(
         &self,
         game: &GameMetadata,
-        message: ListenerMessage,
+        message: &ListenerMessage,
     );
-    async fn notify_players_and_observers(&self, game_id: GameId, message: ListenerMessage);
-    async fn notify_players(&self, players: &[PlayerId], message: ListenerMessage);
+    async fn notify_players_and_observers(&self, game_id: GameId, message: &ListenerMessage);
+    async fn notify_players(&self, players: &[PlayerId], message: &ListenerMessage);
 }
 
 pub struct NotifyPlayerWorkflowImpl<
@@ -75,16 +75,16 @@ impl<
     async fn notify_players_and_observers_of_game(
         &self,
         game: &GameMetadata,
-        message: ListenerMessage,
+        message: &ListenerMessage,
     ) {
-        self.notify_players(&[game.white_id, game.black_id], message.clone())
+        self.notify_players(&[game.white_id, game.black_id], message)
             .await;
         let observers = self.spectator_service.get_spectators_for_game(game.game_id);
         self.listener_notification_port
             .notify_listeners(&observers, message);
     }
 
-    async fn notify_players_and_observers(&self, game_id: GameId, message: ListenerMessage) {
+    async fn notify_players_and_observers(&self, game_id: GameId, message: &ListenerMessage) {
         let Some(game) = self.game_service.get_game_by_id(game_id) else {
             return;
         };
@@ -92,7 +92,7 @@ impl<
             .await;
     }
 
-    async fn notify_players(&self, players: &[PlayerId], message: ListenerMessage) {
+    async fn notify_players(&self, players: &[PlayerId], message: &ListenerMessage) {
         let listener_id_futs = players.iter().map(|player_id| async move {
             let Ok(account_id) = self
                 .player_resolver_service
@@ -109,7 +109,7 @@ impl<
         for listener_id_opt in listener_ids {
             if let Some(connection_id) = listener_id_opt {
                 self.listener_notification_port
-                    .notify_listener(connection_id, message.clone());
+                    .notify_listener(connection_id, message);
             }
         }
     }

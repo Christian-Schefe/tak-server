@@ -235,9 +235,9 @@ impl ProtocolV2Handler {
             ListenerMessage::ChatMessage {
                 from_account_id,
                 message,
-                target: source,
+                target,
             } => {
-                self.send_chat_message(id, account_id.as_ref(), from_account_id, message, source)
+                self.send_chat_message(id, account_id.as_ref(), from_account_id, message, target)
                     .await;
             }
             ListenerMessage::GameRematchRequested { .. } => {} //legacy api does not support rematch messages
@@ -333,16 +333,6 @@ impl ProtocolV2Handler {
             ));
         };
 
-        let Some(listener_id) = self.transport.get_listener_id(&account_id) else {
-            log::warn!(
-                "No listener ID found for player ID {} when handling logged-in message",
-                player_id
-            );
-            return V2Response::ErrorNOK(ServiceError::Unauthorized(
-                "Client is not logged in".to_string(),
-            ));
-        };
-
         match parts[0].to_ascii_lowercase().as_str() {
             "changepassword" => {
                 self.handle_change_password_message(account_id, &parts)
@@ -353,25 +343,13 @@ impl ProtocolV2Handler {
             "list" => self.handle_seek_list_message(id).await,
             "gamelist" => self.handle_game_list_message(id).await,
             "accept" => self.handle_accept_message(player_id, &parts).await,
-            "observe" => {
-                self.handle_observe_message(id, listener_id, &parts, true)
-                    .await
-            }
-            "unobserve" => {
-                self.handle_observe_message(id, listener_id, &parts, false)
-                    .await
-            }
+            "observe" => self.handle_observe_message(id, &parts, true).await,
+            "unobserve" => self.handle_observe_message(id, &parts, false).await,
             "shout" => self.handle_shout_message(id, &account_id, &msg).await,
             "shoutroom" => self.handle_shout_room_message(id, &account_id, &msg).await,
             "tell" => self.handle_tell_message(&account_id, &msg).await,
-            "joinroom" => {
-                self.handle_room_membership_message(id, listener_id, &parts, true)
-                    .await
-            }
-            "leaveroom" => {
-                self.handle_room_membership_message(id, listener_id, &parts, false)
-                    .await
-            }
+            "joinroom" => self.handle_room_membership_message(id, &parts, true).await,
+            "leaveroom" => self.handle_room_membership_message(id, &parts, false).await,
             "sudo" => self.handle_sudo_message(id, &account_id, msg, &parts).await,
             s if s.starts_with("game#") => self.handle_game_message(id, player_id, &parts).await,
             _ => V2Response::ErrorNOK(ServiceError::BadRequest(format!(

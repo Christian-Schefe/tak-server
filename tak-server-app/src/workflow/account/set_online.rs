@@ -36,17 +36,17 @@ impl<P: AccountOnlineStatusPort, L: ListenerNotificationPort> SetAccountOnlineUs
             .set_account_online(account_id)
         {
             let message = ListenerMessage::AccountsOnline { accounts };
-            self.notification_port.notify_all(message);
+            self.notification_port.notify_all(&message);
         }
     }
 
-    fn set_offline(&self, account_id:& AccountId) {
+    fn set_offline(&self, account_id: &AccountId) {
         if let Some(accounts) = self
             .account_online_status_port
             .set_account_offline(account_id)
         {
             let message = ListenerMessage::AccountsOnline { accounts };
-            self.notification_port.notify_all(message);
+            self.notification_port.notify_all(&message);
         }
     }
 }

@@ -17,7 +17,7 @@ use tak_player_connection::{ConnectionId, PlayerSimpleConnectionPort};
 use tak_server_app::{
     domain::{AccountId, GameId, PlayerId},
     ports::notification::ListenerMessage,
-    workflow::chat::message::MessageTarget,
+    workflow::{chat::message::MessageTarget, gameplay::observe::ObserveGameError},
 };
 use tokio::select;
 use tokio_util::sync::CancellationToken;
@@ -190,7 +190,7 @@ async fn handle_authenticated_client_message(
     account_id: AccountId,
     player_id: PlayerId,
     msg: ClientMessage,
-    _connection_id: ConnectionId,
+    connection_id: ConnectionId,
 ) -> Result<(), ServiceError> {
     match msg {
         ClientMessage::Authenticate { .. } => Err(ServiceError::BadRequest(
@@ -229,6 +229,24 @@ async fn handle_authenticated_client_message(
                 .chat_message_use_case
                 .send_message(&account_id, message_target, &message)
                 .await;
+            Ok(())
+        }
+        ClientMessage::SpectateGame { game_id, spectate } => {
+            log::info!("Received SpectateGame for game {}: {}", game_id, spectate);
+            if spectate {
+                app.app
+                    .game_observe_use_case
+                    .observe_game(GameId(game_id), connection_id.0)
+                    .map_err(|e| match e {
+                        ObserveGameError::GameNotFound => {
+                            ServiceError::NotFound("Game not found".to_string())
+                        }
+                    })?;
+            } else {
+                app.app
+                    .game_observe_use_case
+                    .unobserve_game(GameId(game_id), connection_id.0);
+            }
             Ok(())
         }
     }
@@ -298,6 +316,10 @@ pub enum ClientMessage {
     ChatMessage {
         message: String,
         target: JsonChatMessageTarget,
+    },
+    SpectateGame {
+        game_id: i64,
+        spectate: bool,
     },
 }
 

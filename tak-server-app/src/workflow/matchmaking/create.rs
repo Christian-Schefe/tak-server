@@ -53,7 +53,7 @@ impl<S: SeekService + Send + Sync + 'static, L: ListenerNotificationPort + Send 
             seek: created_seek.into(),
         };
 
-        self.notification_port.notify_all(message);
+        self.notification_port.notify_all(&message);
 
         Ok(())
     }

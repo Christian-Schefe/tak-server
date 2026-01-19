@@ -13,14 +13,18 @@ use tak_server_app::{
         notification::{ListenerMessage, ListenerNotificationPort},
     },
 };
-use uuid::Uuid;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ConnectionId(Uuid);
+/// A connection id represents a unique connection from a player to the server.
+/// A connection id maps to a listener id, which allows individual connections to subscribe to services.
+pub struct ConnectionId(pub ListenerId);
 
 impl ConnectionId {
     pub fn new() -> Self {
-        Self(Uuid::new_v4())
+        Self(ListenerId::new())
+    }
+    fn from_listener_id(listener_id: ListenerId) -> Self {
+        Self(listener_id)
     }
 }
 
@@ -45,6 +49,8 @@ pub struct PlayerConnectionDriver {
     inner: Arc<PlayerConnectionService>,
 }
 
+/// The PlayerConnectionDriver creates a virtual ListenerId for each player that multiplexes a message to all connections.
+/// This allows messages intended for a player to be sent to all their active connections.
 impl PlayerConnectionDriver {
     pub fn new(app: Arc<Application>, inner: Arc<PlayerConnectionService>) -> Self {
         Self { app, inner }
@@ -127,11 +133,6 @@ impl PlayerConnectionDriver {
         None
     }
 
-    pub fn get_listener_id(&self, account_id: &AccountId) -> Option<ListenerId> {
-        let registry = self.inner.registry.read();
-        registry.listener_map.get_by_left(account_id).cloned()
-    }
-
     async fn set_player_offline(&self, account_id: &AccountId) {
         self.app.account_set_online_use_case.set_offline(account_id);
         if let Ok(player_id) = self
@@ -173,37 +174,27 @@ impl PlayerConnectionService {
 }
 
 impl ListenerNotificationPort for PlayerConnectionService {
-    fn notify_listener(&self, listener: ListenerId, message: ListenerMessage) {
+    fn notify_listener(&self, listener: ListenerId, message: &ListenerMessage) {
         let registry = self.registry.read();
         if let Some(connections) = registry.listener_to_connections.get(&listener) {
             for connection_id in connections {
                 for service in &self.services {
-                    service.notify_connection(*connection_id, &message);
+                    service.notify_connection(*connection_id, message);
                 }
+            }
+        } else {
+            let connection_id = ConnectionId::from_listener_id(listener);
+            for service in &self.services {
+                service.notify_connection(connection_id, message);
             }
         }
     }
 
-    fn notify_listeners(&self, listeners: &[ListenerId], message: ListenerMessage) {
+    fn notify_all(&self, message: &ListenerMessage) {
         let registry = self.registry.read();
-        for listener in listeners {
-            if let Some(connections) = registry.listener_to_connections.get(listener) {
-                for connection_id in connections {
-                    for service in &self.services {
-                        service.notify_connection(*connection_id, &message);
-                    }
-                }
-            }
-        }
-    }
-
-    fn notify_all(&self, message: ListenerMessage) {
-        let registry = self.registry.read();
-        for connections in registry.listener_to_connections.values() {
-            for connection_id in connections {
-                for service in &self.services {
-                    service.notify_connection(*connection_id, &message);
-                }
+        for connection_id in registry.connection_to_listener.keys() {
+            for service in &self.services {
+                service.notify_connection(*connection_id, message);
             }
         }
     }

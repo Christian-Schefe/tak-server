@@ -32,7 +32,7 @@ impl<S: SeekService, L: ListenerNotificationPort> CancelSeekUseCase
             let message = ListenerMessage::SeekCanceled {
                 seek: cancelled_seek.into(),
             };
-            self.notification_port.notify_all(message);
+            self.notification_port.notify_all(&message);
         }
     }
 
@@ -41,7 +41,7 @@ impl<S: SeekService, L: ListenerNotificationPort> CancelSeekUseCase
             let message = ListenerMessage::SeekCanceled {
                 seek: cancelled_seek.into(),
             };
-            self.notification_port.notify_all(message);
+            self.notification_port.notify_all(&message);
             return true;
         }
         false

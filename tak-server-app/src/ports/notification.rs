@@ -12,9 +12,13 @@ use crate::{
 };
 
 pub trait ListenerNotificationPort {
-    fn notify_listener(&self, listener: ListenerId, message: ListenerMessage);
-    fn notify_listeners(&self, listeners: &[ListenerId], message: ListenerMessage);
-    fn notify_all(&self, message: ListenerMessage);
+    fn notify_listener(&self, listener: ListenerId, message: &ListenerMessage);
+    fn notify_listeners(&self, listeners: &[ListenerId], message: &ListenerMessage) {
+        for listener in listeners {
+            self.notify_listener(*listener, message);
+        }
+    }
+    fn notify_all(&self, message: &ListenerMessage);
 }
 
 #[derive(Clone, Debug)]

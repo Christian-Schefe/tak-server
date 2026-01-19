@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
-    domain::{GameId, ListenerId, PlayerId},
+    domain::{GameId, PlayerId},
     workflow::gameplay::{GameMetadataView, observe::ObserveGameError},
 };
 
@@ -44,7 +44,6 @@ impl ProtocolV2Handler {
     pub async fn handle_observe_message(
         &self,
         id: ConnectionId,
-        listener_id: ListenerId,
         parts: &[&str],
         observe: bool,
     ) -> V2Response {
@@ -60,11 +59,7 @@ impl ProtocolV2Handler {
         };
         let game_id = GameId::new(game_id);
         if observe {
-            if let Err(e) = self
-                .app
-                .game_observe_use_case
-                .observe_game(game_id, listener_id)
-            {
+            if let Err(e) = self.app.game_observe_use_case.observe_game(game_id, id.0) {
                 return match e {
                     ObserveGameError::GameNotFound => V2Response::ErrorNOK(ServiceError::NotFound(
                         "Game ID not found".to_string(),
@@ -85,9 +80,7 @@ impl ProtocolV2Handler {
             let (remaining_white, remaining_black) = game.game.get_time_remaining_both(now);
             self.send_time_update_message(id, game_id, remaining_white, remaining_black);
         } else {
-            self.app
-                .game_observe_use_case
-                .unobserve_game(game_id, listener_id);
+            self.app.game_observe_use_case.unobserve_game(game_id, id.0);
         }
         V2Response::OK
     }
