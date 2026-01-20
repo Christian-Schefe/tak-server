@@ -2,7 +2,7 @@ use std::{str::FromStr, sync::Arc};
 
 use crate::create_db_pool;
 use country_code_enum::CountryCode;
-use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait};
+use sea_orm::{DatabaseConnection, EntityTrait, Iterable, sea_query::OnConflict};
 use tak_persistence_sea_orm_entites::profile;
 use tak_server_app::domain::{
     AccountId, RepoError, RepoRetrieveError,
@@ -38,10 +38,20 @@ impl AccountProfileRepository for ProfileRepositoryImpl {
             account_id: sea_orm::ActiveValue::Set(account_id.to_string()),
             country: sea_orm::ActiveValue::Set(profile_information.country.map(|x| x.to_string())),
         };
-        active_model
-            .insert(&self.db)
+        profile::Entity::insert(active_model)
+            .on_conflict(
+                OnConflict::column(profile::Column::AccountId)
+                    .update_columns(
+                        profile::Column::iter()
+                            .filter(|c| !matches!(c, profile::Column::AccountId))
+                            .collect::<Vec<_>>(),
+                    )
+                    .to_owned(),
+            )
+            .exec(&self.db)
             .await
             .map_err(|e| RepoError::StorageError(e.to_string()))?;
+
         self.profile_cache
             .insert(account_id.clone(), profile_information);
         Ok(())

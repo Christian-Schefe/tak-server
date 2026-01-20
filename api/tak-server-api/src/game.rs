@@ -10,10 +10,11 @@ use tak_core::{
 };
 use tak_server_app::{
     domain::GameId,
+    services::player_resolver::ResolveError,
     workflow::{gameplay::GameMetadataView, history::query::GameQueryError},
 };
 
-use crate::{AppState, ServiceError};
+use crate::{AppState, ServiceError, auth::Auth};
 
 pub async fn get_games(State(app): State<AppState>) -> Json<Vec<GameInfo>> {
     let games = app.app.game_list_ongoing_use_case.list_games();
@@ -69,12 +70,14 @@ pub async fn get_game_status(
     }
     match app.app.game_history_query_use_case.get_game(game_id).await {
         Ok(Some(ended_game)) => {
-            let Some(result) = &ended_game.result else {
-                log::warn!("Ended game {} has no result", game_id.0);
-                return Err(ServiceError::NotPossible(
-                    "Game finished but not processed yet".to_string(),
-                ));
+            let status = if let Some(result) = &ended_game.result {
+                GameStatusType::Ended {
+                    result: game_result_to_string(&result),
+                }
+            } else {
+                GameStatusType::Aborted // means game ended was never saved after it ended (e.g. due to server restart killing ongoing games)
             };
+            let (white_remaining, black_remaining) = ended_game.reconstruct_time_remaining();
             Ok(Json(GameStatus {
                 id: game_id.0,
                 player_ids: ForPlayer {
@@ -88,10 +91,11 @@ pub async fn get_game_status(
                     .iter()
                     .map(|a| action_to_ptn(&a))
                     .collect(),
-                status: GameStatusType::Ended {
-                    result: game_result_to_string(&result),
+                status,
+                remaining_ms: ForPlayer {
+                    white: white_remaining.as_millis() as u64,
+                    black: black_remaining.as_millis() as u64,
                 },
-                remaining_ms: ForPlayer { white: 0, black: 0 },
             }))
         }
         Ok(None) => Err(ServiceError::NotFound(format!(
@@ -102,6 +106,30 @@ pub async fn get_game_status(
             "Failed to retrieve game record".to_string(),
         )),
     }
+}
+
+pub async fn resign_game(
+    auth: Auth,
+    State(app): State<AppState>,
+    Path(game_id): Path<i64>,
+) -> Result<(), ServiceError> {
+    let game_id = GameId(game_id);
+    let player_id = app
+        .app
+        .player_resolver_service
+        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .await
+        .map_err(|ResolveError::Internal| {
+            ServiceError::Internal(format!(
+                "Failed to resolve player id for account {}",
+                auth.account.account_id
+            ))
+        })?;
+    app.app
+        .game_do_action_use_case
+        .resign(game_id, player_id)
+        .await
+        .map_err(|e| ServiceError::Internal(format!("Failed to resign game: {:?}", e)))
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
@@ -130,6 +158,7 @@ pub enum GameStatusType {
     Ended {
         result: String,
     },
+    Aborted,
 }
 
 #[derive(serde::Serialize, Debug, Clone)]

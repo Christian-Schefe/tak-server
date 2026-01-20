@@ -35,6 +35,7 @@ use crate::{
             moderate::{ModeratePlayerUseCase, ModeratePlayerUseCaseImpl, ModerationPolicies},
             remove_account::RemoveAccountWorkflowImpl,
             set_online::{SetAccountOnlineUseCase, SetAccountOnlineUseCaseImpl},
+            update_profile::{UpdateProfileUseCase, UpdateProfileUseCaseImpl},
         },
         chat::{
             message::{ChatMessageUseCase, ChatMessageUseCaseImpl},
@@ -107,6 +108,8 @@ pub struct Application {
     pub get_snapshot_workflow: Arc<dyn GetSnapshotWorkflow + Send + Sync + 'static>,
     pub get_account_workflow: Arc<dyn GetAccountWorkflow + Send + Sync + 'static>,
     pub get_profile_use_case: Arc<dyn GetProfileUseCase + Send + Sync + 'static>,
+    pub update_profile_use_case: Arc<dyn UpdateProfileUseCase + Send + Sync + 'static>,
+
     pub get_stats_use_case: Arc<dyn GetPlayerStatsUseCase + Send + Sync + 'static>,
 }
 
@@ -292,8 +295,8 @@ pub async fn build_application<
 
         get_snapshot_workflow,
         get_account_workflow,
-        get_profile_use_case: Arc::new(GetProfileUseCaseImpl::new(
-            player_repository.clone(),
+        get_profile_use_case: Arc::new(GetProfileUseCaseImpl::new(profile_repository.clone())),
+        update_profile_use_case: Arc::new(UpdateProfileUseCaseImpl::new(
             profile_repository.clone(),
         )),
 

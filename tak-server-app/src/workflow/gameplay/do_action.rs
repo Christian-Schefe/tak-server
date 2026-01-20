@@ -48,18 +48,21 @@ pub enum DoActionError {
     GameAlreadyEnded,
 }
 
+#[derive(Debug)]
 pub enum OfferDrawError {
     GameNotFound,
     NotAPlayerInGame,
     GameAlreadyEnded,
 }
 
+#[derive(Debug)]
 pub enum RequestUndoError {
     GameNotFound,
     NotAPlayerInGame,
     GameAlreadyEnded,
 }
 
+#[derive(Debug)]
 pub enum ResignError {
     GameNotFound,
     NotAPlayerInGame,

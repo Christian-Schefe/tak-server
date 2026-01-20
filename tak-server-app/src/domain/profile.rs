@@ -19,3 +19,9 @@ pub trait AccountProfileRepository {
 pub struct AccountProfile {
     pub country: Option<CountryCode>,
 }
+
+impl AccountProfile {
+    pub fn new(country: Option<CountryCode>) -> Self {
+        Self { country }
+    }
+}

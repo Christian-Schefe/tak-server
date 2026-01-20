@@ -50,7 +50,13 @@ pub async fn serve(
         .route("/seeks/{seek_id}/accept", post(seek::accept_seek))
         .route("/games", get(game::get_games))
         .route("/games/{game_id}", get(game::get_game_status))
+        .route("/games/{game_id}/resign", post(game::resign_game))
         .route("/players/{player_id}", get(player::get_player_info))
+        .route("/profiles/{account_id}", get(player::get_account_profile))
+        .route(
+            "/profiles/{account_id}",
+            post(player::update_account_profile),
+        )
         .route("/usernames/{username}", get(player::get_player_by_username))
         .route(
             "/accounts/{account_id}",

@@ -1,10 +1,12 @@
+use std::str::FromStr;
+
 use axum::{
     Json,
     extract::{Path, State},
 };
 use tak_server_app::{
     domain::{AccountId, PlayerId},
-    workflow::player::PlayerStatsView,
+    workflow::{account::AccountProfileView, player::PlayerStatsView},
 };
 use uuid::Uuid;
 
@@ -114,6 +116,42 @@ pub async fn get_player_by_account_id(
     get_player_info_helper(&app, player_id).await.map(Json)
 }
 
+pub async fn get_account_profile(
+    State(app): State<AppState>,
+    Path(account_id): Path<String>,
+) -> Result<Json<PlayerProfileInfo>, ServiceError> {
+    let account_id = AccountId(account_id);
+    let profile = app
+        .app
+        .get_profile_use_case
+        .get_profile(account_id)
+        .await
+        .map_err(|_| ServiceError::Internal("Failed to retrieve player profile".to_string()))?;
+
+    Ok(Json(profile.into()))
+}
+
+pub async fn update_account_profile(
+    State(app): State<AppState>,
+    Path(account_id): Path<String>,
+    Json(payload): Json<PlayerProfileInfo>,
+) -> Result<(), ServiceError> {
+    let account_id = AccountId(account_id);
+    let country = match payload.country {
+        Some(country_str) => Some(
+            country_code_enum::CountryCode::from_str(&country_str)
+                .map_err(|_| ServiceError::BadRequest("Invalid country code".to_string()))?,
+        ),
+        None => None,
+    };
+
+    app.app
+        .update_profile_use_case
+        .update_profile(account_id, country)
+        .await
+        .map_err(|_| ServiceError::Internal("Failed to update player profile".to_string()))
+}
+
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub struct RatingResponse {
@@ -149,6 +187,20 @@ impl From<PlayerStatsView> for PlayerStatsInfo {
             games_won: stats.games_won,
             games_lost: stats.games_lost,
             games_drawn: stats.games_drawn,
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerProfileInfo {
+    pub country: Option<String>,
+}
+
+impl From<AccountProfileView> for PlayerProfileInfo {
+    fn from(profile: AccountProfileView) -> Self {
+        PlayerProfileInfo {
+            country: profile.country.map(|c| c.to_string()),
         }
     }
 }
