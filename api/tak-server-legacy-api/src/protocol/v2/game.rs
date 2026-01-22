@@ -7,11 +7,16 @@ use crate::{
         v2::{ProtocolV2Handler, V2Response},
     },
 };
-use tak_core::{TakAction, TakDir, TakGameResult, TakPos, TakVariant, ptn::game_result_to_string};
+use tak_core::{
+    TakAction, TakDir, TakGameResult, TakPos, TakRequestType, TakVariant,
+    ptn::game_result_to_string,
+};
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
     domain::{GameId, PlayerId},
-    workflow::gameplay::do_action::{DoActionError, OfferDrawError, RequestUndoError, ResignError},
+    workflow::gameplay::do_action::{
+        ActionResult, AddRequestError, DoActionError, HandleRequestError, PlayerActionError,
+    },
 };
 
 impl ProtocolV2Handler {
@@ -100,6 +105,19 @@ impl ProtocolV2Handler {
             ));
         };
 
+        let Some(game) = self.app.game_get_ongoing_use_case.get_game(game_id) else {
+            return V2Response::ErrorNOK(ServiceError::NotFound("Game not found".to_string()));
+        };
+        let opponent_id = if game.metadata.white_id == player_id {
+            game.metadata.black_id
+        } else if game.metadata.black_id == player_id {
+            game.metadata.white_id
+        } else {
+            return V2Response::ErrorNOK(ServiceError::BadRequest(
+                "You are not a player in this game".to_string(),
+            ));
+        };
+
         match parts[1] {
             "P" => {
                 self.connection_that_did_last_move
@@ -130,144 +148,28 @@ impl ProtocolV2Handler {
                 .await
             {
                 Ok(_) => {}
-                Err(ResignError::GameNotFound) => {
-                    let err_str = format!("Error: Game not found");
-                    return V2Response::ErrorMessage(
-                        ServiceError::NotFound("Game not found".to_string()),
-                        err_str,
-                    );
-                }
-                Err(ResignError::GameAlreadyEnded) => {
-                    let err_str = format!("Error: Game already ended");
-                    return V2Response::ErrorMessage(
-                        ServiceError::BadRequest("Game already ended".to_string()),
-                        err_str,
-                    );
-                }
-                Err(ResignError::NotAPlayerInGame) => {
-                    let err_str = format!("Error: Not a player in game");
-                    return V2Response::ErrorMessage(
-                        ServiceError::BadRequest("Not a player in game".to_string()),
-                        err_str,
-                    );
-                }
+                Err(e) => return player_action_error(e),
             },
-            "OfferDraw" => match self
-                .app
-                .game_do_action_use_case
-                .offer_draw(game_id, player_id, true)
-                .await
-            {
-                Ok(_) => {}
-                Err(OfferDrawError::GameNotFound) => {
-                    let err_str = format!("Error: Game not found");
-                    return V2Response::ErrorMessage(
-                        ServiceError::NotFound("Game not found".to_string()),
-                        err_str,
-                    );
-                }
-                Err(OfferDrawError::GameAlreadyEnded) => {
-                    let err_str = format!("Error: Game already ended");
-                    return V2Response::ErrorMessage(
-                        ServiceError::BadRequest("Game already ended".to_string()),
-                        err_str,
-                    );
-                }
-                Err(OfferDrawError::NotAPlayerInGame) => {
-                    let err_str = format!("Error: Not a player in game");
-                    return V2Response::ErrorMessage(
-                        ServiceError::BadRequest("Not a player in game".to_string()),
-                        err_str,
-                    );
-                }
-            },
-            "RemoveDraw" => match self
-                .app
-                .game_do_action_use_case
-                .offer_draw(game_id, player_id, false)
-                .await
-            {
-                Ok(_) => {}
-                Err(OfferDrawError::GameNotFound) => {
-                    let err_str = format!("Error: Game not found");
-                    return V2Response::ErrorMessage(
-                        ServiceError::NotFound("Game not found".to_string()),
-                        err_str,
-                    );
-                }
-                Err(OfferDrawError::GameAlreadyEnded) => {
-                    let err_str = format!("Error: Game already ended");
-                    return V2Response::ErrorMessage(
-                        ServiceError::BadRequest("Game already ended".to_string()),
-                        err_str,
-                    );
-                }
-                Err(OfferDrawError::NotAPlayerInGame) => {
-                    let err_str = format!("Error: Not a player in game");
-                    return V2Response::ErrorMessage(
-                        ServiceError::BadRequest("Not a player in game".to_string()),
-                        err_str,
-                    );
-                }
-            },
-            "RequestUndo" => match self
-                .app
-                .game_do_action_use_case
-                .request_undo(game_id, player_id, true)
-                .await
-            {
-                Ok(_) => {}
-                Err(RequestUndoError::GameNotFound) => {
-                    let err_str = format!("Error: Game not found");
-                    return V2Response::ErrorMessage(
-                        ServiceError::NotFound("Game not found".to_string()),
-                        err_str,
-                    );
-                }
-                Err(RequestUndoError::GameAlreadyEnded) => {
-                    let err_str = format!("Error: Game already ended");
-                    return V2Response::ErrorMessage(
-                        ServiceError::BadRequest("Game already ended".to_string()),
-                        err_str,
-                    );
-                }
-                Err(RequestUndoError::NotAPlayerInGame) => {
-                    let err_str = format!("Error: Not a player in game");
-                    return V2Response::ErrorMessage(
-                        ServiceError::BadRequest("Not a player in game".to_string()),
-                        err_str,
-                    );
-                }
-            },
-            "RemoveUndo" => match self
-                .app
-                .game_do_action_use_case
-                .request_undo(game_id, player_id, false)
-                .await
-            {
-                Ok(_) => {}
-                Err(RequestUndoError::GameNotFound) => {
-                    let err_str = format!("Error: Game not found");
-                    return V2Response::ErrorMessage(
-                        ServiceError::NotFound("Game not found".to_string()),
-                        err_str,
-                    );
-                }
-                Err(RequestUndoError::GameAlreadyEnded) => {
-                    let err_str = format!("Error: Game already ended");
-                    return V2Response::ErrorMessage(
-                        ServiceError::BadRequest("Game already ended".to_string()),
-                        err_str,
-                    );
-                }
-                Err(RequestUndoError::NotAPlayerInGame) => {
-                    let err_str = format!("Error: Not a player in game");
-                    return V2Response::ErrorMessage(
-                        ServiceError::BadRequest("Not a player in game".to_string()),
-                        err_str,
-                    );
-                }
-            },
+            "OfferDraw" => {
+                return self
+                    .offer_or_accept_request(game_id, player_id, opponent_id, TakRequestType::Draw)
+                    .await;
+            }
+            "RemoveDraw" => {
+                return self
+                    .retract_request(game_id, player_id, TakRequestType::Draw)
+                    .await;
+            }
+            "RequestUndo" => {
+                return self
+                    .offer_or_accept_request(game_id, player_id, opponent_id, TakRequestType::Undo)
+                    .await;
+            }
+            "RemoveUndo" => {
+                return self
+                    .retract_request(game_id, player_id, TakRequestType::Undo)
+                    .await;
+            }
             _ => {
                 return V2Response::ErrorNOK(ServiceError::BadRequest(
                     "Unknown Game command".to_string(),
@@ -322,23 +224,20 @@ impl ProtocolV2Handler {
             .do_action(game_id, player_id, action)
             .await
         {
-            Ok(_) => {}
-            Err(DoActionError::GameNotFound) => {
+            ActionResult::Success => {}
+            ActionResult::NotPossible(PlayerActionError::GameNotFound) => {
                 return Err(ServiceError::NotFound("Game not found".to_string()));
             }
-            Err(DoActionError::InvalidAction(reason)) => {
+            ActionResult::NotPossible(PlayerActionError::NotAPlayerInGame) => {
+                return Err(ServiceError::BadRequest("Not a player in game".to_string()));
+            }
+            ActionResult::ActionError(DoActionError::InvalidAction(reason)) => {
                 return Err(ServiceError::BadRequest(format!(
                     "Invalid action: {:?}",
                     reason
                 )));
             }
-            Err(DoActionError::GameAlreadyEnded) => {
-                return Err(ServiceError::BadRequest("Game already ended".to_string()));
-            }
-            Err(DoActionError::NotAPlayerInGame) => {
-                return Err(ServiceError::BadRequest("Not a player in game".to_string()));
-            }
-            Err(DoActionError::NotPlayersTurn) => {
+            ActionResult::ActionError(DoActionError::NotPlayersTurn) => {
                 return Err(ServiceError::BadRequest("Not player's turn".to_string()));
             }
         }
@@ -408,24 +307,21 @@ impl ProtocolV2Handler {
             .do_action(game_id, player_id, action)
             .await
         {
-            Ok(_) => {}
-            Err(DoActionError::GameNotFound) => {
+            ActionResult::Success => {}
+            ActionResult::NotPossible(PlayerActionError::GameNotFound) => {
                 return Err(ServiceError::NotFound("Game not found".to_string()));
             }
-            Err(DoActionError::InvalidAction(reason)) => {
+            ActionResult::NotPossible(PlayerActionError::NotAPlayerInGame) => {
+                return Err(ServiceError::BadRequest("Not a player in game".to_string()));
+            }
+            ActionResult::ActionError(DoActionError::InvalidAction(reason)) => {
                 return Err(ServiceError::BadRequest(format!(
                     "Invalid action: {:?}",
                     reason
                 )));
             }
-            Err(DoActionError::NotPlayersTurn) => {
+            ActionResult::ActionError(DoActionError::NotPlayersTurn) => {
                 return Err(ServiceError::BadRequest("Not player's turn".to_string()));
-            }
-            Err(DoActionError::GameAlreadyEnded) => {
-                return Err(ServiceError::BadRequest("Game already ended".to_string()));
-            }
-            Err(DoActionError::NotAPlayerInGame) => {
-                return Err(ServiceError::BadRequest("Not a player in game".to_string()));
             }
         };
 
@@ -464,5 +360,136 @@ impl ProtocolV2Handler {
             }
         };
         self.send_to(id, message);
+    }
+
+    async fn offer_or_accept_request(
+        &self,
+        game_id: GameId,
+        player_id: PlayerId,
+        opponent_id: PlayerId,
+        request_type: TakRequestType,
+    ) -> V2Response {
+        let requests = self
+            .app
+            .game_do_action_use_case
+            .get_requests_of_player(game_id, opponent_id);
+        if let Some(request_id) = requests.and_then(|reqs| {
+            reqs.into_iter()
+                .find_map(|r| match (&request_type, &r.request_type) {
+                    (TakRequestType::Draw, TakRequestType::Draw) => Some(r.id),
+                    (TakRequestType::Undo, TakRequestType::Undo) => Some(r.id),
+                    _ => None,
+                })
+        }) {
+            let res = match &request_type {
+                TakRequestType::Draw => {
+                    self.app
+                        .game_do_action_use_case
+                        .accept_draw_offer(game_id, player_id, request_id)
+                        .await
+                }
+                TakRequestType::Undo => {
+                    self.app
+                        .game_do_action_use_case
+                        .accept_undo_request(game_id, player_id, request_id)
+                        .await
+                }
+                _ => {
+                    return V2Response::ErrorNOK(ServiceError::BadRequest(
+                        "Invalid request type".to_string(),
+                    ));
+                }
+            };
+            match res {
+                ActionResult::Success => {}
+                ActionResult::NotPossible(e) => return player_action_error(e),
+                ActionResult::ActionError(HandleRequestError::RequestNotFound) => {
+                    let err_str = format!("Error: Request not found");
+                    return V2Response::ErrorMessage(
+                        ServiceError::NotFound("Request not found".to_string()),
+                        err_str,
+                    );
+                }
+            }
+        } else {
+            match self
+                .app
+                .game_do_action_use_case
+                .add_request(game_id, player_id, request_type)
+                .await
+            {
+                ActionResult::Success => {}
+                ActionResult::NotPossible(e) => return player_action_error(e),
+                ActionResult::ActionError(AddRequestError::AlreadyRequested) => {
+                    let err_str = format!("Error: Already requested");
+                    return V2Response::ErrorMessage(
+                        ServiceError::NotFound("Already requested".to_string()),
+                        err_str,
+                    );
+                }
+            }
+        }
+        V2Response::OK
+    }
+
+    async fn retract_request(
+        &self,
+        game_id: GameId,
+        player_id: PlayerId,
+        request_type: TakRequestType,
+    ) -> V2Response {
+        let requests = self
+            .app
+            .game_do_action_use_case
+            .get_requests_of_player(game_id, player_id);
+        let Some(request_id) = requests.and_then(|reqs| {
+            reqs.into_iter()
+                .find_map(|r| match (&request_type, &r.request_type) {
+                    (TakRequestType::Draw, TakRequestType::Draw) => Some(r.id),
+                    (TakRequestType::Undo, TakRequestType::Undo) => Some(r.id),
+                    _ => None,
+                })
+        }) else {
+            let err_str = format!("Error: No request to remove");
+            return V2Response::ErrorMessage(
+                ServiceError::NotFound("No request to remove".to_string()),
+                err_str,
+            );
+        };
+        match self
+            .app
+            .game_do_action_use_case
+            .retract_request(game_id, player_id, request_id)
+            .await
+        {
+            ActionResult::Success => V2Response::OK,
+            ActionResult::ActionError(HandleRequestError::RequestNotFound) => {
+                let err_str = format!("Error: Request not found");
+                return V2Response::ErrorMessage(
+                    ServiceError::NotFound("Request not found".to_string()),
+                    err_str,
+                );
+            }
+            ActionResult::NotPossible(e) => return player_action_error(e),
+        }
+    }
+}
+
+fn player_action_error(err: PlayerActionError) -> V2Response {
+    match err {
+        PlayerActionError::GameNotFound => {
+            let err_str = format!("Error: Game not found");
+            return V2Response::ErrorMessage(
+                ServiceError::NotFound("Game not found".to_string()),
+                err_str,
+            );
+        }
+        PlayerActionError::NotAPlayerInGame => {
+            let err_str = format!("Error: Not a player in game");
+            return V2Response::ErrorMessage(
+                ServiceError::BadRequest("Not a player in game".to_string()),
+                err_str,
+            );
+        }
     }
 }

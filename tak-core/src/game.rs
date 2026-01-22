@@ -5,7 +5,8 @@ use std::{
 
 use crate::{
     InvalidActionReason, InvalidPlaceReason, MaybeTimeout, TakAction, TakGameResult,
-    TakGameSettings, TakPlayer, TakReserve, TakVariant, TakWinReason, board::TakBoard,
+    TakGameSettings, TakPlayer, TakRequest, TakRequestId, TakRequestType, TakReserve, TakVariant,
+    TakWinReason, board::TakBoard, request::TakRequestSystem,
 };
 
 #[derive(Clone, Debug)]
@@ -15,10 +16,10 @@ pub struct TakFinishedBaseGame {
 }
 
 impl TakFinishedBaseGame {
-    fn new(ended_game: TakOngoingBaseGame, game_result: TakGameResult) -> Self {
+    fn new(ended_game: &TakOngoingBaseGame, game_result: TakGameResult) -> Self {
         TakFinishedBaseGame {
             game_result,
-            action_history: ended_game.action_history,
+            action_history: ended_game.action_history.clone(),
         }
     }
 }
@@ -31,12 +32,6 @@ pub struct TakOngoingBaseGame {
     reserves: (TakReserve, TakReserve),
     board_hash_history: HashMap<String, u32>,
     action_history: Vec<TakAction>,
-}
-
-#[derive(Clone, Debug)]
-pub enum TakBaseGame {
-    Ongoing(TakOngoingBaseGame),
-    Finished(TakFinishedBaseGame),
 }
 
 impl TakOngoingBaseGame {
@@ -89,11 +84,13 @@ impl TakOngoingBaseGame {
         }
     }
 
-    fn do_action(&self, action: TakAction) -> Result<TakBaseGame, InvalidActionReason> {
+    fn do_action(
+        &mut self,
+        action: TakAction,
+    ) -> Result<Option<TakFinishedBaseGame>, InvalidActionReason> {
         if let Err(e) = self.can_do_action(&action) {
             return Err(e);
         }
-        let mut new_state = self.clone();
         match &action {
             TakAction::Place { pos, variant } => {
                 let placing_player = if self.action_history.len() < 2 {
@@ -101,49 +98,46 @@ impl TakOngoingBaseGame {
                 } else {
                     self.current_player.clone()
                 };
-                let reserve = match new_state.current_player {
-                    TakPlayer::White => &mut new_state.reserves.0,
-                    TakPlayer::Black => &mut new_state.reserves.1,
+                let reserve = match self.current_player {
+                    TakPlayer::White => &mut self.reserves.0,
+                    TakPlayer::Black => &mut self.reserves.1,
                 };
                 let amount = match variant {
                     TakVariant::Flat | TakVariant::Standing => &mut reserve.pieces,
                     TakVariant::Capstone => &mut reserve.capstones,
                 };
                 *amount -= 1;
-                new_state
-                    .board
+                self.board
                     .do_place(pos, variant, &placing_player)
                     .expect("can_do_action should have prevented invalid place due to board state");
             }
             TakAction::Move { pos, dir, drops } => {
-                new_state
-                    .board
+                self.board
                     .do_move(pos, dir, drops)
                     .expect("can_do_action should have prevented invalid move due to board state");
             }
         }
 
         let board_hash = self.board.compute_hash_string();
-        new_state
-            .board_hash_history
+        self.board_hash_history
             .entry(board_hash.clone())
             .and_modify(|e| *e += 1)
             .or_insert(1);
 
-        match new_state.check_game_over(board_hash) {
-            TakBaseGame::Finished(finished_game) => {
-                return Ok(TakBaseGame::Finished(finished_game));
+        match self.check_game_over(board_hash) {
+            Some(finished_game) => {
+                return Ok(Some(finished_game));
             }
-            TakBaseGame::Ongoing(mut ongoing_game) => {
-                ongoing_game.current_player = ongoing_game.current_player.opponent();
-                ongoing_game.action_history.push(action);
+            None => {
+                self.current_player = self.current_player.opponent();
+                self.action_history.push(action);
 
-                Ok(TakBaseGame::Ongoing(ongoing_game))
+                Ok(None)
             }
         }
     }
 
-    fn check_game_over(self, board_hash: String) -> TakBaseGame {
+    fn check_game_over(&self, board_hash: String) -> Option<TakFinishedBaseGame> {
         let white_reserve_empty = self.reserves.0.pieces == 0 && self.reserves.0.capstones == 0;
         let black_reserve_empty = self.reserves.1.pieces == 0 && self.reserves.1.capstones == 0;
 
@@ -178,11 +172,8 @@ impl TakOngoingBaseGame {
             Some(TakGameResult::Draw)
         } else {
             None
-        };
-        match game_result {
-            Some(state) => TakBaseGame::Finished(TakFinishedBaseGame::new(self, state)),
-            None => TakBaseGame::Ongoing(self),
-        }
+        }?;
+        Some(TakFinishedBaseGame::new(self, game_result))
     }
 }
 
@@ -193,16 +184,16 @@ pub struct TakFinishedGame {
 }
 
 impl TakFinishedGame {
-    fn new(ongoing_game: TakOngoingGame, game_result: TakGameResult) -> Self {
+    fn new(ongoing_game: &TakOngoingGame, game_result: TakGameResult) -> Self {
         TakFinishedGame {
-            base: TakFinishedBaseGame::new(ongoing_game.base, game_result),
+            base: TakFinishedBaseGame::new(&ongoing_game.base, game_result),
             time_remaining: ongoing_game.clock.remaining_time,
         }
     }
 
     fn from_finished_base(
         finished_base: TakFinishedBaseGame,
-        ongoing_game: TakOngoingGame,
+        ongoing_game: &TakOngoingGame,
     ) -> Self {
         TakFinishedGame {
             base: finished_base,
@@ -226,8 +217,7 @@ impl TakFinishedGame {
 #[derive(Clone, Debug)]
 pub struct TakOngoingGame {
     base: TakOngoingBaseGame,
-    draw_offered: (bool, bool),
-    undo_requested: (bool, bool),
+    requests: TakRequestSystem,
     clock: TakClock,
 }
 
@@ -239,18 +229,12 @@ pub struct TakClock {
     is_ticking: bool,
 }
 
-pub enum TakGame {
-    Ongoing(TakOngoingGame),
-    Finished(TakFinishedGame),
-}
-
 impl TakOngoingGame {
     pub fn new(settings: TakGameSettings) -> Self {
         let base_game = TakOngoingBaseGame::new(settings.clone());
         TakOngoingGame {
             base: base_game,
-            draw_offered: (false, false),
-            undo_requested: (false, false),
+            requests: TakRequestSystem::new(),
             clock: TakClock {
                 remaining_time: (
                     settings.time_control.contingent,
@@ -263,29 +247,29 @@ impl TakOngoingGame {
         }
     }
 
+    pub fn get_request(&self, request_id: TakRequestId) -> Option<TakRequest> {
+        self.requests.get_request(request_id)
+    }
+
+    pub fn get_requests(&self) -> Vec<TakRequest> {
+        self.requests.get_all_requests()
+    }
+
     pub fn action_history(&self) -> &Vec<TakAction> {
         &self.base.action_history
-    }
-
-    pub fn draw_offers(&self) -> (bool, bool) {
-        self.draw_offered
-    }
-
-    pub fn undo_requests(&self) -> (bool, bool) {
-        self.undo_requested
     }
 
     pub fn current_player(&self) -> TakPlayer {
         self.base.current_player
     }
 
-    fn set_game_over(mut self, now: Instant, game_result: TakGameResult) -> TakFinishedGame {
+    fn set_game_over(&mut self, now: Instant, game_result: TakGameResult) -> TakFinishedGame {
         let player = self.base.current_player.clone();
         self.stop_clock(now, &player);
         TakFinishedGame::new(self, game_result)
     }
 
-    pub fn check_timeout(&self, now: Instant) -> Option<TakFinishedGame> {
+    pub fn check_timeout(&mut self, now: Instant) -> Option<TakFinishedGame> {
         let player = self.base.current_player.clone();
         let time_remaining = self.get_time_remaining(&player, now);
         if time_remaining.is_zero() {
@@ -293,9 +277,8 @@ impl TakOngoingGame {
                 winner: player.opponent(),
                 reason: TakWinReason::Default,
             };
-            let mut new_state = self.clone();
-            new_state.stop_clock(now, &player);
-            Some(TakFinishedGame::new(new_state, game_result))
+            self.stop_clock(now, &player);
+            Some(TakFinishedGame::new(self, game_result))
         } else {
             None
         }
@@ -374,10 +357,10 @@ impl TakOngoingGame {
     }
 
     pub fn do_action(
-        &self,
+        &mut self,
         action: TakAction,
         now: Instant,
-    ) -> Result<MaybeTimeout<TakGame>, InvalidActionReason> {
+    ) -> Result<MaybeTimeout<Option<TakFinishedGame>>, InvalidActionReason> {
         if let Some(finished_game) = self.check_timeout(now) {
             return Ok(MaybeTimeout::Timeout(finished_game));
         };
@@ -385,17 +368,14 @@ impl TakOngoingGame {
         let player = self.base.current_player.clone();
 
         match self.base.do_action(action) {
-            Ok(TakBaseGame::Ongoing(new_base)) => {
-                let mut new_state = self.clone();
-                new_state.base = new_base;
-                new_state.start_or_update_clock(now, &player);
-                Ok(MaybeTimeout::Result(TakGame::Ongoing(new_state)))
+            Ok(None) => {
+                self.start_or_update_clock(now, &player);
+                Ok(MaybeTimeout::Result(None))
             }
-            Ok(TakBaseGame::Finished(finished_base)) => {
-                let mut new_state = self.clone();
-                new_state.stop_clock(now, &player);
-                let finished_game = TakFinishedGame::from_finished_base(finished_base, new_state);
-                Ok(MaybeTimeout::Result(TakGame::Finished(finished_game)))
+            Ok(Some(finished_base)) => {
+                self.stop_clock(now, &player);
+                let finished_game = TakFinishedGame::from_finished_base(finished_base, self);
+                Ok(MaybeTimeout::Result(Some(finished_game)))
             }
             Err(e) => Err(e),
         }
@@ -410,8 +390,8 @@ impl TakOngoingGame {
         let mut game_clone = TakOngoingBaseGame::new(self.base.settings.clone());
         for record in &self.base.action_history {
             match game_clone.do_action(record.clone()) {
-                Ok(TakBaseGame::Ongoing(ongoing_base_game)) => game_clone = ongoing_base_game,
-                Ok(TakBaseGame::Finished(_)) => {
+                Ok(None) => {}
+                Ok(Some(_)) => {
                     //This should never happen, and the module is closed to preserve invariants, so we panic here
                     panic!(
                         "Finished game encountered when replaying action during undo: {:?}",
@@ -432,29 +412,19 @@ impl TakOngoingGame {
         true
     }
 
-    pub fn give_time_to_player(
-        &self,
-        player: &TakPlayer,
-        duration: Duration,
-        now: Instant,
-    ) -> MaybeTimeout<TakOngoingGame> {
-        if let Some(finished_game) = self.check_timeout(now) {
-            return MaybeTimeout::Timeout(finished_game);
-        };
-        let mut new_state = self.clone();
+    fn give_time_to_player(&mut self, player: &TakPlayer, duration: Duration) {
         let remaining = match player {
-            TakPlayer::White => &mut new_state.clock.remaining_time.0,
-            TakPlayer::Black => &mut new_state.clock.remaining_time.1,
+            TakPlayer::White => &mut self.clock.remaining_time.0,
+            TakPlayer::Black => &mut self.clock.remaining_time.1,
         };
         *remaining = remaining.saturating_add(duration);
-        MaybeTimeout::Result(new_state)
     }
 
-    pub fn resign(&self, player: &TakPlayer, now: Instant) -> MaybeTimeout<TakFinishedGame> {
+    pub fn resign(&mut self, player: &TakPlayer, now: Instant) -> MaybeTimeout<TakFinishedGame> {
         if let Some(finished_game) = self.check_timeout(now) {
             return MaybeTimeout::Timeout(finished_game);
         };
-        MaybeTimeout::Result(self.clone().set_game_over(
+        MaybeTimeout::Result(self.set_game_over(
             now,
             TakGameResult::Win {
                 winner: player.opponent(),
@@ -463,62 +433,115 @@ impl TakOngoingGame {
         ))
     }
 
-    pub fn offer_draw(
-        &self,
+    pub fn add_request(
+        &mut self,
         player: &TakPlayer,
-        offer: bool,
+        request_type: TakRequestType,
         now: Instant,
-    ) -> MaybeTimeout<Option<TakGame>> {
+    ) -> MaybeTimeout<Option<TakRequest>> {
         if let Some(finished_game) = self.check_timeout(now) {
             return MaybeTimeout::Timeout(finished_game);
         };
-        let mut new_state = self.clone();
-
-        let current_offer = match player {
-            TakPlayer::White => &mut new_state.draw_offered.0,
-            TakPlayer::Black => &mut new_state.draw_offered.1,
-        };
-        if *current_offer == offer {
-            return MaybeTimeout::Result(None);
-        }
-        *current_offer = offer;
-
-        if new_state.draw_offered.0 && new_state.draw_offered.1 {
-            let finished_game = new_state.set_game_over(now, TakGameResult::Draw);
-            MaybeTimeout::Result(Some(TakGame::Finished(finished_game)))
+        if let Some(request) = self.requests.add_request(player, request_type) {
+            MaybeTimeout::Result(Some(request))
         } else {
-            MaybeTimeout::Result(Some(TakGame::Ongoing(new_state)))
+            MaybeTimeout::Result(None)
         }
     }
 
-    /// Request an undo. If both players have requested an undo, the last action is undone.
-    /// If the game is finished due to timeout, returns the finished game.
-    /// If there are no actions to undo, returns None.
-    pub fn request_undo(
-        &self,
+    pub fn retract_request(
+        &mut self,
         player: &TakPlayer,
-        request: bool,
+        request_id: TakRequestId,
         now: Instant,
-    ) -> MaybeTimeout<Option<TakOngoingGame>> {
+    ) -> MaybeTimeout<Option<TakRequest>> {
         if let Some(finished_game) = self.check_timeout(now) {
             return MaybeTimeout::Timeout(finished_game);
         };
-        let mut new_state = self.clone();
+        if let Some(request) = self
+            .requests
+            .take_request_if(request_id, |p| p.player == *player)
+        {
+            MaybeTimeout::Result(Some(request))
+        } else {
+            MaybeTimeout::Result(None)
+        }
+    }
 
-        let current_request = match player {
-            TakPlayer::White => &mut new_state.undo_requested.0,
-            TakPlayer::Black => &mut new_state.undo_requested.1,
+    pub fn reject_request(
+        &mut self,
+        player: &TakPlayer,
+        request_id: TakRequestId,
+        now: Instant,
+    ) -> MaybeTimeout<Option<TakRequest>> {
+        if let Some(finished_game) = self.check_timeout(now) {
+            return MaybeTimeout::Timeout(finished_game);
         };
-        if *current_request == request {
-            return MaybeTimeout::Result(None);
+        if let Some(request) = self
+            .requests
+            .take_request_if(request_id, |p| p.player != *player)
+        {
+            MaybeTimeout::Result(Some(request))
+        } else {
+            MaybeTimeout::Result(None)
         }
-        *current_request = request;
+    }
 
-        if new_state.undo_requested.0 && new_state.undo_requested.1 {
-            new_state.undo_requested = (false, false);
-            new_state.undo_action(now); // For now, we ignore if undo_action fails (no action to undo)
+    pub fn accept_draw_request(
+        &mut self,
+        player: &TakPlayer,
+        request_id: TakRequestId,
+        now: Instant,
+    ) -> MaybeTimeout<Option<TakFinishedGame>> {
+        if let Some(finished_game) = self.check_timeout(now) {
+            return MaybeTimeout::Timeout(finished_game);
+        };
+        if let Some(_) = self.requests.take_request_if(request_id, |request| {
+            request.player != *player && matches!(request.request_type, TakRequestType::Draw)
+        }) {
+            MaybeTimeout::Result(Some(self.set_game_over(now, TakGameResult::Draw)))
+        } else {
+            MaybeTimeout::Result(None)
         }
-        MaybeTimeout::Result(Some(new_state))
+    }
+
+    pub fn accept_undo_request(
+        &mut self,
+        player: &TakPlayer,
+        request_id: TakRequestId,
+        now: Instant,
+    ) -> MaybeTimeout<Option<()>> {
+        if let Some(finished_game) = self.check_timeout(now) {
+            return MaybeTimeout::Timeout(finished_game);
+        };
+        if let Some(_) = self.requests.take_request_if(request_id, |request| {
+            request.player != *player && matches!(request.request_type, TakRequestType::Undo)
+        }) {
+            self.undo_action(now);
+            MaybeTimeout::Result(Some(()))
+        } else {
+            MaybeTimeout::Result(None)
+        }
+    }
+
+    pub fn accept_more_time_request(
+        &mut self,
+        player: &TakPlayer,
+        request_id: TakRequestId,
+        now: Instant,
+    ) -> MaybeTimeout<Option<()>> {
+        if let Some(finished_game) = self.check_timeout(now) {
+            return MaybeTimeout::Timeout(finished_game);
+        };
+        if let Some(request) = self.requests.take_request_if(request_id, |request| {
+            request.player != *player && matches!(request.request_type, TakRequestType::MoreTime(_))
+        }) {
+            if let TakRequestType::MoreTime(duration) = request.request_type {
+                self.give_time_to_player(player, duration);
+                return MaybeTimeout::Result(Some(()));
+            }
+        }
+        MaybeTimeout::Result(None)
     }
 }
 
@@ -533,8 +556,8 @@ mod tests {
             Ok(MaybeTimeout::Timeout(_)) => {
                 panic!("Game finished unexpectedly due to timeout")
             }
-            Ok(MaybeTimeout::Result(TakGame::Ongoing(g))) => *game = g,
-            Ok(MaybeTimeout::Result(TakGame::Finished(_))) => {
+            Ok(MaybeTimeout::Result(None)) => {}
+            Ok(MaybeTimeout::Result(Some(_))) => {
                 panic!("Game finished unexpectedly")
             }
             Err(e) => panic!("Failed to do action: {:?}", e),
@@ -548,13 +571,13 @@ mod tests {
         expected_result: TakGameResult,
     ) {
         match game.do_action(action, now) {
-            Ok(MaybeTimeout::Result(TakGame::Ongoing(_))) => {
+            Ok(MaybeTimeout::Result(None)) => {
                 panic!("Game should have finished, but is ongoing")
             }
             Ok(MaybeTimeout::Timeout(_)) => {
                 panic!("Game finished unexpectedly due to timeout")
             }
-            Ok(MaybeTimeout::Result(TakGame::Finished(g))) => {
+            Ok(MaybeTimeout::Result(Some(g))) => {
                 assert_eq!(g.base.game_result, expected_result)
             }
             Err(e) => panic!("Failed to do action: {:?}", e),

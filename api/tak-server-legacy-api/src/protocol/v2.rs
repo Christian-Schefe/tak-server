@@ -1,6 +1,7 @@
 use std::{sync::Arc, time::Instant};
 
 use dashmap::DashMap;
+use tak_core::TakRequestType;
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
     domain::{AccountId, GameId, PlayerId},
@@ -186,38 +187,41 @@ impl ProtocolV2Handler {
                     self.send_game_action_message(id, *game_id, &action.action);
                 }
             }
-            ListenerMessage::GameDrawOffered {
-                game_id,
-                offering_player_id,
-            } => {
-                if self.is_opponent_in_game(*offering_player_id, player_id, *game_id) {
-                    self.send_draw_offer_message(id, *game_id, true);
-                }
-            }
-            ListenerMessage::GameDrawOfferRetracted {
-                game_id,
-                retracting_player_id,
-            } => {
-                if self.is_opponent_in_game(*retracting_player_id, player_id, *game_id) {
-                    self.send_draw_offer_message(id, *game_id, false);
-                }
-            }
-            ListenerMessage::GameUndoRequested {
+            ListenerMessage::GameRequestAdded {
                 game_id,
                 requesting_player_id,
+                request,
             } => {
                 if self.is_opponent_in_game(*requesting_player_id, player_id, *game_id) {
-                    self.send_undo_request_message(id, *game_id, true);
+                    match request.request_type {
+                        TakRequestType::Draw => {
+                            self.send_draw_offer_message(id, *game_id, true);
+                        }
+                        TakRequestType::Undo => {
+                            self.send_undo_request_message(id, *game_id, true);
+                        }
+                        _ => {}
+                    }
                 }
             }
-            ListenerMessage::GameUndoRequestRetracted {
+            ListenerMessage::GameRequestRetracted {
                 game_id,
                 retracting_player_id,
+                request,
             } => {
                 if self.is_opponent_in_game(*retracting_player_id, player_id, *game_id) {
-                    self.send_undo_request_message(id, *game_id, false);
+                    match request.request_type {
+                        TakRequestType::Draw => {
+                            self.send_draw_offer_message(id, *game_id, false);
+                        }
+                        TakRequestType::Undo => {
+                            self.send_undo_request_message(id, *game_id, false);
+                        }
+                        _ => {}
+                    }
                 }
             }
+            ListenerMessage::GameRequestRejected { .. } => {} // legacy api does not support request rejections
             ListenerMessage::GameActionUndone { game_id } => {
                 self.send_undo_message(id, *game_id);
             }

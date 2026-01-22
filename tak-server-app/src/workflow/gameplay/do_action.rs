@@ -1,14 +1,11 @@
 use std::{sync::Arc, time::Instant};
 
-use tak_core::TakAction;
+use tak_core::{TakAction, TakRequest, TakRequestId, TakRequestType};
 
 use crate::{
     domain::{
         GameId, PlayerId,
-        game::{
-            DoActionResult, FinishedGame, GameService, OfferDrawResult, RequestUndoResult,
-            ResignResult,
-        },
+        game::{DoActionResult, FinishedGame, GamePlayerActionResult, GameService, ResignResult},
     },
     ports::notification::ListenerMessage,
     workflow::{
@@ -23,50 +20,73 @@ pub trait DoActionUseCase {
         game_id: GameId,
         player_id: PlayerId,
         action: TakAction,
-    ) -> Result<(), DoActionError>;
-    async fn offer_draw(
+    ) -> ActionResult<DoActionError>;
+    fn get_request(&self, game_id: GameId, request_id: TakRequestId) -> Option<TakRequest>;
+    fn get_requests_of_player(
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        offer_status: bool,
-    ) -> Result<(), OfferDrawError>;
-    async fn request_undo(
+    ) -> Option<Vec<TakRequest>>;
+    async fn add_request(
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        offer_status: bool,
-    ) -> Result<(), RequestUndoError>;
-    async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), ResignError>;
+        request_type: TakRequestType,
+    ) -> ActionResult<AddRequestError>;
+    async fn retract_request(
+        &self,
+        game_id: GameId,
+        player_id: PlayerId,
+        request_id: TakRequestId,
+    ) -> ActionResult<HandleRequestError>;
+    async fn reject_request(
+        &self,
+        game_id: GameId,
+        player_id: PlayerId,
+        request_id: TakRequestId,
+    ) -> ActionResult<HandleRequestError>;
+    async fn accept_draw_offer(
+        &self,
+        game_id: GameId,
+        player_id: PlayerId,
+        request_id: TakRequestId,
+    ) -> ActionResult<HandleRequestError>;
+    async fn accept_undo_request(
+        &self,
+        game_id: GameId,
+        player_id: PlayerId,
+        request_id: TakRequestId,
+    ) -> ActionResult<HandleRequestError>;
+    async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), PlayerActionError>;
+}
+
+#[derive(Debug)]
+pub enum PlayerActionError {
+    GameNotFound,
+    NotAPlayerInGame,
+}
+
+#[derive(Debug)]
+pub enum ActionResult<R> {
+    Success,
+    NotPossible(PlayerActionError),
+    ActionError(R),
 }
 
 #[derive(Debug)]
 pub enum DoActionError {
-    GameNotFound,
-    NotAPlayerInGame,
     InvalidAction(tak_core::InvalidActionReason),
     NotPlayersTurn,
-    GameAlreadyEnded,
 }
 
 #[derive(Debug)]
-pub enum OfferDrawError {
-    GameNotFound,
-    NotAPlayerInGame,
-    GameAlreadyEnded,
+pub enum AddRequestError {
+    AlreadyRequested,
 }
 
 #[derive(Debug)]
-pub enum RequestUndoError {
-    GameNotFound,
-    NotAPlayerInGame,
-    GameAlreadyEnded,
-}
-
-#[derive(Debug)]
-pub enum ResignError {
-    GameNotFound,
-    NotAPlayerInGame,
-    GameAlreadyEnded,
+pub enum HandleRequestError {
+    RequestNotFound,
 }
 
 pub struct DoActionUseCaseImpl<G: GameService, NP: NotifyPlayerWorkflow, F: FinalizeGameWorkflow> {
@@ -121,6 +141,21 @@ impl<G: GameService, NP: NotifyPlayerWorkflow, F: FinalizeGameWorkflow>
             .await;
         self.finalize_game_workflow.finalize_game(ended_game).await;
     }
+
+    async fn handle_game_action_result<R>(
+        &self,
+        result: GamePlayerActionResult<R>,
+    ) -> Result<R, PlayerActionError> {
+        match result {
+            GamePlayerActionResult::Result(res) => Ok(res),
+            GamePlayerActionResult::Timeout(ended_game) => {
+                self.handle_ended_game(ended_game).await;
+                Err(PlayerActionError::GameNotFound)
+            }
+            GamePlayerActionResult::GameNotFound => Err(PlayerActionError::GameNotFound),
+            GamePlayerActionResult::NotAPlayerInGame => Err(PlayerActionError::NotAPlayerInGame),
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -135,7 +170,7 @@ impl<
         game_id: GameId,
         player_id: PlayerId,
         action: TakAction,
-    ) -> Result<(), DoActionError> {
+    ) -> ActionResult<DoActionError> {
         log::debug!(
             "Player {} is performing action {:?} in game {}",
             player_id,
@@ -143,29 +178,22 @@ impl<
             game_id
         );
         let now = Instant::now();
-        let (action_record, maybe_ended_game) =
-            match self.game_service.do_action(game_id, player_id, action, now) {
-                DoActionResult::ActionPerformed(action_record) => (action_record, None),
-                DoActionResult::GameOver(action_record, ended_game) => {
-                    (action_record, Some(ended_game))
-                }
-                DoActionResult::Timeout(ended_game) => {
-                    self.handle_ended_game(ended_game).await;
-                    return Err(DoActionError::GameAlreadyEnded);
-                }
-                DoActionResult::NotAPlayerInGame => {
-                    return Err(DoActionError::NotAPlayerInGame);
-                }
-                DoActionResult::InvalidAction(e) => {
-                    return Err(DoActionError::InvalidAction(e));
-                }
-                DoActionResult::NotPlayersTurn => {
-                    return Err(DoActionError::NotPlayersTurn);
-                }
-                DoActionResult::GameNotFound => {
-                    return Err(DoActionError::GameNotFound);
-                }
-            };
+        let (action_record, maybe_ended_game) = match self
+            .handle_game_action_result(self.game_service.do_action(game_id, player_id, action, now))
+            .await
+        {
+            Err(e) => return ActionResult::NotPossible(e),
+            Ok(DoActionResult::ActionPerformed(action_record)) => (action_record, None),
+            Ok(DoActionResult::GameOver(action_record, ended_game)) => {
+                (action_record, Some(ended_game))
+            }
+            Ok(DoActionResult::InvalidAction(e)) => {
+                return ActionResult::ActionError(DoActionError::InvalidAction(e));
+            }
+            Ok(DoActionResult::NotPlayersTurn) => {
+                return ActionResult::ActionError(DoActionError::NotPlayersTurn);
+            }
+        };
 
         let msg = ListenerMessage::GameAction {
             game_id,
@@ -188,117 +216,173 @@ impl<
             self.send_game_time_update(game_id, now).await;
         }
 
-        Ok(())
+        ActionResult::Success
     }
 
-    async fn offer_draw(
+    fn get_request(&self, game_id: GameId, request_id: TakRequestId) -> Option<TakRequest> {
+        self.game_service.get_request(game_id, request_id)
+    }
+
+    fn get_requests_of_player(
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        offer_status: bool,
-    ) -> Result<(), OfferDrawError> {
+    ) -> Option<Vec<TakRequest>> {
+        self.game_service.get_requests_of_player(game_id, player_id)
+    }
+
+    async fn add_request(
+        &self,
+        game_id: GameId,
+        player_id: PlayerId,
+        request_type: TakRequestType,
+    ) -> ActionResult<AddRequestError> {
         let now = Instant::now();
         match self
-            .game_service
-            .offer_draw(game_id, player_id, now, offer_status)
+            .handle_game_action_result(self.game_service.add_request(
+                game_id,
+                player_id,
+                request_type,
+                now,
+            ))
+            .await
         {
-            OfferDrawResult::Success => {
-                let msg = if offer_status {
-                    ListenerMessage::GameDrawOffered {
-                        game_id,
-                        offering_player_id: player_id,
-                    }
-                } else {
-                    ListenerMessage::GameDrawOfferRetracted {
-                        game_id,
-                        retracting_player_id: player_id,
-                    }
+            Err(e) => return ActionResult::NotPossible(e),
+            Ok(Err(())) => {
+                return ActionResult::ActionError(AddRequestError::AlreadyRequested);
+            }
+            Ok(Ok(request)) => {
+                let msg = ListenerMessage::GameRequestAdded {
+                    game_id,
+                    requesting_player_id: player_id,
+                    request,
                 };
                 self.notify_player_workflow
                     .notify_players_and_observers(game_id, &msg)
                     .await;
-            }
-            OfferDrawResult::NotAPlayerInGame => {
-                return Err(OfferDrawError::NotAPlayerInGame);
-            }
-            OfferDrawResult::Unchanged => {}
-            OfferDrawResult::GameDrawn(ended_game) => {
-                self.handle_ended_game(ended_game).await;
-            }
-            OfferDrawResult::GameNotFound => return Err(OfferDrawError::GameNotFound),
-            OfferDrawResult::Timeout(ended_game) => {
-                self.handle_ended_game(ended_game).await;
-                return Err(OfferDrawError::GameAlreadyEnded);
+                ActionResult::Success
             }
         }
-
-        Ok(())
     }
 
-    async fn request_undo(
+    async fn retract_request(
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        request_status: bool,
-    ) -> Result<(), RequestUndoError> {
+        request_id: TakRequestId,
+    ) -> ActionResult<HandleRequestError> {
         let now = Instant::now();
         match self
-            .game_service
-            .request_undo(game_id, player_id, now, request_status)
+            .handle_game_action_result(
+                self.game_service
+                    .retract_request(game_id, player_id, request_id, now),
+            )
+            .await
         {
-            RequestUndoResult::MoveUndone => {
+            Err(e) => return ActionResult::NotPossible(e),
+            Ok(Ok(request)) => {
+                let msg = ListenerMessage::GameRequestRetracted {
+                    game_id,
+                    retracting_player_id: player_id,
+                    request,
+                };
+                self.notify_player_workflow
+                    .notify_players_and_observers(game_id, &msg)
+                    .await;
+                ActionResult::Success
+            }
+            Ok(Err(())) => ActionResult::ActionError(HandleRequestError::RequestNotFound),
+        }
+    }
+    async fn reject_request(
+        &self,
+        game_id: GameId,
+        player_id: PlayerId,
+        request_id: TakRequestId,
+    ) -> ActionResult<HandleRequestError> {
+        let now = Instant::now();
+        match self
+            .handle_game_action_result(
+                self.game_service
+                    .reject_request(game_id, player_id, request_id, now),
+            )
+            .await
+        {
+            Err(e) => return ActionResult::NotPossible(e),
+            Ok(Ok(request)) => {
+                let msg = ListenerMessage::GameRequestRejected {
+                    game_id,
+                    rejecting_player_id: player_id,
+                    request,
+                };
+                self.notify_player_workflow
+                    .notify_players_and_observers(game_id, &msg)
+                    .await;
+                ActionResult::Success
+            }
+            Ok(Err(())) => ActionResult::ActionError(HandleRequestError::RequestNotFound),
+        }
+    }
+
+    async fn accept_draw_offer(
+        &self,
+        game_id: GameId,
+        player_id: PlayerId,
+        offer_id: TakRequestId,
+    ) -> ActionResult<HandleRequestError> {
+        let now = Instant::now();
+        match self
+            .handle_game_action_result(
+                self.game_service
+                    .accept_draw_request(game_id, player_id, offer_id, now),
+            )
+            .await
+        {
+            Err(e) => return ActionResult::NotPossible(e),
+            Ok(Ok(request)) => {
+                self.handle_ended_game(request).await;
+                ActionResult::Success
+            }
+            Ok(Err(())) => ActionResult::ActionError(HandleRequestError::RequestNotFound),
+        }
+    }
+
+    async fn accept_undo_request(
+        &self,
+        game_id: GameId,
+        player_id: PlayerId,
+        request_id: TakRequestId,
+    ) -> ActionResult<HandleRequestError> {
+        let now = Instant::now();
+        match self
+            .handle_game_action_result(
+                self.game_service
+                    .accept_undo_request(game_id, player_id, request_id, now),
+            )
+            .await
+        {
+            Err(e) => return ActionResult::NotPossible(e),
+            Ok(Ok(())) => {
                 let msg = ListenerMessage::GameActionUndone { game_id };
                 self.notify_player_workflow
                     .notify_players_and_observers(game_id, &msg)
                     .await;
-                self.send_game_time_update(game_id, now).await;
+                ActionResult::Success
             }
-            RequestUndoResult::Success => {
-                let msg = if request_status {
-                    ListenerMessage::GameUndoRequested {
-                        game_id,
-                        requesting_player_id: player_id,
-                    }
-                } else {
-                    ListenerMessage::GameUndoRequestRetracted {
-                        game_id,
-                        retracting_player_id: player_id,
-                    }
-                };
-                self.notify_player_workflow
-                    .notify_players_and_observers(game_id, &msg)
-                    .await;
-            }
-            RequestUndoResult::Unchanged => {}
-            RequestUndoResult::NotAPlayerInGame => {
-                return Err(RequestUndoError::NotAPlayerInGame);
-            }
-            RequestUndoResult::GameNotFound => return Err(RequestUndoError::GameNotFound),
-            RequestUndoResult::Timeout(ended_game) => {
-                self.handle_ended_game(ended_game).await;
-                return Err(RequestUndoError::GameAlreadyEnded);
-            }
+            Ok(Err(())) => ActionResult::ActionError(HandleRequestError::RequestNotFound),
         }
-
-        Ok(())
     }
 
-    async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), ResignError> {
+    async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), PlayerActionError> {
         let now = Instant::now();
-        match self.game_service.resign(game_id, player_id, now) {
+        match self
+            .handle_game_action_result(self.game_service.resign(game_id, player_id, now))
+            .await?
+        {
             ResignResult::GameOver(ended_game) => {
                 self.handle_ended_game(ended_game).await;
+                Ok(())
             }
-            ResignResult::Timeout(ended_game) => {
-                self.handle_ended_game(ended_game).await;
-                return Err(ResignError::GameAlreadyEnded);
-            }
-            ResignResult::NotAPlayerInGame => {
-                return Err(ResignError::NotAPlayerInGame);
-            }
-            ResignResult::GameNotFound => return Err(ResignError::GameNotFound),
         }
-
-        Ok(())
     }
 }

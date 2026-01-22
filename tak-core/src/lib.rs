@@ -1,11 +1,11 @@
 mod board;
 mod game;
 pub mod ptn;
+mod request;
 
 use std::time::Duration;
 
 pub use game::TakFinishedGame;
-pub use game::TakGame;
 pub use game::TakOngoingGame;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -179,6 +179,23 @@ pub enum InvalidMoveReason {
     CannotMoveOverStandingPieces,
     CannotMoveOverCapstonePieces,
     InvalidDropDistribution,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TakRequestId(pub u64);
+
+#[derive(Clone, Debug)]
+pub enum TakRequestType {
+    Draw,
+    Undo,
+    MoreTime(Duration),
+}
+
+#[derive(Clone, Debug)]
+pub struct TakRequest {
+    pub id: TakRequestId,
+    pub player: TakPlayer,
+    pub request_type: TakRequestType,
 }
 
 #[cfg(test)]

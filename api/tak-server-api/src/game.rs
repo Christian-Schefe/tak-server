@@ -5,13 +5,19 @@ use axum::{
     extract::{Path, State},
 };
 use tak_core::{
-    TakGameSettings,
+    TakGameSettings, TakPlayer, TakRequestId, TakRequestType,
     ptn::{action_to_ptn, game_result_to_string},
 };
 use tak_server_app::{
     domain::GameId,
     services::player_resolver::ResolveError,
-    workflow::{gameplay::GameMetadataView, history::query::GameQueryError},
+    workflow::{
+        gameplay::{
+            GameMetadataView,
+            do_action::{ActionResult, AddRequestError, HandleRequestError, PlayerActionError},
+        },
+        history::query::GameQueryError,
+    },
 };
 
 use crate::{AppState, ServiceError, auth::Auth};
@@ -34,8 +40,22 @@ pub async fn get_game_status(
     let game = app.app.game_get_ongoing_use_case.get_game(game_id);
 
     if let Some(ongoing_game) = game {
-        let (draw_offer_white, draw_offer_black) = ongoing_game.game.draw_offers();
-        let (undo_request_white, undo_request_black) = ongoing_game.game.undo_requests();
+        let mut white_requests = Vec::new();
+        let mut black_requests = Vec::new();
+        for request in ongoing_game.game.get_requests().into_iter() {
+            let req = GameRequest {
+                id: request.id.0,
+                request_type: match request.request_type {
+                    TakRequestType::Draw => GameRequestType::Draw,
+                    TakRequestType::Undo => GameRequestType::Undo,
+                    TakRequestType::MoreTime(_) => continue, // currently not exposed
+                },
+            };
+            match request.player {
+                TakPlayer::White => white_requests.push(req),
+                TakPlayer::Black => black_requests.push(req),
+            }
+        }
         let (white_remaining, black_remaining) =
             ongoing_game.game.get_time_remaining_both(Instant::now());
         return Ok(Json(GameStatus {
@@ -53,13 +73,9 @@ pub async fn get_game_status(
                 .map(|a| action_to_ptn(&a))
                 .collect(),
             status: GameStatusType::Ongoing {
-                draw_offers: ForPlayer {
-                    white: draw_offer_white,
-                    black: draw_offer_black,
-                },
-                undo_requests: ForPlayer {
-                    white: undo_request_white,
-                    black: undo_request_black,
+                requests: ForPlayer {
+                    white: white_requests,
+                    black: black_requests,
                 },
             },
             remaining_ms: ForPlayer {
@@ -129,7 +145,242 @@ pub async fn resign_game(
         .game_do_action_use_case
         .resign(game_id, player_id)
         .await
-        .map_err(|e| ServiceError::Internal(format!("Failed to resign game: {:?}", e)))
+        .map_err(|e| match e {
+            PlayerActionError::GameNotFound => {
+                ServiceError::NotFound(format!("Game with id {} not found", game_id.0))
+            }
+            PlayerActionError::NotAPlayerInGame => {
+                ServiceError::Forbidden("You are not a player in this game".to_string())
+            }
+        })
+}
+
+async fn add_request(
+    auth: Auth,
+    app: &AppState,
+    game_id: GameId,
+    request_type: TakRequestType,
+) -> Result<(), ServiceError> {
+    let player_id = app
+        .app
+        .player_resolver_service
+        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .await
+        .map_err(|ResolveError::Internal| {
+            ServiceError::Internal(format!(
+                "Failed to resolve player id for account {}",
+                auth.account.account_id
+            ))
+        })?;
+    match app
+        .app
+        .game_do_action_use_case
+        .add_request(game_id, player_id, request_type)
+        .await
+    {
+        ActionResult::Success => Ok(()),
+        ActionResult::NotPossible(e) => match e {
+            PlayerActionError::GameNotFound => Err(ServiceError::NotFound(format!(
+                "Game with id {} not found",
+                game_id.0
+            ))),
+            PlayerActionError::NotAPlayerInGame => Err(ServiceError::Forbidden(
+                "You are not a player in this game".to_string(),
+            )),
+        },
+        ActionResult::ActionError(AddRequestError::AlreadyRequested) => Err(
+            ServiceError::Forbidden("You have already made this request".to_string()),
+        ),
+    }
+}
+
+async fn retract_request(
+    auth: Auth,
+    app: &AppState,
+    game_id: GameId,
+    request_id: TakRequestId,
+) -> Result<(), ServiceError> {
+    let player_id = app
+        .app
+        .player_resolver_service
+        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .await
+        .map_err(|ResolveError::Internal| {
+            ServiceError::Internal(format!(
+                "Failed to resolve player id for account {}",
+                auth.account.account_id
+            ))
+        })?;
+    match app
+        .app
+        .game_do_action_use_case
+        .retract_request(game_id, player_id, request_id)
+        .await
+    {
+        ActionResult::Success => Ok(()),
+        ActionResult::NotPossible(e) => match e {
+            PlayerActionError::GameNotFound => Err(ServiceError::NotFound(format!(
+                "Game with id {} not found",
+                game_id.0
+            ))),
+            PlayerActionError::NotAPlayerInGame => Err(ServiceError::Forbidden(
+                "You are not a player in this game".to_string(),
+            )),
+        },
+        ActionResult::ActionError(HandleRequestError::RequestNotFound) => Err(
+            ServiceError::NotFound("No such request to retract".to_string()),
+        ),
+    }
+}
+
+async fn reject_request(
+    auth: Auth,
+    app: &AppState,
+    game_id: GameId,
+    request_id: TakRequestId,
+) -> Result<(), ServiceError> {
+    let player_id = app
+        .app
+        .player_resolver_service
+        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .await
+        .map_err(|ResolveError::Internal| {
+            ServiceError::Internal(format!(
+                "Failed to resolve player id for account {}",
+                auth.account.account_id
+            ))
+        })?;
+    match app
+        .app
+        .game_do_action_use_case
+        .reject_request(game_id, player_id, request_id)
+        .await
+    {
+        ActionResult::Success => Ok(()),
+        ActionResult::NotPossible(e) => match e {
+            PlayerActionError::GameNotFound => Err(ServiceError::NotFound(format!(
+                "Game with id {} not found",
+                game_id.0
+            ))),
+            PlayerActionError::NotAPlayerInGame => Err(ServiceError::Forbidden(
+                "You are not a player in this game".to_string(),
+            )),
+        },
+        ActionResult::ActionError(HandleRequestError::RequestNotFound) => Err(
+            ServiceError::NotFound("No such request to reject".to_string()),
+        ),
+    }
+}
+
+async fn accept_request(
+    auth: Auth,
+    app: &AppState,
+    game_id: GameId,
+    request_id: TakRequestId,
+) -> Result<(), ServiceError> {
+    let player_id = app
+        .app
+        .player_resolver_service
+        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .await
+        .map_err(|ResolveError::Internal| {
+            ServiceError::Internal(format!(
+                "Failed to resolve player id for account {}",
+                auth.account.account_id
+            ))
+        })?;
+    let Some(request) = app
+        .app
+        .game_do_action_use_case
+        .get_request(game_id, request_id)
+    else {
+        return Err(ServiceError::NotFound(
+            "No such request to accept".to_string(),
+        ));
+    };
+    let res = match request.request_type {
+        TakRequestType::Draw => {
+            app.app
+                .game_do_action_use_case
+                .accept_draw_offer(game_id, player_id, request_id)
+                .await
+        }
+        TakRequestType::Undo => {
+            app.app
+                .game_do_action_use_case
+                .accept_undo_request(game_id, player_id, request_id)
+                .await
+        }
+        TakRequestType::MoreTime(_) => {
+            return Err(ServiceError::NotPossible(
+                "Accepting more time requests is not supported".to_string(),
+            ));
+        }
+    };
+    match res {
+        ActionResult::Success => Ok(()),
+        ActionResult::NotPossible(e) => match e {
+            PlayerActionError::GameNotFound => Err(ServiceError::NotFound(format!(
+                "Game with id {} not found",
+                game_id.0
+            ))),
+            PlayerActionError::NotAPlayerInGame => Err(ServiceError::Forbidden(
+                "You are not a player in this game".to_string(),
+            )),
+        },
+        ActionResult::ActionError(HandleRequestError::RequestNotFound) => Err(
+            ServiceError::NotFound("No such request to reject".to_string()),
+        ),
+    }
+}
+
+pub async fn offer_draw(
+    auth: Auth,
+    State(app): State<AppState>,
+    Path(game_id): Path<i64>,
+) -> Result<(), ServiceError> {
+    let game_id = GameId(game_id);
+    add_request(auth, &app, game_id, TakRequestType::Draw).await
+}
+
+pub async fn request_undo(
+    auth: Auth,
+    State(app): State<AppState>,
+    Path(game_id): Path<i64>,
+) -> Result<(), ServiceError> {
+    let game_id = GameId(game_id);
+    add_request(auth, &app, game_id, TakRequestType::Undo).await
+}
+
+pub async fn retract_offer(
+    auth: Auth,
+    State(app): State<AppState>,
+    Path((game_id, offer_id)): Path<(i64, u64)>,
+) -> Result<(), ServiceError> {
+    let game_id = GameId(game_id);
+    let request_id = TakRequestId(offer_id);
+    retract_request(auth, &app, game_id, request_id).await
+}
+
+pub async fn respond_to_offer(
+    auth: Auth,
+    State(app): State<AppState>,
+    Path((game_id, request_id)): Path<(i64, u64)>,
+    Json(response): Json<RequestResponse>,
+) -> Result<(), ServiceError> {
+    let game_id = GameId(game_id);
+    let request_id = TakRequestId(request_id);
+    if response.accept {
+        accept_request(auth, &app, game_id, request_id).await
+    } else {
+        reject_request(auth, &app, game_id, request_id).await
+    }
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestResponse {
+    pub accept: bool,
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
@@ -145,6 +396,24 @@ pub struct GameStatus {
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GameRequest {
+    id: u64,
+    request_type: GameRequestType,
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
+#[serde(
+    rename_all = "camelCase",
+    tag = "type",
+    rename_all_fields = "camelCase"
+)]
+pub enum GameRequestType {
+    Draw,
+    Undo,
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
 #[serde(
     rename_all = "camelCase",
     tag = "type",
@@ -152,8 +421,7 @@ pub struct GameStatus {
 )]
 pub enum GameStatusType {
     Ongoing {
-        draw_offers: ForPlayer<bool>,
-        undo_requests: ForPlayer<bool>,
+        requests: ForPlayer<Vec<GameRequest>>,
     },
     Ended {
         result: String,

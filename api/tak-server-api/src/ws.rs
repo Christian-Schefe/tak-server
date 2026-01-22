@@ -12,12 +12,21 @@ use futures::{
     SinkExt, StreamExt,
     stream::{SplitSink, SplitStream},
 };
-use tak_core::ptn::{action_from_ptn, action_to_ptn, game_result_to_string};
+use tak_core::{
+    TakRequestType,
+    ptn::{action_from_ptn, action_to_ptn, game_result_to_string},
+};
 use tak_player_connection::{ConnectionId, PlayerSimpleConnectionPort};
 use tak_server_app::{
     domain::{AccountId, GameId, PlayerId},
     ports::notification::ListenerMessage,
-    workflow::{chat::message::MessageTarget, gameplay::observe::ObserveGameError},
+    workflow::{
+        chat::message::MessageTarget,
+        gameplay::{
+            do_action::{ActionResult, DoActionError, PlayerActionError},
+            observe::ObserveGameError,
+        },
+    },
 };
 use tokio::select;
 use tokio_util::sync::CancellationToken;
@@ -203,18 +212,31 @@ async fn handle_authenticated_client_message(
                     "Invalid action format".to_string(),
                 ));
             };
-            if let Err(e) = app
+            match app
                 .app
                 .game_do_action_use_case
                 .do_action(GameId(game_id), player_id, action)
                 .await
             {
-                return Err(ServiceError::BadRequest(format!(
-                    "Failed to perform game action: {:?}",
-                    e
-                )));
+                ActionResult::Success => Ok(()),
+                ActionResult::ActionError(e) => match e {
+                    DoActionError::InvalidAction(reason) => Err(ServiceError::BadRequest(format!(
+                        "Invalid action: {:?}",
+                        reason
+                    ))),
+                    DoActionError::NotPlayersTurn => {
+                        Err(ServiceError::BadRequest("Not player's turn".to_string()))
+                    }
+                },
+                ActionResult::NotPossible(e) => match e {
+                    PlayerActionError::GameNotFound => {
+                        Err(ServiceError::BadRequest("Game not found".to_string()))
+                    }
+                    PlayerActionError::NotAPlayerInGame => {
+                        Err(ServiceError::BadRequest("Not a player in game".to_string()))
+                    }
+                },
             }
-            Ok(())
         }
         ClientMessage::ChatMessage { message, target } => {
             log::info!("Received ChatMessage: {:?} -> {}", target, message);
@@ -368,11 +390,36 @@ pub enum ServerMessage {
         game_id: i64,
         result: String,
     },
+    GameRequestAdded {
+        game_id: i64,
+        request_id: u64,
+        request_type: JsonGameRequestType,
+        from_player_id: String,
+    },
+    GameRequestRetracted {
+        game_id: i64,
+        request_id: u64,
+    },
+    GameRequestRejected {
+        game_id: i64,
+        request_id: u64,
+    },
     ChatMessage {
         from_account_id: String,
         message: String,
         target: JsonChatMessageTarget,
     },
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum JsonGameRequestType {
+    Draw,
+    Undo,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -433,6 +480,39 @@ impl ServerMessage {
                     white: white_time.as_millis() as u64,
                     black: black_time.as_millis() as u64,
                 },
+            }),
+            ListenerMessage::GameRequestAdded {
+                game_id,
+                requesting_player_id,
+                request,
+            } => {
+                let request_type = match request.request_type {
+                    TakRequestType::Draw => JsonGameRequestType::Draw,
+                    TakRequestType::Undo => JsonGameRequestType::Undo,
+                    _ => return MessageTransformation::Ignore,
+                };
+                MessageTransformation::Transform(ServerMessage::GameRequestAdded {
+                    game_id: game_id.0,
+                    request_id: request.id.0,
+                    request_type,
+                    from_player_id: requesting_player_id.0.to_string(),
+                })
+            }
+            ListenerMessage::GameRequestRetracted {
+                game_id,
+                request,
+                retracting_player_id: _,
+            } => MessageTransformation::Transform(ServerMessage::GameRequestRetracted {
+                game_id: game_id.0,
+                request_id: request.id.0,
+            }),
+            ListenerMessage::GameRequestRejected {
+                game_id,
+                request,
+                rejecting_player_id: _,
+            } => MessageTransformation::Transform(ServerMessage::GameRequestRejected {
+                game_id: game_id.0,
+                request_id: request.id.0,
             }),
             ListenerMessage::ChatMessage {
                 from_account_id,

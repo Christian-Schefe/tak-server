@@ -6,7 +6,7 @@ use sea_orm::{
 };
 use serde::Deserialize;
 use tak_core::{
-    TakAction, TakGameSettings, TakPlayer, TakReserve, TakTimeControl,
+    TakAction, TakGameSettings, TakPlayer, TakRequestType, TakReserve, TakTimeControl,
     ptn::{action_from_ptn, action_to_ptn, game_result_from_string, game_result_to_string},
 };
 use tak_persistence_sea_orm_entites::game;
@@ -43,30 +43,158 @@ enum JsonEventRecordType {
         white_remaining_ms: u64,
         black_remaining_ms: u64,
     },
-    UndoRequested {
-        player: JsonTakPlayer,
+    RequestAdded {
+        request_id: u64,
+        request_type: JsonRequestType,
+        request_player: JsonTakPlayer,
     },
-    UndoRequestWithdrawn {
-        player: JsonTakPlayer,
+    RequestRetracted {
+        request_id: u64,
     },
-    UndoAccepted,
-    DrawOffered {
-        player: JsonTakPlayer,
+    RequestRejected {
+        request_id: u64,
     },
-    DrawOfferWithdrawn {
-        player: JsonTakPlayer,
+    RequestAccepted {
+        request_id: u64,
     },
+    ActionUndone,
     DrawAgreed,
+    TimeGiven {
+        player: JsonTakPlayer,
+        amount_ms: u64,
+    },
     Timeout,
     Resigned {
         player: JsonTakPlayer,
     },
 }
 
+impl JsonEventRecordType {
+    fn from_game_event(event: GameEventType) -> Self {
+        match event {
+            GameEventType::Action {
+                action,
+                white_remaining,
+                black_remaining,
+            } => JsonEventRecordType::Action {
+                action,
+                white_remaining_ms: white_remaining.as_millis() as u64,
+                black_remaining_ms: black_remaining.as_millis() as u64,
+            },
+            GameEventType::RequestAdded { request } => JsonEventRecordType::RequestAdded {
+                request_id: request.id.0,
+                request_type: match request.request_type {
+                    TakRequestType::Draw => JsonRequestType::Draw,
+                    TakRequestType::Undo => JsonRequestType::Undo,
+                    TakRequestType::MoreTime(duration) => JsonRequestType::MoreTime {
+                        amount_ms: duration.as_millis() as u64,
+                    },
+                },
+                request_player: JsonTakPlayer::from_tak_player(&request.player),
+            },
+            GameEventType::RequestRetracted { request_id } => {
+                JsonEventRecordType::RequestRetracted {
+                    request_id: request_id.0,
+                }
+            }
+            GameEventType::RequestRejected { request_id } => JsonEventRecordType::RequestRejected {
+                request_id: request_id.0,
+            },
+            GameEventType::RequestAccepted { request_id } => JsonEventRecordType::RequestAccepted {
+                request_id: request_id.0,
+            },
+            GameEventType::ActionUndone => JsonEventRecordType::ActionUndone,
+            GameEventType::DrawAgreed => JsonEventRecordType::DrawAgreed,
+            GameEventType::TimeGiven { player, duration } => JsonEventRecordType::TimeGiven {
+                player: JsonTakPlayer::from_tak_player(&player),
+                amount_ms: duration.as_millis() as u64,
+            },
+            GameEventType::Timeout => todo!(),
+            GameEventType::Resigned(tak_player) => JsonEventRecordType::Resigned {
+                player: JsonTakPlayer::from_tak_player(&tak_player),
+            },
+        }
+    }
+
+    fn to_game_event(&self) -> GameEventType {
+        match self {
+            JsonEventRecordType::Action {
+                action,
+                white_remaining_ms,
+                black_remaining_ms,
+            } => GameEventType::Action {
+                action: action.clone(),
+                white_remaining: Duration::from_millis(*white_remaining_ms),
+                black_remaining: Duration::from_millis(*black_remaining_ms),
+            },
+            JsonEventRecordType::RequestAdded {
+                request_id,
+                request_type,
+                request_player,
+            } => GameEventType::RequestAdded {
+                request: tak_core::TakRequest {
+                    id: tak_core::TakRequestId(*request_id),
+                    request_type: match request_type {
+                        JsonRequestType::Draw => TakRequestType::Draw,
+                        JsonRequestType::Undo => TakRequestType::Undo,
+                        JsonRequestType::MoreTime { amount_ms } => {
+                            TakRequestType::MoreTime(Duration::from_millis(*amount_ms))
+                        }
+                    },
+                    player: request_player.to_tak_player(),
+                },
+            },
+            JsonEventRecordType::RequestRetracted { request_id } => {
+                GameEventType::RequestRetracted {
+                    request_id: tak_core::TakRequestId(*request_id),
+                }
+            }
+            JsonEventRecordType::RequestRejected { request_id } => GameEventType::RequestRejected {
+                request_id: tak_core::TakRequestId(*request_id),
+            },
+            JsonEventRecordType::RequestAccepted { request_id } => GameEventType::RequestAccepted {
+                request_id: tak_core::TakRequestId(*request_id),
+            },
+            JsonEventRecordType::ActionUndone => GameEventType::ActionUndone,
+            JsonEventRecordType::DrawAgreed => GameEventType::DrawAgreed,
+            JsonEventRecordType::TimeGiven { player, amount_ms } => GameEventType::TimeGiven {
+                player: player.to_tak_player(),
+                duration: Duration::from_millis(*amount_ms),
+            },
+            JsonEventRecordType::Timeout => GameEventType::Timeout,
+            JsonEventRecordType::Resigned { player } => {
+                GameEventType::Resigned(player.to_tak_player())
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+enum JsonRequestType {
+    Draw,
+    Undo,
+    MoreTime { amount_ms: u64 },
+}
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum JsonTakPlayer {
     White,
     Black,
+}
+impl JsonTakPlayer {
+    fn to_tak_player(&self) -> TakPlayer {
+        match self {
+            JsonTakPlayer::White => TakPlayer::White,
+            JsonTakPlayer::Black => TakPlayer::Black,
+        }
+    }
+
+    fn from_tak_player(player: &TakPlayer) -> Self {
+        match player {
+            TakPlayer::White => JsonTakPlayer::White,
+            TakPlayer::Black => JsonTakPlayer::Black,
+        }
+    }
 }
 
 fn serialize_action<S>(action: &TakAction, serializer: S) -> Result<S::Ok, S::Error>
@@ -159,50 +287,7 @@ impl GameRepositoryImpl {
                 .into_iter()
                 .map(|jm| GameEvent {
                     date: jm.timestamp,
-                    event_type: match jm.event {
-                        JsonEventRecordType::Action {
-                            action,
-                            white_remaining_ms,
-                            black_remaining_ms,
-                        } => GameEventType::Action {
-                            action,
-                            white_remaining: Duration::from_millis(white_remaining_ms),
-                            black_remaining: Duration::from_millis(black_remaining_ms),
-                        },
-                        JsonEventRecordType::UndoRequested { player } => {
-                            GameEventType::UndoRequested(match player {
-                                JsonTakPlayer::White => TakPlayer::White,
-                                JsonTakPlayer::Black => TakPlayer::Black,
-                            })
-                        }
-                        JsonEventRecordType::UndoRequestWithdrawn { player } => {
-                            GameEventType::UndoRequestWithdrawn(match player {
-                                JsonTakPlayer::White => TakPlayer::White,
-                                JsonTakPlayer::Black => TakPlayer::Black,
-                            })
-                        }
-                        JsonEventRecordType::UndoAccepted => GameEventType::UndoAccepted,
-                        JsonEventRecordType::DrawOffered { player } => {
-                            GameEventType::DrawOffered(match player {
-                                JsonTakPlayer::White => TakPlayer::White,
-                                JsonTakPlayer::Black => TakPlayer::Black,
-                            })
-                        }
-                        JsonEventRecordType::DrawOfferWithdrawn { player } => {
-                            GameEventType::DrawOfferWithdrawn(match player {
-                                JsonTakPlayer::White => TakPlayer::White,
-                                JsonTakPlayer::Black => TakPlayer::Black,
-                            })
-                        }
-                        JsonEventRecordType::DrawAgreed => GameEventType::DrawAgreed,
-                        JsonEventRecordType::Timeout => GameEventType::Timeout,
-                        JsonEventRecordType::Resigned { player } => {
-                            GameEventType::Resigned(match player {
-                                JsonTakPlayer::White => TakPlayer::White,
-                                JsonTakPlayer::Black => TakPlayer::Black,
-                            })
-                        }
-                    },
+                    event_type: jm.event.to_game_event(),
                 })
                 .collect(),
             rating_info,
@@ -269,54 +354,7 @@ impl GameRepository for GameRepositoryImpl {
             .iter()
             .map(|event| JsonEventRecord {
                 timestamp: event.date,
-                event: match &event.event_type {
-                    GameEventType::Action {
-                        action,
-                        white_remaining,
-                        black_remaining,
-                    } => JsonEventRecordType::Action {
-                        action: action.clone(),
-                        white_remaining_ms: white_remaining.as_millis() as u64,
-                        black_remaining_ms: black_remaining.as_millis() as u64,
-                    },
-                    GameEventType::UndoRequested(player) => JsonEventRecordType::UndoRequested {
-                        player: match player {
-                            TakPlayer::White => JsonTakPlayer::White,
-                            TakPlayer::Black => JsonTakPlayer::Black,
-                        },
-                    },
-                    GameEventType::UndoRequestWithdrawn(player) => {
-                        JsonEventRecordType::UndoRequestWithdrawn {
-                            player: match player {
-                                TakPlayer::White => JsonTakPlayer::White,
-                                TakPlayer::Black => JsonTakPlayer::Black,
-                            },
-                        }
-                    }
-                    GameEventType::UndoAccepted => JsonEventRecordType::UndoAccepted,
-                    GameEventType::DrawOffered(player) => JsonEventRecordType::DrawOffered {
-                        player: match player {
-                            TakPlayer::White => JsonTakPlayer::White,
-                            TakPlayer::Black => JsonTakPlayer::Black,
-                        },
-                    },
-                    GameEventType::DrawOfferWithdrawn(player) => {
-                        JsonEventRecordType::DrawOfferWithdrawn {
-                            player: match player {
-                                TakPlayer::White => JsonTakPlayer::White,
-                                TakPlayer::Black => JsonTakPlayer::Black,
-                            },
-                        }
-                    }
-                    GameEventType::DrawAgreed => JsonEventRecordType::DrawAgreed,
-                    GameEventType::Timeout => JsonEventRecordType::Timeout,
-                    GameEventType::Resigned(player) => JsonEventRecordType::Resigned {
-                        player: match player {
-                            TakPlayer::White => JsonTakPlayer::White,
-                            TakPlayer::Black => JsonTakPlayer::Black,
-                        },
-                    },
-                },
+                event: JsonEventRecordType::from_game_event(event.event_type.clone()),
             })
             .collect::<Vec<_>>();
         let events = serde_json::to_value(&events)
