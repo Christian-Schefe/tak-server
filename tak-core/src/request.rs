@@ -29,16 +29,15 @@ impl TakRequestSystem {
         player: &TakPlayer,
         request: TakRequestType,
     ) -> Option<TakRequest> {
-        if self
-            .requests
-            .iter()
-            .any(|(_, r)| match (&r.request_type, &request) {
-                (TakRequestType::Draw, TakRequestType::Draw) => true,
-                (TakRequestType::Undo, TakRequestType::Undo) => true,
-                (TakRequestType::MoreTime(_), TakRequestType::MoreTime(_)) => true,
-                _ => false,
-            })
-        {
+        if self.requests.iter().any(|(_, r)| {
+            r.player == *player
+                && match (&r.request_type, &request) {
+                    (TakRequestType::Draw, TakRequestType::Draw) => true,
+                    (TakRequestType::Undo, TakRequestType::Undo) => true,
+                    (TakRequestType::MoreTime(_), TakRequestType::MoreTime(_)) => true,
+                    _ => false,
+                }
+        }) {
             None
         } else {
             let id = TakRequestId(self.next_request_id);

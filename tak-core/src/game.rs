@@ -492,14 +492,17 @@ impl TakOngoingGame {
         player: &TakPlayer,
         request_id: TakRequestId,
         now: Instant,
-    ) -> MaybeTimeout<Option<TakFinishedGame>> {
+    ) -> MaybeTimeout<Option<(TakRequest, TakFinishedGame)>> {
         if let Some(finished_game) = self.check_timeout(now) {
             return MaybeTimeout::Timeout(finished_game);
         };
-        if let Some(_) = self.requests.take_request_if(request_id, |request| {
+        if let Some(request) = self.requests.take_request_if(request_id, |request| {
             request.player != *player && matches!(request.request_type, TakRequestType::Draw)
         }) {
-            MaybeTimeout::Result(Some(self.set_game_over(now, TakGameResult::Draw)))
+            MaybeTimeout::Result(Some((
+                request,
+                self.set_game_over(now, TakGameResult::Draw),
+            )))
         } else {
             MaybeTimeout::Result(None)
         }
@@ -510,15 +513,15 @@ impl TakOngoingGame {
         player: &TakPlayer,
         request_id: TakRequestId,
         now: Instant,
-    ) -> MaybeTimeout<Option<()>> {
+    ) -> MaybeTimeout<Option<TakRequest>> {
         if let Some(finished_game) = self.check_timeout(now) {
             return MaybeTimeout::Timeout(finished_game);
         };
-        if let Some(_) = self.requests.take_request_if(request_id, |request| {
+        if let Some(request) = self.requests.take_request_if(request_id, |request| {
             request.player != *player && matches!(request.request_type, TakRequestType::Undo)
         }) {
             self.undo_action(now);
-            MaybeTimeout::Result(Some(()))
+            MaybeTimeout::Result(Some(request))
         } else {
             MaybeTimeout::Result(None)
         }

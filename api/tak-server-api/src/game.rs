@@ -40,8 +40,7 @@ pub async fn get_game_status(
     let game = app.app.game_get_ongoing_use_case.get_game(game_id);
 
     if let Some(ongoing_game) = game {
-        let mut white_requests = Vec::new();
-        let mut black_requests = Vec::new();
+        let mut requests = Vec::new();
         for request in ongoing_game.game.get_requests().into_iter() {
             let req = GameRequest {
                 id: request.id.0,
@@ -50,11 +49,12 @@ pub async fn get_game_status(
                     TakRequestType::Undo => GameRequestType::Undo,
                     TakRequestType::MoreTime(_) => continue, // currently not exposed
                 },
+                from_player_id: match request.player {
+                    TakPlayer::White => ongoing_game.metadata.white_id.to_string(),
+                    TakPlayer::Black => ongoing_game.metadata.black_id.to_string(),
+                },
             };
-            match request.player {
-                TakPlayer::White => white_requests.push(req),
-                TakPlayer::Black => black_requests.push(req),
-            }
+            requests.push(req);
         }
         let (white_remaining, black_remaining) =
             ongoing_game.game.get_time_remaining_both(Instant::now());
@@ -72,12 +72,7 @@ pub async fn get_game_status(
                 .iter()
                 .map(|a| action_to_ptn(&a))
                 .collect(),
-            status: GameStatusType::Ongoing {
-                requests: ForPlayer {
-                    white: white_requests,
-                    black: black_requests,
-                },
-            },
+            status: GameStatusType::Ongoing { requests },
             remaining_ms: ForPlayer {
                 white: white_remaining.as_millis() as u64,
                 black: black_remaining.as_millis() as u64,
@@ -194,7 +189,7 @@ async fn add_request(
     }
 }
 
-async fn retract_request(
+async fn retract_request_helper(
     auth: Auth,
     app: &AppState,
     game_id: GameId,
@@ -302,7 +297,7 @@ async fn accept_request(
         TakRequestType::Draw => {
             app.app
                 .game_do_action_use_case
-                .accept_draw_offer(game_id, player_id, request_id)
+                .accept_draw_request(game_id, player_id, request_id)
                 .await
         }
         TakRequestType::Undo => {
@@ -317,6 +312,12 @@ async fn accept_request(
             ));
         }
     };
+    log::info!(
+        "ACCEPT Player {} is accepting request {:?} in game {}",
+        player_id,
+        request_id,
+        game_id
+    );
     match res {
         ActionResult::Success => Ok(()),
         ActionResult::NotPossible(e) => match e {
@@ -334,7 +335,7 @@ async fn accept_request(
     }
 }
 
-pub async fn offer_draw(
+pub async fn add_draw_request(
     auth: Auth,
     State(app): State<AppState>,
     Path(game_id): Path<i64>,
@@ -343,7 +344,7 @@ pub async fn offer_draw(
     add_request(auth, &app, game_id, TakRequestType::Draw).await
 }
 
-pub async fn request_undo(
+pub async fn add_undo_request(
     auth: Auth,
     State(app): State<AppState>,
     Path(game_id): Path<i64>,
@@ -352,17 +353,17 @@ pub async fn request_undo(
     add_request(auth, &app, game_id, TakRequestType::Undo).await
 }
 
-pub async fn retract_offer(
+pub async fn retract_request(
     auth: Auth,
     State(app): State<AppState>,
-    Path((game_id, offer_id)): Path<(i64, u64)>,
+    Path((game_id, request_id)): Path<(i64, u64)>,
 ) -> Result<(), ServiceError> {
     let game_id = GameId(game_id);
-    let request_id = TakRequestId(offer_id);
-    retract_request(auth, &app, game_id, request_id).await
+    let request_id = TakRequestId(request_id);
+    retract_request_helper(auth, &app, game_id, request_id).await
 }
 
-pub async fn respond_to_offer(
+pub async fn respond_to_request(
     auth: Auth,
     State(app): State<AppState>,
     Path((game_id, request_id)): Path<(i64, u64)>,
@@ -399,6 +400,7 @@ pub struct GameStatus {
 #[serde(rename_all = "camelCase")]
 pub struct GameRequest {
     id: u64,
+    from_player_id: String,
     request_type: GameRequestType,
 }
 
@@ -420,12 +422,8 @@ pub enum GameRequestType {
     rename_all_fields = "camelCase"
 )]
 pub enum GameStatusType {
-    Ongoing {
-        requests: ForPlayer<Vec<GameRequest>>,
-    },
-    Ended {
-        result: String,
-    },
+    Ongoing { requests: Vec<GameRequest> },
+    Ended { result: String },
     Aborted,
 }
 

@@ -222,6 +222,7 @@ impl ProtocolV2Handler {
                 }
             }
             ListenerMessage::GameRequestRejected { .. } => {} // legacy api does not support request rejections
+            ListenerMessage::GameRequestAccepted { .. } => {} // legacy api does not support request acceptances
             ListenerMessage::GameActionUndone { game_id } => {
                 self.send_undo_message(id, *game_id);
             }

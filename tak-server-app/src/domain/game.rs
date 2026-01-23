@@ -187,14 +187,14 @@ pub trait GameService {
         player: PlayerId,
         request_id: TakRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<FinishedGame, ()>>;
+    ) -> GamePlayerActionResult<Result<(TakRequest, FinishedGame), ()>>;
     fn accept_undo_request(
         &self,
         game_id: GameId,
         player: PlayerId,
         request_id: TakRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<(), ()>>;
+    ) -> GamePlayerActionResult<Result<TakRequest, ()>>;
 }
 
 #[derive(Clone, Debug)]
@@ -529,7 +529,7 @@ impl GameService for GameServiceImpl {
         player: PlayerId,
         request_id: TakRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<FinishedGame, ()>> {
+    ) -> GamePlayerActionResult<Result<(TakRequest, FinishedGame), ()>> {
         self.game_player_action(
             game_id,
             player,
@@ -539,7 +539,7 @@ impl GameService for GameServiceImpl {
                     .accept_draw_request(&current_player, request_id, now))
             },
             |game_entry, _, res| match res {
-                Some(finished_game) => {
+                Some((request, finished_game)) => {
                     game_entry
                         .events
                         .push(GameEvent::new(GameEventType::RequestAccepted {
@@ -549,7 +549,7 @@ impl GameService for GameServiceImpl {
                         .events
                         .push(GameEvent::new(GameEventType::DrawAgreed));
                     let finished_game = FinishedGame::new(game_entry, finished_game);
-                    (GameControl::Remove, Ok(finished_game))
+                    (GameControl::Remove, Ok((request, finished_game)))
                 }
                 None => (GameControl::Keep, Err(())),
             },
@@ -561,7 +561,7 @@ impl GameService for GameServiceImpl {
         player: PlayerId,
         request_id: TakRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<(), ()>> {
+    ) -> GamePlayerActionResult<Result<TakRequest, ()>> {
         self.game_player_action(
             game_id,
             player,
@@ -571,7 +571,7 @@ impl GameService for GameServiceImpl {
                     .accept_undo_request(&current_player, request_id, now))
             },
             |game_entry, _, res| match res {
-                Some(()) => {
+                Some(request) => {
                     game_entry
                         .events
                         .push(GameEvent::new(GameEventType::RequestAccepted {
@@ -580,7 +580,7 @@ impl GameService for GameServiceImpl {
                     game_entry
                         .events
                         .push(GameEvent::new(GameEventType::ActionUndone));
-                    (GameControl::Remove, Ok(()))
+                    (GameControl::Keep, Ok(request))
                 }
                 None => (GameControl::Keep, Err(())),
             },

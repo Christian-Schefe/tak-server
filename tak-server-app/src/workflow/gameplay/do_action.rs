@@ -45,7 +45,7 @@ pub trait DoActionUseCase {
         player_id: PlayerId,
         request_id: TakRequestId,
     ) -> ActionResult<HandleRequestError>;
-    async fn accept_draw_offer(
+    async fn accept_draw_request(
         &self,
         game_id: GameId,
         player_id: PlayerId,
@@ -300,6 +300,12 @@ impl<
         player_id: PlayerId,
         request_id: TakRequestId,
     ) -> ActionResult<HandleRequestError> {
+        log::info!(
+            "Player {} is rejecting request {:?} in game {}",
+            player_id,
+            request_id,
+            game_id
+        );
         let now = Instant::now();
         match self
             .handle_game_action_result(
@@ -324,23 +330,37 @@ impl<
         }
     }
 
-    async fn accept_draw_offer(
+    async fn accept_draw_request(
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        offer_id: TakRequestId,
+        request_id: TakRequestId,
     ) -> ActionResult<HandleRequestError> {
+        log::info!(
+            "Player {} is accepting draw request {:?} in game {}",
+            player_id,
+            request_id,
+            game_id
+        );
         let now = Instant::now();
         match self
             .handle_game_action_result(
                 self.game_service
-                    .accept_draw_request(game_id, player_id, offer_id, now),
+                    .accept_draw_request(game_id, player_id, request_id, now),
             )
             .await
         {
-            Err(e) => return ActionResult::NotPossible(e),
-            Ok(Ok(request)) => {
-                self.handle_ended_game(request).await;
+            Err(e) => ActionResult::NotPossible(e),
+            Ok(Ok((request, ended_game))) => {
+                let request_msg = ListenerMessage::GameRequestAccepted {
+                    game_id,
+                    accepting_player_id: player_id,
+                    request,
+                };
+                self.notify_player_workflow
+                    .notify_players_and_observers_of_game(&ended_game.metadata, &request_msg)
+                    .await;
+                self.handle_ended_game(ended_game).await;
                 ActionResult::Success
             }
             Ok(Err(())) => ActionResult::ActionError(HandleRequestError::RequestNotFound),
@@ -353,6 +373,12 @@ impl<
         player_id: PlayerId,
         request_id: TakRequestId,
     ) -> ActionResult<HandleRequestError> {
+        log::info!(
+            "Player {} is accepting undo request {:?} in game {}",
+            player_id,
+            request_id,
+            game_id
+        );
         let now = Instant::now();
         match self
             .handle_game_action_result(
@@ -361,8 +387,16 @@ impl<
             )
             .await
         {
-            Err(e) => return ActionResult::NotPossible(e),
-            Ok(Ok(())) => {
+            Err(e) => ActionResult::NotPossible(e),
+            Ok(Ok(request)) => {
+                let request_msg = ListenerMessage::GameRequestAccepted {
+                    game_id,
+                    accepting_player_id: player_id,
+                    request,
+                };
+                self.notify_player_workflow
+                    .notify_players_and_observers(game_id, &request_msg)
+                    .await;
                 let msg = ListenerMessage::GameActionUndone { game_id };
                 self.notify_player_workflow
                     .notify_players_and_observers(game_id, &msg)

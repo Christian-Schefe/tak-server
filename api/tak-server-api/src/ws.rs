@@ -379,6 +379,9 @@ pub enum ServerMessage {
         ply_index: usize,
         action: String,
     },
+    GameActionUndone {
+        game_id: i64,
+    },
     GameTimeUpdate {
         game_id: i64,
         remaining_ms: ForPlayer<u64>,
@@ -396,11 +399,7 @@ pub enum ServerMessage {
         request_type: JsonGameRequestType,
         from_player_id: String,
     },
-    GameRequestRetracted {
-        game_id: i64,
-        request_id: u64,
-    },
-    GameRequestRejected {
+    GameRequestRemoved {
         game_id: i64,
         request_id: u64,
     },
@@ -459,6 +458,11 @@ impl ServerMessage {
                 ply_index: action.ply_index,
                 action: action_to_ptn(&action.action),
             }),
+            ListenerMessage::GameActionUndone { game_id } => {
+                MessageTransformation::Transform(ServerMessage::GameActionUndone {
+                    game_id: game_id.0,
+                })
+            }
             ListenerMessage::GameStarted { game } => {
                 MessageTransformation::Transform(ServerMessage::GameStarted {
                     game: GameInfo::from_ongoing_game_view(&game.metadata),
@@ -502,7 +506,7 @@ impl ServerMessage {
                 game_id,
                 request,
                 retracting_player_id: _,
-            } => MessageTransformation::Transform(ServerMessage::GameRequestRetracted {
+            } => MessageTransformation::Transform(ServerMessage::GameRequestRemoved {
                 game_id: game_id.0,
                 request_id: request.id.0,
             }),
@@ -510,7 +514,15 @@ impl ServerMessage {
                 game_id,
                 request,
                 rejecting_player_id: _,
-            } => MessageTransformation::Transform(ServerMessage::GameRequestRejected {
+            } => MessageTransformation::Transform(ServerMessage::GameRequestRemoved {
+                game_id: game_id.0,
+                request_id: request.id.0,
+            }),
+            ListenerMessage::GameRequestAccepted {
+                game_id,
+                request,
+                accepting_player_id: _,
+            } => MessageTransformation::Transform(ServerMessage::GameRequestRemoved {
                 game_id: game_id.0,
                 request_id: request.id.0,
             }),

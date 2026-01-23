@@ -152,7 +152,7 @@ impl ProtocolV2Handler {
             },
             "OfferDraw" => {
                 return self
-                    .offer_or_accept_request(game_id, player_id, opponent_id, TakRequestType::Draw)
+                    .add_or_accept_request(game_id, player_id, opponent_id, TakRequestType::Draw)
                     .await;
             }
             "RemoveDraw" => {
@@ -162,7 +162,7 @@ impl ProtocolV2Handler {
             }
             "RequestUndo" => {
                 return self
-                    .offer_or_accept_request(game_id, player_id, opponent_id, TakRequestType::Undo)
+                    .add_or_accept_request(game_id, player_id, opponent_id, TakRequestType::Undo)
                     .await;
             }
             "RemoveUndo" => {
@@ -362,7 +362,7 @@ impl ProtocolV2Handler {
         self.send_to(id, message);
     }
 
-    async fn offer_or_accept_request(
+    async fn add_or_accept_request(
         &self,
         game_id: GameId,
         player_id: PlayerId,
@@ -385,7 +385,7 @@ impl ProtocolV2Handler {
                 TakRequestType::Draw => {
                     self.app
                         .game_do_action_use_case
-                        .accept_draw_offer(game_id, player_id, request_id)
+                        .accept_draw_request(game_id, player_id, request_id)
                         .await
                 }
                 TakRequestType::Undo => {

@@ -51,15 +51,15 @@ pub async fn serve(
         .route("/games", get(game::get_games))
         .route("/games/{game_id}", get(game::get_game_status))
         .route("/games/{game_id}/resign", post(game::resign_game))
-        .route("/games/{game_id}/draw", post(game::offer_draw))
-        .route("/games/{game_id}/undo", post(game::request_undo))
+        .route("/games/{game_id}/draw", post(game::add_draw_request))
+        .route("/games/{game_id}/undo", post(game::add_undo_request))
         .route(
-            "/games/{game_id}/offers/{offer_id}",
-            delete(game::retract_offer),
+            "/games/{game_id}/requests/{request_id}",
+            delete(game::retract_request),
         )
         .route(
-            "/games/{game_id}/offers/{offer_id}",
-            post(game::respond_to_offer),
+            "/games/{game_id}/requests/{request_id}",
+            post(game::respond_to_request),
         )
         .route("/players/{player_id}", get(player::get_player_info))
         .route("/profiles/{account_id}", get(player::get_account_profile))

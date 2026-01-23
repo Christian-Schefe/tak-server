@@ -70,6 +70,11 @@ pub enum ListenerMessage {
         rejecting_player_id: PlayerId,
         request: TakRequest,
     },
+    GameRequestAccepted {
+        game_id: GameId,
+        accepting_player_id: PlayerId,
+        request: TakRequest,
+    },
 
     GameRematchRequested {
         game_id: GameId,
