@@ -1,11 +1,14 @@
 use std::{sync::Arc, time::Instant};
 
-use tak_core::{TakAction, TakRequest, TakRequestId, TakRequestType};
+use tak_core::TakAction;
 
 use crate::{
     domain::{
         GameId, PlayerId,
-        game::{DoActionResult, FinishedGame, GamePlayerActionResult, GameService, ResignResult},
+        game::{
+            DoActionResult, FinishedGame, GamePlayerActionResult, GameService, ResignResult,
+            request::{GameRequest, GameRequestId, GameRequestType},
+        },
     },
     ports::notification::ListenerMessage,
     workflow::{
@@ -21,41 +24,41 @@ pub trait DoActionUseCase {
         player_id: PlayerId,
         action: TakAction,
     ) -> ActionResult<DoActionError>;
-    fn get_request(&self, game_id: GameId, request_id: TakRequestId) -> Option<TakRequest>;
+    fn get_request(&self, game_id: GameId, request_id: GameRequestId) -> Option<GameRequest>;
     fn get_requests_of_player(
         &self,
         game_id: GameId,
         player_id: PlayerId,
-    ) -> Option<Vec<TakRequest>>;
+    ) -> Option<Vec<GameRequest>>;
     async fn add_request(
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        request_type: TakRequestType,
+        request_type: GameRequestType,
     ) -> ActionResult<AddRequestError>;
     async fn retract_request(
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        request_id: TakRequestId,
+        request_id: GameRequestId,
     ) -> ActionResult<HandleRequestError>;
     async fn reject_request(
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        request_id: TakRequestId,
+        request_id: GameRequestId,
     ) -> ActionResult<HandleRequestError>;
     async fn accept_draw_request(
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        request_id: TakRequestId,
+        request_id: GameRequestId,
     ) -> ActionResult<HandleRequestError>;
     async fn accept_undo_request(
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        request_id: TakRequestId,
+        request_id: GameRequestId,
     ) -> ActionResult<HandleRequestError>;
     async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), PlayerActionError>;
 }
@@ -219,23 +222,32 @@ impl<
         ActionResult::Success
     }
 
-    fn get_request(&self, game_id: GameId, request_id: TakRequestId) -> Option<TakRequest> {
-        self.game_service.get_request(game_id, request_id)
+    fn get_request(&self, game_id: GameId, request_id: GameRequestId) -> Option<GameRequest> {
+        let game = self.game_service.get_game_by_id(game_id)?;
+        game.requests.get_request(request_id)
     }
 
     fn get_requests_of_player(
         &self,
         game_id: GameId,
         player_id: PlayerId,
-    ) -> Option<Vec<TakRequest>> {
-        self.game_service.get_requests_of_player(game_id, player_id)
+    ) -> Option<Vec<GameRequest>> {
+        let game = self.game_service.get_game_by_id(game_id)?;
+        let player = game.metadata.get_player(player_id)?;
+        Some(
+            game.requests
+                .get_all_requests()
+                .into_iter()
+                .filter(|r| r.player == player)
+                .collect(),
+        )
     }
 
     async fn add_request(
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        request_type: TakRequestType,
+        request_type: GameRequestType,
     ) -> ActionResult<AddRequestError> {
         let now = Instant::now();
         match self
@@ -269,7 +281,7 @@ impl<
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        request_id: TakRequestId,
+        request_id: GameRequestId,
     ) -> ActionResult<HandleRequestError> {
         let now = Instant::now();
         match self
@@ -298,7 +310,7 @@ impl<
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        request_id: TakRequestId,
+        request_id: GameRequestId,
     ) -> ActionResult<HandleRequestError> {
         log::info!(
             "Player {} is rejecting request {:?} in game {}",
@@ -334,7 +346,7 @@ impl<
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        request_id: TakRequestId,
+        request_id: GameRequestId,
     ) -> ActionResult<HandleRequestError> {
         log::info!(
             "Player {} is accepting draw request {:?} in game {}",
@@ -371,7 +383,7 @@ impl<
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        request_id: TakRequestId,
+        request_id: GameRequestId,
     ) -> ActionResult<HandleRequestError> {
         log::info!(
             "Player {} is accepting undo request {:?} in game {}",
@@ -388,7 +400,7 @@ impl<
             .await
         {
             Err(e) => ActionResult::NotPossible(e),
-            Ok(Ok(request)) => {
+            Ok(Ok((request, did_undo))) => {
                 let request_msg = ListenerMessage::GameRequestAccepted {
                     game_id,
                     accepting_player_id: player_id,
@@ -397,10 +409,12 @@ impl<
                 self.notify_player_workflow
                     .notify_players_and_observers(game_id, &request_msg)
                     .await;
-                let msg = ListenerMessage::GameActionUndone { game_id };
-                self.notify_player_workflow
-                    .notify_players_and_observers(game_id, &msg)
-                    .await;
+                if did_undo {
+                    let msg = ListenerMessage::GameActionUndone { game_id };
+                    self.notify_player_workflow
+                        .notify_players_and_observers(game_id, &msg)
+                        .await;
+                }
                 ActionResult::Success
             }
             Ok(Err(())) => ActionResult::ActionError(HandleRequestError::RequestNotFound),

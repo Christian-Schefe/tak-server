@@ -7,13 +7,10 @@ use crate::{
         v2::{ProtocolV2Handler, V2Response},
     },
 };
-use tak_core::{
-    TakAction, TakDir, TakGameResult, TakPos, TakRequestType, TakVariant,
-    ptn::game_result_to_string,
-};
+use tak_core::{TakAction, TakDir, TakGameResult, TakPos, TakVariant, ptn::game_result_to_string};
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
-    domain::{GameId, PlayerId},
+    domain::{GameId, PlayerId, game::request::GameRequestType},
     workflow::gameplay::do_action::{
         ActionResult, AddRequestError, DoActionError, HandleRequestError, PlayerActionError,
     },
@@ -152,22 +149,22 @@ impl ProtocolV2Handler {
             },
             "OfferDraw" => {
                 return self
-                    .add_or_accept_request(game_id, player_id, opponent_id, TakRequestType::Draw)
+                    .add_or_accept_request(game_id, player_id, opponent_id, GameRequestType::Draw)
                     .await;
             }
             "RemoveDraw" => {
                 return self
-                    .retract_request(game_id, player_id, TakRequestType::Draw)
+                    .retract_request(game_id, player_id, GameRequestType::Draw)
                     .await;
             }
             "RequestUndo" => {
                 return self
-                    .add_or_accept_request(game_id, player_id, opponent_id, TakRequestType::Undo)
+                    .add_or_accept_request(game_id, player_id, opponent_id, GameRequestType::Undo)
                     .await;
             }
             "RemoveUndo" => {
                 return self
-                    .retract_request(game_id, player_id, TakRequestType::Undo)
+                    .retract_request(game_id, player_id, GameRequestType::Undo)
                     .await;
             }
             _ => {
@@ -367,7 +364,7 @@ impl ProtocolV2Handler {
         game_id: GameId,
         player_id: PlayerId,
         opponent_id: PlayerId,
-        request_type: TakRequestType,
+        request_type: GameRequestType,
     ) -> V2Response {
         let requests = self
             .app
@@ -376,19 +373,19 @@ impl ProtocolV2Handler {
         if let Some(request_id) = requests.and_then(|reqs| {
             reqs.into_iter()
                 .find_map(|r| match (&request_type, &r.request_type) {
-                    (TakRequestType::Draw, TakRequestType::Draw) => Some(r.id),
-                    (TakRequestType::Undo, TakRequestType::Undo) => Some(r.id),
+                    (GameRequestType::Draw, GameRequestType::Draw) => Some(r.id),
+                    (GameRequestType::Undo, GameRequestType::Undo) => Some(r.id),
                     _ => None,
                 })
         }) {
             let res = match &request_type {
-                TakRequestType::Draw => {
+                GameRequestType::Draw => {
                     self.app
                         .game_do_action_use_case
                         .accept_draw_request(game_id, player_id, request_id)
                         .await
                 }
-                TakRequestType::Undo => {
+                GameRequestType::Undo => {
                     self.app
                         .game_do_action_use_case
                         .accept_undo_request(game_id, player_id, request_id)
@@ -436,7 +433,7 @@ impl ProtocolV2Handler {
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        request_type: TakRequestType,
+        request_type: GameRequestType,
     ) -> V2Response {
         let requests = self
             .app
@@ -445,8 +442,8 @@ impl ProtocolV2Handler {
         let Some(request_id) = requests.and_then(|reqs| {
             reqs.into_iter()
                 .find_map(|r| match (&request_type, &r.request_type) {
-                    (TakRequestType::Draw, TakRequestType::Draw) => Some(r.id),
-                    (TakRequestType::Undo, TakRequestType::Undo) => Some(r.id),
+                    (GameRequestType::Draw, GameRequestType::Draw) => Some(r.id),
+                    (GameRequestType::Undo, GameRequestType::Undo) => Some(r.id),
                     _ => None,
                 })
         }) else {

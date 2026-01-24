@@ -6,13 +6,16 @@ use sea_orm::{
 };
 use serde::Deserialize;
 use tak_core::{
-    TakAction, TakGameSettings, TakPlayer, TakRequestType, TakReserve, TakTimeControl,
+    TakAction, TakBaseGameSettings, TakPlayer, TakReserve, TakRealtimeTimeControl,
     ptn::{action_from_ptn, action_to_ptn, game_result_from_string, game_result_to_string},
 };
 use tak_persistence_sea_orm_entites::game;
 use tak_server_app::domain::{
     GameId, PaginatedResponse, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError, SortOrder,
-    game::{GameEvent, GameEventType},
+    game::{
+        GameEvent, GameEventType,
+        request::{GameRequest, GameRequestId, GameRequestType},
+    },
     game_history::{
         DateSelector, GameFinishedUpdate, GameIdSelector, GamePlayerFilter, GameQuery,
         GameRatingInfo, GameRecord, GameRepository, GameSortBy, PlayerSnapshot,
@@ -84,9 +87,9 @@ impl JsonEventRecordType {
             GameEventType::RequestAdded { request } => JsonEventRecordType::RequestAdded {
                 request_id: request.id.0,
                 request_type: match request.request_type {
-                    TakRequestType::Draw => JsonRequestType::Draw,
-                    TakRequestType::Undo => JsonRequestType::Undo,
-                    TakRequestType::MoreTime(duration) => JsonRequestType::MoreTime {
+                    GameRequestType::Draw => JsonRequestType::Draw,
+                    GameRequestType::Undo => JsonRequestType::Undo,
+                    GameRequestType::MoreTime(duration) => JsonRequestType::MoreTime {
                         amount_ms: duration.as_millis() as u64,
                     },
                 },
@@ -132,13 +135,13 @@ impl JsonEventRecordType {
                 request_type,
                 request_player,
             } => GameEventType::RequestAdded {
-                request: tak_core::TakRequest {
-                    id: tak_core::TakRequestId(*request_id),
+                request: GameRequest {
+                    id: GameRequestId(*request_id),
                     request_type: match request_type {
-                        JsonRequestType::Draw => TakRequestType::Draw,
-                        JsonRequestType::Undo => TakRequestType::Undo,
+                        JsonRequestType::Draw => GameRequestType::Draw,
+                        JsonRequestType::Undo => GameRequestType::Undo,
                         JsonRequestType::MoreTime { amount_ms } => {
-                            TakRequestType::MoreTime(Duration::from_millis(*amount_ms))
+                            GameRequestType::MoreTime(Duration::from_millis(*amount_ms))
                         }
                     },
                     player: request_player.to_tak_player(),
@@ -146,14 +149,14 @@ impl JsonEventRecordType {
             },
             JsonEventRecordType::RequestRetracted { request_id } => {
                 GameEventType::RequestRetracted {
-                    request_id: tak_core::TakRequestId(*request_id),
+                    request_id: GameRequestId(*request_id),
                 }
             }
             JsonEventRecordType::RequestRejected { request_id } => GameEventType::RequestRejected {
-                request_id: tak_core::TakRequestId(*request_id),
+                request_id: GameRequestId(*request_id),
             },
             JsonEventRecordType::RequestAccepted { request_id } => GameEventType::RequestAccepted {
-                request_id: tak_core::TakRequestId(*request_id),
+                request_id: GameRequestId(*request_id),
             },
             JsonEventRecordType::ActionUndone => GameEventType::ActionUndone,
             JsonEventRecordType::DrawAgreed => GameEventType::DrawAgreed,
@@ -245,7 +248,7 @@ impl GameRepositoryImpl {
         } else {
             None
         };
-        let time_control = TakTimeControl {
+        let time_control = TakRealtimeTimeControl {
             contingent: Duration::from_millis(model.clock_contingent_ms as u64),
             increment: Duration::from_millis(model.clock_increment_ms as u64),
             extra: if model.extra_time_amount > 0 && model.extra_time_trigger > 0 {
@@ -274,7 +277,7 @@ impl GameRepositoryImpl {
 
         GameRecord {
             date: model.date.clone(),
-            settings: TakGameSettings {
+            settings: TakBaseGameSettings {
                 board_size: model.size as u32,
                 time_control,
                 half_komi: model.half_komi as u32,

@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 
-use tak_core::{TakGameSettings, TakPlayer};
+use tak_core::{TakPlayer, TakRealtimeGameSettings};
 
 use crate::domain::{PlayerId, SeekId, seek::Seek};
 
@@ -19,7 +19,7 @@ pub struct SeekView {
     pub creator_id: PlayerId,
     pub opponent_id: Option<PlayerId>,
     pub color: Option<TakPlayer>,
-    pub game_settings: TakGameSettings,
+    pub game_settings: TakRealtimeGameSettings,
     pub is_rated: bool,
 }
 

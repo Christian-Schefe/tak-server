@@ -5,7 +5,7 @@ use crate::{
     protocol::v2::{ProtocolV2Handler, V2Response},
 };
 
-use tak_core::{TakGameSettings, TakPlayer, TakReserve, TakTimeControl};
+use tak_core::{TakBaseGameSettings, TakPlayer, TakReserve, TakRealtimeTimeControl};
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
     domain::{GameId, PlayerId, SeekId},
@@ -34,7 +34,7 @@ impl ProtocolV2Handler {
     fn parse_seek_from_parts(
         &self,
         parts: &[&str],
-    ) -> Result<(Option<TakPlayer>, bool, Option<String>, TakGameSettings), ServiceError> {
+    ) -> Result<(Option<TakPlayer>, bool, Option<String>, TakBaseGameSettings), ServiceError> {
         if parts.len() != 13 && parts.len() != 12 && parts.len() != 11 && parts.len() != 10 {
             return Err(ServiceError::BadRequest(
                 "Invalid Seek message format".to_string(),
@@ -110,11 +110,11 @@ impl ProtocolV2Handler {
             None
         };
 
-        let game_settings = TakGameSettings {
+        let game_settings = TakBaseGameSettings {
             board_size,
             half_komi,
             reserve: TakReserve::new(reserve_pieces, reserve_capstones),
-            time_control: TakTimeControl {
+            time_control: TakRealtimeTimeControl {
                 contingent: Duration::from_secs(time_contingent_seconds as u64),
                 increment: Duration::from_secs(time_increment_seconds as u64),
                 extra: time_extra,

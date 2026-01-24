@@ -1,12 +1,15 @@
+mod asynchronous;
+mod base;
 mod board;
-mod game;
 pub mod ptn;
-mod request;
+mod realtime;
 
 use std::time::Duration;
 
-pub use game::TakFinishedGame;
-pub use game::TakOngoingGame;
+pub use asynchronous::TakFinishedAsyncGame;
+pub use asynchronous::TakOngoingAsyncGame;
+pub use realtime::TakFinishedRealtimeGame;
+pub use realtime::TakOngoingRealtimeGame;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TakPlayer {
@@ -49,18 +52,27 @@ impl TakReserve {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct TakGameSettings {
+pub struct TakBaseGameSettings {
     pub board_size: u32,
     pub half_komi: u32,
     pub reserve: TakReserve,
-    pub time_control: TakTimeControl,
 }
 
-impl TakGameSettings {
+impl TakBaseGameSettings {
     pub fn is_valid(&self) -> bool {
-        self.board_size >= 3
-            && self.board_size <= 8
-            && self.reserve.pieces > 0
+        self.board_size >= 3 && self.board_size <= 8 && self.reserve.pieces > 0
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TakRealtimeGameSettings {
+    pub base: TakBaseGameSettings,
+    pub time_control: TakRealtimeTimeControl,
+}
+
+impl TakRealtimeGameSettings {
+    pub fn is_valid(&self) -> bool {
+        self.base.is_valid()
             && !self.time_control.contingent.is_zero()
             && self
                 .time_control
@@ -70,10 +82,27 @@ impl TakGameSettings {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct TakTimeControl {
+pub struct TakRealtimeTimeControl {
     pub contingent: Duration,
     pub increment: Duration,
     pub extra: Option<(u32, Duration)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TakAsyncTimeControl {
+    pub increment: chrono::TimeDelta,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TakAsyncGameSettings {
+    pub base: TakBaseGameSettings,
+    pub time_control: TakAsyncTimeControl,
+}
+
+impl TakAsyncGameSettings {
+    pub fn is_valid(&self) -> bool {
+        self.base.is_valid() && !self.time_control.increment.is_zero()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -152,9 +181,9 @@ impl TakWinReason {
     ];
 }
 
-pub enum MaybeTimeout<R> {
+pub enum MaybeTimeout<R, T> {
     Result(R),
-    Timeout(TakFinishedGame),
+    Timeout(T),
 }
 
 #[derive(Clone, Debug)]
@@ -181,23 +210,6 @@ pub enum InvalidMoveReason {
     InvalidDropDistribution,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct TakRequestId(pub u64);
-
-#[derive(Clone, Debug)]
-pub enum TakRequestType {
-    Draw,
-    Undo,
-    MoreTime(Duration),
-}
-
-#[derive(Clone, Debug)]
-pub struct TakRequest {
-    pub id: TakRequestId,
-    pub player: TakPlayer,
-    pub request_type: TakRequestType,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,11 +217,13 @@ mod tests {
 
     #[test]
     fn test_tak_game_settings_validation() {
-        let valid_settings = TakGameSettings {
-            board_size: 5,
-            half_komi: 0,
-            reserve: TakReserve::new(21, 1),
-            time_control: TakTimeControl {
+        let valid_settings = TakRealtimeGameSettings {
+            base: TakBaseGameSettings {
+                board_size: 5,
+                half_komi: 0,
+                reserve: TakReserve::new(21, 1),
+            },
+            time_control: TakRealtimeTimeControl {
                 contingent: Duration::from_secs(300),
                 increment: Duration::from_secs(5),
                 extra: Some((2, Duration::from_secs(60))),
@@ -217,11 +231,13 @@ mod tests {
         };
         assert!(valid_settings.is_valid());
 
-        let invalid_settings = TakGameSettings {
-            board_size: 9,
-            half_komi: 0,
-            reserve: TakReserve::new(21, 1),
-            time_control: TakTimeControl {
+        let invalid_settings = TakRealtimeGameSettings {
+            base: TakBaseGameSettings {
+                board_size: 9,
+                half_komi: 0,
+                reserve: TakReserve::new(21, 1),
+            },
+            time_control: TakRealtimeTimeControl {
                 contingent: Duration::from_secs(300),
                 increment: Duration::from_secs(5),
                 extra: Some((2, Duration::from_secs(60))),
@@ -229,11 +245,13 @@ mod tests {
         };
         assert!(!invalid_settings.is_valid());
 
-        let invalid_time_control = TakGameSettings {
-            board_size: 5,
-            half_komi: 0,
-            reserve: TakReserve::new(21, 1),
-            time_control: TakTimeControl {
+        let invalid_time_control = TakRealtimeGameSettings {
+            base: TakBaseGameSettings {
+                board_size: 5,
+                half_komi: 0,
+                reserve: TakReserve::new(21, 1),
+            },
+            time_control: TakRealtimeTimeControl {
                 contingent: Duration::from_secs(0),
                 increment: Duration::from_secs(5),
                 extra: Some((2, Duration::from_secs(60))),
@@ -241,11 +259,13 @@ mod tests {
         };
         assert!(!invalid_time_control.is_valid());
 
-        let invalid_extra_time = TakGameSettings {
-            board_size: 5,
-            half_komi: 0,
-            reserve: TakReserve::new(21, 1),
-            time_control: TakTimeControl {
+        let invalid_extra_time = TakRealtimeGameSettings {
+            base: TakBaseGameSettings {
+                board_size: 5,
+                half_komi: 0,
+                reserve: TakReserve::new(21, 1),
+            },
+            time_control: TakRealtimeTimeControl {
                 contingent: Duration::from_secs(300),
                 increment: Duration::from_secs(5),
                 extra: Some((0, Duration::from_secs(60))),

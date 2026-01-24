@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use tak_core::{TakAction, TakGameResult, TakGameSettings};
+use tak_core::{TakAction, TakBaseGameSettings, TakGameResult, TakRealtimeGameSettings};
 
 use crate::domain::{
     GameId, PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
@@ -14,10 +14,15 @@ pub struct GameRecord {
     pub white: PlayerSnapshot,
     pub black: PlayerSnapshot,
     pub rating_info: Option<GameRatingInfo>,
-    pub settings: TakGameSettings,
+    pub settings: GameSettings,
     pub is_rated: bool,
     pub result: Option<TakGameResult>,
     pub events: Vec<GameEvent>,
+}
+
+pub enum GameSettings {
+    Realtime(TakRealtimeGameSettings),
+    Async(TakBaseGameSettings),
 }
 
 impl GameRecord {
@@ -34,8 +39,11 @@ impl GameRecord {
     }
 
     pub fn reconstruct_time_remaining(&self) -> (Duration, Duration) {
-        let mut white_remaining = self.settings.time_control.contingent;
-        let mut black_remaining = self.settings.time_control.contingent;
+        let GameSettings::Realtime(settings) = &self.settings else {
+            return (Duration::ZERO, Duration::ZERO);
+        };
+        let mut white_remaining = settings.time_control.contingent;
+        let mut black_remaining = settings.time_control.contingent;
 
         for event in &self.events {
             match &event.event_type {
@@ -149,7 +157,7 @@ pub trait GameHistoryService {
         date: DateTime<Utc>,
         white: PlayerSnapshot,
         black: PlayerSnapshot,
-        settings: TakGameSettings,
+        settings: GameSettings,
         is_rated: bool,
     ) -> GameRecord;
     fn get_finished_game_record_update(
@@ -173,7 +181,7 @@ impl GameHistoryService for GameHistoryServiceImpl {
         date: DateTime<Utc>,
         white: PlayerSnapshot,
         black: PlayerSnapshot,
-        settings: TakGameSettings,
+        settings: GameSettings,
         is_rated: bool,
     ) -> GameRecord {
         GameRecord {

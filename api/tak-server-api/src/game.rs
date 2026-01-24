@@ -1,15 +1,19 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::{
     Json,
     extract::{Path, State},
 };
 use tak_core::{
-    TakGameSettings, TakPlayer, TakRequestId, TakRequestType,
+    TakBaseGameSettings, TakPlayer, TakRealtimeGameSettings,
     ptn::{action_to_ptn, game_result_to_string},
 };
 use tak_server_app::{
-    domain::GameId,
+    domain::{
+        GameId,
+        game::request::{GameRequestId, GameRequestType},
+        game_history::GameSettings,
+    },
     services::player_resolver::ResolveError,
     workflow::{
         gameplay::{
@@ -41,13 +45,13 @@ pub async fn get_game_status(
 
     if let Some(ongoing_game) = game {
         let mut requests = Vec::new();
-        for request in ongoing_game.game.get_requests().into_iter() {
+        for request in ongoing_game.requests.into_iter() {
             let req = GameRequest {
                 id: request.id.0,
                 request_type: match request.request_type {
-                    TakRequestType::Draw => GameRequestType::Draw,
-                    TakRequestType::Undo => GameRequestType::Undo,
-                    TakRequestType::MoreTime(_) => continue, // currently not exposed
+                    GameRequestType::Draw => JsonGameRequestType::Draw,
+                    GameRequestType::Undo => JsonGameRequestType::Undo,
+                    GameRequestType::MoreTime(_) => continue, // currently not exposed
                 },
                 from_player_id: match request.player {
                     TakPlayer::White => ongoing_game.metadata.white_id.to_string(),
@@ -88,6 +92,10 @@ pub async fn get_game_status(
             } else {
                 GameStatusType::Aborted // means game ended was never saved after it ended (e.g. due to server restart killing ongoing games)
             };
+            let GameSettings::Realtime(settings) = &ended_game.settings else {
+                //TODO: support async games
+                return Err(ServiceError::NotFound("Not a realtime game".to_string()));
+            };
             let (white_remaining, black_remaining) = ended_game.reconstruct_time_remaining();
             Ok(Json(GameStatus {
                 id: game_id.0,
@@ -96,7 +104,7 @@ pub async fn get_game_status(
                     black: ended_game.black.player_id.to_string(),
                 },
                 is_rated: ended_game.is_rated,
-                game_settings: GameSettingsInfo::from_game_settings(&ended_game.settings),
+                game_settings: GameSettingsInfo::from_game_settings(settings),
                 actions: ended_game
                     .reconstruct_action_history()
                     .iter()
@@ -154,7 +162,7 @@ async fn add_request(
     auth: Auth,
     app: &AppState,
     game_id: GameId,
-    request_type: TakRequestType,
+    request_type: GameRequestType,
 ) -> Result<(), ServiceError> {
     let player_id = app
         .app
@@ -193,7 +201,7 @@ async fn retract_request_helper(
     auth: Auth,
     app: &AppState,
     game_id: GameId,
-    request_id: TakRequestId,
+    request_id: GameRequestId,
 ) -> Result<(), ServiceError> {
     let player_id = app
         .app
@@ -232,7 +240,7 @@ async fn reject_request(
     auth: Auth,
     app: &AppState,
     game_id: GameId,
-    request_id: TakRequestId,
+    request_id: GameRequestId,
 ) -> Result<(), ServiceError> {
     let player_id = app
         .app
@@ -271,7 +279,7 @@ async fn accept_request(
     auth: Auth,
     app: &AppState,
     game_id: GameId,
-    request_id: TakRequestId,
+    request_id: GameRequestId,
 ) -> Result<(), ServiceError> {
     let player_id = app
         .app
@@ -294,19 +302,19 @@ async fn accept_request(
         ));
     };
     let res = match request.request_type {
-        TakRequestType::Draw => {
+        GameRequestType::Draw => {
             app.app
                 .game_do_action_use_case
                 .accept_draw_request(game_id, player_id, request_id)
                 .await
         }
-        TakRequestType::Undo => {
+        GameRequestType::Undo => {
             app.app
                 .game_do_action_use_case
                 .accept_undo_request(game_id, player_id, request_id)
                 .await
         }
-        TakRequestType::MoreTime(_) => {
+        GameRequestType::MoreTime(_) => {
             return Err(ServiceError::NotPossible(
                 "Accepting more time requests is not supported".to_string(),
             ));
@@ -341,7 +349,7 @@ pub async fn add_draw_request(
     Path(game_id): Path<i64>,
 ) -> Result<(), ServiceError> {
     let game_id = GameId(game_id);
-    add_request(auth, &app, game_id, TakRequestType::Draw).await
+    add_request(auth, &app, game_id, GameRequestType::Draw).await
 }
 
 pub async fn add_undo_request(
@@ -350,7 +358,7 @@ pub async fn add_undo_request(
     Path(game_id): Path<i64>,
 ) -> Result<(), ServiceError> {
     let game_id = GameId(game_id);
-    add_request(auth, &app, game_id, TakRequestType::Undo).await
+    add_request(auth, &app, game_id, GameRequestType::Undo).await
 }
 
 pub async fn retract_request(
@@ -359,7 +367,7 @@ pub async fn retract_request(
     Path((game_id, request_id)): Path<(i64, u64)>,
 ) -> Result<(), ServiceError> {
     let game_id = GameId(game_id);
-    let request_id = TakRequestId(request_id);
+    let request_id = GameRequestId(request_id);
     retract_request_helper(auth, &app, game_id, request_id).await
 }
 
@@ -370,7 +378,7 @@ pub async fn respond_to_request(
     Json(response): Json<RequestResponse>,
 ) -> Result<(), ServiceError> {
     let game_id = GameId(game_id);
-    let request_id = TakRequestId(request_id);
+    let request_id = GameRequestId(request_id);
     if response.accept {
         accept_request(auth, &app, game_id, request_id).await
     } else {
@@ -401,7 +409,7 @@ pub struct GameStatus {
 pub struct GameRequest {
     id: u64,
     from_player_id: String,
-    request_type: GameRequestType,
+    request_type: JsonGameRequestType,
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
@@ -410,7 +418,7 @@ pub struct GameRequest {
     tag = "type",
     rename_all_fields = "camelCase"
 )]
-pub enum GameRequestType {
+pub enum JsonGameRequestType {
     Draw,
     Undo,
 }
@@ -470,12 +478,12 @@ pub struct GameSettingsInfo {
 }
 
 impl GameSettingsInfo {
-    pub fn from_game_settings(settings: &TakGameSettings) -> Self {
+    pub fn from_game_settings(settings: &TakRealtimeGameSettings) -> Self {
         GameSettingsInfo {
-            board_size: settings.board_size,
-            half_komi: settings.half_komi,
-            pieces: settings.reserve.pieces,
-            capstones: settings.reserve.capstones,
+            board_size: settings.base.board_size,
+            half_komi: settings.base.half_komi,
+            pieces: settings.base.reserve.pieces,
+            capstones: settings.base.reserve.capstones,
             contingent_ms: settings.time_control.contingent.as_millis() as u64,
             increment_ms: settings.time_control.increment.as_millis() as u64,
             extra: settings
@@ -488,23 +496,23 @@ impl GameSettingsInfo {
         }
     }
 
-    pub fn to_game_settings(&self) -> TakGameSettings {
-        TakGameSettings {
-            board_size: self.board_size,
-            half_komi: self.half_komi,
-            reserve: tak_core::TakReserve {
-                pieces: self.pieces,
-                capstones: self.capstones,
+    pub fn to_game_settings(&self) -> TakRealtimeGameSettings {
+        TakRealtimeGameSettings {
+            base: TakBaseGameSettings {
+                board_size: self.board_size,
+                half_komi: self.half_komi,
+                reserve: tak_core::TakReserve {
+                    pieces: self.pieces,
+                    capstones: self.capstones,
+                },
             },
-            time_control: tak_core::TakTimeControl {
-                contingent: std::time::Duration::from_millis(self.contingent_ms),
-                increment: std::time::Duration::from_millis(self.increment_ms),
-                extra: self.extra.as_ref().map(|extra| {
-                    (
-                        extra.on_move,
-                        std::time::Duration::from_millis(extra.extra_ms),
-                    )
-                }),
+            time_control: tak_core::TakRealtimeTimeControl {
+                contingent: Duration::from_millis(self.contingent_ms),
+                increment: Duration::from_millis(self.increment_ms),
+                extra: self
+                    .extra
+                    .as_ref()
+                    .map(|extra| (extra.on_move, Duration::from_millis(extra.extra_ms))),
             },
         }
     }

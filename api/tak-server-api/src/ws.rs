@@ -12,13 +12,10 @@ use futures::{
     SinkExt, StreamExt,
     stream::{SplitSink, SplitStream},
 };
-use tak_core::{
-    TakRequestType,
-    ptn::{action_from_ptn, action_to_ptn, game_result_to_string},
-};
+use tak_core::ptn::{action_from_ptn, action_to_ptn, game_result_to_string};
 use tak_player_connection::{ConnectionId, PlayerSimpleConnectionPort};
 use tak_server_app::{
-    domain::{AccountId, GameId, PlayerId},
+    domain::{AccountId, GameId, PlayerId, game::request::GameRequestType},
     ports::notification::ListenerMessage,
     workflow::{
         chat::message::MessageTarget,
@@ -491,8 +488,8 @@ impl ServerMessage {
                 request,
             } => {
                 let request_type = match request.request_type {
-                    TakRequestType::Draw => JsonGameRequestType::Draw,
-                    TakRequestType::Undo => JsonGameRequestType::Undo,
+                    GameRequestType::Draw => JsonGameRequestType::Draw,
+                    GameRequestType::Undo => JsonGameRequestType::Undo,
                     _ => return MessageTransformation::Ignore,
                 };
                 MessageTransformation::Transform(ServerMessage::GameRequestAdded {

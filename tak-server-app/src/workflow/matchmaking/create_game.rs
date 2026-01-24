@@ -4,7 +4,7 @@ use crate::{
     domain::{
         MatchId,
         game::GameService,
-        game_history::{GameHistoryService, GameRepository},
+        game_history::{GameHistoryService, GameRepository, GameSettings},
         r#match::MatchService,
     },
     ports::notification::{ListenerMessage, ListenerNotificationPort},
@@ -110,7 +110,7 @@ impl<
             date,
             snapshot_white,
             snapshot_black,
-            match_entry.game_settings.clone(),
+            GameSettings::Realtime(match_entry.game_settings.clone()),
             match_entry.is_rated,
         );
 

@@ -4,7 +4,7 @@ use std::{
 };
 
 use dashmap::DashMap;
-use tak_core::{TakGameSettings, TakPlayer};
+use tak_core::{TakPlayer, TakRealtimeGameSettings};
 
 use crate::domain::{GameId, MatchId, PlayerId};
 
@@ -15,7 +15,7 @@ pub struct Match {
     pub player2: PlayerId,
     pub initial_color: TakPlayer,
     pub color_rule: MatchColorRule,
-    pub game_settings: TakGameSettings,
+    pub game_settings: TakRealtimeGameSettings,
     pub is_rated: bool,
     pub played_games: Vec<GameId>,
     pub status: MatchStatus,
@@ -74,7 +74,7 @@ pub trait MatchService {
         player2: PlayerId,
         initial_color: Option<TakPlayer>,
         color_rule: MatchColorRule,
-        game_settings: TakGameSettings,
+        game_settings: TakRealtimeGameSettings,
         is_rated: bool,
     ) -> MatchId;
     fn get_match(&self, match_id: MatchId) -> Option<Match>;
@@ -139,7 +139,7 @@ impl MatchService for MatchServiceImpl {
         player2: PlayerId,
         initial_color: Option<TakPlayer>,
         color_rule: MatchColorRule,
-        game_settings: TakGameSettings,
+        game_settings: TakRealtimeGameSettings,
         is_rated: bool,
     ) -> MatchId {
         let match_id = self.generate_match_id();

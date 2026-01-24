@@ -1,10 +1,9 @@
 use std::{sync::Arc, time::Instant};
 
 use dashmap::DashMap;
-use tak_core::TakRequestType;
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
-    domain::{AccountId, GameId, PlayerId},
+    domain::{AccountId, GameId, PlayerId, game::request::GameRequestType},
     ports::notification::{ListenerMessage, ServerAlertMessage},
 };
 
@@ -194,10 +193,10 @@ impl ProtocolV2Handler {
             } => {
                 if self.is_opponent_in_game(*requesting_player_id, player_id, *game_id) {
                     match request.request_type {
-                        TakRequestType::Draw => {
+                        GameRequestType::Draw => {
                             self.send_draw_offer_message(id, *game_id, true);
                         }
-                        TakRequestType::Undo => {
+                        GameRequestType::Undo => {
                             self.send_undo_request_message(id, *game_id, true);
                         }
                         _ => {}
@@ -211,10 +210,10 @@ impl ProtocolV2Handler {
             } => {
                 if self.is_opponent_in_game(*retracting_player_id, player_id, *game_id) {
                     match request.request_type {
-                        TakRequestType::Draw => {
+                        GameRequestType::Draw => {
                             self.send_draw_offer_message(id, *game_id, false);
                         }
-                        TakRequestType::Undo => {
+                        GameRequestType::Undo => {
                             self.send_undo_request_message(id, *game_id, false);
                         }
                         _ => {}
