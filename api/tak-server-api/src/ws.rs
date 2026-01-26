@@ -31,7 +31,7 @@ use uuid::Uuid;
 
 use crate::{
     AppState, ServiceError,
-    game::{ForPlayer, GameInfo},
+    game::{GameInfo, JsonTimeInfo},
     seek::SeekInfo,
 };
 
@@ -381,7 +381,7 @@ pub enum ServerMessage {
     },
     GameTimeUpdate {
         game_id: i64,
-        remaining_ms: ForPlayer<u64>,
+        time_info: JsonTimeInfo,
     },
     GameStarted {
         game: GameInfo,
@@ -471,17 +471,12 @@ impl ServerMessage {
                     result: game_result_to_string(game.game.game_result()),
                 })
             }
-            ListenerMessage::GameTimeUpdate {
-                game_id,
-                white_time,
-                black_time,
-            } => MessageTransformation::Transform(ServerMessage::GameTimeUpdate {
-                game_id: game_id.0,
-                remaining_ms: ForPlayer {
-                    white: white_time.as_millis() as u64,
-                    black: black_time.as_millis() as u64,
-                },
-            }),
+            ListenerMessage::GameTimeUpdate { game_id, time_info } => {
+                MessageTransformation::Transform(ServerMessage::GameTimeUpdate {
+                    game_id: game_id.0,
+                    time_info: JsonTimeInfo::from_tak_time_info(&time_info),
+                })
+            }
             ListenerMessage::GameRequestAdded {
                 game_id,
                 requesting_player_id,

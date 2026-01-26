@@ -1,18 +1,18 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use axum::{
     Json,
     extract::{Path, State},
 };
 use tak_core::{
-    TakBaseGameSettings, TakPlayer, TakRealtimeGameSettings,
+    TakAsyncTimeControl, TakBaseGameSettings, TakGameSettings, TakInstant, TakPlayer,
+    TakRealtimeTimeControl, TakReserve, TakTimeInfo, TakTimeSettings,
     ptn::{action_to_ptn, game_result_to_string},
 };
 use tak_server_app::{
     domain::{
         GameId,
         game::request::{GameRequestId, GameRequestType},
-        game_history::GameSettings,
     },
     services::player_resolver::ResolveError,
     workflow::{
@@ -60,8 +60,7 @@ pub async fn get_game_status(
             };
             requests.push(req);
         }
-        let (white_remaining, black_remaining) =
-            ongoing_game.game.get_time_remaining_both(Instant::now());
+        let time_info = ongoing_game.game.get_time_info(TakInstant::now());
         return Ok(Json(GameStatus {
             id: ongoing_game.metadata.id.0,
             player_ids: ForPlayer {
@@ -77,10 +76,7 @@ pub async fn get_game_status(
                 .map(|a| action_to_ptn(&a))
                 .collect(),
             status: GameStatusType::Ongoing { requests },
-            remaining_ms: ForPlayer {
-                white: white_remaining.as_millis() as u64,
-                black: black_remaining.as_millis() as u64,
-            },
+            time_info: JsonTimeInfo::from_tak_time_info(&time_info),
         }));
     }
     match app.app.game_history_query_use_case.get_game(game_id).await {
@@ -92,11 +88,8 @@ pub async fn get_game_status(
             } else {
                 GameStatusType::Aborted // means game ended was never saved after it ended (e.g. due to server restart killing ongoing games)
             };
-            let GameSettings::Realtime(settings) = &ended_game.settings else {
-                //TODO: support async games
-                return Err(ServiceError::NotFound("Not a realtime game".to_string()));
-            };
-            let (white_remaining, black_remaining) = ended_game.reconstruct_time_remaining();
+
+            let time_info = ended_game.reconstruct_time_info();
             Ok(Json(GameStatus {
                 id: game_id.0,
                 player_ids: ForPlayer {
@@ -104,17 +97,14 @@ pub async fn get_game_status(
                     black: ended_game.black.player_id.to_string(),
                 },
                 is_rated: ended_game.is_rated,
-                game_settings: GameSettingsInfo::from_game_settings(settings),
+                game_settings: GameSettingsInfo::from_game_settings(&ended_game.settings),
                 actions: ended_game
                     .reconstruct_action_history()
                     .iter()
                     .map(|a| action_to_ptn(&a))
                     .collect(),
                 status,
-                remaining_ms: ForPlayer {
-                    white: white_remaining.as_millis() as u64,
-                    black: black_remaining.as_millis() as u64,
-                },
+                time_info: JsonTimeInfo::from_tak_time_info(&time_info),
             }))
         }
         Ok(None) => Err(ServiceError::NotFound(format!(
@@ -401,7 +391,42 @@ pub struct GameStatus {
     pub game_settings: GameSettingsInfo,
     pub actions: Vec<String>,
     pub status: GameStatusType,
-    pub remaining_ms: ForPlayer<u64>,
+    pub time_info: JsonTimeInfo,
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum JsonTimeInfo {
+    Realtime {
+        remaining_ms: ForPlayer<u64>,
+    },
+    Async {
+        #[serde(with = "chrono::serde::ts_milliseconds")]
+        next_deadline_timestamp: chrono::DateTime<chrono::Utc>,
+    },
+}
+
+impl JsonTimeInfo {
+    pub fn from_tak_time_info(time_info: &TakTimeInfo) -> Self {
+        match time_info {
+            TakTimeInfo::Realtime {
+                white_remaining,
+                black_remaining,
+            } => JsonTimeInfo::Realtime {
+                remaining_ms: ForPlayer {
+                    white: white_remaining.as_millis() as u64,
+                    black: black_remaining.as_millis() as u64,
+                },
+            },
+            TakTimeInfo::Async { next_deadline } => JsonTimeInfo::Async {
+                next_deadline_timestamp: *next_deadline,
+            },
+        }
+    }
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
@@ -472,47 +497,76 @@ pub struct GameSettingsInfo {
     pub half_komi: u32,
     pub pieces: u32,
     pub capstones: u32,
-    pub contingent_ms: u64,
-    pub increment_ms: u64,
-    pub extra: Option<ExtraTime>,
+    pub time_settings: JsonTimeSettings,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(
+    rename_all = "camelCase",
+    tag = "type",
+    rename_all_fields = "camelCase"
+)]
+pub enum JsonTimeSettings {
+    Realtime {
+        contingent_ms: u64,
+        increment_ms: u64,
+        extra: Option<ExtraTime>,
+    },
+    Async {
+        increment_ms: u64,
+    },
 }
 
 impl GameSettingsInfo {
-    pub fn from_game_settings(settings: &TakRealtimeGameSettings) -> Self {
+    pub fn from_game_settings(settings: &TakGameSettings) -> Self {
         GameSettingsInfo {
             board_size: settings.base.board_size,
             half_komi: settings.base.half_komi,
             pieces: settings.base.reserve.pieces,
             capstones: settings.base.reserve.capstones,
-            contingent_ms: settings.time_control.contingent.as_millis() as u64,
-            increment_ms: settings.time_control.increment.as_millis() as u64,
-            extra: settings
-                .time_control
-                .extra
-                .map(|(on_move, extra_time)| ExtraTime {
-                    on_move,
-                    extra_ms: extra_time.as_millis() as u64,
-                }),
+            time_settings: match &settings.time_settings {
+                TakTimeSettings::Realtime(tc) => JsonTimeSettings::Realtime {
+                    contingent_ms: tc.contingent.as_millis() as u64,
+                    increment_ms: tc.increment.as_millis() as u64,
+                    extra: tc.extra.map(|(on_move, extra_time)| ExtraTime {
+                        on_move,
+                        extra_ms: extra_time.as_millis() as u64,
+                    }),
+                },
+                TakTimeSettings::Async(tc) => JsonTimeSettings::Async {
+                    increment_ms: tc.increment.num_milliseconds() as u64,
+                },
+            },
         }
     }
 
-    pub fn to_game_settings(&self) -> TakRealtimeGameSettings {
-        TakRealtimeGameSettings {
+    pub fn to_game_settings(&self) -> TakGameSettings {
+        TakGameSettings {
             base: TakBaseGameSettings {
                 board_size: self.board_size,
                 half_komi: self.half_komi,
-                reserve: tak_core::TakReserve {
+                reserve: TakReserve {
                     pieces: self.pieces,
                     capstones: self.capstones,
                 },
             },
-            time_control: tak_core::TakRealtimeTimeControl {
-                contingent: Duration::from_millis(self.contingent_ms),
-                increment: Duration::from_millis(self.increment_ms),
-                extra: self
-                    .extra
-                    .as_ref()
-                    .map(|extra| (extra.on_move, Duration::from_millis(extra.extra_ms))),
+            time_settings: match &self.time_settings {
+                JsonTimeSettings::Realtime {
+                    contingent_ms,
+                    increment_ms,
+                    extra,
+                } => TakTimeSettings::Realtime(TakRealtimeTimeControl {
+                    contingent: Duration::from_millis(*contingent_ms),
+                    increment: Duration::from_millis(*increment_ms),
+                    extra: extra
+                        .as_ref()
+                        .map(|extra| (extra.on_move, Duration::from_millis(extra.extra_ms))),
+                }),
+                JsonTimeSettings::Async { increment_ms } => {
+                    TakTimeSettings::Async(TakAsyncTimeControl {
+                        increment: chrono::Duration::milliseconds(*increment_ms as i64),
+                    })
+                }
             },
         }
     }

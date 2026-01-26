@@ -1,7 +1,5 @@
-use std::time::Duration;
-
 use chrono::{DateTime, Utc};
-use tak_core::{TakAction, TakBaseGameSettings, TakGameResult, TakRealtimeGameSettings};
+use tak_core::{TakAction, TakGameResult, TakGameSettings, TakTimeInfo, TakTimeSettings};
 
 use crate::domain::{
     GameId, PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
@@ -14,15 +12,10 @@ pub struct GameRecord {
     pub white: PlayerSnapshot,
     pub black: PlayerSnapshot,
     pub rating_info: Option<GameRatingInfo>,
-    pub settings: GameSettings,
+    pub settings: TakGameSettings,
     pub is_rated: bool,
     pub result: Option<TakGameResult>,
     pub events: Vec<GameEvent>,
-}
-
-pub enum GameSettings {
-    Realtime(TakRealtimeGameSettings),
-    Async(TakBaseGameSettings),
 }
 
 impl GameRecord {
@@ -38,28 +31,29 @@ impl GameRecord {
         actions
     }
 
-    pub fn reconstruct_time_remaining(&self) -> (Duration, Duration) {
-        let GameSettings::Realtime(settings) = &self.settings else {
-            return (Duration::ZERO, Duration::ZERO);
-        };
-        let mut white_remaining = settings.time_control.contingent;
-        let mut black_remaining = settings.time_control.contingent;
-
+    pub fn reconstruct_time_info(&self) -> TakTimeInfo {
+        let mut maybe_time_info = None;
         for event in &self.events {
             match &event.event_type {
-                GameEventType::Action {
-                    white_remaining: w,
-                    black_remaining: b,
-                    ..
-                } => {
-                    white_remaining = *w;
-                    black_remaining = *b;
+                GameEventType::Action { time_info, .. } => {
+                    maybe_time_info = Some(time_info);
                 }
                 _ => {}
             }
         }
 
-        (white_remaining, black_remaining)
+        match maybe_time_info {
+            Some(ti) => ti.clone(),
+            None => match &self.settings.time_settings {
+                TakTimeSettings::Realtime(s) => TakTimeInfo::Realtime {
+                    white_remaining: s.contingent,
+                    black_remaining: s.contingent,
+                },
+                TakTimeSettings::Async(s) => TakTimeInfo::Async {
+                    next_deadline: self.date + s.increment,
+                },
+            },
+        }
     }
 }
 
@@ -95,10 +89,6 @@ pub struct GameQuery {
     pub half_komi: Option<usize>,
     pub board_size: Option<usize>,
     pub is_rated: Option<bool>,
-    pub clock_contingent: Option<Duration>,
-    pub clock_increment: Option<Duration>,
-    pub clock_extra_trigger: Option<usize>,
-    pub clock_extra_time: Option<Duration>,
     pub pagination: Pagination,
     pub sort: Option<(SortOrder, GameSortBy)>,
 }
@@ -157,7 +147,7 @@ pub trait GameHistoryService {
         date: DateTime<Utc>,
         white: PlayerSnapshot,
         black: PlayerSnapshot,
-        settings: GameSettings,
+        settings: TakGameSettings,
         is_rated: bool,
     ) -> GameRecord;
     fn get_finished_game_record_update(
@@ -181,7 +171,7 @@ impl GameHistoryService for GameHistoryServiceImpl {
         date: DateTime<Utc>,
         white: PlayerSnapshot,
         black: PlayerSnapshot,
-        settings: GameSettings,
+        settings: TakGameSettings,
         is_rated: bool,
     ) -> GameRecord {
         GameRecord {

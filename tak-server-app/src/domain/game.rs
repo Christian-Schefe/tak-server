@@ -1,7 +1,4 @@
-use std::{
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Duration};
 
 use crate::domain::{
     GameId, PlayerId,
@@ -9,8 +6,8 @@ use crate::domain::{
 };
 use dashmap::DashMap;
 use tak_core::{
-    MaybeTimeout, TakAction, TakFinishedRealtimeGame, TakOngoingRealtimeGame, TakPlayer,
-    TakRealtimeGameSettings,
+    MaybeTimeout, TakAction, TakFinishedGame, TakGameSettings, TakInstant, TakOngoingGame,
+    TakPlayer, TakTimeInfo,
 };
 
 pub mod request;
@@ -34,8 +31,7 @@ impl GameEvent {
 pub enum GameEventType {
     Action {
         action: TakAction,
-        white_remaining: Duration,
-        black_remaining: Duration,
+        time_info: TakTimeInfo,
     },
     RequestAdded {
         request: GameRequest,
@@ -65,7 +61,7 @@ pub struct GameMetadata {
     pub date: chrono::DateTime<chrono::Utc>,
     pub white_id: PlayerId,
     pub black_id: PlayerId,
-    pub settings: TakRealtimeGameSettings,
+    pub settings: TakGameSettings,
     pub is_rated: bool,
 }
 
@@ -94,42 +90,34 @@ impl GameMetadata {
 #[derive(Clone, Debug)]
 pub struct OngoingGame {
     pub metadata: GameMetadata,
-    pub game: TakOngoingRealtimeGame,
+    pub game: TakOngoingGame,
     pub requests: GameRequestSystem,
     pub events: Vec<GameEvent>,
+}
+
+impl OngoingGame {
+    pub fn get_time_info(&self, now: TakInstant) -> TakTimeInfo {
+        self.game.get_time_info(now)
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct FinishedGame {
     pub metadata: GameMetadata,
-    pub game: TakFinishedRealtimeGame,
+    pub game: TakFinishedGame,
     pub events: Vec<GameEvent>,
 }
 
 impl FinishedGame {
-    pub fn new(game: &OngoingGame, tak_game: TakFinishedRealtimeGame) -> Self {
+    fn new(game: &OngoingGame, tak_game: TakFinishedGame) -> Self {
         Self {
             metadata: game.metadata.clone(),
             game: tak_game,
             events: game.events.clone(),
         }
     }
-    pub fn get_time_remaining(&self) -> TimeRemaining {
-        let (white_time, black_time) = self.game.get_time_remaining();
-        TimeRemaining {
-            white_time,
-            black_time,
-        }
-    }
-}
-
-impl OngoingGame {
-    pub fn get_time_remaining(&self, now: Instant) -> TimeRemaining {
-        let (white_time, black_time) = self.game.get_time_remaining_both(now);
-        TimeRemaining {
-            white_time,
-            black_time,
-        }
+    pub fn get_time_info(&self) -> TakTimeInfo {
+        self.game.get_time_info()
     }
 }
 
@@ -141,44 +129,44 @@ pub trait GameService {
         white_id: PlayerId,
         black_id: PlayerId,
         is_rated: bool,
-        game_settings: TakRealtimeGameSettings,
+        game_settings: TakGameSettings,
     ) -> OngoingGame;
     fn get_game_by_id(&self, game_id: GameId) -> Option<OngoingGame>;
     fn get_games(&self) -> Vec<OngoingGame>;
-    fn check_timeout(&self, game_id: GameId, now: Instant) -> CheckTimoutResult;
+    fn check_timeout(&self, game_id: GameId, now: TakInstant) -> CheckTimoutResult;
     fn do_action(
         &self,
         game_id: GameId,
         player: PlayerId,
         action: TakAction,
-        now: Instant,
+        now: TakInstant,
     ) -> GamePlayerActionResult<DoActionResult>;
     fn resign(
         &self,
         game_id: GameId,
         player: PlayerId,
-        now: Instant,
+        now: TakInstant,
     ) -> GamePlayerActionResult<ResignResult>;
     fn add_request(
         &self,
         game_id: GameId,
         player: PlayerId,
         request: GameRequestType,
-        now: Instant,
+        now: TakInstant,
     ) -> GamePlayerActionResult<Result<GameRequest, ()>>;
     fn retract_request(
         &self,
         game_id: GameId,
         player: PlayerId,
         request_id: GameRequestId,
-        now: Instant,
+        now: TakInstant,
     ) -> GamePlayerActionResult<Result<GameRequest, ()>>;
     fn reject_request(
         &self,
         game_id: GameId,
         player: PlayerId,
         request_id: GameRequestId,
-        now: Instant,
+        now: TakInstant,
     ) -> GamePlayerActionResult<Result<GameRequest, ()>>;
 
     fn accept_draw_request(
@@ -186,14 +174,14 @@ pub trait GameService {
         game_id: GameId,
         player: PlayerId,
         request_id: GameRequestId,
-        now: Instant,
+        now: TakInstant,
     ) -> GamePlayerActionResult<Result<(GameRequest, FinishedGame), ()>>;
     fn accept_undo_request(
         &self,
         game_id: GameId,
         player: PlayerId,
         request_id: GameRequestId,
-        now: Instant,
+        now: TakInstant,
     ) -> GamePlayerActionResult<Result<(GameRequest, bool), ()>>;
 }
 
@@ -227,15 +215,10 @@ pub enum ResignResult {
     GameOver(FinishedGame),
 }
 
-pub struct TimeRemaining {
-    pub white_time: Duration,
-    pub black_time: Duration,
-}
-
 pub enum CheckTimoutResult {
     GameNotFound,
     GameTimedOut(FinishedGame),
-    NoTimeout(TimeRemaining),
+    NoTimeout(TakTimeInfo),
 }
 
 pub struct GameServiceImpl {
@@ -277,7 +260,7 @@ impl GameServiceImpl {
         action_fn: impl FnOnce(
             &mut OngoingGame,
             TakPlayer,
-        ) -> Result<MaybeTimeout<FR, TakFinishedRealtimeGame>, R>,
+        ) -> Result<MaybeTimeout<FR, TakFinishedGame>, R>,
         decision_fn: impl FnOnce(&mut OngoingGame, TakPlayer, FR) -> (GameControl, R),
     ) -> GamePlayerActionResult<R> {
         self.with_game_might_end(game_id, |game_entry| {
@@ -307,15 +290,16 @@ impl GameService for GameServiceImpl {
         white_id: PlayerId,
         black_id: PlayerId,
         is_rated: bool,
-        game_settings: TakRealtimeGameSettings,
+        game_settings: TakGameSettings,
     ) -> OngoingGame {
-        let game = TakOngoingRealtimeGame::new(game_settings.clone());
+        let game = TakOngoingGame::new(game_settings.clone());
+
         let metadata = GameMetadata {
             game_id: id,
             date,
             white_id,
             black_id,
-            settings: game_settings.clone(),
+            settings: game_settings,
             is_rated,
         };
         let game_struct = OngoingGame {
@@ -342,7 +326,7 @@ impl GameService for GameServiceImpl {
         game_id: GameId,
         player: PlayerId,
         action: TakAction,
-        now: Instant,
+        now: TakInstant,
     ) -> GamePlayerActionResult<DoActionResult> {
         self.game_player_action(
             game_id,
@@ -361,13 +345,12 @@ impl GameService for GameServiceImpl {
                 let ply_index = game_entry.game.action_history().len() - 1;
                 match res {
                     Some(finished_game) => {
-                        let (white_remaining, black_remaining) = finished_game.get_time_remaining();
+                        let time_info = finished_game.get_time_info();
                         game_entry
                             .events
                             .push(GameEvent::new(GameEventType::Action {
                                 action: action.clone(),
-                                white_remaining,
-                                black_remaining,
+                                time_info,
                             }));
                         let finished_game = FinishedGame::new(game_entry, finished_game);
                         (
@@ -379,14 +362,12 @@ impl GameService for GameServiceImpl {
                         )
                     }
                     None => {
-                        let (white_remaining, black_remaining) =
-                            game_entry.game.get_time_remaining_both(now);
+                        let time_info = game_entry.game.get_time_info(now);
                         game_entry
                             .events
                             .push(GameEvent::new(GameEventType::Action {
                                 action: action.clone(),
-                                white_remaining,
-                                black_remaining,
+                                time_info,
                             }));
                         (
                             GameControl::Keep,
@@ -405,7 +386,7 @@ impl GameService for GameServiceImpl {
         &self,
         game_id: GameId,
         player: PlayerId,
-        now: Instant,
+        now: TakInstant,
     ) -> GamePlayerActionResult<ResignResult> {
         self.game_player_action(
             game_id,
@@ -426,7 +407,7 @@ impl GameService for GameServiceImpl {
         game_id: GameId,
         player: PlayerId,
         request_type: GameRequestType,
-        now: Instant,
+        now: TakInstant,
     ) -> GamePlayerActionResult<Result<GameRequest, ()>> {
         self.game_player_action(
             game_id,
@@ -458,7 +439,7 @@ impl GameService for GameServiceImpl {
         game_id: GameId,
         player: PlayerId,
         request_id: GameRequestId,
-        now: Instant,
+        now: TakInstant,
     ) -> GamePlayerActionResult<Result<GameRequest, ()>> {
         self.game_player_action(
             game_id,
@@ -489,7 +470,7 @@ impl GameService for GameServiceImpl {
         game_id: GameId,
         player: PlayerId,
         request_id: GameRequestId,
-        now: Instant,
+        now: TakInstant,
     ) -> GamePlayerActionResult<Result<GameRequest, ()>> {
         self.game_player_action(
             game_id,
@@ -520,7 +501,7 @@ impl GameService for GameServiceImpl {
         game_id: GameId,
         player: PlayerId,
         request_id: GameRequestId,
-        now: Instant,
+        now: TakInstant,
     ) -> GamePlayerActionResult<Result<(GameRequest, FinishedGame), ()>> {
         self.game_player_action(
             game_id,
@@ -567,7 +548,7 @@ impl GameService for GameServiceImpl {
         game_id: GameId,
         player: PlayerId,
         request_id: GameRequestId,
-        now: Instant,
+        now: TakInstant,
     ) -> GamePlayerActionResult<Result<(GameRequest, bool), ()>> {
         self.game_player_action(
             game_id,
@@ -611,7 +592,7 @@ impl GameService for GameServiceImpl {
         )
     }
 
-    fn check_timeout(&self, game_id: GameId, now: Instant) -> CheckTimoutResult {
+    fn check_timeout(&self, game_id: GameId, now: TakInstant) -> CheckTimoutResult {
         self.with_game_might_end(game_id, |game_entry| {
             match game_entry.game.check_timeout(now) {
                 MaybeTimeout::Timeout(finished_game) => {
@@ -625,15 +606,8 @@ impl GameService for GameServiceImpl {
                     )
                 }
                 MaybeTimeout::Result(()) => {
-                    let (white_remaining, black_remaining) =
-                        game_entry.game.get_time_remaining_both(now);
-                    (
-                        GameControl::Keep,
-                        CheckTimoutResult::NoTimeout(TimeRemaining {
-                            white_time: white_remaining,
-                            black_time: black_remaining,
-                        }),
-                    )
+                    let time_info = game_entry.game.get_time_info(now);
+                    (GameControl::Keep, CheckTimoutResult::NoTimeout(time_info))
                 }
             }
         })
@@ -653,7 +627,7 @@ fn get_current_player<R>(
 
 fn on_timeout<R>(
     game_entry: &mut OngoingGame,
-    finished_game: TakFinishedRealtimeGame,
+    finished_game: TakFinishedGame,
 ) -> (GameControl, GamePlayerActionResult<R>) {
     game_entry
         .events

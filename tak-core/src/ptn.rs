@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use crate::{
-    TakAction, TakDir, TakGameResult, TakPlayer, TakPos, TakRealtimeGameSettings, TakReserve,
-    TakRealtimeTimeControl, TakVariant, TakWinReason,
+    TakAction, TakDir, TakGameResult, TakGameSettings, TakPlayer, TakPos, TakRealtimeTimeControl,
+    TakReserve, TakTimeSettings, TakVariant, TakWinReason,
 };
 
 pub enum PtnHeader {
@@ -131,7 +131,7 @@ impl Ptn {
 }
 
 pub fn game_to_ptn(
-    settings: &TakRealtimeGameSettings,
+    settings: &TakGameSettings,
     result: Option<TakGameResult>,
     moves: Vec<TakAction>,
     player_white: (String, Option<f64>),
@@ -155,12 +155,19 @@ pub fn game_to_ptn(
     Ptn::new(headers, moves)
 }
 
-pub fn settings_to_ptn_headers(settings: &TakRealtimeGameSettings) -> Vec<PtnHeader> {
+pub fn settings_to_ptn_headers(settings: &TakGameSettings) -> Vec<PtnHeader> {
     let mut headers: Vec<PtnHeader> = Vec::new();
     headers.push(PtnHeader::Size(settings.base.board_size));
     headers.push(PtnHeader::HalfKomi(settings.base.half_komi));
     headers.push(PtnHeader::Reserve(settings.base.reserve.clone()));
-    headers.push(PtnHeader::TimeControl(settings.time_control.clone()));
+    match &settings.time_settings {
+        TakTimeSettings::Realtime(rt) => {
+            headers.push(PtnHeader::TimeControl(rt.clone()));
+        }
+        TakTimeSettings::Async(_) => {
+            // TODO: implement async time settings in PTN
+        }
+    };
     headers
 }
 

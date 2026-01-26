@@ -92,9 +92,11 @@ impl PlayerConnectionDriver {
 
     pub async fn remove_connection(&self, connection_id: &ConnectionId) {
         let mut set_account_offline = None;
+        let mut player_listener_id = None;
         {
             let mut registry = self.inner.registry.write();
             if let Some(listener_id) = registry.connection_to_listener.remove(connection_id) {
+                player_listener_id = Some(listener_id);
                 if let Some(connections) = registry.listener_to_connections.get_mut(&listener_id) {
                     connections.remove(connection_id);
                     if connections.is_empty() {
@@ -108,8 +110,19 @@ impl PlayerConnectionDriver {
                 }
             }
         };
+        if let Some(listener_id) = player_listener_id {
+            self.app
+                .listener_disconnect_use_case
+                .handle_listener_disconnect(listener_id);
+        }
+        self.app
+            .listener_disconnect_use_case
+            .handle_listener_disconnect(connection_id.0);
         if let Some(account_id) = set_account_offline {
-            self.set_player_offline(&account_id).await;
+            self.app
+                .account_set_online_use_case
+                .set_offline(&account_id)
+                .await;
         }
     }
 
@@ -131,18 +144,6 @@ impl PlayerConnectionDriver {
             }
         }
         None
-    }
-
-    async fn set_player_offline(&self, account_id: &AccountId) {
-        self.app.account_set_online_use_case.set_offline(account_id);
-        if let Ok(player_id) = self
-            .app
-            .player_resolver_service
-            .resolve_player_id_by_account_id(account_id)
-            .await
-        {
-            self.app.seek_cancel_use_case.cancel_seeks(player_id);
-        }
     }
 }
 

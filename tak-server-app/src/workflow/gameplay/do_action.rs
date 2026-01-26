@@ -1,6 +1,6 @@
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 
-use tak_core::TakAction;
+use tak_core::{TakAction, TakInstant};
 
 use crate::{
     domain::{
@@ -113,14 +113,10 @@ impl<G: GameService, NP: NotifyPlayerWorkflow, F: FinalizeGameWorkflow>
         }
     }
 
-    async fn send_game_time_update(&self, game_id: GameId, now: Instant) {
+    async fn send_game_time_update(&self, game_id: GameId, now: TakInstant) {
         if let Some(game) = self.game_service.get_game_by_id(game_id) {
-            let time_remaining = game.get_time_remaining(now);
-            let time_update_msg = ListenerMessage::GameTimeUpdate {
-                game_id,
-                white_time: time_remaining.white_time,
-                black_time: time_remaining.black_time,
-            };
+            let time_info = game.get_time_info(now);
+            let time_update_msg = ListenerMessage::GameTimeUpdate { game_id, time_info };
             self.notify_player_workflow
                 .notify_players_and_observers_of_game(&game.metadata, &time_update_msg)
                 .await;
@@ -128,11 +124,10 @@ impl<G: GameService, NP: NotifyPlayerWorkflow, F: FinalizeGameWorkflow>
     }
 
     async fn send_game_time_update_for_finished_game(&self, game: &FinishedGame) {
-        let time_remaining = game.get_time_remaining();
+        let time_info = game.get_time_info();
         let time_update_msg = ListenerMessage::GameTimeUpdate {
             game_id: game.metadata.game_id,
-            white_time: time_remaining.white_time,
-            black_time: time_remaining.black_time,
+            time_info,
         };
         self.notify_player_workflow
             .notify_players_and_observers_of_game(&game.metadata, &time_update_msg)
@@ -180,7 +175,7 @@ impl<
             action,
             game_id
         );
-        let now = Instant::now();
+        let now = TakInstant::now();
         let (action_record, maybe_ended_game) = match self
             .handle_game_action_result(self.game_service.do_action(game_id, player_id, action, now))
             .await
@@ -249,7 +244,7 @@ impl<
         player_id: PlayerId,
         request_type: GameRequestType,
     ) -> ActionResult<AddRequestError> {
-        let now = Instant::now();
+        let now = TakInstant::now();
         match self
             .handle_game_action_result(self.game_service.add_request(
                 game_id,
@@ -283,7 +278,7 @@ impl<
         player_id: PlayerId,
         request_id: GameRequestId,
     ) -> ActionResult<HandleRequestError> {
-        let now = Instant::now();
+        let now = TakInstant::now();
         match self
             .handle_game_action_result(
                 self.game_service
@@ -318,7 +313,7 @@ impl<
             request_id,
             game_id
         );
-        let now = Instant::now();
+        let now = TakInstant::now();
         match self
             .handle_game_action_result(
                 self.game_service
@@ -354,7 +349,7 @@ impl<
             request_id,
             game_id
         );
-        let now = Instant::now();
+        let now = TakInstant::now();
         match self
             .handle_game_action_result(
                 self.game_service
@@ -391,7 +386,7 @@ impl<
             request_id,
             game_id
         );
-        let now = Instant::now();
+        let now = TakInstant::now();
         match self
             .handle_game_action_result(
                 self.game_service
@@ -422,7 +417,7 @@ impl<
     }
 
     async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), PlayerActionError> {
-        let now = Instant::now();
+        let now = TakInstant::now();
         match self
             .handle_game_action_result(self.game_service.resign(game_id, player_id, now))
             .await?

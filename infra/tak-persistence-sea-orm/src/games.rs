@@ -1,12 +1,14 @@
 use std::time::Duration;
 
+use chrono::TimeDelta;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect, Set,
 };
 use serde::Deserialize;
 use tak_core::{
-    TakAction, TakBaseGameSettings, TakPlayer, TakReserve, TakRealtimeTimeControl,
+    TakAction, TakAsyncTimeControl, TakBaseGameSettings, TakGameSettings, TakPlayer,
+    TakRealtimeTimeControl, TakReserve, TakTimeSettings,
     ptn::{action_from_ptn, action_to_ptn, game_result_from_string, game_result_to_string},
 };
 use tak_persistence_sea_orm_entites::game;
@@ -29,13 +31,44 @@ pub struct GameRepositoryImpl {
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+enum JsonTimeSettings {
+    Realtime(JsonRealtimeTimeSettings),
+    Async(JsonAsyncTimeSettings),
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JsonRealtimeTimeSettings {
+    contingent_ms: i64,
+    increment_ms: i64,
+    extra_time_amount: i32,
+    extra_time_trigger: i32,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JsonAsyncTimeSettings {
+    increment_ms: i64,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct JsonEventRecord {
     timestamp: chrono::DateTime<chrono::Utc>,
     event: JsonEventRecordType,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "type")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 enum JsonEventRecordType {
     Action {
         #[serde(
@@ -43,8 +76,7 @@ enum JsonEventRecordType {
             deserialize_with = "deserialize_action"
         )]
         action: TakAction,
-        white_remaining_ms: u64,
-        black_remaining_ms: u64,
+        time_info: JsonTimeInfo,
     },
     RequestAdded {
         request_id: u64,
@@ -72,17 +104,46 @@ enum JsonEventRecordType {
     },
 }
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+enum JsonTimeInfo {
+    Realtime {
+        white_remaining_ms: u64,
+        black_remaining_ms: u64,
+    },
+    Async {
+        #[serde(with = "chrono::serde::ts_milliseconds")]
+        next_deadline_timestamp: chrono::DateTime<chrono::Utc>,
+    },
+}
+
+impl JsonTimeInfo {
+    fn from_time_info(time_info: &tak_core::TakTimeInfo) -> Self {
+        match time_info {
+            tak_core::TakTimeInfo::Realtime {
+                white_remaining,
+                black_remaining,
+            } => JsonTimeInfo::Realtime {
+                white_remaining_ms: white_remaining.as_millis() as u64,
+                black_remaining_ms: black_remaining.as_millis() as u64,
+            },
+            tak_core::TakTimeInfo::Async { next_deadline } => JsonTimeInfo::Async {
+                next_deadline_timestamp: *next_deadline,
+            },
+        }
+    }
+}
+
 impl JsonEventRecordType {
     fn from_game_event(event: GameEventType) -> Self {
         match event {
-            GameEventType::Action {
+            GameEventType::Action { action, time_info } => JsonEventRecordType::Action {
                 action,
-                white_remaining,
-                black_remaining,
-            } => JsonEventRecordType::Action {
-                action,
-                white_remaining_ms: white_remaining.as_millis() as u64,
-                black_remaining_ms: black_remaining.as_millis() as u64,
+                time_info: JsonTimeInfo::from_time_info(&time_info),
             },
             GameEventType::RequestAdded { request } => JsonEventRecordType::RequestAdded {
                 request_id: request.id.0,
@@ -121,14 +182,22 @@ impl JsonEventRecordType {
 
     fn to_game_event(&self) -> GameEventType {
         match self {
-            JsonEventRecordType::Action {
-                action,
-                white_remaining_ms,
-                black_remaining_ms,
-            } => GameEventType::Action {
+            JsonEventRecordType::Action { action, time_info } => GameEventType::Action {
                 action: action.clone(),
-                white_remaining: Duration::from_millis(*white_remaining_ms),
-                black_remaining: Duration::from_millis(*black_remaining_ms),
+                time_info: match time_info {
+                    JsonTimeInfo::Realtime {
+                        white_remaining_ms,
+                        black_remaining_ms,
+                    } => tak_core::TakTimeInfo::Realtime {
+                        white_remaining: Duration::from_millis(*white_remaining_ms),
+                        black_remaining: Duration::from_millis(*black_remaining_ms),
+                    },
+                    JsonTimeInfo::Async {
+                        next_deadline_timestamp,
+                    } => tak_core::TakTimeInfo::Async {
+                        next_deadline: *next_deadline_timestamp,
+                    },
+                },
             },
             JsonEventRecordType::RequestAdded {
                 request_id,
@@ -173,6 +242,11 @@ impl JsonEventRecordType {
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 enum JsonRequestType {
     Draw,
     Undo,
@@ -180,6 +254,7 @@ enum JsonRequestType {
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum JsonTakPlayer {
     White,
     Black,
@@ -248,17 +323,36 @@ impl GameRepositoryImpl {
         } else {
             None
         };
-        let time_control = TakRealtimeTimeControl {
-            contingent: Duration::from_millis(model.clock_contingent_ms as u64),
-            increment: Duration::from_millis(model.clock_increment_ms as u64),
-            extra: if model.extra_time_amount > 0 && model.extra_time_trigger > 0 {
-                Some((
-                    model.extra_time_amount as u32,
-                    Duration::from_secs(model.extra_time_trigger as u64),
-                ))
-            } else {
-                None
-            },
+
+        let base_settings = TakBaseGameSettings {
+            board_size: model.size as u32,
+            half_komi: model.half_komi as u32,
+            reserve: TakReserve::new(model.pieces as u32, model.capstones as u32),
+        };
+
+        let time_settings = match serde_json::from_str(&model.game_settings.to_string()) {
+            Ok(JsonTimeSettings::Realtime(json_settings)) => {
+                TakTimeSettings::Realtime(TakRealtimeTimeControl {
+                    contingent: Duration::from_millis(json_settings.contingent_ms as u64),
+                    increment: Duration::from_millis(json_settings.increment_ms as u64),
+                    extra: if json_settings.extra_time_amount > 0
+                        && json_settings.extra_time_trigger > 0
+                    {
+                        Some((
+                            json_settings.extra_time_amount as u32,
+                            Duration::from_secs(json_settings.extra_time_trigger as u64),
+                        ))
+                    } else {
+                        None
+                    },
+                })
+            }
+            Ok(JsonTimeSettings::Async(json_settings)) => {
+                TakTimeSettings::Async(TakAsyncTimeControl {
+                    increment: TimeDelta::milliseconds(json_settings.increment_ms),
+                })
+            }
+            Err(_) => panic!("Failed to deserialize game settings from database"),
         };
         let json_events: Vec<JsonEventRecord> =
             serde_json::from_value(model.events).unwrap_or_default();
@@ -277,11 +371,9 @@ impl GameRepositoryImpl {
 
         GameRecord {
             date: model.date.clone(),
-            settings: TakBaseGameSettings {
-                board_size: model.size as u32,
-                time_control,
-                half_komi: model.half_komi as u32,
-                reserve: TakReserve::new(model.pieces as u32, model.capstones as u32),
+            settings: TakGameSettings {
+                base: base_settings,
+                time_settings,
             },
             white: white_snapshot,
             black: black_snapshot,
@@ -305,10 +397,31 @@ impl GameRepositoryImpl {
 #[async_trait::async_trait]
 impl GameRepository for GameRepositoryImpl {
     async fn save_ongoing_game(&self, game: GameRecord) -> Result<GameId, RepoError> {
+        let time_settings = match &game.settings.time_settings {
+            TakTimeSettings::Realtime(settings) => {
+                JsonTimeSettings::Realtime(JsonRealtimeTimeSettings {
+                    contingent_ms: settings.contingent.as_millis() as i64,
+                    increment_ms: settings.increment.as_millis() as i64,
+                    extra_time_amount: settings
+                        .extra
+                        .as_ref()
+                        .map_or(0, |(trigger_move, _)| *trigger_move as i32),
+                    extra_time_trigger: settings
+                        .extra
+                        .as_ref()
+                        .map_or(0, |(_, extra_time)| extra_time.as_secs() as i32),
+                })
+            }
+
+            TakTimeSettings::Async(settings) => JsonTimeSettings::Async(JsonAsyncTimeSettings {
+                increment_ms: settings.increment.num_milliseconds(),
+            }),
+        };
+        let base_settings = &game.settings.base;
         let new_game = game::ActiveModel {
             id: Default::default(), // Auto-increment
             date: Set(game.date.clone()),
-            size: Set(game.settings.board_size as i32),
+            size: Set(base_settings.board_size as i32),
             player_white_id: Set(game.white.player_id.0),
             player_black_id: Set(game.black.player_id.0),
             player_white_username: Set(game.white.username),
@@ -317,26 +430,15 @@ impl GameRepository for GameRepositoryImpl {
             player_black_rating: Set(game.black.rating),
             events: Set(serde_json::json!([])),
             result: Set(None),
-            clock_contingent_ms: Set(game.settings.time_control.contingent.as_millis() as i64),
-            clock_increment_ms: Set(game.settings.time_control.increment.as_millis() as i64),
             is_rated: Set(game.is_rated),
-            half_komi: Set(game.settings.half_komi as i32),
-            pieces: Set(game.settings.reserve.pieces as i32),
-            capstones: Set(game.settings.reserve.capstones as i32),
+            half_komi: Set(base_settings.half_komi as i32),
+            pieces: Set(base_settings.reserve.pieces as i32),
+            capstones: Set(base_settings.reserve.capstones as i32),
             rating_change_white: Set(None),
             rating_change_black: Set(None),
-            extra_time_amount: Set(game
-                .settings
-                .time_control
-                .extra
-                .as_ref()
-                .map_or(0, |(trigger_move, _)| *trigger_move as i32)),
-            extra_time_trigger: Set(game
-                .settings
-                .time_control
-                .extra
-                .as_ref()
-                .map_or(0, |(_, extra_time)| extra_time.as_secs() as i32)),
+            game_settings: Set(serde_json::to_value(&time_settings).map_err(|e| {
+                RepoError::StorageError(format!("Failed to serialize game settings: {}", e))
+            })?),
         };
 
         let result = new_game
@@ -465,22 +567,6 @@ impl GameRepository for GameRepositoryImpl {
         }
         if let Some(board_size) = filter.board_size {
             query = query.filter(game::Column::Size.eq(board_size as i32));
-        }
-
-        if let Some(clock_contingent) = filter.clock_contingent {
-            query = query
-                .filter(game::Column::ClockContingentMs.eq(clock_contingent.as_millis() as i64));
-        }
-        if let Some(clock_increment) = filter.clock_increment {
-            query =
-                query.filter(game::Column::ClockIncrementMs.eq(clock_increment.as_millis() as i64));
-        }
-        if let Some(clock_extra_time) = filter.clock_extra_time {
-            query =
-                query.filter(game::Column::ExtraTimeAmount.eq(clock_extra_time.as_secs() as i32));
-        }
-        if let Some(clock_extra_trigger) = filter.clock_extra_trigger {
-            query = query.filter(game::Column::ExtraTimeTrigger.eq(clock_extra_trigger as i32));
         }
 
         let total_count: u64 = query

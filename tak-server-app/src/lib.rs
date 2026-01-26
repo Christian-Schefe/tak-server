@@ -51,6 +51,7 @@ use crate::{
             timeout::ObserveGameTimeoutUseCaseImpl,
         },
         history::query::{GameHistoryQueryUseCase, GameHistoryQueryUseCaseImpl},
+        listener::disconnect::{ListenerDisconnectUseCase, ListenerDisconnectUseCaseImpl},
         matchmaking::{
             accept::{AcceptSeekUseCase, AcceptSeekUseCaseImpl},
             cancel::{CancelSeekUseCase, CancelSeekUseCaseImpl},
@@ -87,6 +88,8 @@ pub struct Application {
 
     pub account_set_online_use_case: Box<dyn SetAccountOnlineUseCase + Send + Sync + 'static>,
     pub account_get_online_use_case: Box<dyn GetOnlineAccountsUseCase + Send + Sync + 'static>,
+
+    pub listener_disconnect_use_case: Box<dyn ListenerDisconnectUseCase + Send + Sync + 'static>,
 
     pub player_get_rating_use_case: Box<dyn PlayerGetRatingUseCase + Send + Sync + 'static>,
     pub player_resolver_service: Arc<dyn PlayerResolverService + Send + Sync + 'static>,
@@ -250,9 +253,16 @@ pub async fn build_application<
         account_set_online_use_case: Box::new(SetAccountOnlineUseCaseImpl::new(
             account_online_status_port.clone(),
             listener_notification_port.clone(),
+            seek_service.clone(),
+            player_resolver_service.clone(),
         )),
         account_get_online_use_case: Box::new(GetOnlineAccountsUseCaseImpl::new(
             account_online_status_port.clone(),
+        )),
+
+        listener_disconnect_use_case: Box::new(ListenerDisconnectUseCaseImpl::new(
+            spectator_service.clone(),
+            chat_room_service.clone(),
         )),
 
         player_get_rating_use_case: Box::new(PlayerGetRatingUseCaseImpl::new(

@@ -1,32 +1,34 @@
 use std::time::{Duration, Instant};
 
 use crate::{
-    InvalidActionReason, MaybeTimeout, TakAction, TakGameResult, TakPlayer,
-    TakRealtimeGameSettings, TakWinReason,
+    InvalidActionReason, MaybeTimeout, TakAction, TakAsyncTimeControl, TakGameResult,
+    TakGameSettings, TakInstant, TakPlayer, TakRealtimeTimeControl, TakTimeInfo, TakTimeSettings,
+    TakWinReason,
     base::{TakFinishedBaseGame, TakOngoingBaseGame},
 };
 
 #[derive(Clone, Debug)]
-pub struct TakFinishedRealtimeGame {
+pub struct TakFinishedGame {
     base: TakFinishedBaseGame,
-    time_remaining: (Duration, Duration),
+    time_info: TakTimeInfo,
 }
 
-impl TakFinishedRealtimeGame {
-    fn new(ongoing_game: &TakOngoingRealtimeGame, game_result: TakGameResult) -> Self {
-        TakFinishedRealtimeGame {
+impl TakFinishedGame {
+    fn new(ongoing_game: &TakOngoingGame, game_result: TakGameResult, now: TakInstant) -> Self {
+        TakFinishedGame {
             base: TakFinishedBaseGame::new(&ongoing_game.base, game_result),
-            time_remaining: ongoing_game.clock.remaining_time,
+            time_info: ongoing_game.get_time_info(now),
         }
     }
 
     fn from_finished_base(
         finished_base: TakFinishedBaseGame,
-        ongoing_game: &TakOngoingRealtimeGame,
+        ongoing_game: &TakOngoingGame,
+        now: TakInstant,
     ) -> Self {
-        TakFinishedRealtimeGame {
+        TakFinishedGame {
             base: finished_base,
-            time_remaining: ongoing_game.clock.remaining_time,
+            time_info: ongoing_game.get_time_info(now),
         }
     }
 
@@ -38,41 +40,66 @@ impl TakFinishedRealtimeGame {
         &self.base.game_result
     }
 
-    pub fn get_time_remaining(&self) -> (Duration, Duration) {
-        self.time_remaining
+    pub fn get_time_info(&self) -> TakTimeInfo {
+        self.time_info.clone()
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct TakOngoingRealtimeGame {
-    settings: TakRealtimeGameSettings,
+pub struct TakOngoingGame {
+    mode: TakGameMode,
     base: TakOngoingBaseGame,
-    clock: TakClock,
 }
 
 #[derive(Clone, Debug)]
-pub struct TakClock {
+enum TakGameMode {
+    Realtime {
+        time_settings: TakRealtimeTimeControl,
+        clock: TakRealtimeClock,
+    },
+    Async {
+        time_settings: TakAsyncTimeControl,
+        clock: TakAsyncClock,
+    },
+}
+
+#[derive(Clone, Debug)]
+struct TakRealtimeClock {
     remaining_time: (Duration, Duration),
     last_update_timestamp: Instant,
     has_gained_extra_time: (bool, bool),
     is_ticking: bool,
 }
+#[derive(Clone, Debug)]
+struct TakAsyncClock {
+    deadline: chrono::DateTime<chrono::Utc>,
+    is_ticking: bool,
+}
 
-impl TakOngoingRealtimeGame {
-    pub fn new(settings: TakRealtimeGameSettings) -> Self {
-        let base_game = TakOngoingBaseGame::new(settings.base.clone());
-        TakOngoingRealtimeGame {
-            base: base_game,
-            clock: TakClock {
-                remaining_time: (
-                    settings.time_control.contingent,
-                    settings.time_control.contingent,
-                ),
-                last_update_timestamp: Instant::now(),
-                has_gained_extra_time: (false, false),
-                is_ticking: false,
+impl TakOngoingGame {
+    pub fn new(settings: TakGameSettings) -> Self {
+        let base_game = TakOngoingBaseGame::new(settings.base);
+        let mode = match settings.time_settings {
+            TakTimeSettings::Realtime(settings) => TakGameMode::Realtime {
+                clock: TakRealtimeClock {
+                    remaining_time: (settings.contingent, settings.contingent),
+                    last_update_timestamp: Instant::now(),
+                    has_gained_extra_time: (false, false),
+                    is_ticking: false,
+                },
+                time_settings: settings,
             },
-            settings,
+            TakTimeSettings::Async(settings) => TakGameMode::Async {
+                clock: TakAsyncClock {
+                    deadline: chrono::Utc::now(),
+                    is_ticking: false,
+                },
+                time_settings: settings,
+            },
+        };
+        TakOngoingGame {
+            base: base_game,
+            mode,
         }
     }
 
@@ -84,83 +111,136 @@ impl TakOngoingRealtimeGame {
         self.base.current_player
     }
 
-    fn set_game_over(
-        &mut self,
-        now: Instant,
-        game_result: TakGameResult,
-    ) -> TakFinishedRealtimeGame {
+    fn set_game_over(&mut self, now: TakInstant, game_result: TakGameResult) -> TakFinishedGame {
         let player = self.base.current_player.clone();
         self.stop_clock(now, &player);
-        TakFinishedRealtimeGame::new(self, game_result)
+        TakFinishedGame::new(self, game_result, now)
     }
 
-    pub fn check_timeout(&mut self, now: Instant) -> MaybeTimeout<(), TakFinishedRealtimeGame> {
-        let player = self.base.current_player.clone();
-        let time_remaining = self.get_time_remaining(&player, now);
-        if time_remaining.is_zero() {
-            let game_result = TakGameResult::Win {
-                winner: player.opponent(),
-                reason: TakWinReason::Default,
-            };
-            self.stop_clock(now, &player);
-            MaybeTimeout::Timeout(TakFinishedRealtimeGame::new(self, game_result))
-        } else {
-            MaybeTimeout::Result(())
+    pub fn check_timeout(&mut self, now: TakInstant) -> MaybeTimeout<(), TakFinishedGame> {
+        match &self.mode {
+            TakGameMode::Realtime { clock, .. } => {
+                let player = self.base.current_player.clone();
+                let time_remaining = Self::get_time_remaining(clock, &self.base, &player, now);
+                if time_remaining.is_zero() {
+                    let game_result = TakGameResult::Win {
+                        winner: player.opponent(),
+                        reason: TakWinReason::Default,
+                    };
+                    self.stop_clock(now, &player);
+                    MaybeTimeout::Timeout(TakFinishedGame::new(self, game_result, now))
+                } else {
+                    MaybeTimeout::Result(())
+                }
+            }
+            TakGameMode::Async { clock, .. } => {
+                let player = self.base.current_player.clone();
+                if clock.deadline <= now.async_time {
+                    let game_result = TakGameResult::Win {
+                        winner: player.opponent(),
+                        reason: TakWinReason::Default,
+                    };
+                    self.stop_clock(now, &player);
+                    MaybeTimeout::Timeout(TakFinishedGame::new(self, game_result, now))
+                } else {
+                    MaybeTimeout::Result(())
+                }
+            }
         }
     }
 
-    pub fn get_time_remaining(&self, player: &TakPlayer, now: Instant) -> Duration {
+    fn get_time_remaining(
+        clock: &TakRealtimeClock,
+        base: &TakOngoingBaseGame,
+        player: &TakPlayer,
+        now: TakInstant,
+    ) -> Duration {
         let base_remaining = match player {
-            TakPlayer::White => self.clock.remaining_time.0,
-            TakPlayer::Black => self.clock.remaining_time.1,
+            TakPlayer::White => clock.remaining_time.0,
+            TakPlayer::Black => clock.remaining_time.1,
         };
-        if self.base.current_player != *player || !self.clock.is_ticking {
+        if base.current_player != *player || !clock.is_ticking {
             return base_remaining;
         }
-        let elapsed = now.saturating_duration_since(self.clock.last_update_timestamp);
+        let elapsed = now
+            .realtime
+            .saturating_duration_since(clock.last_update_timestamp);
         base_remaining.saturating_sub(elapsed)
     }
 
-    pub fn get_time_remaining_both(&self, now: Instant) -> (Duration, Duration) {
-        (
-            self.get_time_remaining(&TakPlayer::White, now),
-            self.get_time_remaining(&TakPlayer::Black, now),
-        )
+    pub fn get_time_info(&self, now: TakInstant) -> TakTimeInfo {
+        match &self.mode {
+            TakGameMode::Realtime { clock, .. } => TakTimeInfo::Realtime {
+                white_remaining: Self::get_time_remaining(
+                    clock,
+                    &self.base,
+                    &TakPlayer::White,
+                    now,
+                ),
+                black_remaining: Self::get_time_remaining(
+                    clock,
+                    &self.base,
+                    &TakPlayer::Black,
+                    now,
+                ),
+            },
+            TakGameMode::Async { clock, .. } => TakTimeInfo::Async {
+                next_deadline: clock.deadline,
+            },
+        }
     }
 
-    fn maybe_apply_elapsed(&mut self, now: Instant, player: &TakPlayer, add_increment: bool) {
+    fn increase_deadline(
+        clock: &mut TakAsyncClock,
+        settings: &TakAsyncTimeControl,
+        now: chrono::DateTime<chrono::Utc>,
+    ) {
+        clock.deadline = now + settings.increment;
+    }
+
+    fn maybe_apply_elapsed(
+        clock: &mut TakRealtimeClock,
+        settings: &TakRealtimeTimeControl,
+        now: Instant,
+        player: &TakPlayer,
+        add_increment: bool,
+    ) {
         let remaining = match player {
-            TakPlayer::White => &mut self.clock.remaining_time.0,
-            TakPlayer::Black => &mut self.clock.remaining_time.1,
+            TakPlayer::White => &mut clock.remaining_time.0,
+            TakPlayer::Black => &mut clock.remaining_time.1,
         };
-        if self.clock.is_ticking {
-            let elapsed = now.saturating_duration_since(self.clock.last_update_timestamp);
+        if clock.is_ticking {
+            let elapsed = now.saturating_duration_since(clock.last_update_timestamp);
             *remaining = remaining.saturating_sub(elapsed);
         }
         if add_increment {
-            *remaining = remaining.saturating_add(self.settings.time_control.increment);
+            *remaining = remaining.saturating_add(settings.increment);
         }
-        self.clock.last_update_timestamp = now;
+        clock.last_update_timestamp = now;
     }
 
-    fn maybe_gain_extra_time(&mut self, player: &TakPlayer) {
-        if !self.clock.is_ticking {
+    fn maybe_gain_extra_time(
+        clock: &mut TakRealtimeClock,
+        settings: &TakRealtimeTimeControl,
+        base: &TakOngoingBaseGame,
+        player: &TakPlayer,
+    ) {
+        if !clock.is_ticking {
             return;
         }
-        let time_control = &self.settings.time_control;
         let remaining = match player {
-            TakPlayer::White => &mut self.clock.remaining_time.0,
-            TakPlayer::Black => &mut self.clock.remaining_time.1,
+            TakPlayer::White => &mut clock.remaining_time.0,
+            TakPlayer::Black => &mut clock.remaining_time.1,
         };
-        if let Some((extra_move_index, extra_time)) = time_control.extra {
+        if let Some((extra_move_index, extra_time)) = settings.extra {
             let has_gained_extra_time = match player {
-                TakPlayer::White => &mut self.clock.has_gained_extra_time.0,
-                TakPlayer::Black => &mut self.clock.has_gained_extra_time.1,
+                TakPlayer::White => &mut clock.has_gained_extra_time.0,
+                TakPlayer::Black => &mut clock.has_gained_extra_time.1,
             };
             // ply index is incremented before clock update, which means it is odd for white moves and starts at 1 for move 1
             // move 1: white 1, black 2 ---(+1)--> (2, 3) ---(/2)--> (1, 1)
             // move 2: white 3, black 4 ---(+1)--> (4, 5) ---(/2)--> (2, 2)
-            let move_index = (self.base.action_history.len() + 1) / 2;
+            let move_index = (base.action_history.len() + 1) / 2;
             if !*has_gained_extra_time && extra_move_index as usize == move_index {
                 *remaining = remaining.saturating_add(extra_time);
                 *has_gained_extra_time = true;
@@ -168,27 +248,46 @@ impl TakOngoingRealtimeGame {
         }
     }
 
-    fn start_or_update_clock(&mut self, now: Instant, player: &TakPlayer) {
-        self.maybe_apply_elapsed(now, player, true);
-        self.maybe_gain_extra_time(player);
-
-        self.clock.is_ticking = true;
+    fn start_or_update_clock(&mut self, now: TakInstant, player: &TakPlayer) {
+        match &mut self.mode {
+            TakGameMode::Realtime {
+                clock,
+                time_settings,
+            } => {
+                Self::maybe_apply_elapsed(clock, time_settings, now.realtime, player, true);
+                Self::maybe_gain_extra_time(clock, time_settings, &self.base, player);
+                clock.is_ticking = true;
+            }
+            TakGameMode::Async {
+                clock,
+                time_settings,
+            } => {
+                Self::increase_deadline(clock, time_settings, now.async_time);
+                clock.is_ticking = true;
+            }
+        }
     }
 
-    fn stop_clock(&mut self, now: Instant, player: &TakPlayer) {
-        self.maybe_apply_elapsed(now, player, false);
-
-        self.clock.is_ticking = false;
+    fn stop_clock(&mut self, now: TakInstant, player: &TakPlayer) {
+        match &mut self.mode {
+            TakGameMode::Realtime {
+                clock,
+                time_settings,
+            } => {
+                Self::maybe_apply_elapsed(clock, time_settings, now.realtime, player, false);
+                clock.is_ticking = false;
+            }
+            TakGameMode::Async { clock, .. } => {
+                clock.is_ticking = false;
+            }
+        }
     }
 
     pub fn do_action(
         &mut self,
         action: TakAction,
-        now: Instant,
-    ) -> Result<
-        MaybeTimeout<Option<TakFinishedRealtimeGame>, TakFinishedRealtimeGame>,
-        InvalidActionReason,
-    > {
+        now: TakInstant,
+    ) -> Result<MaybeTimeout<Option<TakFinishedGame>, TakFinishedGame>, InvalidActionReason> {
         if let MaybeTimeout::Timeout(finished_game) = self.check_timeout(now) {
             return Ok(MaybeTimeout::Timeout(finished_game));
         };
@@ -202,15 +301,14 @@ impl TakOngoingRealtimeGame {
             }
             Ok(Some(finished_base)) => {
                 self.stop_clock(now, &player);
-                let finished_game =
-                    TakFinishedRealtimeGame::from_finished_base(finished_base, self);
+                let finished_game = TakFinishedGame::from_finished_base(finished_base, self, now);
                 Ok(MaybeTimeout::Result(Some(finished_game)))
             }
             Err(e) => Err(e),
         }
     }
 
-    pub fn undo_action(&mut self, now: Instant) -> MaybeTimeout<bool, TakFinishedRealtimeGame> {
+    pub fn undo_action(&mut self, now: TakInstant) -> MaybeTimeout<bool, TakFinishedGame> {
         if let MaybeTimeout::Timeout(finished_game) = self.check_timeout(now) {
             return MaybeTimeout::Timeout(finished_game);
         };
@@ -240,15 +338,28 @@ impl TakOngoingRealtimeGame {
             }
         }
         self.base = game_clone;
-        self.maybe_apply_elapsed(now, &player, true); // TODO: confirm that undo is supposed to add increment
+        match &mut self.mode {
+            TakGameMode::Realtime {
+                clock,
+                time_settings,
+            } => {
+                Self::maybe_apply_elapsed(clock, time_settings, now.realtime, &player, true); // TODO: confirm that undo is supposed to add increment
+            }
+            TakGameMode::Async {
+                clock,
+                time_settings,
+            } => {
+                Self::increase_deadline(clock, time_settings, now.async_time);
+            }
+        }
         MaybeTimeout::Result(true)
     }
 
     pub fn resign(
         &mut self,
         player: &TakPlayer,
-        now: Instant,
-    ) -> MaybeTimeout<TakFinishedRealtimeGame, TakFinishedRealtimeGame> {
+        now: TakInstant,
+    ) -> MaybeTimeout<TakFinishedGame, TakFinishedGame> {
         if let MaybeTimeout::Timeout(finished_game) = self.check_timeout(now) {
             return MaybeTimeout::Timeout(finished_game);
         };
@@ -263,8 +374,8 @@ impl TakOngoingRealtimeGame {
 
     pub fn agree_draw(
         &mut self,
-        now: Instant,
-    ) -> MaybeTimeout<TakFinishedRealtimeGame, TakFinishedRealtimeGame> {
+        now: TakInstant,
+    ) -> MaybeTimeout<TakFinishedGame, TakFinishedGame> {
         if let MaybeTimeout::Timeout(finished_game) = self.check_timeout(now) {
             return MaybeTimeout::Timeout(finished_game);
         };
@@ -275,17 +386,22 @@ impl TakOngoingRealtimeGame {
         &mut self,
         player: &TakPlayer,
         duration: Duration,
-        now: Instant,
-    ) -> MaybeTimeout<(), TakFinishedRealtimeGame> {
+        now: TakInstant,
+    ) -> MaybeTimeout<(), TakFinishedGame> {
         if let MaybeTimeout::Timeout(finished_game) = self.check_timeout(now) {
             return MaybeTimeout::Timeout(finished_game);
         };
+        match &mut self.mode {
+            TakGameMode::Realtime { clock, .. } => {
+                let remaining = match player {
+                    TakPlayer::White => &mut clock.remaining_time.0,
+                    TakPlayer::Black => &mut clock.remaining_time.1,
+                };
+                *remaining = remaining.saturating_add(duration);
+            }
+            TakGameMode::Async { .. } => {}
+        }
 
-        let remaining = match player {
-            TakPlayer::White => &mut self.clock.remaining_time.0,
-            TakPlayer::Black => &mut self.clock.remaining_time.1,
-        };
-        *remaining = remaining.saturating_add(duration);
         MaybeTimeout::Result(())
     }
 }
@@ -298,7 +414,7 @@ mod tests {
 
     use super::*;
 
-    fn do_move(game: &mut TakOngoingRealtimeGame, action: TakAction, now: Instant) {
+    fn do_move(game: &mut TakOngoingGame, action: TakAction, now: TakInstant) {
         match game.do_action(action, now) {
             Ok(MaybeTimeout::Timeout(_)) => {
                 panic!("Game finished unexpectedly due to timeout")
@@ -312,9 +428,9 @@ mod tests {
     }
 
     fn do_finish_move(
-        game: &mut TakOngoingRealtimeGame,
+        game: &mut TakOngoingGame,
         action: TakAction,
-        now: Instant,
+        now: TakInstant,
         expected_result: TakGameResult,
     ) {
         match game.do_action(action, now) {
@@ -333,18 +449,18 @@ mod tests {
 
     #[test]
     fn test_reserve_constraints() {
-        let now = Instant::now();
-        let mut game = TakOngoingRealtimeGame::new(TakRealtimeGameSettings {
+        let now = TakInstant::now();
+        let mut game = TakOngoingGame::new(TakGameSettings {
             base: TakBaseGameSettings {
                 board_size: 5,
                 half_komi: 0,
                 reserve: TakReserve::new(3, 1),
             },
-            time_control: TakRealtimeTimeControl {
+            time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
                 contingent: Duration::from_secs(300),
                 increment: Duration::from_secs(5),
                 extra: Some((2, Duration::from_secs(60))),
-            },
+            }),
         });
 
         do_move(
@@ -438,7 +554,7 @@ mod tests {
 
     #[test]
     fn test_komi_effect() {
-        let now = Instant::now();
+        let now = TakInstant::now();
         for (half_komi, result, result2) in [
             (
                 0,
@@ -479,17 +595,17 @@ mod tests {
                 },
             ),
         ] {
-            let mut game = TakOngoingRealtimeGame::new(TakRealtimeGameSettings {
+            let mut game = TakOngoingGame::new(TakGameSettings {
                 base: TakBaseGameSettings {
                     board_size: 5,
                     half_komi,
                     reserve: TakReserve::new(2, 0),
                 },
-                time_control: TakRealtimeTimeControl {
+                time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
                     contingent: Duration::from_secs(300),
                     increment: Duration::from_secs(5),
                     extra: Some((2, Duration::from_secs(60))),
-                },
+                }),
             });
             do_move(
                 &mut game,
@@ -517,17 +633,17 @@ mod tests {
                 result,
             );
 
-            let mut game2 = TakOngoingRealtimeGame::new(TakRealtimeGameSettings {
+            let mut game2 = TakOngoingGame::new(TakGameSettings {
                 base: TakBaseGameSettings {
                     board_size: 5,
                     half_komi,
                     reserve: TakReserve::new(1, 1),
                 },
-                time_control: TakRealtimeTimeControl {
+                time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
                     contingent: Duration::from_secs(300),
                     increment: Duration::from_secs(5),
                     extra: Some((2, Duration::from_secs(60))),
-                },
+                }),
             });
             do_move(
                 &mut game,
@@ -559,18 +675,18 @@ mod tests {
 
     #[test]
     fn test_first_move_must_be_flat() {
-        let now = Instant::now();
-        let mut game = TakOngoingRealtimeGame::new(TakRealtimeGameSettings {
+        let now = TakInstant::now();
+        let mut game = TakOngoingGame::new(TakGameSettings {
             base: TakBaseGameSettings {
                 board_size: 5,
                 half_komi: 0,
                 reserve: TakReserve::new(21, 1),
             },
-            time_control: TakRealtimeTimeControl {
+            time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
                 contingent: Duration::from_secs(300),
                 increment: Duration::from_secs(5),
                 extra: Some((2, Duration::from_secs(60))),
-            },
+            }),
         });
 
         // first move must be flat stone

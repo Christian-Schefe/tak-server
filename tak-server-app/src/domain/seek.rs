@@ -2,7 +2,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::{Arc, RwLock},
 };
-use tak_core::{TakPlayer, TakRealtimeGameSettings};
+use tak_core::{TakGameSettings, TakPlayer};
 
 use crate::domain::{PlayerId, SeekId};
 
@@ -12,7 +12,7 @@ pub struct Seek {
     pub creator_id: PlayerId,
     pub opponent_id: Option<PlayerId>,
     pub color: Option<TakPlayer>,
-    pub game_settings: TakRealtimeGameSettings,
+    pub game_settings: TakGameSettings,
     pub is_rated: bool,
 }
 
@@ -27,7 +27,7 @@ pub trait SeekService {
         player: PlayerId,
         opponent: Option<PlayerId>,
         color: Option<TakPlayer>,
-        game_settings: TakRealtimeGameSettings,
+        game_settings: TakGameSettings,
         is_rated: bool,
     ) -> Result<Seek, CreateSeekError>;
     fn cancel_all_player_seeks(&self, player: PlayerId) -> Vec<Seek>;
@@ -135,7 +135,7 @@ impl SeekService for SeekServiceImpl {
         player: PlayerId,
         opponent: Option<PlayerId>,
         color: Option<TakPlayer>,
-        game_settings: TakRealtimeGameSettings,
+        game_settings: TakGameSettings,
         is_rated: bool,
     ) -> Result<Seek, CreateSeekError> {
         if !game_settings.is_valid() {

@@ -1,6 +1,4 @@
-use std::time::Duration;
-
-use tak_core::TakGameResult;
+use tak_core::{TakGameResult, TakTimeInfo};
 
 use crate::{
     domain::{
@@ -55,8 +53,7 @@ pub enum ListenerMessage {
     },
     GameTimeUpdate {
         game_id: GameId,
-        white_time: Duration,
-        black_time: Duration,
+        time_info: TakTimeInfo,
     },
     GameRequestAdded {
         game_id: GameId,

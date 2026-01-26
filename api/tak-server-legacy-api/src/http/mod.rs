@@ -7,7 +7,6 @@ use tak_server_app::{Application, ports::authentication::AuthenticationPort};
 use crate::acl::LegacyAPIAntiCorruptionLayer;
 
 mod event;
-mod games_history;
 mod rating;
 
 #[derive(Clone)]
@@ -26,9 +25,6 @@ pub async fn run(
     let router: Router<AppState> = Router::new().nest(
         "/v1",
         Router::new()
-            .route("/games-history", get(games_history::get_all))
-            .route("/games-history/{id}", get(games_history::get_by_id))
-            .route("/games-history/ptn/{id}", get(games_history::get_ptn_by_id))
             .route("/events", get(event::get_all_events))
             .route("/ratinglist.json", get(rating::get_rating_list))
             .route("/ratings", get(rating::get_ratings))

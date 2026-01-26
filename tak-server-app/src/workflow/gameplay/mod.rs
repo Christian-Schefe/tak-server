@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 
-use tak_core::{TakFinishedRealtimeGame, TakOngoingRealtimeGame, TakRealtimeGameSettings};
+use tak_core::{TakFinishedGame, TakGameSettings, TakOngoingGame};
 
 use crate::domain::{
     GameId, PlayerId,
@@ -20,20 +20,20 @@ pub struct GameMetadataView {
     pub white_id: PlayerId,
     pub black_id: PlayerId,
     pub is_rated: bool,
-    pub settings: TakRealtimeGameSettings,
+    pub settings: TakGameSettings,
 }
 
 #[derive(Clone, Debug)]
 pub struct OngoingGameView {
     pub metadata: GameMetadataView,
-    pub game: TakOngoingRealtimeGame,
+    pub game: TakOngoingGame,
     pub requests: Vec<GameRequest>,
 }
 
 #[derive(Clone, Debug)]
 pub struct FinishedGameView {
     pub metadata: GameMetadataView,
-    pub game: TakFinishedRealtimeGame,
+    pub game: TakFinishedGame,
 }
 
 impl GameMetadataView {

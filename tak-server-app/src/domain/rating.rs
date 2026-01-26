@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, TimeDelta, Utc};
-use tak_core::{TakGameResult, TakPlayer, TakRealtimeGameSettings};
+use tak_core::{TakGameResult, TakGameSettings, TakPlayer, TakTimeSettings};
 
 use crate::domain::{
     PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
@@ -94,14 +94,13 @@ impl RatingServiceImpl {
         Self {}
     }
 
-    fn is_game_eligible_for_rating(
-        &self,
-        settings: &TakRealtimeGameSettings,
-        ply_count: usize,
-    ) -> bool {
+    fn is_game_eligible_for_rating(&self, settings: &TakGameSettings, ply_count: usize) -> bool {
         if ply_count <= 6 {
             return false;
         }
+        let TakTimeSettings::Realtime(time_control) = &settings.time_settings else {
+            return false;
+        };
         if settings.base.board_size < 5 {
             return false;
         }
@@ -111,8 +110,8 @@ impl RatingServiceImpl {
 
         let size_index = ((settings.base.board_size - 5) as usize).min(3);
 
-        let contingent_secs = settings.time_control.contingent.as_secs();
-        let time_score = contingent_secs * 3 + settings.time_control.increment.as_secs();
+        let contingent_secs = time_control.contingent.as_secs();
+        let time_score = contingent_secs * 3 + time_control.increment.as_secs();
         if time_score < TIME_LIMITS[size_index] as u64 || contingent_secs < 60 {
             return false;
         }

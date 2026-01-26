@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tak_core::{TakPlayer, TakRealtimeGameSettings};
+use tak_core::{TakGameSettings, TakPlayer};
 
 use crate::{
     domain::{
@@ -16,7 +16,7 @@ pub trait CreateSeekUseCase {
         player: PlayerId,
         opponent: Option<PlayerId>,
         color: Option<TakPlayer>,
-        game_settings: TakRealtimeGameSettings,
+        game_settings: TakGameSettings,
         is_rated: bool,
     ) -> Result<(), CreateSeekError>;
 }
@@ -43,7 +43,7 @@ impl<S: SeekService + Send + Sync + 'static, L: ListenerNotificationPort + Send 
         player: PlayerId,
         opponent: Option<PlayerId>,
         color: Option<TakPlayer>,
-        game_settings: TakRealtimeGameSettings,
+        game_settings: TakGameSettings,
         is_rated: bool,
     ) -> Result<(), CreateSeekError> {
         let created_seek =
