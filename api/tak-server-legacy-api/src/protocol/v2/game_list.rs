@@ -1,4 +1,6 @@
-use tak_core::{TakInstant, TakTimeInfo, TakTimeSettings};
+use std::time::Instant;
+
+use tak_core::TakTimeSettings;
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
     domain::{GameId, PlayerId},
@@ -75,14 +77,14 @@ impl ProtocolV2Handler {
             for action in game.game.action_history() {
                 self.send_game_action_message(id, game.metadata.id, action);
             }
-            let now = TakInstant::now();
-            if let TakTimeInfo::Realtime {
-                white_remaining,
-                black_remaining,
-            } = game.game.get_time_info(now)
-            {
-                self.send_time_update_message(id, game_id, white_remaining, black_remaining);
-            }
+            let now = Instant::now();
+            let time_info = game.game.get_time_info(now);
+            self.send_time_update_message(
+                id,
+                game_id,
+                time_info.white_remaining,
+                time_info.black_remaining,
+            );
         } else {
             self.app.game_observe_use_case.unobserve_game(game_id, id.0);
         }

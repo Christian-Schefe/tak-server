@@ -45,12 +45,13 @@ impl GameRecord {
         match maybe_time_info {
             Some(ti) => ti.clone(),
             None => match &self.settings.time_settings {
-                TakTimeSettings::Realtime(s) => TakTimeInfo::Realtime {
+                TakTimeSettings::Realtime(s) => TakTimeInfo {
                     white_remaining: s.contingent,
                     black_remaining: s.contingent,
                 },
-                TakTimeSettings::Async(s) => TakTimeInfo::Async {
-                    next_deadline: self.date + s.increment,
+                TakTimeSettings::Async(s) => TakTimeInfo {
+                    white_remaining: s.contingent,
+                    black_remaining: s.contingent,
                 },
             },
         }

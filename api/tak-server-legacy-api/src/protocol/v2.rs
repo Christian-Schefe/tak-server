@@ -1,7 +1,6 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use dashmap::DashMap;
-use tak_core::{TakInstant, TakTimeInfo};
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
     domain::{AccountId, GameId, PlayerId, game::request::GameRequestType},
@@ -227,13 +226,12 @@ impl ProtocolV2Handler {
                 self.send_undo_message(id, *game_id);
             }
             ListenerMessage::GameTimeUpdate { game_id, time_info } => {
-                if let TakTimeInfo::Realtime {
-                    white_remaining,
-                    black_remaining,
-                } = time_info
-                {
-                    self.send_time_update_message(id, *game_id, *white_remaining, *black_remaining);
-                }
+                self.send_time_update_message(
+                    id,
+                    *game_id,
+                    time_info.white_remaining,
+                    time_info.black_remaining,
+                );
             }
 
             ListenerMessage::AccountsOnline { accounts: players } => {
@@ -309,19 +307,14 @@ impl ProtocolV2Handler {
                 for action in game.game.action_history() {
                     self.send_game_action_message(id, game.metadata.id, action);
                 }
-                let now = TakInstant::now();
-                if let TakTimeInfo::Realtime {
-                    white_remaining,
-                    black_remaining,
-                } = game.game.get_time_info(now)
-                {
-                    self.send_time_update_message(
-                        id,
-                        game.metadata.id,
-                        white_remaining,
-                        black_remaining,
-                    );
-                }
+                let now = Instant::now();
+                let time_info = game.game.get_time_info(now);
+                self.send_time_update_message(
+                    id,
+                    game.metadata.id,
+                    time_info.white_remaining,
+                    time_info.black_remaining,
+                );
             }
         }
     }

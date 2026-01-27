@@ -4,7 +4,6 @@ mod game;
 pub mod ptn;
 
 use std::time::Duration;
-use std::time::Instant;
 
 pub use game::TakFinishedGame;
 pub use game::TakOngoingGame;
@@ -31,30 +30,10 @@ pub enum TakTimeSettings {
     Async(TakAsyncTimeControl),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct TakInstant {
-    pub realtime: Instant,
-    pub async_time: chrono::DateTime<chrono::Utc>,
-}
-
-impl TakInstant {
-    pub fn now() -> Self {
-        TakInstant {
-            realtime: Instant::now(),
-            async_time: chrono::Utc::now(),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
-pub enum TakTimeInfo {
-    Realtime {
-        white_remaining: Duration,
-        black_remaining: Duration,
-    },
-    Async {
-        next_deadline: chrono::DateTime<chrono::Utc>,
-    },
+pub struct TakTimeInfo {
+    pub white_remaining: Duration,
+    pub black_remaining: Duration,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -125,12 +104,12 @@ pub struct TakRealtimeTimeControl {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TakAsyncTimeControl {
-    pub increment: chrono::TimeDelta,
+    pub contingent: Duration,
 }
 
 impl TakAsyncTimeControl {
     pub fn is_valid(&self) -> bool {
-        !self.increment.is_zero()
+        !self.contingent.is_zero()
     }
 }
 

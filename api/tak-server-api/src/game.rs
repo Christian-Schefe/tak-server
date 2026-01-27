@@ -1,12 +1,12 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axum::{
     Json,
     extract::{Path, State},
 };
 use tak_core::{
-    TakAsyncTimeControl, TakBaseGameSettings, TakGameSettings, TakInstant, TakPlayer,
-    TakRealtimeTimeControl, TakReserve, TakTimeInfo, TakTimeSettings,
+    TakAsyncTimeControl, TakBaseGameSettings, TakGameSettings, TakPlayer, TakRealtimeTimeControl,
+    TakReserve, TakTimeInfo, TakTimeSettings,
     ptn::{action_to_ptn, game_result_to_string},
 };
 use tak_server_app::{
@@ -60,7 +60,7 @@ pub async fn get_game_status(
             };
             requests.push(req);
         }
-        let time_info = ongoing_game.game.get_time_info(TakInstant::now());
+        let time_info = ongoing_game.game.get_time_info(Instant::now());
         return Ok(Json(GameStatus {
             id: ongoing_game.metadata.id.0,
             player_ids: ForPlayer {
@@ -395,35 +395,17 @@ pub struct GameStatus {
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
-#[serde(
-    tag = "type",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-pub enum JsonTimeInfo {
-    Realtime {
-        remaining_ms: ForPlayer<u64>,
-    },
-    Async {
-        #[serde(with = "chrono::serde::ts_milliseconds")]
-        next_deadline_timestamp: chrono::DateTime<chrono::Utc>,
-    },
+#[serde(tag = "type", rename_all = "camelCase")]
+pub struct JsonTimeInfo {
+    remaining_ms: ForPlayer<u64>,
 }
 
 impl JsonTimeInfo {
     pub fn from_tak_time_info(time_info: &TakTimeInfo) -> Self {
-        match time_info {
-            TakTimeInfo::Realtime {
-                white_remaining,
-                black_remaining,
-            } => JsonTimeInfo::Realtime {
-                remaining_ms: ForPlayer {
-                    white: white_remaining.as_millis() as u64,
-                    black: black_remaining.as_millis() as u64,
-                },
-            },
-            TakTimeInfo::Async { next_deadline } => JsonTimeInfo::Async {
-                next_deadline_timestamp: *next_deadline,
+        JsonTimeInfo {
+            remaining_ms: ForPlayer {
+                white: time_info.white_remaining.as_millis() as u64,
+                black: time_info.black_remaining.as_millis() as u64,
             },
         }
     }
@@ -534,7 +516,7 @@ impl GameSettingsInfo {
                     }),
                 },
                 TakTimeSettings::Async(tc) => JsonTimeSettings::Async {
-                    increment_ms: tc.increment.num_milliseconds() as u64,
+                    increment_ms: tc.contingent.as_millis() as u64,
                 },
             },
         }
@@ -564,7 +546,7 @@ impl GameSettingsInfo {
                 }),
                 JsonTimeSettings::Async { increment_ms } => {
                     TakTimeSettings::Async(TakAsyncTimeControl {
-                        increment: chrono::Duration::milliseconds(*increment_ms as i64),
+                        contingent: Duration::from_millis(*increment_ms),
                     })
                 }
             },

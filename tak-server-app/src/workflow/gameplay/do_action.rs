@@ -1,6 +1,6 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
-use tak_core::{TakAction, TakInstant};
+use tak_core::TakAction;
 
 use crate::{
     domain::{
@@ -113,7 +113,7 @@ impl<G: GameService, NP: NotifyPlayerWorkflow, F: FinalizeGameWorkflow>
         }
     }
 
-    async fn send_game_time_update(&self, game_id: GameId, now: TakInstant) {
+    async fn send_game_time_update(&self, game_id: GameId, now: Instant) {
         if let Some(game) = self.game_service.get_game_by_id(game_id) {
             let time_info = game.get_time_info(now);
             let time_update_msg = ListenerMessage::GameTimeUpdate { game_id, time_info };
@@ -175,7 +175,7 @@ impl<
             action,
             game_id
         );
-        let now = TakInstant::now();
+        let now = Instant::now();
         let (action_record, maybe_ended_game) = match self
             .handle_game_action_result(self.game_service.do_action(game_id, player_id, action, now))
             .await
@@ -244,7 +244,7 @@ impl<
         player_id: PlayerId,
         request_type: GameRequestType,
     ) -> ActionResult<AddRequestError> {
-        let now = TakInstant::now();
+        let now = Instant::now();
         match self
             .handle_game_action_result(self.game_service.add_request(
                 game_id,
@@ -278,7 +278,7 @@ impl<
         player_id: PlayerId,
         request_id: GameRequestId,
     ) -> ActionResult<HandleRequestError> {
-        let now = TakInstant::now();
+        let now = Instant::now();
         match self
             .handle_game_action_result(
                 self.game_service
@@ -313,7 +313,7 @@ impl<
             request_id,
             game_id
         );
-        let now = TakInstant::now();
+        let now = Instant::now();
         match self
             .handle_game_action_result(
                 self.game_service
@@ -349,7 +349,7 @@ impl<
             request_id,
             game_id
         );
-        let now = TakInstant::now();
+        let now = Instant::now();
         match self
             .handle_game_action_result(
                 self.game_service
@@ -386,7 +386,7 @@ impl<
             request_id,
             game_id
         );
-        let now = TakInstant::now();
+        let now = Instant::now();
         match self
             .handle_game_action_result(
                 self.game_service
@@ -417,7 +417,7 @@ impl<
     }
 
     async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), PlayerActionError> {
-        let now = TakInstant::now();
+        let now = Instant::now();
         match self
             .handle_game_action_result(self.game_service.resign(game_id, player_id, now))
             .await?
