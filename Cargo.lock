@@ -4004,6 +4004,7 @@ dependencies = [
  "rustrict",
  "tak-core",
  "tokio",
+ "tokio-util",
  "uuid",
 ]
 

@@ -23,7 +23,10 @@ use crate::{
         notification::ListenerNotificationPort,
         player_mapping::PlayerAccountMappingRepository,
     },
-    processes::game_timeout_runner::GameTimeoutRunnerImpl,
+    processes::{
+        disconnect_timeout_runner::DisconnectTimeoutRunnerImpl,
+        game_timeout_runner::GameTimeoutRunnerImpl,
+    },
     services::player_resolver::{PlayerResolverService, PlayerResolverServiceImpl},
     workflow::{
         account::{
@@ -200,6 +203,9 @@ pub async fn build_application<
     let game_timeout_scheduler = Arc::new(GameTimeoutRunnerImpl::new(
         observe_game_timeout_use_case.clone(),
     ));
+    let player_disconnect_timeout_scheduler = Arc::new(DisconnectTimeoutRunnerImpl::new(
+        observe_game_timeout_use_case.clone(),
+    ));
 
     let create_game_from_match_workflow = Arc::new(CreateGameFromMatchWorkflowImpl::new(
         match_service.clone(),
@@ -255,6 +261,7 @@ pub async fn build_application<
             listener_notification_port.clone(),
             seek_service.clone(),
             player_resolver_service.clone(),
+            player_disconnect_timeout_scheduler.clone(),
         )),
         account_get_online_use_case: Box::new(GetOnlineAccountsUseCaseImpl::new(
             account_online_status_port.clone(),

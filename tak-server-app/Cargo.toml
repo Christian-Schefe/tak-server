@@ -16,3 +16,4 @@ rustrict = "0.7.36"
 tak-core = { path = "../tak-core" }
 tokio = { version = "1.47.1", features = ["full"] }
 uuid = { version = "1.18.1", features = ["v4"] }
+tokio-util = { version = "0.7.16", features = ["full"] }

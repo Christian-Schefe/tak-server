@@ -10,7 +10,7 @@ use crate::domain::{
 use dashmap::DashMap;
 use tak_core::{
     MaybeTimeout, TakAction, TakFinishedGame, TakGameSettings, TakOngoingGame, TakPlayer,
-    TakTimeInfo,
+    TakTimeInfo, TakTimeSettings,
 };
 
 pub mod request;
@@ -142,7 +142,7 @@ pub trait GameService {
         game_settings: TakGameSettings,
     ) -> OngoingGame;
     fn get_game_by_id(&self, game_id: GameId) -> Option<OngoingGame>;
-    fn get_games(&self) -> Vec<OngoingGame>;
+    fn get_games(&self) -> impl Iterator<Item = OngoingGame>;
     fn check_timeout(&self, game_id: GameId, now: Instant) -> CheckTimeoutResult;
     fn check_disconnect_timeout(
         &self,
@@ -239,8 +239,8 @@ pub enum CheckTimeoutResult {
 }
 
 pub enum CheckDisconnectTimeoutResult {
-    GameNotFound,
     TimedOut(FinishedGame),
+    CantTimeOut,
     NoTimeout(Duration),
 }
 
@@ -351,8 +351,8 @@ impl GameService for GameServiceImpl {
         self.games.get(&game_id).map(|entry| entry.clone())
     }
 
-    fn get_games(&self) -> Vec<OngoingGame> {
-        self.games.iter().map(|entry| entry.clone()).collect()
+    fn get_games(&self) -> impl Iterator<Item = OngoingGame> {
+        self.games.iter().map(|entry| entry.clone())
     }
 
     fn do_action(
@@ -672,6 +672,12 @@ impl GameService for GameServiceImpl {
             game_id,
             player,
             |game_entry, current_player| {
+                if matches!(
+                    game_entry.metadata.settings.time_settings,
+                    TakTimeSettings::Async(_)
+                ) {
+                    return Err(CheckDisconnectTimeoutResult::CantTimeOut);
+                }
                 let timeout_duration = Duration::from_secs(60 * 5);
                 if disconnected_since < timeout_duration {
                     return Err(CheckDisconnectTimeoutResult::NoTimeout(

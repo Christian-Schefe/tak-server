@@ -61,31 +61,36 @@ impl PlayerConnectionDriver {
         account_id: &AccountId,
         connection_id: ConnectionId,
     ) -> bool {
-        let mut registry = self.inner.registry.write();
-        if registry.connection_to_listener.contains_key(&connection_id) {
-            return false;
-        }
-        let (listener_id, set_online) =
-            if let Some(listener_id) = registry.listener_map.get_by_left(&account_id) {
-                (*listener_id, false)
-            } else {
-                let new_listener_id = ListenerId::new();
-                registry
-                    .listener_map
-                    .try_insert(account_id.clone(), new_listener_id);
-                (new_listener_id, true)
-            };
-        registry
-            .connection_to_listener
-            .insert(connection_id, listener_id);
-        registry
-            .listener_to_connections
-            .entry(listener_id)
-            .or_insert_with(HashSet::new)
-            .insert(connection_id);
+        let set_online = {
+            let mut registry = self.inner.registry.write();
+            if registry.connection_to_listener.contains_key(&connection_id) {
+                return false;
+            }
+            let (listener_id, set_online) =
+                if let Some(listener_id) = registry.listener_map.get_by_left(&account_id) {
+                    (*listener_id, false)
+                } else {
+                    let new_listener_id = ListenerId::new();
+                    registry
+                        .listener_map
+                        .try_insert(account_id.clone(), new_listener_id);
+                    (new_listener_id, true)
+                };
+            registry
+                .connection_to_listener
+                .insert(connection_id, listener_id);
+            registry
+                .listener_to_connections
+                .entry(listener_id)
+                .or_insert_with(HashSet::new)
+                .insert(connection_id);
+            set_online
+        };
         if set_online {
-            drop(registry);
-            self.app.account_set_online_use_case.set_online(account_id);
+            self.app
+                .account_set_online_use_case
+                .set_online(account_id)
+                .await;
         }
         true
     }

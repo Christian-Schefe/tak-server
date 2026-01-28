@@ -6,7 +6,7 @@ use axum::{
 };
 use tak_core::{
     TakAsyncTimeControl, TakBaseGameSettings, TakGameSettings, TakPlayer, TakRealtimeTimeControl,
-    TakReserve, TakTimeInfo, TakTimeSettings,
+    TakReserve, TakTimeSettings,
     ptn::{action_to_ptn, game_result_to_string},
 };
 use tak_server_app::{
@@ -76,7 +76,10 @@ pub async fn get_game_status(
                 .map(|a| action_to_ptn(&a))
                 .collect(),
             status: GameStatusType::Ongoing { requests },
-            time_info: JsonTimeInfo::from_tak_time_info(&time_info),
+            remaining_ms: ForPlayer {
+                white: time_info.white_remaining.as_millis() as u64,
+                black: time_info.black_remaining.as_millis() as u64,
+            },
         }));
     }
     match app.app.game_history_query_use_case.get_game(game_id).await {
@@ -104,7 +107,10 @@ pub async fn get_game_status(
                     .map(|a| action_to_ptn(&a))
                     .collect(),
                 status,
-                time_info: JsonTimeInfo::from_tak_time_info(&time_info),
+                remaining_ms: ForPlayer {
+                    white: time_info.white_remaining.as_millis() as u64,
+                    black: time_info.black_remaining.as_millis() as u64,
+                },
             }))
         }
         Ok(None) => Err(ServiceError::NotFound(format!(
@@ -391,24 +397,7 @@ pub struct GameStatus {
     pub game_settings: GameSettingsInfo,
     pub actions: Vec<String>,
     pub status: GameStatusType,
-    pub time_info: JsonTimeInfo,
-}
-
-#[derive(serde::Serialize, Debug, Clone)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub struct JsonTimeInfo {
-    remaining_ms: ForPlayer<u64>,
-}
-
-impl JsonTimeInfo {
-    pub fn from_tak_time_info(time_info: &TakTimeInfo) -> Self {
-        JsonTimeInfo {
-            remaining_ms: ForPlayer {
-                white: time_info.white_remaining.as_millis() as u64,
-                black: time_info.black_remaining.as_millis() as u64,
-            },
-        }
-    }
+    pub remaining_ms: ForPlayer<u64>,
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
@@ -495,7 +484,7 @@ pub enum JsonTimeSettings {
         extra: Option<ExtraTime>,
     },
     Async {
-        increment_ms: u64,
+        contingent_ms: u64,
     },
 }
 
@@ -516,7 +505,7 @@ impl GameSettingsInfo {
                     }),
                 },
                 TakTimeSettings::Async(tc) => JsonTimeSettings::Async {
-                    increment_ms: tc.contingent.as_millis() as u64,
+                    contingent_ms: tc.contingent.as_millis() as u64,
                 },
             },
         }
@@ -544,11 +533,11 @@ impl GameSettingsInfo {
                         .as_ref()
                         .map(|extra| (extra.on_move, Duration::from_millis(extra.extra_ms))),
                 }),
-                JsonTimeSettings::Async { increment_ms } => {
-                    TakTimeSettings::Async(TakAsyncTimeControl {
-                        contingent: Duration::from_millis(*increment_ms),
-                    })
-                }
+                JsonTimeSettings::Async {
+                    contingent_ms: increment_ms,
+                } => TakTimeSettings::Async(TakAsyncTimeControl {
+                    contingent: Duration::from_millis(*increment_ms),
+                }),
             },
         }
     }
