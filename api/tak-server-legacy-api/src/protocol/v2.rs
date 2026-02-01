@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Instant};
 use dashmap::DashMap;
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
-    domain::{AccountId, GameId, PlayerId},
+    domain::{AccountId, GameId, PlayerId, game::request::GameRequestType},
     ports::notification::{ListenerMessage, ServerAlertMessage},
 };
 
@@ -186,47 +186,52 @@ impl ProtocolV2Handler {
                     self.send_game_action_message(id, *game_id, &action.action);
                 }
             }
-            ListenerMessage::GameDrawOffered {
-                game_id,
-                offering_player_id,
-            } => {
-                if self.is_opponent_in_game(*offering_player_id, player_id, *game_id) {
-                    self.send_draw_offer_message(id, *game_id, true);
-                }
-            }
-            ListenerMessage::GameDrawOfferRetracted {
-                game_id,
-                retracting_player_id,
-            } => {
-                if self.is_opponent_in_game(*retracting_player_id, player_id, *game_id) {
-                    self.send_draw_offer_message(id, *game_id, false);
-                }
-            }
-            ListenerMessage::GameUndoRequested {
+            ListenerMessage::GameRequestAdded {
                 game_id,
                 requesting_player_id,
+                request,
             } => {
                 if self.is_opponent_in_game(*requesting_player_id, player_id, *game_id) {
-                    self.send_undo_request_message(id, *game_id, true);
+                    match request.request_type {
+                        GameRequestType::Draw => {
+                            self.send_draw_offer_message(id, *game_id, true);
+                        }
+                        GameRequestType::Undo => {
+                            self.send_undo_request_message(id, *game_id, true);
+                        }
+                        _ => {}
+                    }
                 }
             }
-            ListenerMessage::GameUndoRequestRetracted {
+            ListenerMessage::GameRequestRetracted {
                 game_id,
                 retracting_player_id,
+                request,
             } => {
                 if self.is_opponent_in_game(*retracting_player_id, player_id, *game_id) {
-                    self.send_undo_request_message(id, *game_id, false);
+                    match request.request_type {
+                        GameRequestType::Draw => {
+                            self.send_draw_offer_message(id, *game_id, false);
+                        }
+                        GameRequestType::Undo => {
+                            self.send_undo_request_message(id, *game_id, false);
+                        }
+                        _ => {}
+                    }
                 }
             }
+            ListenerMessage::GameRequestRejected { .. } => {} // legacy api does not support request rejections
+            ListenerMessage::GameRequestAccepted { .. } => {} // legacy api does not support request acceptances
             ListenerMessage::GameActionUndone { game_id } => {
                 self.send_undo_message(id, *game_id);
             }
-            ListenerMessage::GameTimeUpdate {
-                game_id,
-                white_time,
-                black_time,
-            } => {
-                self.send_time_update_message(id, *game_id, *white_time, *black_time);
+            ListenerMessage::GameTimeUpdate { game_id, time_info } => {
+                self.send_time_update_message(
+                    id,
+                    *game_id,
+                    time_info.white_remaining,
+                    time_info.black_remaining,
+                );
             }
 
             ListenerMessage::AccountsOnline { accounts: players } => {
@@ -303,12 +308,12 @@ impl ProtocolV2Handler {
                     self.send_game_action_message(id, game.metadata.id, action);
                 }
                 let now = Instant::now();
-                let (remaining_white, remaining_black) = game.game.get_time_remaining_both(now);
+                let time_info = game.game.get_time_info(now);
                 self.send_time_update_message(
                     id,
                     game.metadata.id,
-                    remaining_white,
-                    remaining_black,
+                    time_info.white_remaining,
+                    time_info.black_remaining,
                 );
             }
         }

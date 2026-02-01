@@ -26,8 +26,6 @@ impl FromRequestParts<AppState> for Auth {
         parts: &mut Parts,
         app: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        log::info!("Parts: {:?}", parts);
-
         if let Some(cookie) = parts.headers.get(COOKIE)
             && let Ok(cookie) = cookie.to_str()
         {

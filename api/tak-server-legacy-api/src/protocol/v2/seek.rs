@@ -5,7 +5,10 @@ use crate::{
     protocol::v2::{ProtocolV2Handler, V2Response},
 };
 
-use tak_core::{TakGameSettings, TakPlayer, TakReserve, TakTimeControl};
+use tak_core::{
+    TakBaseGameSettings, TakGameSettings, TakPlayer, TakRealtimeTimeControl, TakReserve,
+    TakTimeSettings,
+};
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
     domain::{GameId, PlayerId, SeekId},
@@ -110,15 +113,18 @@ impl ProtocolV2Handler {
             None
         };
 
-        let game_settings = TakGameSettings {
+        let base_settings = TakBaseGameSettings {
             board_size,
             half_komi,
             reserve: TakReserve::new(reserve_pieces, reserve_capstones),
-            time_control: TakTimeControl {
+        };
+        let game_settings = TakGameSettings {
+            base: base_settings,
+            time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
                 contingent: Duration::from_secs(time_contingent_seconds as u64),
                 increment: Duration::from_secs(time_increment_seconds as u64),
                 extra: time_extra,
-            },
+            }),
         };
         Ok((color, is_rated, opponent, game_settings))
     }
@@ -236,6 +242,10 @@ impl ProtocolV2Handler {
     }
 
     pub async fn send_seek_list_message(&self, id: ConnectionId, seek: &SeekView, add: bool) {
+        let TakTimeSettings::Realtime(time_control) = &seek.game_settings.time_settings else {
+            return;
+        };
+
         let opponent_username = if let Some(opponent_id) = seek.opponent_id {
             match self.app.get_account_workflow.get_account(opponent_id).await {
                 Ok(account) => Some(account.get_username().to_string()),
@@ -268,26 +278,24 @@ impl ProtocolV2Handler {
             if add { "new" } else { "remove" },
             seek.id,
             creator_username,
-            seek.game_settings.board_size,
-            seek.game_settings.time_control.contingent.as_secs(),
-            seek.game_settings.time_control.increment.as_secs(),
+            seek.game_settings.base.board_size,
+            time_control.contingent.as_secs(),
+            time_control.increment.as_secs(),
             seek.color.as_ref().map_or("A", |c| match c {
                 TakPlayer::White => "W",
                 TakPlayer::Black => "B",
             }),
-            seek.game_settings.half_komi,
-            seek.game_settings.reserve.pieces,
-            seek.game_settings.reserve.capstones,
+            seek.game_settings.base.half_komi,
+            seek.game_settings.base.reserve.pieces,
+            seek.game_settings.base.reserve.capstones,
             if seek.is_rated { "0" } else { "1" }, // protocol has "is_unrated" flag, so invert
             "0",
-            seek.game_settings
-                .time_control
+            time_control
                 .extra
                 .as_ref()
                 .map_or("0".to_string(), |(trigger_move, _)| trigger_move
                     .to_string()),
-            seek.game_settings
-                .time_control
+            time_control
                 .extra
                 .as_ref()
                 .map_or("0".to_string(), |(_, extra_time)| extra_time

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, TimeDelta, Utc};
-use tak_core::{TakGameResult, TakGameSettings, TakPlayer};
+use tak_core::{TakGameResult, TakGameSettings, TakPlayer, TakTimeSettings};
 
 use crate::domain::{
     PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
@@ -98,21 +98,24 @@ impl RatingServiceImpl {
         if ply_count <= 6 {
             return false;
         }
-        if settings.board_size < 5 {
+        let TakTimeSettings::Realtime(time_control) = &settings.time_settings else {
+            return false;
+        };
+        if settings.base.board_size < 5 {
             return false;
         }
         const TIME_LIMITS: [u32; 4] = [180, 240, 300, 360];
         const PIECE_LIMITS: [(u32, u32); 4] = [(20, 32), (25, 40), (30, 48), (40, 64)];
         const CAPSTONE_LIMITS: [(u32, u32); 4] = [(1, 1), (1, 2), (1, 2), (1, 3)];
 
-        let size_index = ((settings.board_size - 5) as usize).min(3);
+        let size_index = ((settings.base.board_size - 5) as usize).min(3);
 
-        let contingent_secs = settings.time_control.contingent.as_secs();
-        let time_score = contingent_secs * 3 + settings.time_control.increment.as_secs();
+        let contingent_secs = time_control.contingent.as_secs();
+        let time_score = contingent_secs * 3 + time_control.increment.as_secs();
         if time_score < TIME_LIMITS[size_index] as u64 || contingent_secs < 60 {
             return false;
         }
-        let reserve = &settings.reserve;
+        let reserve = &settings.base.reserve;
         if reserve.pieces < PIECE_LIMITS[size_index].0
             || reserve.pieces > PIECE_LIMITS[size_index].1
         {

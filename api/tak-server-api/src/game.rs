@@ -1,17 +1,27 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::{
     Json,
     extract::{Path, State},
 };
 use tak_core::{
-    TakGameSettings,
+    TakAsyncTimeControl, TakBaseGameSettings, TakGameSettings, TakPlayer, TakRealtimeTimeControl,
+    TakReserve, TakTimeSettings,
     ptn::{action_to_ptn, game_result_to_string},
 };
 use tak_server_app::{
-    domain::GameId,
+    domain::{
+        GameId,
+        game::request::{GameRequestId, GameRequestType},
+    },
     services::player_resolver::ResolveError,
-    workflow::{gameplay::GameMetadataView, history::query::GameQueryError},
+    workflow::{
+        gameplay::{
+            GameMetadataView,
+            do_action::{ActionResult, AddRequestError, HandleRequestError, PlayerActionError},
+        },
+        history::query::GameQueryError,
+    },
 };
 
 use crate::{AppState, ServiceError, auth::Auth};
@@ -34,10 +44,23 @@ pub async fn get_game_status(
     let game = app.app.game_get_ongoing_use_case.get_game(game_id);
 
     if let Some(ongoing_game) = game {
-        let (draw_offer_white, draw_offer_black) = ongoing_game.game.draw_offers();
-        let (undo_request_white, undo_request_black) = ongoing_game.game.undo_requests();
-        let (white_remaining, black_remaining) =
-            ongoing_game.game.get_time_remaining_both(Instant::now());
+        let mut requests = Vec::new();
+        for request in ongoing_game.requests.into_iter() {
+            let req = GameRequest {
+                id: request.id.0,
+                request_type: match request.request_type {
+                    GameRequestType::Draw => JsonGameRequestType::Draw,
+                    GameRequestType::Undo => JsonGameRequestType::Undo,
+                    GameRequestType::MoreTime(_) => continue, // currently not exposed
+                },
+                from_player_id: match request.player {
+                    TakPlayer::White => ongoing_game.metadata.white_id.to_string(),
+                    TakPlayer::Black => ongoing_game.metadata.black_id.to_string(),
+                },
+            };
+            requests.push(req);
+        }
+        let time_info = ongoing_game.game.get_time_info(Instant::now());
         return Ok(Json(GameStatus {
             id: ongoing_game.metadata.id.0,
             player_ids: ForPlayer {
@@ -52,19 +75,10 @@ pub async fn get_game_status(
                 .iter()
                 .map(|a| action_to_ptn(&a))
                 .collect(),
-            status: GameStatusType::Ongoing {
-                draw_offers: ForPlayer {
-                    white: draw_offer_white,
-                    black: draw_offer_black,
-                },
-                undo_requests: ForPlayer {
-                    white: undo_request_white,
-                    black: undo_request_black,
-                },
-            },
+            status: GameStatusType::Ongoing { requests },
             remaining_ms: ForPlayer {
-                white: white_remaining.as_millis() as u64,
-                black: black_remaining.as_millis() as u64,
+                white: time_info.white_remaining.as_millis() as u64,
+                black: time_info.black_remaining.as_millis() as u64,
             },
         }));
     }
@@ -77,7 +91,8 @@ pub async fn get_game_status(
             } else {
                 GameStatusType::Aborted // means game ended was never saved after it ended (e.g. due to server restart killing ongoing games)
             };
-            let (white_remaining, black_remaining) = ended_game.reconstruct_time_remaining();
+
+            let time_info = ended_game.reconstruct_time_info();
             Ok(Json(GameStatus {
                 id: game_id.0,
                 player_ids: ForPlayer {
@@ -93,8 +108,8 @@ pub async fn get_game_status(
                     .collect(),
                 status,
                 remaining_ms: ForPlayer {
-                    white: white_remaining.as_millis() as u64,
-                    black: black_remaining.as_millis() as u64,
+                    white: time_info.white_remaining.as_millis() as u64,
+                    black: time_info.black_remaining.as_millis() as u64,
                 },
             }))
         }
@@ -129,7 +144,248 @@ pub async fn resign_game(
         .game_do_action_use_case
         .resign(game_id, player_id)
         .await
-        .map_err(|e| ServiceError::Internal(format!("Failed to resign game: {:?}", e)))
+        .map_err(|e| match e {
+            PlayerActionError::GameNotFound => {
+                ServiceError::NotFound(format!("Game with id {} not found", game_id.0))
+            }
+            PlayerActionError::NotAPlayerInGame => {
+                ServiceError::Forbidden("You are not a player in this game".to_string())
+            }
+        })
+}
+
+async fn add_request(
+    auth: Auth,
+    app: &AppState,
+    game_id: GameId,
+    request_type: GameRequestType,
+) -> Result<(), ServiceError> {
+    let player_id = app
+        .app
+        .player_resolver_service
+        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .await
+        .map_err(|ResolveError::Internal| {
+            ServiceError::Internal(format!(
+                "Failed to resolve player id for account {}",
+                auth.account.account_id
+            ))
+        })?;
+    match app
+        .app
+        .game_do_action_use_case
+        .add_request(game_id, player_id, request_type)
+        .await
+    {
+        ActionResult::Success => Ok(()),
+        ActionResult::NotPossible(e) => match e {
+            PlayerActionError::GameNotFound => Err(ServiceError::NotFound(format!(
+                "Game with id {} not found",
+                game_id.0
+            ))),
+            PlayerActionError::NotAPlayerInGame => Err(ServiceError::Forbidden(
+                "You are not a player in this game".to_string(),
+            )),
+        },
+        ActionResult::ActionError(AddRequestError::AlreadyRequested) => Err(
+            ServiceError::Forbidden("You have already made this request".to_string()),
+        ),
+    }
+}
+
+async fn retract_request_helper(
+    auth: Auth,
+    app: &AppState,
+    game_id: GameId,
+    request_id: GameRequestId,
+) -> Result<(), ServiceError> {
+    let player_id = app
+        .app
+        .player_resolver_service
+        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .await
+        .map_err(|ResolveError::Internal| {
+            ServiceError::Internal(format!(
+                "Failed to resolve player id for account {}",
+                auth.account.account_id
+            ))
+        })?;
+    match app
+        .app
+        .game_do_action_use_case
+        .retract_request(game_id, player_id, request_id)
+        .await
+    {
+        ActionResult::Success => Ok(()),
+        ActionResult::NotPossible(e) => match e {
+            PlayerActionError::GameNotFound => Err(ServiceError::NotFound(format!(
+                "Game with id {} not found",
+                game_id.0
+            ))),
+            PlayerActionError::NotAPlayerInGame => Err(ServiceError::Forbidden(
+                "You are not a player in this game".to_string(),
+            )),
+        },
+        ActionResult::ActionError(HandleRequestError::RequestNotFound) => Err(
+            ServiceError::NotFound("No such request to retract".to_string()),
+        ),
+    }
+}
+
+async fn reject_request(
+    auth: Auth,
+    app: &AppState,
+    game_id: GameId,
+    request_id: GameRequestId,
+) -> Result<(), ServiceError> {
+    let player_id = app
+        .app
+        .player_resolver_service
+        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .await
+        .map_err(|ResolveError::Internal| {
+            ServiceError::Internal(format!(
+                "Failed to resolve player id for account {}",
+                auth.account.account_id
+            ))
+        })?;
+    match app
+        .app
+        .game_do_action_use_case
+        .reject_request(game_id, player_id, request_id)
+        .await
+    {
+        ActionResult::Success => Ok(()),
+        ActionResult::NotPossible(e) => match e {
+            PlayerActionError::GameNotFound => Err(ServiceError::NotFound(format!(
+                "Game with id {} not found",
+                game_id.0
+            ))),
+            PlayerActionError::NotAPlayerInGame => Err(ServiceError::Forbidden(
+                "You are not a player in this game".to_string(),
+            )),
+        },
+        ActionResult::ActionError(HandleRequestError::RequestNotFound) => Err(
+            ServiceError::NotFound("No such request to reject".to_string()),
+        ),
+    }
+}
+
+async fn accept_request(
+    auth: Auth,
+    app: &AppState,
+    game_id: GameId,
+    request_id: GameRequestId,
+) -> Result<(), ServiceError> {
+    let player_id = app
+        .app
+        .player_resolver_service
+        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .await
+        .map_err(|ResolveError::Internal| {
+            ServiceError::Internal(format!(
+                "Failed to resolve player id for account {}",
+                auth.account.account_id
+            ))
+        })?;
+    let Some(request) = app
+        .app
+        .game_do_action_use_case
+        .get_request(game_id, request_id)
+    else {
+        return Err(ServiceError::NotFound(
+            "No such request to accept".to_string(),
+        ));
+    };
+    let res = match request.request_type {
+        GameRequestType::Draw => {
+            app.app
+                .game_do_action_use_case
+                .accept_draw_request(game_id, player_id, request_id)
+                .await
+        }
+        GameRequestType::Undo => {
+            app.app
+                .game_do_action_use_case
+                .accept_undo_request(game_id, player_id, request_id)
+                .await
+        }
+        GameRequestType::MoreTime(_) => {
+            return Err(ServiceError::NotPossible(
+                "Accepting more time requests is not supported".to_string(),
+            ));
+        }
+    };
+    log::info!(
+        "ACCEPT Player {} is accepting request {:?} in game {}",
+        player_id,
+        request_id,
+        game_id
+    );
+    match res {
+        ActionResult::Success => Ok(()),
+        ActionResult::NotPossible(e) => match e {
+            PlayerActionError::GameNotFound => Err(ServiceError::NotFound(format!(
+                "Game with id {} not found",
+                game_id.0
+            ))),
+            PlayerActionError::NotAPlayerInGame => Err(ServiceError::Forbidden(
+                "You are not a player in this game".to_string(),
+            )),
+        },
+        ActionResult::ActionError(HandleRequestError::RequestNotFound) => Err(
+            ServiceError::NotFound("No such request to reject".to_string()),
+        ),
+    }
+}
+
+pub async fn add_draw_request(
+    auth: Auth,
+    State(app): State<AppState>,
+    Path(game_id): Path<i64>,
+) -> Result<(), ServiceError> {
+    let game_id = GameId(game_id);
+    add_request(auth, &app, game_id, GameRequestType::Draw).await
+}
+
+pub async fn add_undo_request(
+    auth: Auth,
+    State(app): State<AppState>,
+    Path(game_id): Path<i64>,
+) -> Result<(), ServiceError> {
+    let game_id = GameId(game_id);
+    add_request(auth, &app, game_id, GameRequestType::Undo).await
+}
+
+pub async fn retract_request(
+    auth: Auth,
+    State(app): State<AppState>,
+    Path((game_id, request_id)): Path<(i64, u64)>,
+) -> Result<(), ServiceError> {
+    let game_id = GameId(game_id);
+    let request_id = GameRequestId(request_id);
+    retract_request_helper(auth, &app, game_id, request_id).await
+}
+
+pub async fn respond_to_request(
+    auth: Auth,
+    State(app): State<AppState>,
+    Path((game_id, request_id)): Path<(i64, u64)>,
+    Json(response): Json<RequestResponse>,
+) -> Result<(), ServiceError> {
+    let game_id = GameId(game_id);
+    let request_id = GameRequestId(request_id);
+    if response.accept {
+        accept_request(auth, &app, game_id, request_id).await
+    } else {
+        reject_request(auth, &app, game_id, request_id).await
+    }
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestResponse {
+    pub accept: bool,
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
@@ -145,19 +401,33 @@ pub struct GameStatus {
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GameRequest {
+    id: u64,
+    from_player_id: String,
+    request_type: JsonGameRequestType,
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
+#[serde(
+    rename_all = "camelCase",
+    tag = "type",
+    rename_all_fields = "camelCase"
+)]
+pub enum JsonGameRequestType {
+    Draw,
+    Undo,
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
 #[serde(
     rename_all = "camelCase",
     tag = "type",
     rename_all_fields = "camelCase"
 )]
 pub enum GameStatusType {
-    Ongoing {
-        draw_offers: ForPlayer<bool>,
-        undo_requests: ForPlayer<bool>,
-    },
-    Ended {
-        result: String,
-    },
+    Ongoing { requests: Vec<GameRequest> },
+    Ended { result: String },
     Aborted,
 }
 
@@ -198,46 +468,75 @@ pub struct GameSettingsInfo {
     pub half_komi: u32,
     pub pieces: u32,
     pub capstones: u32,
-    pub contingent_ms: u64,
-    pub increment_ms: u64,
-    pub extra: Option<ExtraTime>,
+    pub time_settings: JsonTimeSettings,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(
+    rename_all = "camelCase",
+    tag = "type",
+    rename_all_fields = "camelCase"
+)]
+pub enum JsonTimeSettings {
+    Realtime {
+        contingent_ms: u64,
+        increment_ms: u64,
+        extra: Option<ExtraTime>,
+    },
+    Async {
+        contingent_ms: u64,
+    },
 }
 
 impl GameSettingsInfo {
     pub fn from_game_settings(settings: &TakGameSettings) -> Self {
         GameSettingsInfo {
-            board_size: settings.board_size,
-            half_komi: settings.half_komi,
-            pieces: settings.reserve.pieces,
-            capstones: settings.reserve.capstones,
-            contingent_ms: settings.time_control.contingent.as_millis() as u64,
-            increment_ms: settings.time_control.increment.as_millis() as u64,
-            extra: settings
-                .time_control
-                .extra
-                .map(|(on_move, extra_time)| ExtraTime {
-                    on_move,
-                    extra_ms: extra_time.as_millis() as u64,
-                }),
+            board_size: settings.base.board_size,
+            half_komi: settings.base.half_komi,
+            pieces: settings.base.reserve.pieces,
+            capstones: settings.base.reserve.capstones,
+            time_settings: match &settings.time_settings {
+                TakTimeSettings::Realtime(tc) => JsonTimeSettings::Realtime {
+                    contingent_ms: tc.contingent.as_millis() as u64,
+                    increment_ms: tc.increment.as_millis() as u64,
+                    extra: tc.extra.map(|(on_move, extra_time)| ExtraTime {
+                        on_move,
+                        extra_ms: extra_time.as_millis() as u64,
+                    }),
+                },
+                TakTimeSettings::Async(tc) => JsonTimeSettings::Async {
+                    contingent_ms: tc.contingent.as_millis() as u64,
+                },
+            },
         }
     }
 
     pub fn to_game_settings(&self) -> TakGameSettings {
         TakGameSettings {
-            board_size: self.board_size,
-            half_komi: self.half_komi,
-            reserve: tak_core::TakReserve {
-                pieces: self.pieces,
-                capstones: self.capstones,
+            base: TakBaseGameSettings {
+                board_size: self.board_size,
+                half_komi: self.half_komi,
+                reserve: TakReserve {
+                    pieces: self.pieces,
+                    capstones: self.capstones,
+                },
             },
-            time_control: tak_core::TakTimeControl {
-                contingent: std::time::Duration::from_millis(self.contingent_ms),
-                increment: std::time::Duration::from_millis(self.increment_ms),
-                extra: self.extra.as_ref().map(|extra| {
-                    (
-                        extra.on_move,
-                        std::time::Duration::from_millis(extra.extra_ms),
-                    )
+            time_settings: match &self.time_settings {
+                JsonTimeSettings::Realtime {
+                    contingent_ms,
+                    increment_ms,
+                    extra,
+                } => TakTimeSettings::Realtime(TakRealtimeTimeControl {
+                    contingent: Duration::from_millis(*contingent_ms),
+                    increment: Duration::from_millis(*increment_ms),
+                    extra: extra
+                        .as_ref()
+                        .map(|extra| (extra.on_move, Duration::from_millis(extra.extra_ms))),
+                }),
+                JsonTimeSettings::Async {
+                    contingent_ms: increment_ms,
+                } => TakTimeSettings::Async(TakAsyncTimeControl {
+                    contingent: Duration::from_millis(*increment_ms),
                 }),
             },
         }

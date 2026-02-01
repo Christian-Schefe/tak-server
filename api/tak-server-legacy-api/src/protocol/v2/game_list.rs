@@ -1,5 +1,6 @@
 use std::time::Instant;
 
+use tak_core::TakTimeSettings;
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
     domain::{GameId, PlayerId},
@@ -77,8 +78,13 @@ impl ProtocolV2Handler {
                 self.send_game_action_message(id, game.metadata.id, action);
             }
             let now = Instant::now();
-            let (remaining_white, remaining_black) = game.game.get_time_remaining_both(now);
-            self.send_time_update_message(id, game_id, remaining_white, remaining_black);
+            let time_info = game.game.get_time_info(now);
+            self.send_time_update_message(
+                id,
+                game_id,
+                time_info.white_remaining,
+                time_info.black_remaining,
+            );
         } else {
             self.app.game_observe_use_case.unobserve_game(game_id, id.0);
         }
@@ -91,6 +97,9 @@ impl ProtocolV2Handler {
         game: &GameMetadataView,
         operation: &str,
     ) {
+        let TakTimeSettings::Realtime(time_control) = &game.settings.time_settings else {
+            return;
+        };
         let settings = &game.settings;
         let white_account = self
             .app
@@ -118,22 +127,20 @@ impl ProtocolV2Handler {
             game.id,
             white_username,
             black_username,
-            settings.board_size,
-            settings.time_control.contingent.as_secs(),
-            settings.time_control.increment.as_secs(),
-            settings.half_komi,
-            settings.reserve.pieces,
-            settings.reserve.capstones,
+            settings.base.board_size,
+            time_control.contingent.as_secs(),
+            time_control.increment.as_secs(),
+            settings.base.half_komi,
+            settings.base.reserve.pieces,
+            settings.base.reserve.capstones,
             if game.is_rated { "0" } else { "1" }, // protocol has "is_unrated" flag, so invert
             "0",
-            settings
-                .time_control
+            time_control
                 .extra
                 .as_ref()
                 .map_or("0".to_string(), |(trigger_move, _)| trigger_move
                     .to_string()),
-            settings
-                .time_control
+            time_control
                 .extra
                 .as_ref()
                 .map_or("0".to_string(), |(_, extra_time)| extra_time
@@ -149,6 +156,9 @@ impl ProtocolV2Handler {
         player_id: PlayerId,
         game: &GameMetadataView,
     ) {
+        let TakTimeSettings::Realtime(time_control) = &game.settings.time_settings else {
+            return;
+        };
         let white_account_id = self
             .app
             .player_resolver_service
@@ -190,7 +200,7 @@ impl ProtocolV2Handler {
             format!(
                 "Game Start {} {} {} vs {} {} {} {} {} {}",
                 game.id,
-                settings.board_size,
+                settings.base.board_size,
                 white_username,
                 black_username,
                 if player_id == game.white_id {
@@ -198,10 +208,10 @@ impl ProtocolV2Handler {
                 } else {
                     "black"
                 },
-                settings.time_control.contingent.as_secs(),
-                settings.half_komi,
-                settings.reserve.pieces,
-                settings.reserve.capstones,
+                time_control.contingent.as_secs(),
+                settings.base.half_komi,
+                settings.base.reserve.pieces,
+                settings.base.reserve.capstones,
             )
         } else {
             format!(
@@ -214,22 +224,20 @@ impl ProtocolV2Handler {
                 } else {
                     "black"
                 },
-                settings.board_size,
-                settings.time_control.contingent.as_secs(),
-                settings.time_control.increment.as_secs(),
-                settings.half_komi,
-                settings.reserve.pieces,
-                settings.reserve.capstones,
+                settings.base.board_size,
+                time_control.contingent.as_secs(),
+                time_control.increment.as_secs(),
+                settings.base.half_komi,
+                settings.base.reserve.pieces,
+                settings.base.reserve.capstones,
                 if game.is_rated { "0" } else { "1" }, // protocol has "is_unrated" flag, so invert
                 "0",
-                settings
-                    .time_control
+                time_control
                     .extra
                     .as_ref()
                     .map_or("0".to_string(), |(trigger_move, _)| trigger_move
                         .to_string()),
-                settings
-                    .time_control
+                time_control
                     .extra
                     .as_ref()
                     .map_or("0".to_string(), |(_, extra_time)| extra_time

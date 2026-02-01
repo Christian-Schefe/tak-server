@@ -17,6 +17,7 @@
         reverse_proxy host.docker.internal:{$TAK_WS_PORT}
     }
     handle {
+        try_files {path} /index.html
         file_server
     }
     tls internal

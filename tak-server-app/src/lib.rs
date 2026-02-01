@@ -23,7 +23,10 @@ use crate::{
         notification::ListenerNotificationPort,
         player_mapping::PlayerAccountMappingRepository,
     },
-    processes::game_timeout_runner::GameTimeoutRunnerImpl,
+    processes::{
+        disconnect_timeout_runner::DisconnectTimeoutRunnerImpl,
+        game_timeout_runner::GameTimeoutRunnerImpl,
+    },
     services::player_resolver::{PlayerResolverService, PlayerResolverServiceImpl},
     workflow::{
         account::{
@@ -51,6 +54,7 @@ use crate::{
             timeout::ObserveGameTimeoutUseCaseImpl,
         },
         history::query::{GameHistoryQueryUseCase, GameHistoryQueryUseCaseImpl},
+        listener::disconnect::{ListenerDisconnectUseCase, ListenerDisconnectUseCaseImpl},
         matchmaking::{
             accept::{AcceptSeekUseCase, AcceptSeekUseCaseImpl},
             cancel::{CancelSeekUseCase, CancelSeekUseCaseImpl},
@@ -87,6 +91,8 @@ pub struct Application {
 
     pub account_set_online_use_case: Box<dyn SetAccountOnlineUseCase + Send + Sync + 'static>,
     pub account_get_online_use_case: Box<dyn GetOnlineAccountsUseCase + Send + Sync + 'static>,
+
+    pub listener_disconnect_use_case: Box<dyn ListenerDisconnectUseCase + Send + Sync + 'static>,
 
     pub player_get_rating_use_case: Box<dyn PlayerGetRatingUseCase + Send + Sync + 'static>,
     pub player_resolver_service: Arc<dyn PlayerResolverService + Send + Sync + 'static>,
@@ -197,6 +203,9 @@ pub async fn build_application<
     let game_timeout_scheduler = Arc::new(GameTimeoutRunnerImpl::new(
         observe_game_timeout_use_case.clone(),
     ));
+    let player_disconnect_timeout_scheduler = Arc::new(DisconnectTimeoutRunnerImpl::new(
+        observe_game_timeout_use_case.clone(),
+    ));
 
     let create_game_from_match_workflow = Arc::new(CreateGameFromMatchWorkflowImpl::new(
         match_service.clone(),
@@ -250,9 +259,17 @@ pub async fn build_application<
         account_set_online_use_case: Box::new(SetAccountOnlineUseCaseImpl::new(
             account_online_status_port.clone(),
             listener_notification_port.clone(),
+            seek_service.clone(),
+            player_resolver_service.clone(),
+            player_disconnect_timeout_scheduler.clone(),
         )),
         account_get_online_use_case: Box::new(GetOnlineAccountsUseCaseImpl::new(
             account_online_status_port.clone(),
+        )),
+
+        listener_disconnect_use_case: Box::new(ListenerDisconnectUseCaseImpl::new(
+            spectator_service.clone(),
+            chat_room_service.clone(),
         )),
 
         player_get_rating_use_case: Box::new(PlayerGetRatingUseCaseImpl::new(
@@ -298,6 +315,7 @@ pub async fn build_application<
         get_profile_use_case: Arc::new(GetProfileUseCaseImpl::new(profile_repository.clone())),
         update_profile_use_case: Arc::new(UpdateProfileUseCaseImpl::new(
             profile_repository.clone(),
+            authentication_service.clone(),
         )),
 
         get_stats_use_case: Arc::new(GetPlayerStatsUseCaseImpl::new(stats_repository.clone())),

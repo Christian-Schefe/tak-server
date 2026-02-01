@@ -1,7 +1,5 @@
-use std::time::Duration;
-
 use chrono::{DateTime, Utc};
-use tak_core::{TakAction, TakGameResult, TakGameSettings};
+use tak_core::{TakAction, TakGameResult, TakGameSettings, TakTimeInfo, TakTimeSettings};
 
 use crate::domain::{
     GameId, PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
@@ -26,32 +24,37 @@ impl GameRecord {
         for event in &self.events {
             if let GameEventType::Action { action, .. } = &event.event_type {
                 actions.push(action.clone());
-            } else if let GameEventType::UndoAccepted { .. } = &event.event_type {
+            } else if let GameEventType::ActionUndone = &event.event_type {
                 actions.pop();
             }
         }
         actions
     }
 
-    pub fn reconstruct_time_remaining(&self) -> (Duration, Duration) {
-        let mut white_remaining = self.settings.time_control.contingent;
-        let mut black_remaining = self.settings.time_control.contingent;
-
+    pub fn reconstruct_time_info(&self) -> TakTimeInfo {
+        let mut maybe_time_info = None;
         for event in &self.events {
             match &event.event_type {
-                GameEventType::Action {
-                    white_remaining: w,
-                    black_remaining: b,
-                    ..
-                } => {
-                    white_remaining = *w;
-                    black_remaining = *b;
+                GameEventType::Action { time_info, .. } => {
+                    maybe_time_info = Some(time_info);
                 }
                 _ => {}
             }
         }
 
-        (white_remaining, black_remaining)
+        match maybe_time_info {
+            Some(ti) => ti.clone(),
+            None => match &self.settings.time_settings {
+                TakTimeSettings::Realtime(s) => TakTimeInfo {
+                    white_remaining: s.contingent,
+                    black_remaining: s.contingent,
+                },
+                TakTimeSettings::Async(s) => TakTimeInfo {
+                    white_remaining: s.contingent,
+                    black_remaining: s.contingent,
+                },
+            },
+        }
     }
 }
 
@@ -87,10 +90,6 @@ pub struct GameQuery {
     pub half_komi: Option<usize>,
     pub board_size: Option<usize>,
     pub is_rated: Option<bool>,
-    pub clock_contingent: Option<Duration>,
-    pub clock_increment: Option<Duration>,
-    pub clock_extra_trigger: Option<usize>,
-    pub clock_extra_time: Option<Duration>,
     pub pagination: Pagination,
     pub sort: Option<(SortOrder, GameSortBy)>,
 }

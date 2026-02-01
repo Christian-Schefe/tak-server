@@ -4,7 +4,7 @@ use tak_core::{TakFinishedGame, TakGameSettings, TakOngoingGame};
 
 use crate::domain::{
     GameId, PlayerId,
-    game::{FinishedGame, GameMetadata, OngoingGame},
+    game::{FinishedGame, GameMetadata, OngoingGame, request::GameRequest},
 };
 
 pub mod do_action;
@@ -27,6 +27,7 @@ pub struct GameMetadataView {
 pub struct OngoingGameView {
     pub metadata: GameMetadataView,
     pub game: TakOngoingGame,
+    pub requests: Vec<GameRequest>,
 }
 
 #[derive(Clone, Debug)]
@@ -54,6 +55,7 @@ impl OngoingGameView {
         OngoingGameView {
             metadata: GameMetadataView::from(&game.metadata),
             game: game.game.clone(),
+            requests: game.requests.get_all_requests(),
         }
     }
 }

@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Instant};
+use std::sync::Arc;
 
 use crate::{
     domain::GameId,
@@ -30,10 +30,17 @@ impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> GameTimeoutRunnerImpl
 
     async fn run(this: Arc<Self>, game_id: GameId) {
         loop {
-            let now = Instant::now();
-            match this.observer.tick(game_id, now).await {
-                ObserveOutcome::Finished => return,
+            match this.observer.check_game_timeout(game_id).await {
+                ObserveOutcome::Finished => {
+                    log::info!("Game {:?} timeout processing finished", game_id);
+                    return;
+                }
                 ObserveOutcome::Continue(delay) => {
+                    log::info!(
+                        "Scheduling next timeout check for game {:?} in {:?}",
+                        game_id,
+                        delay
+                    );
                     tokio::time::sleep(delay).await;
                 }
             }

@@ -1,9 +1,10 @@
-use std::time::Duration;
-
-use tak_core::TakGameResult;
+use tak_core::{TakGameResult, TakTimeInfo};
 
 use crate::{
-    domain::{AccountId, GameId, ListenerId, PlayerId, game::GameActionRecord},
+    domain::{
+        AccountId, GameId, ListenerId, PlayerId,
+        game::{GameActionRecord, request::GameRequest},
+    },
     workflow::{
         chat::message::MessageTarget,
         gameplay::{FinishedGameView, OngoingGameView},
@@ -52,25 +53,29 @@ pub enum ListenerMessage {
     },
     GameTimeUpdate {
         game_id: GameId,
-        white_time: Duration,
-        black_time: Duration,
+        time_info: TakTimeInfo,
     },
-    GameDrawOffered {
-        game_id: GameId,
-        offering_player_id: PlayerId,
-    },
-    GameDrawOfferRetracted {
-        game_id: GameId,
-        retracting_player_id: PlayerId,
-    },
-    GameUndoRequested {
+    GameRequestAdded {
         game_id: GameId,
         requesting_player_id: PlayerId,
+        request: GameRequest,
     },
-    GameUndoRequestRetracted {
+    GameRequestRetracted {
         game_id: GameId,
         retracting_player_id: PlayerId,
+        request: GameRequest,
     },
+    GameRequestRejected {
+        game_id: GameId,
+        rejecting_player_id: PlayerId,
+        request: GameRequest,
+    },
+    GameRequestAccepted {
+        game_id: GameId,
+        accepting_player_id: PlayerId,
+        request: GameRequest,
+    },
+
     GameRematchRequested {
         game_id: GameId,
     },

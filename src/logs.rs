@@ -33,7 +33,7 @@ pub fn init_logger() {
     let policy = CompoundPolicy::new(Box::new(trigger), Box::new(roller));
 
     let logfile = log4rs::append::rolling_file::RollingFileAppender::builder()
-        .encoder(Box::new(PatternEncoder::new("{l} - {m}\n")))
+        .encoder(Box::new(PatternEncoder::default()))
         .build(file_path, Box::new(policy))
         .unwrap();
 

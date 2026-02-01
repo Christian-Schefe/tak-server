@@ -21,14 +21,11 @@ pub struct Model {
 
     pub events: serde_json::Value,
     pub result: Option<String>,
-    pub clock_contingent_ms: i64,
-    pub clock_increment_ms: i64,
     pub is_rated: bool,
     pub half_komi: i32,
     pub pieces: i32,
     pub capstones: i32,
-    pub extra_time_amount: i32,
-    pub extra_time_trigger: i32,
+    pub game_settings: serde_json::Value,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
