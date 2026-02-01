@@ -109,6 +109,11 @@ async fn receive_ws(
                     }
                     Err(e) => {
                         log::error!("Failed to parse WS message: {}", e);
+                        let _ = sender.send(ServerMessage::Error {
+                            message: "Invalid message format".to_string(),
+                            code: 400,
+                            response_id: Uuid::new_v4(),
+                        });
                     }
                 }
             }

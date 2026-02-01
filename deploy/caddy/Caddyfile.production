@@ -17,6 +17,7 @@
         reverse_proxy tak_server:{$TAK_WS_PORT}
     }
     handle {
+        try_files {path} /index.html
         file_server
     }
     tls /certs/certificate.pem /certs/key.pem

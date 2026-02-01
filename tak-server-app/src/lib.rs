@@ -315,6 +315,7 @@ pub async fn build_application<
         get_profile_use_case: Arc::new(GetProfileUseCaseImpl::new(profile_repository.clone())),
         update_profile_use_case: Arc::new(UpdateProfileUseCaseImpl::new(
             profile_repository.clone(),
+            authentication_service.clone(),
         )),
 
         get_stats_use_case: Arc::new(GetPlayerStatsUseCaseImpl::new(stats_repository.clone())),
