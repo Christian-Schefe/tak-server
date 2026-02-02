@@ -43,11 +43,11 @@ impl GameRequestSystem {
 
     pub fn add_request(
         &mut self,
-        player: &TakPlayer,
+        player: TakPlayer,
         request: GameRequestType,
     ) -> Option<GameRequest> {
         if self.requests.iter().any(|(_, r)| {
-            r.player == *player
+            r.player == player
                 && match (&r.request_type, &request) {
                     (GameRequestType::Draw, GameRequestType::Draw) => true,
                     (GameRequestType::Undo, GameRequestType::Undo) => true,
@@ -60,7 +60,7 @@ impl GameRequestSystem {
             let id = GameRequestId(self.next_request_id);
             let request = GameRequest {
                 id,
-                player: *player,
+                player,
                 request_type: request,
             };
             self.requests.insert(id, request.clone());

@@ -339,7 +339,7 @@ impl ProtocolV2Handler {
                 }
             ),
             TakAction::Move { pos, dir, drops } => {
-                let end_pos = pos.offset(dir, drops.len() as i32);
+                let end_pos = pos.offset(*dir, drops.len() as i32);
                 let drops_str = drops
                     .iter()
                     .map(|d| d.to_string())

@@ -149,7 +149,7 @@ impl JsonEventRecordType {
                         amount_ms: duration.as_millis() as u64,
                     },
                 },
-                request_player: JsonTakPlayer::from_tak_player(&request.player),
+                request_player: JsonTakPlayer::from_tak_player(request.player),
             },
             GameEventType::RequestRetracted { request_id } => {
                 JsonEventRecordType::RequestRetracted {
@@ -173,7 +173,7 @@ impl JsonEventRecordType {
                 },
             },
             GameEventType::TimeGiven { player, duration } => JsonEventRecordType::TimeGiven {
-                player: JsonTakPlayer::from_tak_player(&player),
+                player: JsonTakPlayer::from_tak_player(player),
                 amount_ms: duration.as_millis() as u64,
             },
         }
@@ -260,7 +260,7 @@ impl JsonTakPlayer {
         }
     }
 
-    fn from_tak_player(player: &TakPlayer) -> Self {
+    fn from_tak_player(player: TakPlayer) -> Self {
         match player {
             TakPlayer::White => JsonTakPlayer::White,
             TakPlayer::Black => JsonTakPlayer::Black,

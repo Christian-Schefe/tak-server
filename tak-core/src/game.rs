@@ -51,7 +51,7 @@ enum TakClockUpdatePolicy {
 }
 
 impl TakClockUpdatePolicy {
-    fn end_turn(&mut self, game: &TakOngoingBaseGame, clock: &mut TakClock, player: &TakPlayer) {
+    fn end_turn(&mut self, game: &TakOngoingBaseGame, clock: &mut TakClock, player: TakPlayer) {
         match self {
             TakClockUpdatePolicy::Realtime(policy) => {
                 policy.end_turn(game, clock, player);
@@ -84,7 +84,7 @@ struct TakRealtimeClockUpdatePolicy {
 }
 
 impl TakRealtimeClockUpdatePolicy {
-    fn end_turn(&mut self, game: &TakOngoingBaseGame, clock: &mut TakClock, player: &TakPlayer) {
+    fn end_turn(&mut self, game: &TakOngoingBaseGame, clock: &mut TakClock, player: TakPlayer) {
         let remaining = match player {
             TakPlayer::White => &mut clock.remaining_time.0,
             TakPlayer::Black => &mut clock.remaining_time.1,
@@ -162,32 +162,32 @@ impl TakOngoingGame {
     }
 
     fn set_game_over(&mut self, now: Instant, game_result: TakGameResult) -> TakFinishedGame {
-        let player = self.base.current_player.clone();
-        self.stop_clock(now, &player);
+        let player = self.base.current_player;
+        self.stop_clock(now, player);
         TakFinishedGame::new(self, game_result, now)
     }
 
     pub fn check_timeout(&mut self, now: Instant) -> MaybeTimeout<(), TakFinishedGame> {
-        let player = self.base.current_player.clone();
-        let time_remaining = self.get_time_remaining(&player, now);
+        let player = self.base.current_player;
+        let time_remaining = self.get_time_remaining(player, now);
         if time_remaining.is_zero() {
             let game_result = TakGameResult::Win {
                 winner: player.opponent(),
                 reason: TakWinReason::Default,
             };
-            self.stop_clock(now, &player);
+            self.stop_clock(now, player);
             MaybeTimeout::Timeout(TakFinishedGame::new(self, game_result, now))
         } else {
             MaybeTimeout::Result(())
         }
     }
 
-    fn get_time_remaining(&self, player: &TakPlayer, now: Instant) -> Duration {
+    fn get_time_remaining(&self, player: TakPlayer, now: Instant) -> Duration {
         let base_remaining = match player {
             TakPlayer::White => self.clock.remaining_time.0,
             TakPlayer::Black => self.clock.remaining_time.1,
         };
-        if self.base.current_player != *player || !self.clock.is_ticking {
+        if self.base.current_player != player || !self.clock.is_ticking {
             return base_remaining;
         }
         let elapsed = now.saturating_duration_since(self.clock.last_update_timestamp);
@@ -196,12 +196,12 @@ impl TakOngoingGame {
 
     pub fn get_time_info(&self, now: Instant) -> TakTimeInfo {
         TakTimeInfo {
-            white_remaining: self.get_time_remaining(&TakPlayer::White, now),
-            black_remaining: self.get_time_remaining(&TakPlayer::Black, now),
+            white_remaining: self.get_time_remaining(TakPlayer::White, now),
+            black_remaining: self.get_time_remaining(TakPlayer::Black, now),
         }
     }
 
-    fn maybe_apply_elapsed(&mut self, now: Instant, player: &TakPlayer) {
+    fn maybe_apply_elapsed(&mut self, now: Instant, player: TakPlayer) {
         let remaining = match player {
             TakPlayer::White => &mut self.clock.remaining_time.0,
             TakPlayer::Black => &mut self.clock.remaining_time.1,
@@ -214,14 +214,14 @@ impl TakOngoingGame {
         self.clock.last_update_timestamp = now;
     }
 
-    fn start_or_update_clock(&mut self, now: Instant, player: &TakPlayer) {
+    fn start_or_update_clock(&mut self, now: Instant, player: TakPlayer) {
         self.maybe_apply_elapsed(now, player);
         self.clock_update_policy
             .end_turn(&self.base, &mut self.clock, player);
         self.clock.is_ticking = true;
     }
 
-    fn stop_clock(&mut self, now: Instant, player: &TakPlayer) {
+    fn stop_clock(&mut self, now: Instant, player: TakPlayer) {
         self.maybe_apply_elapsed(now, player);
         self.clock.is_ticking = false;
     }
@@ -235,15 +235,15 @@ impl TakOngoingGame {
             return Ok(MaybeTimeout::Timeout(finished_game));
         };
 
-        let player = self.base.current_player.clone();
+        let player = self.base.current_player;
 
         match self.base.do_action(action) {
             Ok(None) => {
-                self.start_or_update_clock(now, &player);
+                self.start_or_update_clock(now, player);
                 Ok(MaybeTimeout::Result(None))
             }
             Ok(Some(finished_base)) => {
-                self.stop_clock(now, &player);
+                self.stop_clock(now, player);
                 let finished_game = TakFinishedGame::from_finished_base(finished_base, self, now);
                 Ok(MaybeTimeout::Result(Some(finished_game)))
             }
@@ -259,7 +259,7 @@ impl TakOngoingGame {
         if self.base.action_history.pop().is_none() {
             return MaybeTimeout::Result(false);
         };
-        let player = self.base.current_player.clone();
+        let player = self.base.current_player;
         let mut game_clone = TakOngoingBaseGame::new(self.base.settings.clone());
         for record in &self.base.action_history {
             match game_clone.do_action(record.clone()) {
@@ -281,14 +281,14 @@ impl TakOngoingGame {
             }
         }
         self.base = game_clone;
-        self.start_or_update_clock(now, &player); // TODO: verify that we want increment after undo
+        self.start_or_update_clock(now, player); // TODO: verify that we want increment after undo
 
         MaybeTimeout::Result(true)
     }
 
     pub fn resign_or_abandon(
         &mut self,
-        player: &TakPlayer,
+        player: TakPlayer,
         now: Instant,
     ) -> MaybeTimeout<TakFinishedGame, TakFinishedGame> {
         if let MaybeTimeout::Timeout(finished_game) = self.check_timeout(now) {
@@ -312,7 +312,7 @@ impl TakOngoingGame {
 
     pub fn give_time_to_player(
         &mut self,
-        player: &TakPlayer,
+        player: TakPlayer,
         duration: Duration,
         now: Instant,
     ) -> MaybeTimeout<(), TakFinishedGame> {

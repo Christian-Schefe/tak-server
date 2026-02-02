@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    InvalidActionReason, InvalidPlaceReason, TakAction, TakGameResult, TakBaseGameSettings, TakPlayer,
-    TakReserve, TakVariant, TakWinReason, board::TakBoard,
+    InvalidActionReason, InvalidPlaceReason, TakAction, TakBaseGameSettings, TakGameResult,
+    TakPlayer, TakReserve, TakVariant, TakWinReason, board::TakBoard,
 };
 
 #[derive(Clone, Debug)]
@@ -72,7 +72,7 @@ impl TakOngoingBaseGame {
                 if self.action_history.len() < 2 {
                     return Err(InvalidActionReason::OpeningViolation);
                 }
-                if let Err(e) = self.board.can_do_move(pos, dir, drops) {
+                if let Err(e) = self.board.can_do_move(pos, *dir, drops) {
                     return Err(InvalidActionReason::InvalidMove(e));
                 }
                 Ok(())
@@ -87,12 +87,13 @@ impl TakOngoingBaseGame {
         if let Err(e) = self.can_do_action(&action) {
             return Err(e);
         }
+        let moved_player = self.current_player;
         match &action {
             TakAction::Place { pos, variant } => {
                 let placing_player = if self.action_history.len() < 2 {
                     self.current_player.opponent()
                 } else {
-                    self.current_player.clone()
+                    self.current_player
                 };
                 let reserve = match self.current_player {
                     TakPlayer::White => &mut self.reserves.0,
@@ -104,15 +105,17 @@ impl TakOngoingBaseGame {
                 };
                 *amount -= 1;
                 self.board
-                    .do_place(pos, variant, &placing_player)
+                    .do_place(pos, *variant, placing_player)
                     .expect("can_do_action should have prevented invalid place due to board state");
             }
             TakAction::Move { pos, dir, drops } => {
                 self.board
-                    .do_move(pos, dir, drops)
+                    .do_move(pos, *dir, drops)
                     .expect("can_do_action should have prevented invalid move due to board state");
             }
         }
+        self.action_history.push(action);
+        self.current_player = self.current_player.opponent();
 
         let board_hash = self.board.compute_hash_string();
         self.board_hash_history
@@ -120,31 +123,25 @@ impl TakOngoingBaseGame {
             .and_modify(|e| *e += 1)
             .or_insert(1);
 
-        match self.check_game_over(board_hash) {
-            Some(finished_game) => {
-                return Ok(Some(finished_game));
-            }
-            None => {
-                self.current_player = self.current_player.opponent();
-                self.action_history.push(action);
-
-                Ok(None)
-            }
-        }
+        Ok(self.check_game_over(board_hash, moved_player))
     }
 
-    pub fn check_game_over(&self, board_hash: String) -> Option<TakFinishedBaseGame> {
+    pub fn check_game_over(
+        &self,
+        board_hash: String,
+        moved_player: TakPlayer,
+    ) -> Option<TakFinishedBaseGame> {
         let white_reserve_empty = self.reserves.0.pieces == 0 && self.reserves.0.capstones == 0;
         let black_reserve_empty = self.reserves.1.pieces == 0 && self.reserves.1.capstones == 0;
 
-        let game_result = if self.board.check_for_road(&self.current_player) {
+        let game_result = if self.board.check_for_road(moved_player) {
             Some(TakGameResult::Win {
-                winner: self.current_player.clone(),
+                winner: moved_player,
                 reason: TakWinReason::Road,
             })
-        } else if self.board.check_for_road(&self.current_player.opponent()) {
+        } else if self.board.check_for_road(moved_player.opponent()) {
             Some(TakGameResult::Win {
-                winner: self.current_player.opponent(),
+                winner: moved_player.opponent(),
                 reason: TakWinReason::Road,
             })
         } else if self.board.is_full() || white_reserve_empty || black_reserve_empty {

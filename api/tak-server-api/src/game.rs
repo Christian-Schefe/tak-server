@@ -334,7 +334,7 @@ async fn accept_request(
             )),
         },
         ActionResult::ActionError(HandleRequestError::RequestNotFound) => Err(
-            ServiceError::NotFound("No such request to reject".to_string()),
+            ServiceError::NotFound("No such request to accept".to_string()),
         ),
     }
 }

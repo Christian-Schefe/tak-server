@@ -37,8 +37,8 @@ impl TakBoard {
     pub fn do_place(
         &mut self,
         pos: &TakPos,
-        variant: &TakVariant,
-        player: &TakPlayer,
+        variant: TakVariant,
+        player: TakPlayer,
     ) -> Result<(), InvalidPlaceReason> {
         self.can_do_place(&pos)?;
         let index = (pos.y * self.size as i32 + pos.x) as usize;
@@ -52,7 +52,7 @@ impl TakBoard {
     pub fn can_do_move(
         &self,
         pos: &TakPos,
-        dir: &TakDir,
+        dir: TakDir,
         drops: &[u32],
     ) -> Result<(), InvalidMoveReason> {
         if !pos.is_valid(self.size) {
@@ -107,7 +107,7 @@ impl TakBoard {
     pub fn do_move(
         &mut self,
         pos: &TakPos,
-        dir: &TakDir,
+        dir: TakDir,
         drops: &[u32],
     ) -> Result<(), InvalidMoveReason> {
         self.can_do_move(pos, dir, drops)?;
@@ -168,24 +168,24 @@ impl TakBoard {
         (white_flats, black_flats)
     }
 
-    fn is_road_square(&self, pos: &TakPos, player: &TakPlayer) -> bool {
+    fn is_road_square(&self, pos: &TakPos, player: TakPlayer) -> bool {
         if !pos.is_valid(self.size) {
             return false;
         }
         let index = (pos.y * self.size as i32 + pos.x) as usize;
         if let Some(stack) = &self.stacks[index] {
             if let Some(top_player) = stack.composition.last() {
-                return stack.variant != TakVariant::Standing && top_player == player;
+                return stack.variant != TakVariant::Standing && *top_player == player;
             }
         }
         false
     }
 
-    pub fn check_for_road(&self, player: &TakPlayer) -> bool {
+    pub fn check_for_road(&self, player: TakPlayer) -> bool {
         self.find_road(true, player) || self.find_road(false, player)
     }
 
-    fn find_road(&self, horizontal: bool, player: &TakPlayer) -> bool {
+    fn find_road(&self, horizontal: bool, player: TakPlayer) -> bool {
         let mut visited = vec![false; (self.size * self.size) as usize];
         let mut queue = VecDeque::new();
 
@@ -212,7 +212,7 @@ impl TakBoard {
                 return true;
             }
 
-            for dir in &[TakDir::Up, TakDir::Down, TakDir::Left, TakDir::Right] {
+            for dir in TakDir::ALL {
                 let neighbor = current_pos.offset(dir, 1);
                 if self.is_road_square(&neighbor, player) {
                     let index = (neighbor.y * self.size as i32 + neighbor.x) as usize;
@@ -267,20 +267,20 @@ mod tests {
         let player = TakPlayer::White;
         let variant = TakVariant::Flat;
 
-        assert!(board.do_place(&pos, &variant, &player).is_ok());
-        assert!(board.can_do_move(&pos, &TakDir::Right, &[1]).is_ok());
-        assert!(board.do_move(&pos, &TakDir::Right, &[1]).is_ok());
+        assert!(board.do_place(&pos, variant, player).is_ok());
+        assert!(board.can_do_move(&pos, TakDir::Right, &[1]).is_ok());
+        assert!(board.do_move(&pos, TakDir::Right, &[1]).is_ok());
 
         let new_pos = TakPos { x: 1, y: 0 };
         assert!(board.stacks[(new_pos.y * board.size as i32 + new_pos.x) as usize].is_some());
 
         assert!(
             board
-                .do_place(&pos, &TakVariant::Capstone, &TakPlayer::Black)
+                .do_place(&pos, TakVariant::Capstone, TakPlayer::Black)
                 .is_ok()
         );
-        assert!(board.can_do_move(&pos, &TakDir::Right, &[1]).is_ok());
-        assert!(board.do_move(&pos, &TakDir::Right, &[1]).is_ok());
+        assert!(board.can_do_move(&pos, TakDir::Right, &[1]).is_ok());
+        assert!(board.do_move(&pos, TakDir::Right, &[1]).is_ok());
 
         assert_eq!(
             board.stacks[(pos.y * board.size as i32 + pos.x) as usize],
@@ -294,8 +294,8 @@ mod tests {
             })
         );
 
-        assert!(board.can_do_move(&new_pos, &TakDir::Left, &[1]).is_ok());
-        assert!(board.do_move(&new_pos, &TakDir::Left, &[1]).is_ok());
+        assert!(board.can_do_move(&new_pos, TakDir::Left, &[1]).is_ok());
+        assert!(board.do_move(&new_pos, TakDir::Left, &[1]).is_ok());
 
         assert_eq!(
             board.stacks[(pos.y * board.size as i32 + pos.x) as usize],
@@ -322,19 +322,19 @@ mod tests {
         let player = TakPlayer::White;
         let variant = TakVariant::Flat;
 
-        assert!(board.do_place(&pos, &variant, &player).is_ok());
+        assert!(board.do_place(&pos, variant, player).is_ok());
         assert!(
             board
-                .do_place(&wall_pos, &TakVariant::Standing, &player)
+                .do_place(&wall_pos, TakVariant::Standing, player)
                 .is_ok()
         );
         assert!(
             board
-                .do_place(&cap_pos, &TakVariant::Capstone, &player)
+                .do_place(&cap_pos, TakVariant::Capstone, player)
                 .is_ok()
         );
-        assert!(board.can_do_move(&pos, &TakDir::Right, &[1]).is_err());
-        assert!(board.can_do_move(&pos, &TakDir::Up, &[1]).is_err());
+        assert!(board.can_do_move(&pos, TakDir::Right, &[1]).is_err());
+        assert!(board.can_do_move(&pos, TakDir::Up, &[1]).is_err());
     }
 
     #[test]
@@ -345,14 +345,14 @@ mod tests {
         let player = TakPlayer::White;
         let variant = TakVariant::Capstone;
 
-        assert!(board.do_place(&pos, &variant, &player).is_ok());
+        assert!(board.do_place(&pos, variant, player).is_ok());
         assert!(
             board
-                .do_place(&cap_pos, &TakVariant::Standing, &player)
+                .do_place(&cap_pos, TakVariant::Standing, player)
                 .is_ok()
         );
-        assert!(board.can_do_move(&pos, &TakDir::Right, &[1]).is_ok());
-        assert!(board.do_move(&pos, &TakDir::Right, &[1]).is_ok());
+        assert!(board.can_do_move(&pos, TakDir::Right, &[1]).is_ok());
+        assert!(board.do_move(&pos, TakDir::Right, &[1]).is_ok());
     }
 
     #[test]
@@ -363,10 +363,10 @@ mod tests {
 
         for x in 0..5 {
             let pos = TakPos { x, y: 0 };
-            assert!(!board.check_for_road(&player));
-            assert!(board.do_place(&pos, &variant, &player).is_ok());
+            assert!(!board.check_for_road(player));
+            assert!(board.do_place(&pos, variant, player).is_ok());
         }
 
-        assert!(board.check_for_road(&player));
+        assert!(board.check_for_road(player));
     }
 }

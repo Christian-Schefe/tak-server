@@ -375,47 +375,46 @@ impl GameService for GameServiceImpl {
                         .map_err(|e| DoActionResult::InvalidAction(e))
                 }
             },
-            |game_entry, _, res| {
-                let ply_index = game_entry.game.action_history().len() - 1;
-                match res {
-                    Some(finished_game) => {
-                        let time_info = finished_game.get_time_info();
-                        game_entry
-                            .events
-                            .push(GameEvent::new(GameEventType::Action {
-                                action: action.clone(),
-                                time_info,
-                            }));
-                        game_entry
-                            .events
-                            .push(GameEvent::new(GameEventType::GameOver(
-                                GameOverEventType::Action,
-                            )));
-                        let finished_game = FinishedGame::new(game_entry, finished_game);
-                        (
-                            GameControl::Remove,
-                            DoActionResult::GameOver(
-                                GameActionRecord::new(action.clone(), ply_index),
-                                finished_game,
-                            ),
-                        )
-                    }
-                    None => {
-                        let time_info = game_entry.game.get_time_info(now);
-                        game_entry
-                            .events
-                            .push(GameEvent::new(GameEventType::Action {
-                                action: action.clone(),
-                                time_info,
-                            }));
-                        (
-                            GameControl::Keep,
-                            DoActionResult::ActionPerformed(GameActionRecord::new(
-                                action.clone(),
-                                ply_index,
-                            )),
-                        )
-                    }
+            |game_entry, _, res| match res {
+                Some(finished_game) => {
+                    let ply_index = finished_game.action_history().len() - 1;
+                    let time_info = finished_game.get_time_info();
+                    game_entry
+                        .events
+                        .push(GameEvent::new(GameEventType::Action {
+                            action: action.clone(),
+                            time_info,
+                        }));
+                    game_entry
+                        .events
+                        .push(GameEvent::new(GameEventType::GameOver(
+                            GameOverEventType::Action,
+                        )));
+                    let finished_game = FinishedGame::new(game_entry, finished_game);
+                    (
+                        GameControl::Remove,
+                        DoActionResult::GameOver(
+                            GameActionRecord::new(action.clone(), ply_index),
+                            finished_game,
+                        ),
+                    )
+                }
+                None => {
+                    let ply_index = game_entry.game.action_history().len() - 1;
+                    let time_info = game_entry.game.get_time_info(now);
+                    game_entry
+                        .events
+                        .push(GameEvent::new(GameEventType::Action {
+                            action: action.clone(),
+                            time_info,
+                        }));
+                    (
+                        GameControl::Keep,
+                        DoActionResult::ActionPerformed(GameActionRecord::new(
+                            action.clone(),
+                            ply_index,
+                        )),
+                    )
                 }
             },
         )
@@ -430,9 +429,7 @@ impl GameService for GameServiceImpl {
         self.game_player_action(
             game_id,
             player,
-            |game_entry, current_player| {
-                Ok(game_entry.game.resign_or_abandon(&current_player, now))
-            },
+            |game_entry, current_player| Ok(game_entry.game.resign_or_abandon(current_player, now)),
             |game_entry, _, finished_game| {
                 game_entry
                     .events
@@ -460,7 +457,7 @@ impl GameService for GameServiceImpl {
                 MaybeTimeout::Result(()) => Ok(MaybeTimeout::Result(
                     game_entry
                         .requests
-                        .add_request(&current_player, request_type),
+                        .add_request(current_player, request_type),
                 )),
             },
             |game_entry, _, res| match res {
@@ -604,7 +601,7 @@ impl GameService for GameServiceImpl {
                     if let Some(request) =
                         game_entry.requests.take_request_if(request_id, |request| {
                             request.player != current_player
-                                && matches!(request.request_type, GameRequestType::Draw)
+                                && matches!(request.request_type, GameRequestType::Undo)
                         })
                     {
                         match game_entry.game.undo_action(now) {
@@ -684,7 +681,7 @@ impl GameService for GameServiceImpl {
                         timeout_duration - disconnected_since,
                     ));
                 }
-                Ok(game_entry.game.resign_or_abandon(&current_player, now))
+                Ok(game_entry.game.resign_or_abandon(current_player, now))
             },
             |game_entry, _, finished_game| {
                 game_entry

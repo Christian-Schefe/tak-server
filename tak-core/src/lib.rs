@@ -113,7 +113,7 @@ impl TakAsyncTimeControl {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TakVariant {
     Flat,
     Standing,
@@ -135,7 +135,7 @@ impl TakPos {
         self.x >= 0 && self.x < size as i32 && self.y >= 0 && self.y < size as i32
     }
 
-    pub fn offset(&self, dir: &TakDir, distance: i32) -> Self {
+    pub fn offset(&self, dir: TakDir, distance: i32) -> Self {
         match dir {
             TakDir::Up => TakPos {
                 x: self.x,
@@ -157,12 +157,16 @@ impl TakPos {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TakDir {
     Up,
     Left,
     Right,
     Down,
+}
+
+impl TakDir {
+    pub const ALL: [TakDir; 4] = [TakDir::Up, TakDir::Down, TakDir::Left, TakDir::Right];
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -301,16 +305,16 @@ mod tests {
     fn test_tak_pos_offset() {
         let start_pos = TakPos::new(2, 2);
 
-        let up_pos = start_pos.offset(&TakDir::Up, 1);
+        let up_pos = start_pos.offset(TakDir::Up, 1);
         assert_eq!(up_pos, TakPos::new(2, 3));
 
-        let down_pos = start_pos.offset(&TakDir::Down, 1);
+        let down_pos = start_pos.offset(TakDir::Down, 1);
         assert_eq!(down_pos, TakPos::new(2, 1));
 
-        let left_pos = start_pos.offset(&TakDir::Left, 1);
+        let left_pos = start_pos.offset(TakDir::Left, 1);
         assert_eq!(left_pos, TakPos::new(1, 2));
 
-        let right_pos = start_pos.offset(&TakDir::Right, 1);
+        let right_pos = start_pos.offset(TakDir::Right, 1);
         assert_eq!(right_pos, TakPos::new(3, 2));
     }
 }
