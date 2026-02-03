@@ -152,16 +152,18 @@ impl ProtocolV2Handler {
             }
 
             ListenerMessage::GameStarted { game } => {
-                self.send_game_list_message(id, &game.metadata, true).await;
+                self.send_game_list_message(id, game.id, &game.metadata, true)
+                    .await;
                 if let Some(player_id) = player_id
                     && (game.metadata.white_id == player_id || game.metadata.black_id == player_id)
                 {
-                    self.send_game_start_message(id, player_id, &game.metadata)
+                    self.send_game_start_message(id, game.id, player_id, &game.metadata)
                         .await;
                 }
             }
             ListenerMessage::GameEnded { game } => {
-                self.send_game_list_message(id, &game.metadata, false).await;
+                self.send_game_list_message(id, game.id, &game.metadata, false)
+                    .await;
             }
 
             ListenerMessage::GameOver {
@@ -298,20 +300,21 @@ impl ProtocolV2Handler {
         }
         let games = self.app.game_list_ongoing_use_case.list_games();
         for game in games {
-            self.send_game_list_message(id, &game.metadata, true).await;
+            self.send_game_list_message(id, game.id, &game.metadata, true)
+                .await;
             if let Some(player_id) = player_id
                 && (game.metadata.white_id == player_id || game.metadata.black_id == player_id)
             {
-                self.send_game_start_message(id, player_id, &game.metadata)
+                self.send_game_start_message(id, game.id, player_id, &game.metadata)
                     .await;
                 for action in game.game.action_history() {
-                    self.send_game_action_message(id, game.metadata.id, action);
+                    self.send_game_action_message(id, game.id, action);
                 }
                 let now = Instant::now();
                 let time_info = game.game.get_time_info(now);
                 self.send_time_update_message(
                     id,
-                    game.metadata.id,
+                    game.id,
                     time_info.white_remaining,
                     time_info.black_remaining,
                 );

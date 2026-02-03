@@ -67,7 +67,6 @@ pub enum GameOverEventType {
 
 #[derive(Clone, Debug)]
 pub struct GameMetadata {
-    pub game_id: GameId,
     pub date: chrono::DateTime<chrono::Utc>,
     pub white_id: PlayerId,
     pub black_id: PlayerId,
@@ -99,6 +98,7 @@ impl GameMetadata {
 
 #[derive(Clone, Debug)]
 pub struct OngoingGame {
+    pub game_id: GameId,
     pub metadata: GameMetadata,
     pub game: TakOngoingGame,
     pub requests: GameRequestSystem,
@@ -113,6 +113,7 @@ impl OngoingGame {
 
 #[derive(Clone, Debug)]
 pub struct FinishedGame {
+    pub game_id: GameId,
     pub metadata: GameMetadata,
     pub game: TakFinishedGame,
     pub events: Vec<GameEvent>,
@@ -121,6 +122,7 @@ pub struct FinishedGame {
 impl FinishedGame {
     fn new(game: &OngoingGame, tak_game: TakFinishedGame) -> Self {
         Self {
+            game_id: game.game_id,
             metadata: game.metadata.clone(),
             game: tak_game,
             events: game.events.clone(),
@@ -132,15 +134,15 @@ impl FinishedGame {
 }
 
 pub trait GameService {
-    fn create_game(
+    fn create_game_metadata(
         &self,
-        id: GameId,
         date: chrono::DateTime<chrono::Utc>,
         white_id: PlayerId,
         black_id: PlayerId,
         is_rated: bool,
         game_settings: TakGameSettings,
-    ) -> OngoingGame;
+    ) -> GameMetadata;
+    fn create_game(&self, id: GameId, metadata: GameMetadata) -> OngoingGame;
     fn get_game_by_id(&self, game_id: GameId) -> Option<OngoingGame>;
     fn get_games(&self) -> impl Iterator<Item = OngoingGame>;
     fn check_timeout(&self, game_id: GameId, now: Instant) -> CheckTimeoutResult;
@@ -317,26 +319,27 @@ impl GameServiceImpl {
 }
 
 impl GameService for GameServiceImpl {
-    fn create_game(
+    fn create_game_metadata(
         &self,
-        id: GameId,
         date: chrono::DateTime<chrono::Utc>,
         white_id: PlayerId,
         black_id: PlayerId,
         is_rated: bool,
         game_settings: TakGameSettings,
-    ) -> OngoingGame {
-        let game = TakOngoingGame::new(game_settings.clone());
-
-        let metadata = GameMetadata {
-            game_id: id,
+    ) -> GameMetadata {
+        GameMetadata {
             date,
             white_id,
             black_id,
             settings: game_settings,
             is_rated,
-        };
+        }
+    }
+    fn create_game(&self, id: GameId, metadata: GameMetadata) -> OngoingGame {
+        let game = TakOngoingGame::new(metadata.settings.clone());
+
         let game_struct = OngoingGame {
+            game_id: id,
             game,
             metadata,
             requests: GameRequestSystem::new(),

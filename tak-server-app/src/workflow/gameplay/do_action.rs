@@ -118,7 +118,11 @@ impl<G: GameService, NP: NotifyPlayerWorkflow, F: FinalizeGameWorkflow>
             let time_info = game.get_time_info(now);
             let time_update_msg = ListenerMessage::GameTimeUpdate { game_id, time_info };
             self.notify_player_workflow
-                .notify_players_and_observers_of_game(&game.metadata, &time_update_msg)
+                .notify_players_and_observers_of_game(
+                    game.game_id,
+                    &game.metadata,
+                    &time_update_msg,
+                )
                 .await;
         }
     }
@@ -126,11 +130,11 @@ impl<G: GameService, NP: NotifyPlayerWorkflow, F: FinalizeGameWorkflow>
     async fn send_game_time_update_for_finished_game(&self, game: &FinishedGame) {
         let time_info = game.get_time_info();
         let time_update_msg = ListenerMessage::GameTimeUpdate {
-            game_id: game.metadata.game_id,
+            game_id: game.game_id,
             time_info,
         };
         self.notify_player_workflow
-            .notify_players_and_observers_of_game(&game.metadata, &time_update_msg)
+            .notify_players_and_observers_of_game(game.game_id, &game.metadata, &time_update_msg)
             .await;
     }
 
@@ -202,7 +206,11 @@ impl<
         // Needs different notification flow as game domain removes game once ended
         if let Some(ended_game) = maybe_ended_game {
             self.notify_player_workflow
-                .notify_players_and_observers_of_game(&ended_game.metadata, &msg)
+                .notify_players_and_observers_of_game(
+                    ended_game.game_id,
+                    &ended_game.metadata,
+                    &msg,
+                )
                 .await;
 
             self.handle_ended_game(ended_game).await;
@@ -365,7 +373,11 @@ impl<
                     request,
                 };
                 self.notify_player_workflow
-                    .notify_players_and_observers_of_game(&ended_game.metadata, &request_msg)
+                    .notify_players_and_observers_of_game(
+                        ended_game.game_id,
+                        &ended_game.metadata,
+                        &request_msg,
+                    )
                     .await;
                 self.handle_ended_game(ended_game).await;
                 ActionResult::Success

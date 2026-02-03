@@ -78,7 +78,7 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
 
         for game in games {
             match self.game_service.check_disconnect_timeout(
-                game.metadata.game_id,
+                game.game_id,
                 player_id,
                 disconnected_since,
                 now,
@@ -87,7 +87,7 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
                     log::warn!(
                         "Received unexpected result when checking disconnect timeout for player {:?} in game {:?}",
                         player_id,
-                        game.metadata.game_id
+                        game.game_id
                     );
                 }
                 GamePlayerActionResult::Timeout(ended_game) => {

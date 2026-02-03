@@ -13,7 +13,8 @@ members = [
     "infra/tak-email-lettre",
     "infra/tak-events-google-sheets",
     "infra/tak-persistence-sea-orm",
-    "infra/tak-persistence-sea-orm-entites",
+    "infra/tak-persistence-sea-orm-entities",
+    "infra/tak-persistence-sea-orm-migrations",
     "infra/tak-player-connection",
     "more-concurrent-maps",
     "tak-core",
@@ -28,9 +29,8 @@ tak-auth-ory = { path = "./infra/tak-auth-ory" }
 tak-email-lettre = { path = "./infra/tak-email-lettre" }
 tak-events-google-sheets = { path = "./infra/tak-events-google-sheets" }
 tak-persistence-sea-orm = { path = "./infra/tak-persistence-sea-orm" }
-tak-server-legacy-api = { path = "./api/tak-server-legacy-api" }
+tak-player-connection = { path = "./infra/tak-player-connection" }
 tak-server-api = { path = "./api/tak-server-api" }
 tak-server-app = { path = "./tak-server-app" }
-tak-player-connection = { path = "./infra/tak-player-connection" }
+tak-server-legacy-api = { path = "./api/tak-server-legacy-api" }
 tokio = { version = "1.47.1", features = ["full"] }
-async-trait = "0.1.89"

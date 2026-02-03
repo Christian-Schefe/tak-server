@@ -2,15 +2,18 @@ use std::str::FromStr;
 
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
 };
 use tak_server_app::{
-    domain::{AccountId, PlayerId},
+    domain::{
+        AccountId, Pagination, PlayerId, SortOrder,
+        game_history::{GamePlayerFilter, GameQuery, GameSortBy},
+    },
     workflow::{account::AccountProfileView, player::PlayerStatsView},
 };
 use uuid::Uuid;
 
-use crate::{AppState, ServiceError};
+use crate::{AppState, PaginatedResponse, PaginationQuery, ServiceError, game::JsonEndedGameInfo};
 
 async fn get_player_info_helper(
     app: &AppState,
@@ -152,8 +155,43 @@ pub async fn update_account_profile(
         .map_err(|_| ServiceError::Internal("Failed to update player profile".to_string()))
 }
 
+pub async fn get_games_history(
+    State(app): State<AppState>,
+    Path(player_id): Path<String>,
+    Query(pagination): Query<PaginationQuery>,
+) -> Result<Json<PaginatedResponse<JsonEndedGameInfo>>, ServiceError> {
+    let player_id = PlayerId(
+        Uuid::parse_str(&player_id)
+            .map_err(|_| ServiceError::BadRequest("Invalid player ID".to_string()))?,
+    );
+    let filter = GameQuery {
+        player_filters: vec![(GamePlayerFilter::PlayerId(player_id), None)],
+        pagination: Pagination::new(pagination.page, pagination.page_size),
+        sort: Some((SortOrder::Descending, GameSortBy::Date)),
+        ..Default::default()
+    };
+    match app
+        .app
+        .game_history_query_use_case
+        .query_games(filter)
+        .await
+    {
+        Ok(result) => Ok(Json(PaginatedResponse {
+            items: result
+                .items
+                .into_iter()
+                .map(|record| JsonEndedGameInfo::from_game_record(&record))
+                .collect(),
+            total_count: result.total_count as u32,
+        })),
+        Err(_) => Err(ServiceError::Internal(
+            "Failed to retrieve game history".to_string(),
+        )),
+    }
+}
+
 #[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase", tag = "type")]
+#[serde(rename_all = "camelCase")]
 pub struct RatingResponse {
     rating: f64,
     participation_rating: f64,

@@ -6,7 +6,9 @@ edition = "2024"
 [dependencies]
 async-lock = "3.4.2"
 async-trait = "0.1.89"
+chrono = "0.4.42"
 country-code-enum = "0.2.0"
+log = "0.4.28"
 moka = { version = "0.12.10", features = ["sync"] }
 sea-orm = { version = "2.0.0-rc", features = [
     "sqlx-mysql",
@@ -15,13 +17,15 @@ sea-orm = { version = "2.0.0-rc", features = [
     "schema-sync",
     "entity-registry",
 ] }
+sea-orm-migration = { version = "2.0.0-rc", features = [
+    "sqlx-mysql",
+    "runtime-tokio-native-tls",
+] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"
 tak-core = { path = "../../tak-core" }
-tak-persistence-sea-orm-entites = { path = "../tak-persistence-sea-orm-entites" }
+tak-persistence-sea-orm-entities = { path = "../tak-persistence-sea-orm-entities" }
+tak-persistence-sea-orm-migrations = { path = "../tak-persistence-sea-orm-migrations" }
 tak-server-app = { path = "../../tak-server-app" }
-uuid = { version = "1.18.1", features = ["v4"] }
 tokio = { version = "1.47.1", features = ["full"] }
-log = "0.4.28"
-chrono = "0.4.42"
-enum-iterator = "2.3.0"
+uuid = { version = "1.18.1", features = ["v4"] }

@@ -31,7 +31,7 @@ use uuid::Uuid;
 
 use crate::{
     AppState, ServiceError,
-    game::{ForPlayer, GameInfo},
+    game::{ForPlayer, JsonGameMetadata},
     seek::SeekInfo,
 };
 
@@ -348,7 +348,7 @@ pub enum ClientMessage {
 }
 
 #[derive(serde::Deserialize, Debug)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct ClientMessageWrapper {
     #[serde(flatten)]
     pub message: ClientMessage,
@@ -389,7 +389,7 @@ pub enum ServerMessage {
         remaining_ms: ForPlayer<u64>,
     },
     GameStarted {
-        game: GameInfo,
+        game: JsonGameMetadata,
     },
     GameEnded {
         game_id: i64,
@@ -467,12 +467,12 @@ impl ServerMessage {
             }
             ListenerMessage::GameStarted { game } => {
                 MessageTransformation::Transform(ServerMessage::GameStarted {
-                    game: GameInfo::from_ongoing_game_view(&game.metadata),
+                    game: JsonGameMetadata::from_metadata_view(game.id, &game.metadata),
                 })
             }
             ListenerMessage::GameEnded { game } => {
                 MessageTransformation::Transform(ServerMessage::GameEnded {
-                    game_id: game.metadata.id.0,
+                    game_id: game.id.0,
                     result: game_result_to_string(game.game.game_result()),
                 })
             }

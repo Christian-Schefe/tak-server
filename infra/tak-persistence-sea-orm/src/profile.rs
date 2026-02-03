@@ -3,7 +3,7 @@ use std::{str::FromStr, sync::Arc};
 use crate::create_db_pool;
 use country_code_enum::CountryCode;
 use sea_orm::{DatabaseConnection, EntityTrait, Iterable, sea_query::OnConflict};
-use tak_persistence_sea_orm_entites::profile;
+use tak_persistence_sea_orm_entities::profile;
 use tak_server_app::domain::{
     AccountId, RepoError, RepoRetrieveError,
     profile::{AccountProfile, AccountProfileRepository},

@@ -101,9 +101,29 @@ pub struct Pagination {
     pub limit: Option<usize>,
 }
 
+impl Pagination {
+    pub fn new(page: usize, page_size: usize) -> Self {
+        let offset = Some((page - 1) * page_size);
+        let limit = Some(page_size);
+        Self { offset, limit }
+    }
+}
+
 pub struct PaginatedResponse<T> {
     pub total_count: usize,
     pub items: Vec<T>,
+}
+
+impl<T> PaginatedResponse<T> {
+    pub fn map<U, F>(self, f: F) -> PaginatedResponse<U>
+    where
+        F: FnMut(T) -> U,
+    {
+        PaginatedResponse {
+            total_count: self.total_count,
+            items: self.items.into_iter().map(f).collect(),
+        }
+    }
 }
 
 #[derive(Debug)]

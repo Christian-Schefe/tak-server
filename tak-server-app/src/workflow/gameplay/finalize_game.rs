@@ -102,7 +102,7 @@ impl<
 > FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, A, S>
 {
     async fn finalize_game(&self, ended_game: FinishedGame) {
-        let game_id = ended_game.metadata.game_id;
+        let game_id = ended_game.game_id;
         let over_msg = ListenerMessage::GameOver {
             game_id: game_id,
             game_result: ended_game.game.game_result().clone(),
@@ -209,7 +209,7 @@ async fn update_ratings<
             Err(e) => {
                 log::error!(
                     "Failed to update player ratings for game {}: {}",
-                    ended_game.metadata.game_id,
+                    ended_game.game_id,
                     e
                 );
                 None

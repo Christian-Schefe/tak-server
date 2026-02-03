@@ -5,7 +5,7 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::QueryFilter;
 use sea_orm::prelude::Expr;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ExprTrait};
-use tak_persistence_sea_orm_entites::stats;
+use tak_persistence_sea_orm_entities::stats;
 use tak_server_app::domain::{
     PlayerId, RepoError, RepoRetrieveError,
     stats::{GameOutcome, PlayerStats, StatsRepository},

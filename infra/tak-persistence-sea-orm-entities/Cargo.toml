@@ -1,5 +1,5 @@
 [package]
-name = "tak-persistence-sea-orm-entites"
+name = "tak-persistence-sea-orm-entities"
 version = "0.1.0"
 edition = "2024"
 

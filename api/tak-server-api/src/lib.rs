@@ -9,7 +9,7 @@ use axum::{
 use tak_player_connection::PlayerConnectionDriver;
 use tak_server_app::{Application, services::player_resolver::ResolveError};
 
-use crate::auth::Auth;
+use crate::auth::StrictAuth;
 pub use auth::ApiAuthPort;
 pub use ws::WsService;
 
@@ -61,7 +61,6 @@ pub async fn serve(
             "/games/{game_id}/requests/{request_id}",
             post(game::respond_to_request),
         )
-        .route("/players/{player_id}", get(player::get_player_info))
         .route("/profiles/{account_id}", get(player::get_account_profile))
         .route(
             "/profiles/{account_id}",
@@ -72,7 +71,9 @@ pub async fn serve(
             "/accounts/{account_id}",
             get(player::get_player_by_account_id),
         )
-        .route("/players/{player_id}/stats", get(player::get_player_stats));
+        .route("/players/{player_id}", get(player::get_player_info))
+        .route("/players/{player_id}/stats", get(player::get_player_stats))
+        .route("/players/{player_id}/games", get(player::get_games_history));
 
     let port = std::env::var("TAK_HTTP_API_PORT")
         .expect("TAK_HTTP_API_PORT must be set")
@@ -93,14 +94,14 @@ pub async fn serve(
 }
 
 async fn get_guest(
-    auth: Result<Auth, ServiceError>,
+    auth: Result<StrictAuth, ServiceError>,
     State(app): State<AppState>,
 ) -> Result<Json<GuestInfo>, ServiceError> {
-    let token = match &auth {
-        Ok(auth) => auth.guest_jwt.as_deref(),
-        Err(_) => None,
+    let account = match auth {
+        Ok(auth) => auth.account,
+        _ => app.auth.create_guest(),
     };
-    let guest_jwt = app.auth.generate_or_refresh_guest_jwt(token);
+    let guest_jwt = app.auth.generate_account_jwt(&account.account_id);
 
     Ok(Json(GuestInfo { jwt: guest_jwt }))
 }
@@ -112,7 +113,7 @@ pub struct GuestInfo {
 }
 
 async fn who_am_i(
-    auth: Result<Auth, ServiceError>,
+    auth: Result<StrictAuth, ServiceError>,
     State(app): State<AppState>,
 ) -> Result<Json<Option<IdentityInfo>>, ServiceError> {
     let Ok(auth) = auth else {
@@ -130,18 +131,32 @@ async fn who_am_i(
     Ok(Json(Some(IdentityInfo {
         account_id: auth.account.account_id.to_string(),
         player_id: player_id.to_string(),
-        is_guest: false,
-        ws_jwt: app.auth.generate_account_jwt(&auth.account.account_id),
+        is_guest: auth.account.is_guest(),
+        jwt: app.auth.generate_account_jwt(&auth.account.account_id),
     })))
 }
 
 #[derive(serde::Serialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub struct IdentityInfo {
     account_id: String,
     player_id: String,
     is_guest: bool,
-    ws_jwt: String,
+    jwt: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginationQuery {
+    page: usize,
+    page_size: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginatedResponse<T> {
+    pub items: Vec<T>,
+    pub total_count: u32,
 }
 
 #[allow(unused)]

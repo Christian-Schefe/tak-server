@@ -106,12 +106,18 @@ impl<
             .get_snapshot(black_id, date)
             .await;
 
-        let game_record = self.game_history_service.get_ongoing_game_record(
+        let metadata = self.game_service.create_game_metadata(
             date,
+            white_id,
+            black_id,
+            match_entry.is_rated,
+            match_entry.game_settings.clone(),
+        );
+
+        let game_record = self.game_history_service.get_ongoing_game_record(
+            metadata.clone(),
             snapshot_white,
             snapshot_black,
-            match_entry.game_settings.clone(),
-            match_entry.is_rated,
         );
 
         let game_id = match self.game_repository.save_ongoing_game(game_record).await {
@@ -138,14 +144,7 @@ impl<
             return Err(CreateGameFromMatchError::MatchNotFound);
         }
 
-        let game = self.game_service.create_game(
-            game_id,
-            date,
-            white_id,
-            black_id,
-            match_entry.is_rated,
-            match_entry.game_settings.clone(),
-        );
+        let game = self.game_service.create_game(game_id, metadata);
 
         GameTimeoutRunner::schedule_game_timeout_check(self.game_timeout_runner.clone(), game_id);
 

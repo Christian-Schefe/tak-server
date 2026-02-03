@@ -82,6 +82,6 @@ impl<
             }
         };
 
-        PlayerSnapshot::new(player_id, username, current_rating)
+        PlayerSnapshot::new(username, current_rating)
     }
 }

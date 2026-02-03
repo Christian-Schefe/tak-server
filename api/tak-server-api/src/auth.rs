@@ -14,12 +14,11 @@ use tak_server_app::{
 
 use crate::{AppState, ServiceError};
 
-pub struct Auth {
+pub struct StrictAuth {
     pub account: Account,
-    pub guest_jwt: Option<String>,
 }
 
-impl FromRequestParts<AppState> for Auth {
+impl FromRequestParts<AppState> for StrictAuth {
     type Rejection = ServiceError;
 
     async fn from_request_parts(
@@ -30,21 +29,50 @@ impl FromRequestParts<AppState> for Auth {
             && let Ok(cookie) = cookie.to_str()
         {
             if let Ok(acc) = verify_kratos_cookie(app, cookie).await {
-                return Ok(Auth {
-                    account: acc,
-                    guest_jwt: None,
-                });
+                return Ok(StrictAuth { account: acc });
             }
         }
 
         if let Ok(TypedHeader(Authorization(bearer))) =
             parts.extract::<TypedHeader<Authorization<Bearer>>>().await
         {
-            if let Ok(acc) = verify_guest_jwt(app, bearer.token()).await {
-                return Ok(Auth {
-                    account: acc,
-                    guest_jwt: Some(bearer.token().to_string()),
-                });
+            if let Some(acc_id) = app.auth.validate_account_jwt(bearer.token())
+                && let Some(acc) = app.auth.get_account(&acc_id).await
+            {
+                if acc.is_guest() {
+                    return Ok(StrictAuth { account: acc });
+                } else {
+                    log::info!("Rejected non-guest JWT for strict auth: {:?}", acc);
+                }
+            } else {
+                log::info!("Failed to validate JWT for strict auth");
+            }
+        }
+
+        Err(ServiceError::Unauthorized(
+            "Authentication failed".to_string(),
+        ))
+    }
+}
+
+pub struct Auth {
+    pub account: Account,
+}
+
+impl FromRequestParts<AppState> for Auth {
+    type Rejection = ServiceError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        app: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        if let Ok(TypedHeader(Authorization(bearer))) =
+            parts.extract::<TypedHeader<Authorization<Bearer>>>().await
+        {
+            if let Some(acc_id) = app.auth.validate_account_jwt(bearer.token())
+                && let Some(acc) = app.auth.get_account(&acc_id).await
+            {
+                return Ok(Auth { account: acc });
             }
         }
 
@@ -63,16 +91,10 @@ async fn verify_kratos_cookie(app: &AppState, cookie: &str) -> Result<Account, (
     Ok(account)
 }
 
-async fn verify_guest_jwt(app: &AppState, _token: &str) -> Result<Account, ()> {
-    let account = app.auth.get_account_by_guest_jwt(_token).ok_or(())?;
-    Ok(account)
-}
-
 #[async_trait::async_trait]
 pub trait ApiAuthPort: AuthenticationPort {
     async fn get_account_by_kratos_cookie(&self, token: &str) -> Option<Account>;
-    fn get_account_by_guest_jwt(&self, token: &str) -> Option<Account>;
-    fn generate_or_refresh_guest_jwt(&self, token: Option<&str>) -> String;
+    fn create_guest(&self) -> Account;
 
     fn generate_account_jwt(&self, id: &AccountId) -> String;
     fn validate_account_jwt(&self, token: &str) -> Option<AccountId>;

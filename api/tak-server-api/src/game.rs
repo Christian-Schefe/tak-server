@@ -4,6 +4,7 @@ use axum::{
     Json,
     extract::{Path, State},
 };
+use chrono::{DateTime, Utc};
 use tak_core::{
     TakAsyncTimeControl, TakBaseGameSettings, TakGameSettings, TakPlayer, TakRealtimeTimeControl,
     TakReserve, TakTimeSettings,
@@ -20,18 +21,18 @@ use tak_server_app::{
             GameMetadataView,
             do_action::{ActionResult, AddRequestError, HandleRequestError, PlayerActionError},
         },
-        history::query::GameQueryError,
+        history::{GameRecordView, query::GameQueryError},
     },
 };
 
 use crate::{AppState, ServiceError, auth::Auth};
 
-pub async fn get_games(State(app): State<AppState>) -> Json<Vec<GameInfo>> {
+pub async fn get_games(State(app): State<AppState>) -> Json<Vec<JsonGameMetadata>> {
     let games = app.app.game_list_ongoing_use_case.list_games();
     Json(
         games
             .into_iter()
-            .map(|game| GameInfo::from_ongoing_game_view(&game.metadata))
+            .map(|game| JsonGameMetadata::from_metadata_view(game.id, &game.metadata))
             .collect(),
     )
 }
@@ -62,7 +63,7 @@ pub async fn get_game_status(
         }
         let time_info = ongoing_game.game.get_time_info(Instant::now());
         return Ok(Json(GameStatus {
-            id: ongoing_game.metadata.id.0,
+            id: ongoing_game.id.0,
             player_ids: ForPlayer {
                 white: ongoing_game.metadata.white_id.to_string(),
                 black: ongoing_game.metadata.black_id.to_string(),
@@ -96,11 +97,11 @@ pub async fn get_game_status(
             Ok(Json(GameStatus {
                 id: game_id.0,
                 player_ids: ForPlayer {
-                    white: ended_game.white.player_id.to_string(),
-                    black: ended_game.black.player_id.to_string(),
+                    white: ended_game.metadata.white_id.to_string(),
+                    black: ended_game.metadata.black_id.to_string(),
                 },
-                is_rated: ended_game.is_rated,
-                game_settings: GameSettingsInfo::from_game_settings(&ended_game.settings),
+                is_rated: ended_game.metadata.is_rated,
+                game_settings: GameSettingsInfo::from_game_settings(&ended_game.metadata.settings),
                 actions: ended_game
                     .reconstruct_action_history()
                     .iter()
@@ -440,17 +441,20 @@ pub struct ForPlayer<R> {
 
 #[derive(serde::Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct GameInfo {
+pub struct JsonGameMetadata {
     pub id: i64,
+    #[serde(with = "chrono::serde::ts_milliseconds")]
+    pub date: DateTime<Utc>,
     pub player_ids: ForPlayer<String>,
     pub is_rated: bool,
     pub game_settings: GameSettingsInfo,
 }
 
-impl GameInfo {
-    pub fn from_ongoing_game_view(view: &GameMetadataView) -> Self {
-        GameInfo {
-            id: view.id.0,
+impl JsonGameMetadata {
+    pub fn from_metadata_view(game_id: GameId, view: &GameMetadataView) -> Self {
+        JsonGameMetadata {
+            id: game_id.0,
+            date: view.date,
             player_ids: ForPlayer {
                 white: view.white_id.to_string(),
                 black: view.black_id.to_string(),
@@ -459,6 +463,53 @@ impl GameInfo {
             game_settings: GameSettingsInfo::from_game_settings(&view.settings),
         }
     }
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonEndedGameInfo {
+    pub white: JsonPlayerSnapshot,
+    pub black: JsonPlayerSnapshot,
+    pub rating_info: Option<JsonGameRatingInfo>,
+    pub result: Option<String>,
+    #[serde(flatten)]
+    pub metadata: JsonGameMetadata,
+}
+
+impl JsonEndedGameInfo {
+    pub fn from_game_record(record: &GameRecordView) -> Self {
+        JsonEndedGameInfo {
+            metadata: JsonGameMetadata::from_metadata_view(record.game_id, &record.metadata),
+            white: JsonPlayerSnapshot {
+                username: record.white.username.clone(),
+                rating: record.white.rating,
+            },
+            black: JsonPlayerSnapshot {
+                username: record.black.username.clone(),
+                rating: record.black.rating,
+            },
+            rating_info: record.rating_info.as_ref().map(|info| JsonGameRatingInfo {
+                rating_change: ForPlayer {
+                    white: info.rating_change_white,
+                    black: info.rating_change_black,
+                },
+            }),
+            result: record.result.as_ref().map(|r| game_result_to_string(r)),
+        }
+    }
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonGameRatingInfo {
+    pub rating_change: ForPlayer<f64>,
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonPlayerSnapshot {
+    pub username: Option<String>,
+    pub rating: Option<f64>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]

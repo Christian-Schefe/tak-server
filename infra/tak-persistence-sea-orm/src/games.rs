@@ -10,11 +10,11 @@ use tak_core::{
     TakRealtimeTimeControl, TakReserve, TakTimeInfo, TakTimeSettings,
     ptn::{action_from_ptn, action_to_ptn, game_result_from_string, game_result_to_string},
 };
-use tak_persistence_sea_orm_entites::game;
+use tak_persistence_sea_orm_entities::game;
 use tak_server_app::domain::{
     GameId, PaginatedResponse, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError, SortOrder,
     game::{
-        GameEvent, GameEventType, GameOverEventType,
+        GameEvent, GameEventType, GameMetadata, GameOverEventType,
         request::{GameRequest, GameRequestId, GameRequestType},
     },
     game_history::{
@@ -118,7 +118,7 @@ enum JsonEventGameOverType {
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 struct JsonTimeInfo {
     white_remaining_ms: u64,
     black_remaining_ms: u64,
@@ -348,27 +348,34 @@ impl GameRepositoryImpl {
         let json_events: Vec<JsonEventRecord> =
             serde_json::from_value(model.events).unwrap_or_default();
 
+        let white_id = PlayerId(model.player_white_id);
+        let black_id = PlayerId(model.player_black_id);
+
         let white_snapshot = PlayerSnapshot::new(
-            PlayerId(model.player_white_id),
             model.player_white_username.clone(),
             model.player_white_rating,
         );
 
         let black_snapshot = PlayerSnapshot::new(
-            PlayerId(model.player_black_id),
             model.player_black_username.clone(),
             model.player_black_rating,
         );
 
-        GameRecord {
-            date: model.date.clone(),
+        let metadata = GameMetadata {
+            date: model.date,
+            white_id,
+            black_id,
+            is_rated: model.is_rated,
             settings: TakGameSettings {
-                base: base_settings,
-                time_settings,
+                base: base_settings.clone(),
+                time_settings: time_settings.clone(),
             },
+        };
+
+        GameRecord {
+            metadata,
             white: white_snapshot,
             black: black_snapshot,
-            is_rated: model.is_rated,
             events: json_events
                 .into_iter()
                 .map(|jm| GameEvent {
@@ -388,7 +395,7 @@ impl GameRepositoryImpl {
 #[async_trait::async_trait]
 impl GameRepository for GameRepositoryImpl {
     async fn save_ongoing_game(&self, game: GameRecord) -> Result<GameId, RepoError> {
-        let time_settings = match &game.settings.time_settings {
+        let time_settings = match &game.metadata.settings.time_settings {
             TakTimeSettings::Realtime(settings) => {
                 JsonTimeSettings::Realtime(JsonRealtimeTimeSettings {
                     contingent_ms: settings.contingent.as_millis() as u64,
@@ -406,20 +413,20 @@ impl GameRepository for GameRepositoryImpl {
                 increment_ms: settings.contingent.as_millis() as u64,
             }),
         };
-        let base_settings = &game.settings.base;
+        let base_settings = &game.metadata.settings.base;
         let new_game = game::ActiveModel {
             id: Default::default(), // Auto-increment
-            date: Set(game.date.clone()),
+            date: Set(game.metadata.date.clone()),
             size: Set(base_settings.board_size as i32),
-            player_white_id: Set(game.white.player_id.0),
-            player_black_id: Set(game.black.player_id.0),
+            player_white_id: Set(game.metadata.white_id.0),
+            player_black_id: Set(game.metadata.black_id.0),
             player_white_username: Set(game.white.username),
             player_black_username: Set(game.black.username),
             player_white_rating: Set(game.white.rating),
             player_black_rating: Set(game.black.rating),
             events: Set(serde_json::json!([])),
             result: Set(None),
-            is_rated: Set(game.is_rated),
+            is_rated: Set(game.metadata.is_rated),
             half_komi: Set(base_settings.half_komi as i32),
             pieces: Set(base_settings.reserve.pieces as i32),
             capstones: Set(base_settings.reserve.capstones as i32),
@@ -521,26 +528,53 @@ impl GameRepository for GameRepositoryImpl {
                 }
             }
         }
-        if let Some(player_white) = filter.player_white {
-            query = match player_white {
-                GamePlayerFilter::Contains(name_part) => {
-                    query.filter(game::Column::PlayerWhiteUsername.contains(&name_part))
-                }
-                GamePlayerFilter::Equals(name) => {
-                    query.filter(game::Column::PlayerWhiteUsername.eq(name))
-                }
-            };
+        for (filter, color) in filter.player_filters {
+            let condition =
+                match filter {
+                    GamePlayerFilter::Contains(name_part) => {
+                        let condition = sea_orm::Condition::any();
+                        match color {
+                            Some(TakPlayer::White) => condition
+                                .add(game::Column::PlayerWhiteUsername.contains(&name_part)),
+                            Some(TakPlayer::Black) => condition
+                                .add(game::Column::PlayerBlackUsername.contains(&name_part)),
+                            None => condition
+                                .add(game::Column::PlayerWhiteUsername.contains(&name_part))
+                                .add(game::Column::PlayerBlackUsername.contains(&name_part)),
+                        }
+                    }
+                    GamePlayerFilter::Equals(name) => {
+                        let condition = sea_orm::Condition::any();
+                        match color {
+                            Some(TakPlayer::White) => {
+                                condition.add(game::Column::PlayerWhiteUsername.eq(&name))
+                            }
+                            Some(TakPlayer::Black) => {
+                                condition.add(game::Column::PlayerBlackUsername.eq(&name))
+                            }
+                            None => condition
+                                .add(game::Column::PlayerWhiteUsername.eq(&name))
+                                .add(game::Column::PlayerBlackUsername.eq(&name)),
+                        }
+                    }
+                    GamePlayerFilter::PlayerId(player_id) => {
+                        let condition = sea_orm::Condition::any();
+                        match color {
+                            Some(TakPlayer::White) => {
+                                condition.add(game::Column::PlayerWhiteId.eq(player_id.0))
+                            }
+                            Some(TakPlayer::Black) => {
+                                condition.add(game::Column::PlayerBlackId.eq(player_id.0))
+                            }
+                            None => condition
+                                .add(game::Column::PlayerWhiteId.eq(player_id.0))
+                                .add(game::Column::PlayerBlackId.eq(player_id.0)),
+                        }
+                    }
+                };
+            query = query.filter(condition);
         }
-        if let Some(player_black) = filter.player_black {
-            query = match player_black {
-                GamePlayerFilter::Contains(name_part) => {
-                    query.filter(game::Column::PlayerBlackUsername.contains(&name_part))
-                }
-                GamePlayerFilter::Equals(name) => {
-                    query.filter(game::Column::PlayerBlackUsername.eq(name))
-                }
-            };
-        }
+
         if let Some(is_rated) = filter.is_rated {
             query = query.filter(game::Column::IsRated.eq(is_rated));
         }

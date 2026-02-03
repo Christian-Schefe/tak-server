@@ -19,11 +19,13 @@ impl ProtocolV2Handler {
     pub async fn send_game_list_message(
         &self,
         id: ConnectionId,
+        game_id: GameId,
         game: &GameMetadataView,
         add: bool,
     ) {
         self.send_game_string_message(
             id,
+            game_id,
             game,
             if add {
                 "GameList Add"
@@ -36,7 +38,7 @@ impl ProtocolV2Handler {
 
     pub async fn handle_game_list_message(&self, id: ConnectionId) -> V2Response {
         for game in self.app.game_list_ongoing_use_case.list_games() {
-            self.send_game_string_message(id, &game.metadata, "GameList Add")
+            self.send_game_string_message(id, game.id, &game.metadata, "GameList Add")
                 .await;
         }
         V2Response::OK
@@ -72,10 +74,10 @@ impl ProtocolV2Handler {
                     "Game ID not found".to_string(),
                 ));
             };
-            self.send_game_string_message(id, &game.metadata, "Observe")
+            self.send_game_string_message(id, game.id, &game.metadata, "Observe")
                 .await;
             for action in game.game.action_history() {
-                self.send_game_action_message(id, game.metadata.id, action);
+                self.send_game_action_message(id, game.id, action);
             }
             let now = Instant::now();
             let time_info = game.game.get_time_info(now);
@@ -94,6 +96,7 @@ impl ProtocolV2Handler {
     pub async fn send_game_string_message(
         &self,
         id: ConnectionId,
+        game_id: GameId,
         game: &GameMetadataView,
         operation: &str,
     ) {
@@ -124,7 +127,7 @@ impl ProtocolV2Handler {
         let message = format!(
             "{} {} {} {} {} {} {} {} {} {} {} {} {} {}",
             operation,
-            game.id,
+            game_id,
             white_username,
             black_username,
             settings.base.board_size,
@@ -153,6 +156,7 @@ impl ProtocolV2Handler {
     pub async fn send_game_start_message(
         &self,
         id: ConnectionId,
+        game_id: GameId,
         player_id: PlayerId,
         game: &GameMetadataView,
     ) {
@@ -199,7 +203,7 @@ impl ProtocolV2Handler {
         let message = if protocol == Protocol::V0 {
             format!(
                 "Game Start {} {} {} vs {} {} {} {} {} {}",
-                game.id,
+                game_id,
                 settings.base.board_size,
                 white_username,
                 black_username,
@@ -216,7 +220,7 @@ impl ProtocolV2Handler {
         } else {
             format!(
                 "Game Start {} {} vs {} {} {} {} {} {} {} {} {} {} {} {} {}",
-                game.id,
+                game_id,
                 white_username,
                 black_username,
                 if player_id == game.white_id {

@@ -1,80 +1,34 @@
 use chrono::{DateTime, Utc};
-use tak_core::{TakAction, TakGameResult, TakGameSettings, TakTimeInfo, TakTimeSettings};
+use tak_core::{TakGameResult, TakPlayer};
 
 use crate::domain::{
     GameId, PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
     SortOrder,
-    game::{FinishedGame, GameEvent, GameEventType},
+    game::{FinishedGame, GameEvent, GameMetadata},
 };
 
 pub struct GameRecord {
-    pub date: DateTime<Utc>,
+    pub metadata: GameMetadata,
     pub white: PlayerSnapshot,
     pub black: PlayerSnapshot,
     pub rating_info: Option<GameRatingInfo>,
-    pub settings: TakGameSettings,
-    pub is_rated: bool,
     pub result: Option<TakGameResult>,
     pub events: Vec<GameEvent>,
 }
 
-impl GameRecord {
-    pub fn reconstruct_action_history(&self) -> Vec<TakAction> {
-        let mut actions = Vec::new();
-        for event in &self.events {
-            if let GameEventType::Action { action, .. } = &event.event_type {
-                actions.push(action.clone());
-            } else if let GameEventType::ActionUndone = &event.event_type {
-                actions.pop();
-            }
-        }
-        actions
-    }
-
-    pub fn reconstruct_time_info(&self) -> TakTimeInfo {
-        let mut maybe_time_info = None;
-        for event in &self.events {
-            match &event.event_type {
-                GameEventType::Action { time_info, .. } => {
-                    maybe_time_info = Some(time_info);
-                }
-                _ => {}
-            }
-        }
-
-        match maybe_time_info {
-            Some(ti) => ti.clone(),
-            None => match &self.settings.time_settings {
-                TakTimeSettings::Realtime(s) => TakTimeInfo {
-                    white_remaining: s.contingent,
-                    black_remaining: s.contingent,
-                },
-                TakTimeSettings::Async(s) => TakTimeInfo {
-                    white_remaining: s.contingent,
-                    black_remaining: s.contingent,
-                },
-            },
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct PlayerSnapshot {
-    pub player_id: PlayerId,
     pub username: Option<String>,
     pub rating: Option<f64>,
 }
 
 impl PlayerSnapshot {
-    pub fn new(player_id: PlayerId, username: Option<String>, rating: Option<f64>) -> Self {
-        Self {
-            player_id,
-            username,
-            rating,
-        }
+    pub fn new(username: Option<String>, rating: Option<f64>) -> Self {
+        Self { username, rating }
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct GameRatingInfo {
     pub rating_change_white: f64,
     pub rating_change_black: f64,
@@ -84,8 +38,7 @@ pub struct GameRatingInfo {
 pub struct GameQuery {
     pub id_selector: Option<GameIdSelector>,
     pub date_selector: Option<DateSelector>,
-    pub player_white: Option<GamePlayerFilter>,
-    pub player_black: Option<GamePlayerFilter>,
+    pub player_filters: Vec<(GamePlayerFilter, Option<TakPlayer>)>,
     pub game_results: Option<Vec<TakGameResult>>,
     pub half_komi: Option<usize>,
     pub board_size: Option<usize>,
@@ -119,6 +72,7 @@ pub enum GameIdSelector {
 pub enum GamePlayerFilter {
     Contains(String),
     Equals(String),
+    PlayerId(PlayerId),
 }
 
 pub struct GameFinishedUpdate {
@@ -145,11 +99,9 @@ pub trait GameRepository {
 pub trait GameHistoryService {
     fn get_ongoing_game_record(
         &self,
-        date: DateTime<Utc>,
+        metadata: GameMetadata,
         white: PlayerSnapshot,
         black: PlayerSnapshot,
-        settings: TakGameSettings,
-        is_rated: bool,
     ) -> GameRecord;
     fn get_finished_game_record_update(
         &self,
@@ -169,19 +121,15 @@ impl GameHistoryServiceImpl {
 impl GameHistoryService for GameHistoryServiceImpl {
     fn get_ongoing_game_record(
         &self,
-        date: DateTime<Utc>,
+        metadata: GameMetadata,
         white: PlayerSnapshot,
         black: PlayerSnapshot,
-        settings: TakGameSettings,
-        is_rated: bool,
     ) -> GameRecord {
         GameRecord {
-            date,
+            metadata,
             white,
             black,
             rating_info: None,
-            settings,
-            is_rated,
             result: None,
             events: Vec::new(),
         }

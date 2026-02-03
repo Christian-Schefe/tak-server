@@ -1,13 +1,10 @@
-# Architecture 
+# Architecture
 
 At the highest level, the code follows a hexagonal architecture (a.k.a ports and adapters).
 Hexagonal architecture basically describes a three-layered architecture where dependency inversion is used for the lowest layer,
 such that dependencies point towards the middle layer:
 
-
 **API layer** --uses app interface--> **App layer (Core)** <--implements ports-- **Infra layer**
-
-
 
 Advantages of such an architecture are as follows:
 
@@ -22,9 +19,8 @@ Adapters make up the bottom infrastructure layer. Each adapter lives in its own 
 - `tak-email-lettre` implements sending emails with the `lettre`-crate using gmail smtp
 - `tak-events-google-sheets` implements the event repository by reading from a remote google sheets document
 - `tak-persistence-sea-orm` implement various domain repositories using the `sea-orm`-crate ontop of a `mariadb` database
-- `tak-persistence-sea-orm-entites` defines the orm entites as a separate crate to later facilitate a migration setup.
+- `tak-persistence-sea-orm-entities` defines the orm entities as a separate crate to later facilitate a migration setup.
 
 ## Core
 
 The core is contained in the crate `tak-server-app` and defines a set of ports.
-

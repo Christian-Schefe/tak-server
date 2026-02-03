@@ -17,7 +17,8 @@ use crate::{
 pub trait NotifyPlayerWorkflow {
     async fn notify_players_and_observers_of_game(
         &self,
-        game: &GameMetadata,
+        game_id: GameId,
+        metadata: &GameMetadata,
         message: &ListenerMessage,
     );
     async fn notify_players_and_observers(&self, game_id: GameId, message: &ListenerMessage);
@@ -74,12 +75,13 @@ impl<
 {
     async fn notify_players_and_observers_of_game(
         &self,
-        game: &GameMetadata,
+        game_id: GameId,
+        metadata: &GameMetadata,
         message: &ListenerMessage,
     ) {
-        self.notify_players(&[game.white_id, game.black_id], message)
+        self.notify_players(&[metadata.white_id, metadata.black_id], message)
             .await;
-        let observers = self.spectator_service.get_spectators_for_game(game.game_id);
+        let observers = self.spectator_service.get_spectators_for_game(game_id);
         self.listener_notification_port
             .notify_listeners(&observers, message);
     }
@@ -88,7 +90,7 @@ impl<
         let Some(game) = self.game_service.get_game_by_id(game_id) else {
             return;
         };
-        self.notify_players_and_observers_of_game(&game.metadata, message)
+        self.notify_players_and_observers_of_game(game_id, &game.metadata, message)
             .await;
     }
 

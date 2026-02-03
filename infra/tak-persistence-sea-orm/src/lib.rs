@@ -1,5 +1,7 @@
 use async_lock::OnceCell;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
+use sea_orm_migration::MigratorTrait;
+use tak_persistence_sea_orm_migrations::Migrator;
 
 pub mod games;
 pub mod player_account_mapping;
@@ -46,15 +48,22 @@ pub async fn create_db_pool() -> DatabaseConnection {
 
             let db = try_reconnect_db_pool(opt).await;
 
+            // Entity sync to create tables, indices, and columns
             db.get_schema_builder()
-                .register(tak_persistence_sea_orm_entites::game::Entity)
-                .register(tak_persistence_sea_orm_entites::player_account_mapping::Entity)
-                .register(tak_persistence_sea_orm_entites::profile::Entity)
-                .register(tak_persistence_sea_orm_entites::rating::Entity)
-                .register(tak_persistence_sea_orm_entites::stats::Entity)
+                .register(tak_persistence_sea_orm_entities::game::Entity)
+                .register(tak_persistence_sea_orm_entities::player_account_mapping::Entity)
+                .register(tak_persistence_sea_orm_entities::profile::Entity)
+                .register(tak_persistence_sea_orm_entities::rating::Entity)
+                .register(tak_persistence_sea_orm_entities::stats::Entity)
                 .sync(&db)
                 .await
                 .expect("Failed to apply entity sync");
+
+            // Migrations to clean up / move data
+            Migrator::up(&db, None)
+                .await
+                .expect("Failed to run migrations");
+
             db
         })
         .await
