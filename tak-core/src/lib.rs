@@ -109,7 +109,7 @@ pub struct TakAsyncTimeControl {
 
 impl TakAsyncTimeControl {
     pub fn is_valid(&self) -> bool {
-        !self.contingent.is_zero()
+        !self.contingent.is_zero() && self.contingent <= Duration::from_secs(60 * 60 * 24 * 60) // hard limit of 60 days for async games
     }
 }
 

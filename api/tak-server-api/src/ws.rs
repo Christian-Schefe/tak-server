@@ -448,7 +448,7 @@ impl ServerMessage {
                     seek: SeekInfo::from_seek_view(seek),
                 })
             }
-            ListenerMessage::SeekCanceled { seek } => {
+            ListenerMessage::SeekCanceled { seek } | ListenerMessage::SeekAccepted { seek } => {
                 MessageTransformation::Transform(ServerMessage::SeekRemoved { seek_id: seek.id.0 })
             }
             ListenerMessage::GameAction {
@@ -544,7 +544,11 @@ impl ServerMessage {
                     target,
                 })
             }
-            _ => MessageTransformation::Ignore,
+            ListenerMessage::AccountsOnline { .. } => MessageTransformation::Ignore,
+            ListenerMessage::GameOver { .. } => MessageTransformation::Ignore,
+            ListenerMessage::GameRematchRequested { .. } => MessageTransformation::Ignore,
+            ListenerMessage::GameRematchRequestRetracted { .. } => MessageTransformation::Ignore,
+            ListenerMessage::ServerAlert { .. } => MessageTransformation::Ignore,
         }
     }
 }

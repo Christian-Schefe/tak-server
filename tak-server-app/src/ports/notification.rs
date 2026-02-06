@@ -30,6 +30,9 @@ pub enum ListenerMessage {
     SeekCanceled {
         seek: SeekView,
     },
+    SeekAccepted {
+        seek: SeekView,
+    },
     GameStarted {
         game: OngoingGameView,
     },

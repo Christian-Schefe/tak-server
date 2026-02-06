@@ -147,7 +147,7 @@ impl ProtocolV2Handler {
             ListenerMessage::SeekCreated { seek } => {
                 self.send_seek_list_message(id, seek, true).await;
             }
-            ListenerMessage::SeekCanceled { seek } => {
+            ListenerMessage::SeekCanceled { seek } | ListenerMessage::SeekAccepted { seek } => {
                 self.send_seek_list_message(id, seek, false).await;
             }
 

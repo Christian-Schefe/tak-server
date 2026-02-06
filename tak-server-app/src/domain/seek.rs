@@ -30,7 +30,8 @@ pub trait SeekService {
         game_settings: TakGameSettings,
         is_rated: bool,
     ) -> Result<Seek, CreateSeekError>;
-    fn cancel_all_player_seeks(&self, player: PlayerId) -> Vec<Seek>;
+    fn cancel_player_seeks(&self, player: PlayerId, predicate: impl Fn(&Seek) -> bool)
+    -> Vec<Seek>;
     fn cancel_seek(&self, player: PlayerId, seek_id: SeekId) -> Option<Seek>;
     fn get_seek(&self, seek_id: SeekId) -> Option<Seek>;
     fn list_seeks(&self) -> Vec<Seek>;
@@ -69,16 +70,28 @@ impl SeekRegistry {
         seek
     }
 
-    fn cancel_all_player_seeks(&mut self, player: PlayerId) -> Vec<Seek> {
-        let mut canceled_seeks = Vec::new();
+    fn cancel_player_seeks(
+        &mut self,
+        player: PlayerId,
+        predicate: impl Fn(&Seek) -> bool,
+    ) -> Vec<Seek> {
+        let mut canceled_seek_ids = Vec::new();
         if let Some(seek_ids) = self.seeks_by_player.remove(&player) {
             for seek_id in seek_ids {
-                if let Some(seek) = self.seeks.remove(&seek_id) {
-                    canceled_seeks.push(seek);
+                if let Some(seek) = self.seeks.get(&seek_id)
+                    && predicate(seek)
+                {
+                    canceled_seek_ids.push(seek_id);
                 }
             }
         }
-        canceled_seeks
+        let mut cancellecd_seeks = Vec::new();
+        for seek_id in &canceled_seek_ids {
+            if let Some(seek) = self.seeks.remove(seek_id) {
+                cancellecd_seeks.push(seek);
+            }
+        }
+        cancellecd_seeks
     }
 
     fn cancel_player_seek(&mut self, player: PlayerId, seek_id: SeekId) -> Option<Seek> {
@@ -158,11 +171,15 @@ impl SeekService for SeekServiceImpl {
             }))
     }
 
-    fn cancel_all_player_seeks(&self, player: PlayerId) -> Vec<Seek> {
+    fn cancel_player_seeks(
+        &self,
+        player: PlayerId,
+        predicate: impl Fn(&Seek) -> bool,
+    ) -> Vec<Seek> {
         self.seek_registry
             .write()
             .unwrap()
-            .cancel_all_player_seeks(player)
+            .cancel_player_seeks(player, predicate)
     }
 
     fn cancel_seek(&self, player: PlayerId, seek_id: SeekId) -> Option<Seek> {

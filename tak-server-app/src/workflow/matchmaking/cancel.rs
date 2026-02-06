@@ -28,7 +28,7 @@ impl<S: SeekService, L: ListenerNotificationPort> CancelSeekUseCase
     for CancelSeekUseCaseImpl<S, L>
 {
     fn cancel_seeks(&self, player: PlayerId) {
-        for cancelled_seek in self.seek_service.cancel_all_player_seeks(player) {
+        for cancelled_seek in self.seek_service.cancel_player_seeks(player, |_| true) {
             let message = ListenerMessage::SeekCanceled {
                 seek: cancelled_seek.into(),
             };

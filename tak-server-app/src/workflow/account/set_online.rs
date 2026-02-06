@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use tak_core::TakTimeSettings;
+
 use crate::{
     domain::{AccountId, seek::SeekService},
     ports::{
@@ -103,7 +105,18 @@ impl<
             .await
         {
             Ok(id) => {
-                self.seek_service.cancel_all_player_seeks(id);
+                let cancelled_seeks = self.seek_service.cancel_player_seeks(id, |seek| {
+                    matches!(
+                        seek.game_settings.time_settings,
+                        TakTimeSettings::Realtime(_)
+                    )
+                });
+                for cancelled_seek in cancelled_seeks {
+                    let message = ListenerMessage::SeekCanceled {
+                        seek: cancelled_seek.into(),
+                    };
+                    self.notification_port.notify_all(&message);
+                }
                 DisconnectTimeoutRunner::start_disconnect_timeout(
                     self.disconnect_timeout_runner.clone(),
                     id,

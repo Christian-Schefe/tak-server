@@ -42,7 +42,6 @@ pub async fn serve(
     };
     let router = Router::new()
         .route("/whoami", get(who_am_i))
-        .route("/guest", get(get_guest))
         .route("/ws", get(ws::ws_handler))
         .route("/seeks", get(seek::get_seeks))
         .route("/seeks", post(seek::create_seek))
@@ -93,47 +92,29 @@ pub async fn serve(
     log::info!("HTTP API shut down gracefully");
 }
 
-async fn get_guest(
+async fn who_am_i(
     auth: Result<StrictAuth, ServiceError>,
     State(app): State<AppState>,
-) -> Result<Json<GuestInfo>, ServiceError> {
+) -> Result<Json<IdentityInfo>, ServiceError> {
     let account = match auth {
         Ok(auth) => auth.account,
         _ => app.auth.create_guest(),
     };
-    let guest_jwt = app.auth.generate_account_jwt(&account.account_id);
-
-    Ok(Json(GuestInfo { jwt: guest_jwt }))
-}
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GuestInfo {
-    pub jwt: String,
-}
-
-async fn who_am_i(
-    auth: Result<StrictAuth, ServiceError>,
-    State(app): State<AppState>,
-) -> Result<Json<Option<IdentityInfo>>, ServiceError> {
-    let Ok(auth) = auth else {
-        return Ok(Json(None));
-    };
     let player_id = app
         .app
         .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .resolve_player_id_by_account_id(&account.account_id)
         .await
         .map_err(|ResolveError::Internal| {
             ServiceError::Internal("Failed to resolve player ID".to_string())
         })?;
 
-    Ok(Json(Some(IdentityInfo {
-        account_id: auth.account.account_id.to_string(),
+    Ok(Json(IdentityInfo {
+        account_id: account.account_id.to_string(),
         player_id: player_id.to_string(),
-        is_guest: auth.account.is_guest(),
-        jwt: app.auth.generate_account_jwt(&auth.account.account_id),
-    })))
+        is_guest: account.is_guest(),
+        jwt: app.auth.generate_account_jwt(&account.account_id),
+    }))
 }
 
 #[derive(serde::Serialize)]
