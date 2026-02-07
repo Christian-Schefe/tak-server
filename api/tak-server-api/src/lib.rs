@@ -93,13 +93,11 @@ pub async fn serve(
 }
 
 async fn who_am_i(
-    auth: Result<StrictAuth, ServiceError>,
+    auth: StrictAuth,
     State(app): State<AppState>,
 ) -> Result<Json<IdentityInfo>, ServiceError> {
-    let account = match auth {
-        Ok(auth) => auth.account,
-        _ => app.auth.create_guest(),
-    };
+    let new_guest = auth.account.is_none();
+    let account = auth.account.unwrap_or_else(|| app.auth.create_guest());
     let player_id = app
         .app
         .player_resolver_service
@@ -113,6 +111,7 @@ async fn who_am_i(
         account_id: account.account_id.to_string(),
         player_id: player_id.to_string(),
         is_guest: account.is_guest(),
+        new_guest,
         jwt: app.auth.generate_account_jwt(&account.account_id),
     }))
 }
@@ -123,6 +122,7 @@ pub struct IdentityInfo {
     account_id: String,
     player_id: String,
     is_guest: bool,
+    new_guest: bool,
     jwt: String,
 }
 

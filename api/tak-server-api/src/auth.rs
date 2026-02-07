@@ -15,7 +15,7 @@ use tak_server_app::{
 use crate::{AppState, ServiceError};
 
 pub struct StrictAuth {
-    pub account: Account,
+    pub account: Option<Account>,
 }
 
 impl FromRequestParts<AppState> for StrictAuth {
@@ -29,7 +29,7 @@ impl FromRequestParts<AppState> for StrictAuth {
             && let Ok(cookie) = cookie.to_str()
         {
             if let Ok(acc) = verify_kratos_cookie(app, cookie).await {
-                return Ok(StrictAuth { account: acc });
+                return Ok(StrictAuth { account: Some(acc) });
             }
         }
 
@@ -40,7 +40,7 @@ impl FromRequestParts<AppState> for StrictAuth {
                 && let Some(acc) = app.auth.get_account(&acc_id).await
             {
                 if acc.is_guest() {
-                    return Ok(StrictAuth { account: acc });
+                    return Ok(StrictAuth { account: Some(acc) });
                 } else {
                     log::info!("Rejected non-guest JWT for strict auth: {:?}", acc);
                 }
@@ -49,9 +49,7 @@ impl FromRequestParts<AppState> for StrictAuth {
             }
         }
 
-        Err(ServiceError::Unauthorized(
-            "Authentication failed".to_string(),
-        ))
+        Ok(StrictAuth { account: None })
     }
 }
 
