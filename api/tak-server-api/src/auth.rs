@@ -1,6 +1,8 @@
+use std::time::Duration;
+
 use axum::{
-    RequestPartsExt,
-    extract::FromRequestParts,
+    Json, RequestPartsExt,
+    extract::{FromRequestParts, State},
     http::{header::COOKIE, request::Parts},
 };
 use axum_extra::{
@@ -8,7 +10,7 @@ use axum_extra::{
     headers::{Authorization, authorization::Bearer},
 };
 use tak_server_app::{
-    domain::AccountId,
+    domain::{AccountId, moderation::AccountRole},
     ports::authentication::{Account, AuthenticationPort},
 };
 
@@ -89,12 +91,47 @@ async fn verify_kratos_cookie(app: &AppState, cookie: &str) -> Result<Account, (
     Ok(account)
 }
 
+pub async fn get_bot_certificate(
+    State(app): State<AppState>,
+    auth: StrictAuth,
+    Json(req): Json<GetBotCertificateRequest>,
+) -> Result<Json<serde_json::Value>, ServiceError> {
+    let account = auth
+        .account
+        .ok_or_else(|| ServiceError::Unauthorized("Authentication required".to_string()))?;
+    if !matches!(account.role, AccountRole::Admin) {
+        return Err(ServiceError::Unauthorized(
+            "Admin role required".to_string(),
+        ));
+    }
+    let target_account = app
+        .auth
+        .get_account(&AccountId(req.target_account_id))
+        .await
+        .ok_or_else(|| ServiceError::NotFound("Target account not found".to_string()))?;
+    if !target_account.is_bot() {
+        return Err(ServiceError::BadRequest(
+            "Target account is not a bot".to_string(),
+        ));
+    }
+    let cert = app.auth.generate_account_jwt(
+        &target_account.account_id,
+        std::time::Duration::from_secs(60 * 60 * 24 * 365),
+    );
+    Ok(Json(serde_json::json!({ "certificate": cert })))
+}
+
+#[derive(serde::Deserialize)]
+pub struct GetBotCertificateRequest {
+    pub target_account_id: String,
+}
+
 #[async_trait::async_trait]
 pub trait ApiAuthPort: AuthenticationPort {
     async fn get_account_by_kratos_cookie(&self, token: &str) -> Option<Account>;
     fn create_guest(&self) -> Account;
 
-    fn generate_account_jwt(&self, id: &AccountId) -> String;
+    fn generate_account_jwt(&self, id: &AccountId, duration: Duration) -> String;
     fn validate_account_jwt(&self, token: &str) -> Option<AccountId>;
 
     async fn get_account_by_username(&self, username: &str) -> Option<Account>;

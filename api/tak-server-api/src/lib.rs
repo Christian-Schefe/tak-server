@@ -40,7 +40,11 @@ pub async fn serve(
         ws,
         connection_driver,
     };
+
+    let admin_router = Router::new().route("/bot-certificate", post(auth::get_bot_certificate));
+
     let router = Router::new()
+        .nest("/admin", admin_router)
         .route("/whoami", get(who_am_i))
         .route("/ws", get(ws::ws_handler))
         .route("/seeks", get(seek::get_seeks))
@@ -112,7 +116,10 @@ async fn who_am_i(
         player_id: player_id.to_string(),
         is_guest: account.is_guest(),
         new_guest,
-        jwt: app.auth.generate_account_jwt(&account.account_id),
+        jwt: app.auth.generate_account_jwt(
+            &account.account_id,
+            std::time::Duration::from_secs(60 * 60 * 24),
+        ),
     }))
 }
 

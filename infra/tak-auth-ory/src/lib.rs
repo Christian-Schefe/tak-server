@@ -10,23 +10,30 @@ use tak_server_app::{
 };
 use tak_server_legacy_api::acl::LegacyApiAuthPort;
 
-use crate::{guest::GuestRegistry, ory::OryAuthenticationService};
+use crate::{
+    bot::{BotRegistry, BotRepository},
+    guest::GuestRegistry,
+    ory::OryAuthenticationService,
+};
 
+pub mod bot;
 mod guest;
 mod jwt;
 mod ory;
 
 pub struct AuthenticationService {
     guest_registry: Arc<GuestRegistry>,
+    bot_registry: Arc<BotRegistry>,
     ory_service: Arc<OryAuthenticationService>,
     account_cache: Arc<moka::sync::Cache<AccountId, Account>>,
     username_cache: Arc<moka::sync::Cache<String, Account>>,
 }
 
 impl AuthenticationService {
-    pub fn new() -> Self {
+    pub fn new<R: BotRepository>(bot_repository: Arc<R>) -> Self {
         Self {
             guest_registry: Arc::new(GuestRegistry::new()),
+            bot_registry: Arc::new(BotRegistry::new(bot_repository)),
             ory_service: Arc::new(OryAuthenticationService::new()),
             account_cache: Arc::new(
                 moka::sync::Cache::builder()
@@ -49,12 +56,40 @@ impl AuthenticationService {
         }
         let acc = if let Some(guest_account) = self.guest_registry.get_by_username(username) {
             Some(guest_account)
+        } else if let Some(bot_account) = self.bot_registry.get_by_username(username) {
+            Some(bot_account)
         } else {
             self.ory_service.find_by_username(username).await
         }?;
         self.username_cache
             .insert(username.to_string(), acc.clone());
         Some(acc)
+    }
+
+    async fn update_account<F>(
+        &self,
+        account_id: &AccountId,
+        update_fn: impl FnOnce(&mut Account) + Copy,
+        ory_update_fn: F,
+    ) -> Result<(), ()>
+    where
+        F: AsyncFnOnce() -> Result<(), ()>,
+    {
+        if self
+            .guest_registry
+            .update_guest(&account_id, update_fn)
+            .is_none()
+        {
+            if self
+                .bot_registry
+                .update_bot(&account_id, update_fn)
+                .is_none()
+            {
+                ory_update_fn().await?;
+            }
+        }
+        self.account_cache.invalidate(account_id);
+        Ok(())
     }
 }
 
@@ -68,8 +103,8 @@ impl ApiAuthPort for AuthenticationService {
         self.guest_registry.get_or_create_guest(None)
     }
 
-    fn generate_account_jwt(&self, id: &AccountId) -> String {
-        jwt::generate_jwt(id)
+    fn generate_account_jwt(&self, id: &AccountId, duration: Duration) -> String {
+        jwt::generate_jwt(id, duration)
     }
 
     fn validate_account_jwt(&self, token: &str) -> Option<AccountId> {
@@ -140,6 +175,8 @@ impl AuthenticationPort for AuthenticationService {
         }
         let account = if let Some(guest_account) = self.guest_registry.get_by_id(account_id) {
             guest_account
+        } else if let Some(bot_account) = self.bot_registry.get_by_id(account_id) {
+            bot_account
         } else {
             self.ory_service.get_account(account_id).await?
         };
@@ -149,53 +186,29 @@ impl AuthenticationPort for AuthenticationService {
     }
 
     async fn set_role(&self, account_id: &AccountId, role: AccountRole) -> Result<(), ()> {
-        if self
-            .guest_registry
-            .update_guest(&account_id, |account| {
-                account.role = role;
-            })
-            .is_none()
-        {
-            self.ory_service
-                .set_role(account_id, role)
-                .await
-                .map_err(|_| ())?;
-        }
-        self.account_cache.invalidate(account_id);
-        Ok(())
+        self.update_account(
+            account_id,
+            |account| account.role = role,
+            || self.ory_service.set_role(account_id, role),
+        )
+        .await
     }
 
     async fn add_flag(&self, account_id: &AccountId, flag: ModerationFlag) -> Result<(), ()> {
-        if self
-            .guest_registry
-            .update_guest(&account_id, |account| {
-                account.add_flag(flag);
-            })
-            .is_none()
-        {
-            self.ory_service
-                .add_flag(account_id, flag)
-                .await
-                .map_err(|_| ())?;
-        }
-        self.account_cache.invalidate(account_id);
-        Ok(())
+        self.update_account(
+            account_id,
+            |account| account.add_flag(flag),
+            || self.ory_service.add_flag(account_id, flag),
+        )
+        .await
     }
 
     async fn remove_flag(&self, account_id: &AccountId, flag: ModerationFlag) -> Result<(), ()> {
-        if self
-            .guest_registry
-            .update_guest(&account_id, |account| {
-                account.remove_flag(flag);
-            })
-            .is_none()
-        {
-            self.ory_service
-                .remove_flag(account_id, flag)
-                .await
-                .map_err(|_| ())?;
-        }
-        self.account_cache.invalidate(account_id);
-        Ok(())
+        self.update_account(
+            account_id,
+            |account| account.remove_flag(flag),
+            || self.ory_service.remove_flag(account_id, flag),
+        )
+        .await
     }
 }

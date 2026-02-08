@@ -5,6 +5,8 @@ pub mod ptn;
 
 use std::time::Duration;
 
+pub use base::TakFinishedBaseGame;
+pub use base::TakOngoingBaseGame;
 pub use game::TakFinishedGame;
 pub use game::TakOngoingGame;
 

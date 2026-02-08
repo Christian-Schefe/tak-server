@@ -1,4 +1,4 @@
-use std::sync::LazyLock;
+use std::{sync::LazyLock, time::Duration};
 
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
@@ -43,10 +43,12 @@ fn read_or_generate_secret() -> Vec<u8> {
     secret.as_bytes().to_vec()
 }
 
-pub fn generate_jwt(account_id: &AccountId) -> String {
+pub fn generate_jwt(account_id: &AccountId, duration: Duration) -> String {
     let claims = Claims {
         sub: account_id.to_string(),
-        exp: (chrono::Utc::now() + chrono::Duration::hours(24)).timestamp() as usize,
+        exp: (chrono::Utc::now()
+            + chrono::Duration::from_std(duration).unwrap_or_else(|_| chrono::Duration::MAX))
+        .timestamp() as usize,
     };
     let token = encode(&Header::default(), &claims, &KEYS.encoding).unwrap();
     token

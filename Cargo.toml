@@ -10,13 +10,14 @@ members = [
     "api/tak-server-api",
     "api/tak-server-legacy-api",
     "infra/tak-auth-ory",
+    "infra/tak-bot-registry",
     "infra/tak-email-lettre",
     "infra/tak-events-google-sheets",
     "infra/tak-persistence-sea-orm",
     "infra/tak-persistence-sea-orm-entities",
     "infra/tak-persistence-sea-orm-migrations",
     "infra/tak-player-connection",
-    "more-concurrent-maps",
+    "more-concurrent-maps", "tak-bot-tei-bridge",
     "tak-core",
     "tak-server-app",
 ]
@@ -34,3 +35,4 @@ tak-server-api = { path = "./api/tak-server-api" }
 tak-server-app = { path = "./tak-server-app" }
 tak-server-legacy-api = { path = "./api/tak-server-legacy-api" }
 tokio = { version = "1.47.1", features = ["full"] }
+tak-bot-registry = { path = "./infra/tak-bot-registry" }

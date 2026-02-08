@@ -47,9 +47,6 @@ identity:
     - id: default
       url: file:///etc/config/kratos/user.schema.json
 
-    - id: bot
-      url: file:///etc/config/kratos/bot.schema.json
-
 courier:
   smtp:
     connection_uri: smtp://set_by_env_variable

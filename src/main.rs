@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use tak_auth_ory::AuthenticationService;
+use tak_bot_registry::FileBotRepository;
 use tak_email_lettre::LettreEmailAdapter;
 use tak_events_google_sheets::NoopEventRepository;
 use tak_persistence_sea_orm::{
@@ -79,7 +80,8 @@ async fn main() {
     let listener_notification_adapter = Arc::new(ComposedListenerNotificationService::new(vec![
         player_connection_adapter.clone(), //for now only one adapter
     ]));
-    let authentication_adapter = Arc::new(AuthenticationService::new());
+    let bot_repository = Arc::new(FileBotRepository::new());
+    let authentication_adapter = Arc::new(AuthenticationService::new(bot_repository));
     let account_online_status_adapter = Arc::new(AccountOnlineStatusService::new());
 
     let app = Arc::new(
