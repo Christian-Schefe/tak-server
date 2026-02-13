@@ -4049,9 +4049,15 @@ name = "tak-bot-tei-bridge"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "futures",
+ "serde",
+ "serde_json",
  "tak-core",
+ "tak-server-api",
  "tokio",
+ "tokio-tungstenite",
  "tokio-util",
+ "uuid",
 ]
 
 [[package]]

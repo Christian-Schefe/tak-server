@@ -1,10 +1,10 @@
 [package]
-name = "tak-player-connection"
-version = "0.1.0"
 edition = "2024"
+name    = "tak-player-connection"
+version = "0.1.0"
 
 [dependencies]
-async-trait = "0.1.89"
+async-trait          = "0.1.89"
 more-concurrent-maps = { path = "../../more-concurrent-maps" }
-parking_lot = "0.12.5"
-tak-server-app = { path = "../../tak-server-app" }
+parking_lot          = "0.12.5"
+tak-server-app       = { path = "../../tak-server-app" }

@@ -5,8 +5,13 @@ use tak_core::{
     TakBaseGameSettings, TakFinishedBaseGame, TakOngoingBaseGame, TakReserve,
     ptn::{action_from_ptn, action_to_ptn},
 };
+use tak_server_api::ClientMessage;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
+
+use crate::server_api::ServerApi;
+
+mod server_api;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -16,6 +21,7 @@ struct Cli {
 
 struct App {
     bot_executable: String,
+    server_api: Arc<ServerApi>,
 }
 
 struct EngineConnection {
@@ -23,6 +29,7 @@ struct EngineConnection {
     receive_tei: tokio::sync::mpsc::UnboundedReceiver<String>,
     cancellation_token: CancellationToken,
     game: Option<TakOngoingBaseGame>,
+    tasks: Vec<tokio::task::JoinHandle<()>>,
 }
 
 #[tokio::main]
@@ -36,7 +43,15 @@ async fn main() {
 
     let app = Arc::new(App {
         bot_executable: cli.bot_executable.clone(),
+        server_api: ServerApi::new("ws://localhost:3003/ws", "https://localhost/api2"),
     });
+
+    app.server_api
+        .send_message(ClientMessage::Authenticate {
+            token: "".to_string(),
+        })
+        .await
+        .unwrap();
 
     let mut engine_connection = setup_engine(app.clone()).await;
     let settings = TakBaseGameSettings {
@@ -70,7 +85,8 @@ async fn main() {
         .expect("Failed to listen for shutdown signal");
 
     println!("Shutdown signal received. Shutting down TEI bridge...");
-    engine_connection.shutdown();
+    engine_connection.shutdown().await;
+    app.server_api.shutdown().await;
 }
 
 async fn setup_engine(app: Arc<App>) -> EngineConnection {
@@ -89,7 +105,7 @@ async fn setup_engine(app: Arc<App>) -> EngineConnection {
     let cancellation_token = CancellationToken::new();
 
     let cancellation_token_clone = cancellation_token.clone();
-    tokio::spawn(async move {
+    let write_task = tokio::spawn(async move {
         let mut writer = tokio::io::BufWriter::new(stdin);
         while let Some(msg) = tokio::select! {
             msg = rx.recv() => msg,
@@ -102,7 +118,7 @@ async fn setup_engine(app: Arc<App>) -> EngineConnection {
     });
 
     let cancellation_token_clone = cancellation_token.clone();
-    tokio::spawn(async move {
+    let read_task = tokio::spawn(async move {
         let mut reader = tokio::io::BufReader::new(stdout);
         let mut line = String::new();
         while let Ok(_) = tokio::select! {
@@ -122,6 +138,7 @@ async fn setup_engine(app: Arc<App>) -> EngineConnection {
         receive_tei: out_rx,
         cancellation_token,
         game: None,
+        tasks: vec![write_task, read_task],
     }
 }
 
@@ -182,7 +199,10 @@ impl EngineConnection {
         None
     }
 
-    fn shutdown(&self) {
+    async fn shutdown(mut self) {
         self.cancellation_token.cancel();
+        for task in &mut self.tasks {
+            let _ = task.await;
+        }
     }
 }

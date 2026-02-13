@@ -1,11 +1,10 @@
 [package]
-name = "tak-server"
-version = "0.1.0"
-edition = "2024"
 default-run = "tak-server"
+edition     = "2024"
+name        = "tak-server"
+version     = "0.1.0"
 
 [workspace]
-resolver = "3"
 members = [
     "api/tak-server-api",
     "api/tak-server-legacy-api",
@@ -17,22 +16,24 @@ members = [
     "infra/tak-persistence-sea-orm-entities",
     "infra/tak-persistence-sea-orm-migrations",
     "infra/tak-player-connection",
-    "more-concurrent-maps", "tak-bot-tei-bridge",
+    "more-concurrent-maps",
+    "tak-bot-tei-bridge",
     "tak-core",
     "tak-server-app",
 ]
+resolver = "3"
 
 [dependencies]
-dotenvy = "0.15.7"
-log = "0.4.28"
-log4rs = { version = "1.4.0", features = ["gzip"] }
-tak-auth-ory = { path = "./infra/tak-auth-ory" }
-tak-email-lettre = { path = "./infra/tak-email-lettre" }
+dotenvy                  = "0.15.7"
+log                      = "0.4.28"
+log4rs                   = { version = "1.4.0", features = ["gzip"] }
+tak-auth-ory             = { path = "./infra/tak-auth-ory" }
+tak-bot-registry         = { path = "./infra/tak-bot-registry" }
+tak-email-lettre         = { path = "./infra/tak-email-lettre" }
 tak-events-google-sheets = { path = "./infra/tak-events-google-sheets" }
-tak-persistence-sea-orm = { path = "./infra/tak-persistence-sea-orm" }
-tak-player-connection = { path = "./infra/tak-player-connection" }
-tak-server-api = { path = "./api/tak-server-api" }
-tak-server-app = { path = "./tak-server-app" }
-tak-server-legacy-api = { path = "./api/tak-server-legacy-api" }
-tokio = { version = "1.47.1", features = ["full"] }
-tak-bot-registry = { path = "./infra/tak-bot-registry" }
+tak-persistence-sea-orm  = { path = "./infra/tak-persistence-sea-orm" }
+tak-player-connection    = { path = "./infra/tak-player-connection" }
+tak-server-api           = { path = "./api/tak-server-api" }
+tak-server-app           = { path = "./tak-server-app" }
+tak-server-legacy-api    = { path = "./api/tak-server-legacy-api" }
+tokio                    = { version = "1.47.1", features = ["full"] }

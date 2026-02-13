@@ -64,6 +64,7 @@ struct JsonAsyncTimeSettings {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct JsonEventRecord {
+    #[serde(with = "chrono::serde::ts_milliseconds")]
     timestamp: chrono::DateTime<chrono::Utc>,
     event: JsonEventRecordType,
 }

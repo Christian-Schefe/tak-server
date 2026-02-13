@@ -1,11 +1,11 @@
 [package]
-name = "tak-bot-registry"
-version = "0.1.0"
 edition = "2024"
+name    = "tak-bot-registry"
+version = "0.1.0"
 
 [dependencies]
-tak-auth-ory = { path = "../tak-auth-ory" }
-serde = { version = "1.0.219", features = ["derive"] }
-serde_json = "1.0.143"
+serde          = { version = "1.0.219", features = ["derive"] }
+serde_json     = "1.0.143"
+tak-auth-ory   = { path = "../tak-auth-ory" }
 tak-server-app = { path = "../../tak-server-app" }
-uuid = { version = "1.18.1", features = ["v4"] }
+uuid           = { version = "1.18.1", features = ["v4"] }

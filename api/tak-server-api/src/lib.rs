@@ -13,6 +13,10 @@ use crate::auth::StrictAuth;
 pub use auth::ApiAuthPort;
 pub use ws::WsService;
 
+pub use ws::ClientMessage;
+pub use ws::ClientMessageWrapper;
+pub use ws::ServerMessage;
+
 mod auth;
 mod game;
 mod player;

@@ -151,7 +151,7 @@ pub async fn accept_seek(
     }
 }
 
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SeekInfo {
     pub id: u64,

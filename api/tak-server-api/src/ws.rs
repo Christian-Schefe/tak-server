@@ -323,7 +323,7 @@ impl PlayerSimpleConnectionPort for WsService {
     }
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
 #[serde(
     tag = "type",
     rename_all = "camelCase",
@@ -347,7 +347,7 @@ pub enum ClientMessage {
     },
 }
 
-#[derive(serde::Deserialize, Debug)]
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientMessageWrapper {
     #[serde(flatten)]
@@ -355,7 +355,7 @@ pub struct ClientMessageWrapper {
     pub response_id: Uuid,
 }
 
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(
     tag = "type",
     rename_all = "camelCase",

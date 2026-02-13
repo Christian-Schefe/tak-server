@@ -432,14 +432,14 @@ pub enum GameStatusType {
     Aborted,
 }
 
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ForPlayer<R> {
     pub white: R,
     pub black: R,
 }
 
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonGameMetadata {
     pub id: i64,
