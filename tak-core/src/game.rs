@@ -256,31 +256,11 @@ impl TakOngoingGame {
             return MaybeTimeout::Timeout(finished_game);
         };
 
-        if self.base.action_history.pop().is_none() {
-            return MaybeTimeout::Result(false);
-        };
         let player = self.base.current_player;
-        let mut game_clone = TakOngoingBaseGame::new(self.base.settings.clone());
-        for record in &self.base.action_history {
-            match game_clone.do_action(record.clone()) {
-                Ok(None) => {}
-                Ok(Some(_)) => {
-                    //This should never happen, and the module is closed to preserve invariants, so we panic here
-                    panic!(
-                        "Finished game encountered when replaying action during undo: {:?}",
-                        record
-                    );
-                }
-                Err(e) => {
-                    //This should never happen, and the module is closed to preserve invariants, so we panic here
-                    panic!(
-                        "Failed to replay action during undo: {:?}, error: {:?}",
-                        record, e
-                    );
-                }
-            }
+        if !self.base.undo_action() {
+            return MaybeTimeout::Result(false);
         }
-        self.base = game_clone;
+
         self.start_or_update_clock(now, player); // TODO: verify that we want increment after undo
 
         MaybeTimeout::Result(true)

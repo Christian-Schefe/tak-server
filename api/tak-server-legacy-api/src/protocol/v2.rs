@@ -174,9 +174,15 @@ impl ProtocolV2Handler {
             }
             ListenerMessage::GameAction {
                 game_id,
-                action,
+                record,
                 player_id: moving_player_id,
             } => {
+                self.send_time_update_message(
+                    id,
+                    *game_id,
+                    record.time_info.white_remaining,
+                    record.time_info.black_remaining,
+                );
                 // legacy api expects only opponent to receive action messages
                 if player_id.is_none_or(|x| {
                     x != *moving_player_id
@@ -185,8 +191,17 @@ impl ProtocolV2Handler {
                             .get(&(*game_id, x))
                             .is_none_or(|c| *c != id)
                 }) {
-                    self.send_game_action_message(id, *game_id, &action.action);
+                    self.send_game_action_message(id, *game_id, &record.action);
                 }
+            }
+            ListenerMessage::GameActionUndone { game_id, record } => {
+                self.send_time_update_message(
+                    id,
+                    *game_id,
+                    record.time_info.white_remaining,
+                    record.time_info.black_remaining,
+                );
+                self.send_undo_message(id, *game_id);
             }
             ListenerMessage::GameRequestAdded {
                 game_id,
@@ -224,17 +239,6 @@ impl ProtocolV2Handler {
             }
             ListenerMessage::GameRequestRejected { .. } => {} // legacy api does not support request rejections
             ListenerMessage::GameRequestAccepted { .. } => {} // legacy api does not support request acceptances
-            ListenerMessage::GameActionUndone { game_id } => {
-                self.send_undo_message(id, *game_id);
-            }
-            ListenerMessage::GameTimeUpdate { game_id, time_info } => {
-                self.send_time_update_message(
-                    id,
-                    *game_id,
-                    time_info.white_remaining,
-                    time_info.black_remaining,
-                );
-            }
 
             ListenerMessage::AccountsOnline { accounts: players } => {
                 self.send_online_players_message(id, players).await;

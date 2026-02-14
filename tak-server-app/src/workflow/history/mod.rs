@@ -39,7 +39,7 @@ impl GameRecordView {
         for event in &self.events {
             if let GameEventType::Action { action, .. } = &event.event_type {
                 actions.push(action.clone());
-            } else if let GameEventType::ActionUndone = &event.event_type {
+            } else if let GameEventType::ActionUndone { .. } = &event.event_type {
                 actions.pop();
             }
         }

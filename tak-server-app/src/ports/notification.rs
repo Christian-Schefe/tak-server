@@ -1,9 +1,9 @@
-use tak_core::{TakGameResult, TakTimeInfo};
+use tak_core::TakGameResult;
 
 use crate::{
     domain::{
         AccountId, GameId, ListenerId, PlayerId,
-        game::{GameActionRecord, request::GameRequest},
+        game::{GameActionRecord, GameUndoActionRecord, request::GameRequest},
     },
     workflow::{
         chat::message::MessageTarget,
@@ -49,14 +49,11 @@ pub enum ListenerMessage {
     GameAction {
         game_id: GameId,
         player_id: PlayerId,
-        action: GameActionRecord,
+        record: GameActionRecord,
     },
     GameActionUndone {
         game_id: GameId,
-    },
-    GameTimeUpdate {
-        game_id: GameId,
-        time_info: TakTimeInfo,
+        record: GameUndoActionRecord,
     },
     GameRequestAdded {
         game_id: GameId,

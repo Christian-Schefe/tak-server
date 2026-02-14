@@ -48,7 +48,9 @@ pub enum GameEventType {
     RequestAccepted {
         request_id: GameRequestId,
     },
-    ActionUndone,
+    ActionUndone {
+        time_info: TakTimeInfo,
+    },
     TimeGiven {
         player: TakPlayer,
         duration: Duration,
@@ -201,18 +203,38 @@ pub trait GameService {
         player: PlayerId,
         request_id: GameRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<(GameRequest, bool), ()>>;
+    ) -> GamePlayerActionResult<Result<(GameRequest, Option<GameUndoActionRecord>), ()>>;
 }
 
 #[derive(Clone, Debug)]
 pub struct GameActionRecord {
     pub action: TakAction,
     pub ply_index: usize,
+    pub time_info: TakTimeInfo,
 }
 
 impl GameActionRecord {
-    pub fn new(action: TakAction, ply_index: usize) -> Self {
-        Self { action, ply_index }
+    pub fn new(action: TakAction, ply_index: usize, time_info: TakTimeInfo) -> Self {
+        Self {
+            action,
+            ply_index,
+            time_info,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct GameUndoActionRecord {
+    pub ply_index: usize,
+    pub time_info: TakTimeInfo,
+}
+
+impl GameUndoActionRecord {
+    pub fn new(ply_index: usize, time_info: TakTimeInfo) -> Self {
+        Self {
+            ply_index,
+            time_info,
+        }
     }
 }
 
@@ -386,7 +408,7 @@ impl GameService for GameServiceImpl {
                         .events
                         .push(GameEvent::new(GameEventType::Action {
                             action: action.clone(),
-                            time_info,
+                            time_info: time_info.clone(),
                         }));
                     game_entry
                         .events
@@ -397,7 +419,7 @@ impl GameService for GameServiceImpl {
                     (
                         GameControl::Remove,
                         DoActionResult::GameOver(
-                            GameActionRecord::new(action.clone(), ply_index),
+                            GameActionRecord::new(action.clone(), ply_index, time_info),
                             finished_game,
                         ),
                     )
@@ -409,13 +431,14 @@ impl GameService for GameServiceImpl {
                         .events
                         .push(GameEvent::new(GameEventType::Action {
                             action: action.clone(),
-                            time_info,
+                            time_info: time_info.clone(),
                         }));
                     (
                         GameControl::Keep,
                         DoActionResult::ActionPerformed(GameActionRecord::new(
                             action.clone(),
                             ply_index,
+                            time_info,
                         )),
                     )
                 }
@@ -594,7 +617,7 @@ impl GameService for GameServiceImpl {
         player: PlayerId,
         request_id: GameRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<(GameRequest, bool), ()>> {
+    ) -> GamePlayerActionResult<Result<(GameRequest, Option<GameUndoActionRecord>), ()>> {
         self.game_player_action(
             game_id,
             player,
@@ -625,12 +648,19 @@ impl GameService for GameServiceImpl {
                         .push(GameEvent::new(GameEventType::RequestAccepted {
                             request_id,
                         }));
-                    if did_undo {
+                    let undo_record = if did_undo {
+                        let time_info = game_entry.game.get_time_info(now);
+                        let ply_index = game_entry.game.action_history().len() - 1;
                         game_entry
                             .events
-                            .push(GameEvent::new(GameEventType::ActionUndone));
-                    }
-                    (GameControl::Keep, Ok((request, did_undo)))
+                            .push(GameEvent::new(GameEventType::ActionUndone {
+                                time_info: time_info.clone(),
+                            }));
+                        Some(GameUndoActionRecord::new(ply_index, time_info))
+                    } else {
+                        None
+                    };
+                    (GameControl::Keep, Ok((request, undo_record)))
                 }
                 None => (GameControl::Keep, Err(())),
             },

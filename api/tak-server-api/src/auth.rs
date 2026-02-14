@@ -41,10 +41,13 @@ impl FromRequestParts<AppState> for StrictAuth {
             if let Some(acc_id) = app.auth.validate_account_jwt(bearer.token())
                 && let Some(acc) = app.auth.get_account(&acc_id).await
             {
-                if acc.is_guest() {
+                if acc.is_guest() || acc.is_bot() {
                     return Ok(StrictAuth { account: Some(acc) });
                 } else {
-                    log::info!("Rejected non-guest JWT for strict auth: {:?}", acc);
+                    log::info!(
+                        "Rejected non-(guest-or-bot) JWT for strict auth: {:?}",
+                        acc
+                    );
                 }
             } else {
                 log::info!("Failed to validate JWT for strict auth");

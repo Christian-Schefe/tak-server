@@ -126,6 +126,34 @@ impl TakOngoingBaseGame {
         Ok(self.check_game_over(board_hash, moved_player))
     }
 
+    pub fn undo_action(&mut self) -> bool {
+        if self.action_history.pop().is_none() {
+            return false;
+        };
+        let mut game_clone = TakOngoingBaseGame::new(self.settings.clone());
+        for record in &self.action_history {
+            match game_clone.do_action(record.clone()) {
+                Ok(None) => {}
+                Ok(Some(_)) => {
+                    //This should never happen, and the module is closed to preserve invariants, so we panic here
+                    panic!(
+                        "Finished game encountered when replaying action during undo: {:?}",
+                        record
+                    );
+                }
+                Err(e) => {
+                    //This should never happen, and the module is closed to preserve invariants, so we panic here
+                    panic!(
+                        "Failed to replay action during undo: {:?}, error: {:?}",
+                        record, e
+                    );
+                }
+            }
+        }
+        *self = game_clone;
+        true
+    }
+
     pub fn check_game_over(
         &self,
         board_hash: String,

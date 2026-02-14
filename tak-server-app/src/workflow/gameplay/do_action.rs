@@ -113,34 +113,9 @@ impl<G: GameService, NP: NotifyPlayerWorkflow, F: FinalizeGameWorkflow>
         }
     }
 
-    async fn send_game_time_update(&self, game_id: GameId, now: Instant) {
-        if let Some(game) = self.game_service.get_game_by_id(game_id) {
-            let time_info = game.get_time_info(now);
-            let time_update_msg = ListenerMessage::GameTimeUpdate { game_id, time_info };
-            self.notify_player_workflow
-                .notify_players_and_observers_of_game(
-                    game.game_id,
-                    &game.metadata,
-                    &time_update_msg,
-                )
-                .await;
-        }
-    }
-
-    async fn send_game_time_update_for_finished_game(&self, game: &FinishedGame) {
-        let time_info = game.get_time_info();
-        let time_update_msg = ListenerMessage::GameTimeUpdate {
-            game_id: game.game_id,
-            time_info,
-        };
-        self.notify_player_workflow
-            .notify_players_and_observers_of_game(game.game_id, &game.metadata, &time_update_msg)
-            .await;
-    }
-
     async fn handle_ended_game(&self, ended_game: FinishedGame) {
-        self.send_game_time_update_for_finished_game(&ended_game)
-            .await;
+        //self.send_game_time_update_for_finished_game(&ended_game)
+        //    .await;
         self.finalize_game_workflow.finalize_game(ended_game).await;
     }
 
@@ -200,7 +175,7 @@ impl<
         let msg = ListenerMessage::GameAction {
             game_id,
             player_id,
-            action: action_record,
+            record: action_record,
         };
 
         // Needs different notification flow as game domain removes game once ended
@@ -218,8 +193,6 @@ impl<
             self.notify_player_workflow
                 .notify_players_and_observers(game_id, &msg)
                 .await;
-
-            self.send_game_time_update(game_id, now).await;
         }
 
         ActionResult::Success
@@ -407,7 +380,7 @@ impl<
             .await
         {
             Err(e) => ActionResult::NotPossible(e),
-            Ok(Ok((request, did_undo))) => {
+            Ok(Ok((request, undo_record))) => {
                 let request_msg = ListenerMessage::GameRequestAccepted {
                     game_id,
                     accepting_player_id: player_id,
@@ -416,8 +389,11 @@ impl<
                 self.notify_player_workflow
                     .notify_players_and_observers(game_id, &request_msg)
                     .await;
-                if did_undo {
-                    let msg = ListenerMessage::GameActionUndone { game_id };
+                if let Some(undo_record) = undo_record {
+                    let msg = ListenerMessage::GameActionUndone {
+                        game_id,
+                        record: undo_record,
+                    };
                     self.notify_player_workflow
                         .notify_players_and_observers(game_id, &msg)
                         .await;

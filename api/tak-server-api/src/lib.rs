@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{Query, State},
     response::IntoResponse,
     routing::{delete, get, post},
 };
@@ -13,15 +13,11 @@ use crate::auth::StrictAuth;
 pub use auth::ApiAuthPort;
 pub use ws::WsService;
 
-pub use ws::ClientMessage;
-pub use ws::ClientMessageWrapper;
-pub use ws::ServerMessage;
-
 mod auth;
-mod game;
+pub mod game;
 mod player;
 mod seek;
-mod ws;
+pub mod ws;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -100,11 +96,22 @@ pub async fn serve(
     log::info!("HTTP API shut down gracefully");
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct WhoAmIQueryParams {
+    pub bot: Option<bool>,
+}
+
 async fn who_am_i(
     auth: StrictAuth,
     State(app): State<AppState>,
+    Query(params): Query<WhoAmIQueryParams>,
 ) -> Result<Json<IdentityInfo>, ServiceError> {
     let new_guest = auth.account.is_none();
+    if params.bot.is_some_and(|x| x) && auth.account.as_ref().is_none_or(|acc| !acc.is_bot()) {
+        return Err(ServiceError::Unauthorized(
+            "Bots must use bot account".to_string(),
+        ));
+    }
     let account = auth.account.unwrap_or_else(|| app.auth.create_guest());
     let player_id = app
         .app
@@ -127,14 +134,14 @@ async fn who_am_i(
     }))
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IdentityInfo {
-    account_id: String,
-    player_id: String,
-    is_guest: bool,
-    new_guest: bool,
-    jwt: String,
+    pub account_id: String,
+    pub player_id: String,
+    pub is_guest: bool,
+    pub new_guest: bool,
+    pub jwt: String,
 }
 
 #[derive(serde::Deserialize)]

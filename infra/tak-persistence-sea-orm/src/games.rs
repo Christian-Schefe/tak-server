@@ -98,7 +98,9 @@ enum JsonEventRecordType {
     RequestAccepted {
         request_id: u64,
     },
-    ActionUndone,
+    ActionUndone {
+        time_info: JsonTimeInfo,
+    },
     TimeGiven {
         player: JsonTakPlayer,
         amount_ms: u64,
@@ -132,6 +134,12 @@ impl JsonTimeInfo {
             black_remaining_ms: time_info.black_remaining.as_millis() as u64,
         }
     }
+    fn to_time_info(&self) -> TakTimeInfo {
+        TakTimeInfo {
+            white_remaining: Duration::from_millis(self.white_remaining_ms),
+            black_remaining: Duration::from_millis(self.black_remaining_ms),
+        }
+    }
 }
 
 impl JsonEventRecordType {
@@ -163,7 +171,9 @@ impl JsonEventRecordType {
             GameEventType::RequestAccepted { request_id } => JsonEventRecordType::RequestAccepted {
                 request_id: request_id.0,
             },
-            GameEventType::ActionUndone => JsonEventRecordType::ActionUndone,
+            GameEventType::ActionUndone { time_info } => JsonEventRecordType::ActionUndone {
+                time_info: JsonTimeInfo::from_time_info(&time_info),
+            },
             GameEventType::GameOver(game_over_type) => JsonEventRecordType::GameOver {
                 game_over_type: match game_over_type {
                     GameOverEventType::Action => JsonEventGameOverType::Action,
@@ -184,10 +194,7 @@ impl JsonEventRecordType {
         match self {
             JsonEventRecordType::Action { action, time_info } => GameEventType::Action {
                 action: action.clone(),
-                time_info: TakTimeInfo {
-                    white_remaining: Duration::from_millis(time_info.white_remaining_ms),
-                    black_remaining: Duration::from_millis(time_info.black_remaining_ms),
-                },
+                time_info: time_info.to_time_info(),
             },
             JsonEventRecordType::RequestAdded {
                 request_id,
@@ -217,7 +224,9 @@ impl JsonEventRecordType {
             JsonEventRecordType::RequestAccepted { request_id } => GameEventType::RequestAccepted {
                 request_id: GameRequestId(*request_id),
             },
-            JsonEventRecordType::ActionUndone => GameEventType::ActionUndone,
+            JsonEventRecordType::ActionUndone { time_info } => GameEventType::ActionUndone {
+                time_info: time_info.to_time_info(),
+            },
             JsonEventRecordType::TimeGiven { player, amount_ms } => GameEventType::TimeGiven {
                 player: player.to_tak_player(),
                 duration: Duration::from_millis(*amount_ms),

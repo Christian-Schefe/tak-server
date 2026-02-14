@@ -380,11 +380,9 @@ pub enum ServerMessage {
         game_id: i64,
         ply_index: usize,
         action: String,
+        remaining_ms: ForPlayer<u64>,
     },
     GameActionUndone {
-        game_id: i64,
-    },
-    GameTimeUpdate {
         game_id: i64,
         remaining_ms: ForPlayer<u64>,
     },
@@ -454,15 +452,23 @@ impl ServerMessage {
             ListenerMessage::GameAction {
                 game_id,
                 player_id: _,
-                action,
+                record: action,
             } => MessageTransformation::Transform(ServerMessage::GameAction {
                 game_id: game_id.0,
                 ply_index: action.ply_index,
                 action: action_to_ptn(&action.action),
+                remaining_ms: ForPlayer {
+                    white: action.time_info.white_remaining.as_millis() as u64,
+                    black: action.time_info.black_remaining.as_millis() as u64,
+                },
             }),
-            ListenerMessage::GameActionUndone { game_id } => {
+            ListenerMessage::GameActionUndone { game_id, record } => {
                 MessageTransformation::Transform(ServerMessage::GameActionUndone {
                     game_id: game_id.0,
+                    remaining_ms: ForPlayer {
+                        white: record.time_info.white_remaining.as_millis() as u64,
+                        black: record.time_info.black_remaining.as_millis() as u64,
+                    },
                 })
             }
             ListenerMessage::GameStarted { game } => {
@@ -474,15 +480,6 @@ impl ServerMessage {
                 MessageTransformation::Transform(ServerMessage::GameEnded {
                     game_id: game.id.0,
                     result: game_result_to_string(game.game.game_result()),
-                })
-            }
-            ListenerMessage::GameTimeUpdate { game_id, time_info } => {
-                MessageTransformation::Transform(ServerMessage::GameTimeUpdate {
-                    game_id: game_id.0,
-                    remaining_ms: ForPlayer {
-                        white: time_info.white_remaining.as_millis() as u64,
-                        black: time_info.black_remaining.as_millis() as u64,
-                    },
                 })
             }
             ListenerMessage::GameRequestAdded {
