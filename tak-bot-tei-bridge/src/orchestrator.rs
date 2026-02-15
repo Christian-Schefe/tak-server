@@ -3,27 +3,49 @@ use std::sync::{Arc, Mutex};
 use tak_core::TakPlayer;
 use tak_server_api::{
     IdentityInfo,
-    game::{JsonGameMetadata, JsonTimeSettings},
+    game::{GameSettingsInfo, JsonGameMetadata, JsonTimeSettings},
+    seek::{CreateSeekPayload, SeekInfo},
     ws::{ClientMessage, ServerMessage},
 };
-use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::{select, sync::mpsc::UnboundedReceiver};
 use tokio_util::sync::CancellationToken;
 
-use crate::{engine::EngineService, game::GameService};
+use crate::{engine::EngineService, game::GameService, seek::SeekService};
 
 #[async_trait::async_trait]
 pub trait ServerApi {
     async fn send_message(&self, message: ClientMessage) -> Result<(), String>;
     async fn load_games(&self) -> Result<Vec<JsonGameMetadata>, String>;
+    async fn create_seek(&self, seek: CreateSeekPayload) -> Result<SeekInfo, String>;
 }
 
 pub struct Orchestrator {
     identity: IdentityInfo,
     server_api: Arc<dyn ServerApi + Send + Sync>,
     game_service: Arc<GameService>,
+    seek_service: Arc<SeekService>,
     engine_service: Arc<EngineService>,
     handler_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     cancellation_token: CancellationToken,
+}
+
+fn get_seek_payload() -> CreateSeekPayload {
+    CreateSeekPayload {
+        opponent_id: None,
+        color: "random".to_string(),
+        is_rated: true,
+        game_settings: GameSettingsInfo {
+            board_size: 5,
+            time_settings: JsonTimeSettings::Realtime {
+                increment_ms: 5_000,
+                contingent_ms: 300_000,
+                extra: None,
+            },
+            half_komi: 4,
+            pieces: 30,
+            capstones: 1,
+        },
+    }
 }
 
 impl Orchestrator {
@@ -31,6 +53,7 @@ impl Orchestrator {
         identity: IdentityInfo,
         server_api: Arc<dyn ServerApi + Send + Sync>,
         game_service: Arc<GameService>,
+        seek_service: Arc<SeekService>,
         engine_service: Arc<EngineService>,
         rx: UnboundedReceiver<ServerMessage>,
     ) -> Arc<Self> {
@@ -38,6 +61,7 @@ impl Orchestrator {
             identity,
             server_api,
             game_service,
+            seek_service,
             engine_service,
             handler_task: Arc::new(Mutex::new(None)),
             cancellation_token: CancellationToken::new(),
@@ -72,12 +96,26 @@ impl Orchestrator {
                 .collect(),
         );
 
-        while let Some(message) = rx.recv().await {
+        // TODO: Create seek sync that allows recovery if the seek disappears without the bot noticing.
+        Self::create_seek(&this).await;
+
+        while let Some(message) = select! {
+            msg = rx.recv() => msg,
+            _ = this.cancellation_token.cancelled() => None,
+        } {
+            println!("Received message: {:?}", message);
             match message {
                 ServerMessage::Success { .. } => {}
                 ServerMessage::Error { .. } => {}
                 ServerMessage::SeekCreated { .. } => {}
-                ServerMessage::SeekRemoved { .. } => {}
+                ServerMessage::SeekRemoved { seek_id } => {
+                    if this.seek_service.end_seek(seek_id) {
+                        println!("Our seek {} was removed, creating a new one", seek_id);
+                        Self::create_seek(&this).await;
+                    } else {
+                        println!("Other player removed seek {}, ignoring", seek_id);
+                    }
+                }
                 ServerMessage::GameAction {
                     game_id,
                     action,
@@ -137,6 +175,18 @@ impl Orchestrator {
         }
     }
 
+    async fn create_seek(this: &Arc<Self>) {
+        match this.server_api.create_seek(get_seek_payload()).await {
+            Ok(seek) => {
+                println!("Created seek: {}", seek.id);
+                this.seek_service.begin_seek(seek.id);
+            }
+            Err(e) => {
+                eprintln!("Failed to create seek: {}", e);
+            }
+        }
+    }
+
     fn on_my_turn(
         this: Arc<Self>,
         game_id: i64,
@@ -159,6 +209,8 @@ impl Orchestrator {
                 {
                     eprintln!("Failed to send move for game {}: {}", game_id, e);
                 }
+            } else {
+                eprintln!("Engine failed to find a move for game {}", game_id);
             }
         });
     }

@@ -15,8 +15,8 @@ pub use ws::WsService;
 
 mod auth;
 pub mod game;
-mod player;
-mod seek;
+pub mod player;
+pub mod seek;
 pub mod ws;
 
 #[derive(Clone)]
@@ -134,7 +134,7 @@ async fn who_am_i(
     }))
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IdentityInfo {
     pub account_id: String,

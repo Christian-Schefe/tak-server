@@ -47,6 +47,7 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
         let now = Instant::now();
         match self.game_service.check_timeout(game_id, now) {
             CheckTimeoutResult::TimedOut(game) => {
+                log::info!("Game {:?} timed out, finalizing game", game_id);
                 self.finalize_game_workflow.finalize_game(game).await;
                 ObserveOutcome::Finished
             }
@@ -65,7 +66,7 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
         disconnected_at: Instant,
     ) -> ObserveOutcome {
         let now = Instant::now();
-        let disconnected_since = now.saturating_duration_since(disconnected_at);
+        let disconnected_duration = now.saturating_duration_since(disconnected_at);
         let games = self
             .game_service
             .get_games()
@@ -80,7 +81,7 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
             match self.game_service.check_disconnect_timeout(
                 game.game_id,
                 player_id,
-                disconnected_since,
+                disconnected_duration,
                 now,
             ) {
                 GamePlayerActionResult::GameNotFound | GamePlayerActionResult::NotAPlayerInGame => {
@@ -95,6 +96,12 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
                 }
                 GamePlayerActionResult::Result(res) => match res {
                     CheckDisconnectTimeoutResult::TimedOut(ended_game) => {
+                        log::info!(
+                            "Player {:?} timed out in game {:?} after being disconnected for {:?}",
+                            player_id,
+                            game.game_id,
+                            disconnected_duration
+                        );
                         self.finalize_game_workflow.finalize_game(ended_game).await;
                     }
                     CheckDisconnectTimeoutResult::CantTimeOut => {}

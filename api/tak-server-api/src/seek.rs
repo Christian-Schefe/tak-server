@@ -26,7 +26,7 @@ pub async fn create_seek(
     auth: Auth,
     State(app): State<AppState>,
     Json(payload): Json<CreateSeekPayload>,
-) -> Result<(), ServiceError> {
+) -> Result<Json<SeekInfo>, ServiceError> {
     let player_id = match app
         .app
         .player_resolver_service
@@ -67,7 +67,7 @@ pub async fn create_seek(
         game_settings,
         payload.is_rated,
     ) {
-        Ok(_) => Ok(()),
+        Ok(seek) => Ok(Json(SeekInfo::from_seek_view(seek))),
         Err(CreateSeekError::InvalidGameSettings) => Err(ServiceError::BadRequest(
             "Invalid game settings".to_string(),
         )),
@@ -105,7 +105,7 @@ pub async fn cancel_seek(
     Ok(())
 }
 
-#[derive(serde::Deserialize, Debug, Clone)]
+#[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateSeekPayload {
     pub opponent_id: Option<String>,

@@ -4,7 +4,10 @@ use std::{
 };
 
 use tak_core::{TakBaseGameSettings, TakOngoingBaseGame, ptn::action_to_ptn};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt},
+    select,
+};
 use tokio_util::sync::CancellationToken;
 
 pub struct EngineService {
@@ -99,7 +102,10 @@ impl EngineConnection {
             .send(format!("go movetime {}", time_limit_ms))
             .expect("Failed to send TEI think command");
 
-        while let Some(output) = self.receive_tei.recv().await {
+        while let Some(output) = select! {
+            output = self.receive_tei.recv() => output,
+            _ = self.cancellation_token.cancelled() => None,
+        } {
             //println!("Bot output: {}", output);
             if output.starts_with("bestmove") {
                 let best_move = output.trim_start_matches("bestmove ").to_string();
@@ -154,9 +160,10 @@ impl EngineConnection {
                 _ = cancellation_token_clone.cancelled() => return,
             } && !line.is_empty()
             {
-                out_tx
-                    .send(line.trim().to_string())
-                    .expect("Failed to send bot output");
+                println!("Bot output: {}", line.trim());
+                if let Err(e) = out_tx.send(line.trim().to_string()) {
+                    eprintln!("Failed to send TEI output: {}", e);
+                }
                 line.clear();
             }
         });

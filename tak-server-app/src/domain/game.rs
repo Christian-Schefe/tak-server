@@ -152,7 +152,7 @@ pub trait GameService {
         &self,
         game_id: GameId,
         player: PlayerId,
-        disconnected_since: Duration,
+        disconnected_duration: Duration,
         now: Instant,
     ) -> GamePlayerActionResult<CheckDisconnectTimeoutResult>;
     fn do_action(
@@ -695,7 +695,7 @@ impl GameService for GameServiceImpl {
         &self,
         game_id: GameId,
         player: PlayerId,
-        disconnected_since: Duration,
+        disconnected_duration: Duration,
         now: Instant,
     ) -> GamePlayerActionResult<CheckDisconnectTimeoutResult> {
         self.game_player_action(
@@ -709,9 +709,9 @@ impl GameService for GameServiceImpl {
                     return Err(CheckDisconnectTimeoutResult::CantTimeOut);
                 }
                 let timeout_duration = Duration::from_secs(60 * 5);
-                if disconnected_since < timeout_duration {
+                if disconnected_duration < timeout_duration {
                     return Err(CheckDisconnectTimeoutResult::NoTimeout(
-                        timeout_duration - disconnected_since,
+                        timeout_duration - disconnected_duration,
                     ));
                 }
                 Ok(game_entry.game.resign_or_abandon(current_player, now))

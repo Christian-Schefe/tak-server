@@ -24,9 +24,10 @@ members = [
 resolver = "3"
 
 [dependencies]
+clap                     = { version = "4.5.57", features = [ "derive" ] }
 dotenvy                  = "0.15.7"
 log                      = "0.4.28"
-log4rs                   = { version = "1.4.0", features = ["gzip"] }
+log4rs                   = { version = "1.4.0", features = [ "gzip" ] }
 tak-auth-ory             = { path = "./infra/tak-auth-ory" }
 tak-bot-registry         = { path = "./infra/tak-bot-registry" }
 tak-email-lettre         = { path = "./infra/tak-email-lettre" }
@@ -36,4 +37,4 @@ tak-player-connection    = { path = "./infra/tak-player-connection" }
 tak-server-api           = { path = "./api/tak-server-api" }
 tak-server-app           = { path = "./tak-server-app" }
 tak-server-legacy-api    = { path = "./api/tak-server-legacy-api" }
-tokio                    = { version = "1.47.1", features = ["full"] }
+tokio                    = { version = "1.47.1", features = [ "full" ] }

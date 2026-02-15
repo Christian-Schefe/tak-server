@@ -18,8 +18,8 @@ use crate::{
 
 pub mod bot;
 mod guest;
-mod jwt;
-mod ory;
+pub mod jwt;
+pub mod ory;
 
 pub struct AuthenticationService {
     guest_registry: Arc<GuestRegistry>,

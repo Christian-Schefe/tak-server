@@ -2,11 +2,14 @@ use std::sync::Arc;
 
 use clap::{Parser, command};
 
-use crate::{game::GameService, orchestrator::Orchestrator, server_api::ServerApiImpl};
+use crate::{
+    game::GameService, orchestrator::Orchestrator, seek::SeekService, server_api::ServerApiImpl,
+};
 
 mod engine;
 mod game;
 mod orchestrator;
+mod seek;
 mod server_api;
 
 #[derive(Parser)]
@@ -27,20 +30,21 @@ async fn main() {
     let (server_msg_tx, server_msg_rx) = tokio::sync::mpsc::unbounded_channel();
 
     let game_service = Arc::new(GameService::new());
+    let seek_service = Arc::new(SeekService::new());
     let engine_service = Arc::new(engine::EngineService::new(cli.bot_executable));
     let server_api = ServerApiImpl::new(
         "ws://localhost:3003/ws",
-        "https://localhost/api2",
+        "http://localhost:3003",
         server_msg_tx,
+        "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIyYmFiZmY5ZC1lNzI2LTQ4N2UtODc4MS1iNzU3ZjBmNzM1NjAiLCJleHAiOjE3NzExNjIwMzJ9.7ZGqHnE7OQ4lkLInJxDUi7lK9CuUa1dLqgYyeVeWQIc".to_string(),
     );
-    let identity = server_api
-        .who_am_i()
-        .await
-        .expect("Failed to get identity info");
+    let identity = server_api.who_am_i().await.expect("Failed to authenticate");
+    println!("Authenticated as {:?}", identity);
     let orchestrator = Orchestrator::new(
         identity,
         server_api.clone(),
         game_service,
+        seek_service,
         engine_service,
         server_msg_rx,
     );

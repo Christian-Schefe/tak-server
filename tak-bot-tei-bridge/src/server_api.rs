@@ -5,6 +5,7 @@ use std::{
 };
 use tak_server_api::{
     IdentityInfo,
+    seek::{CreateSeekPayload, SeekInfo},
     ws::{ClientMessage, ClientMessageWrapper, ServerMessage},
 };
 use tokio::{
@@ -23,6 +24,7 @@ pub struct ServerApiImpl {
     ws_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
     server_message_handler: UnboundedSender<ServerMessage>,
     http_client: reqwest::Client,
+    auth_token: String,
 }
 
 type WsSendInput = (ClientMessage, UnboundedSender<Result<(), String>>);
@@ -32,6 +34,7 @@ impl ServerApiImpl {
         ws_url: &str,
         http_url: &str,
         server_message_handler: UnboundedSender<ServerMessage>,
+        auth_token: String,
     ) -> Arc<Self> {
         let (ws_tx, ws_rx) = tokio::sync::mpsc::unbounded_channel();
 
@@ -44,11 +47,12 @@ impl ServerApiImpl {
             ws_task: Arc::new(Mutex::new(None)),
             server_message_handler,
             http_client: reqwest::Client::new(),
+            auth_token: auth_token.clone(),
         });
 
         let this_clone = this.clone();
         let ws_task = tokio::spawn(async move {
-            ServerApiImpl::run_ws(this_clone, ws_rx, cancellation_token).await;
+            ServerApiImpl::run_ws(this_clone, ws_rx, auth_token, cancellation_token).await;
         });
         *this.ws_task.lock().unwrap() = Some(ws_task);
         this
@@ -66,6 +70,7 @@ impl ServerApiImpl {
         msg: ServerMessage,
         handler: &UnboundedSender<ServerMessage>,
     ) {
+        println!("Received server message: {:?}", msg);
         match msg {
             ServerMessage::Success { response_id } => {
                 if let Some(tx) = response_map.lock().unwrap().remove(&response_id) {
@@ -82,7 +87,9 @@ impl ServerApiImpl {
                 }
             }
             msg => {
-                let _ = handler.send(msg);
+                if let Err(e) = handler.send(msg) {
+                    eprintln!("Failed to send server message to handler: {}", e);
+                }
             }
         }
     }
@@ -90,16 +97,52 @@ impl ServerApiImpl {
     async fn run_ws(
         api: Arc<ServerApiImpl>,
         mut ws_rx: UnboundedReceiver<WsSendInput>,
+        auth_token: String,
         cancellation_token: CancellationToken,
     ) {
         loop {
-            let (ws_stream, _) = tokio_tungstenite::connect_async(&api.ws_url)
-                .await
-                .expect("Failed to connect to WebSocket");
+            let ws_stream = match tokio_tungstenite::connect_async(&api.ws_url).await {
+                Ok((ws_stream, _)) => {
+                    println!("Connected to WebSocket at {}", api.ws_url);
+                    ws_stream
+                }
+                Err(e) => {
+                    eprintln!("Failed to connect to WebSocket: {}", e);
+                    select! {
+                        _ = cancellation_token.cancelled() => break,
+                        _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {},
+                    }
+                    eprintln!("Retrying WebSocket connection...");
+                    continue;
+                }
+            };
 
             let response_map = Arc::new(Mutex::new(HashMap::new()));
 
             let (mut ws_write, mut ws_read) = ws_stream.split();
+
+            let auth_message = ClientMessage::Authenticate {
+                token: auth_token.to_string(),
+            };
+            let auth_message = serde_json::to_string(&ClientMessageWrapper {
+                response_id: uuid::Uuid::new_v4(),
+                message: auth_message,
+            })
+            .unwrap();
+            if let Err(e) = ws_write
+                .send(tokio_tungstenite::tungstenite::Message::Text(
+                    auth_message.into(),
+                ))
+                .await
+            {
+                eprintln!("Failed to send authentication message: {}", e);
+                select! {
+                    _ = cancellation_token.cancelled() => break,
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {},
+                }
+                eprintln!("Reconnecting to WebSocket...");
+                continue;
+            }
 
             let response_map_clone = response_map.clone();
             let child_cancellation_token = cancellation_token.child_token();
@@ -119,6 +162,8 @@ impl ServerApiImpl {
                                     &handler_clone,
                                 )
                                 .await;
+                            } else {
+                                eprintln!("Failed to parse server message: {}", text);
                             }
                         }
                         Ok(tokio_tungstenite::tungstenite::Message::Close(_)) => {
@@ -166,10 +211,10 @@ impl ServerApiImpl {
     }
 
     pub async fn who_am_i(&self) -> Result<IdentityInfo, String> {
-        self.do_request("/whoami?bot=true").await
+        self.get_request("/whoami?bot=true").await
     }
 
-    async fn do_request<T: serde::de::DeserializeOwned>(
+    async fn get_request<T: serde::de::DeserializeOwned>(
         &self,
         endpoint: &str,
     ) -> Result<T, String> {
@@ -177,14 +222,45 @@ impl ServerApiImpl {
         let response = self
             .http_client
             .get(&url)
+            .bearer_auth(&self.auth_token)
             .send()
             .await
             .map_err(|e| format!("HTTP request failed: {}", e))?;
 
         if !response.status().is_success() {
             return Err(format!(
-                "HTTP request failed with status: {}",
-                response.status()
+                "HTTP request failed with status: {}, body: {}",
+                response.status(),
+                response.text().await.unwrap_or_default()
+            ));
+        }
+
+        response
+            .json::<T>()
+            .await
+            .map_err(|e| format!("Failed to parse response: {}", e))
+    }
+
+    async fn post_request<T: serde::de::DeserializeOwned>(
+        &self,
+        endpoint: &str,
+        body: impl serde::ser::Serialize,
+    ) -> Result<T, String> {
+        let url = format!("{}{}", self.http_url, endpoint);
+        let response = self
+            .http_client
+            .post(&url)
+            .bearer_auth(&self.auth_token)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(format!(
+                "HTTP request failed with status: {}, body: {}",
+                response.status(),
+                response.text().await.unwrap_or_default()
             ));
         }
 
@@ -209,6 +285,10 @@ impl ServerApi for ServerApiImpl {
     }
 
     async fn load_games(&self) -> Result<Vec<tak_server_api::game::JsonGameMetadata>, String> {
-        self.do_request("/games").await
+        self.get_request("/games").await
+    }
+
+    async fn create_seek(&self, seek: CreateSeekPayload) -> Result<SeekInfo, String> {
+        self.post_request("/seeks", seek).await
     }
 }

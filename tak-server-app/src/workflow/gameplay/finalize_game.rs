@@ -102,6 +102,7 @@ impl<
 > FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, A, S>
 {
     async fn finalize_game(&self, ended_game: FinishedGame) {
+        log::info!("Finalizing game {}", ended_game.game_id);
         let game_id = ended_game.game_id;
         let over_msg = ListenerMessage::GameOver {
             game_id: game_id,
@@ -120,11 +121,14 @@ impl<
             )
             .await;
 
-        let observers = self.spectator_service.get_spectators_for_game(game_id);
+        let observers = self.spectator_service.remove_game(game_id);
         self.listener_notification_port
             .notify_listeners(&observers, &over_msg);
 
-        self.spectator_service.remove_game(game_id);
+        log::debug!(
+            "Notified players and spectators about game {} ending, updating ratings and stats",
+            game_id
+        );
 
         let game_rating_info = update_ratings(
             &self.get_account_workflow,
@@ -133,6 +137,11 @@ impl<
             &ended_game,
         )
         .await;
+
+        log::debug!(
+            "Ratings updated for game {}, updating match and game history",
+            game_id
+        );
 
         if let Some(match_id) = self.match_service.get_match_id_by_game_id(game_id) {
             log::info!("Finalizing game {} in match {}", game_id, match_id);
@@ -159,6 +168,7 @@ impl<
                 e
             );
         }
+        log::debug!("Finished finalizing game {}", game_id);
     }
 }
 

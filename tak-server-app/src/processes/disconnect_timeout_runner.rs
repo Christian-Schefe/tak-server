@@ -34,13 +34,15 @@ impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> DisconnectTimeoutRunn
         token: CancellationToken,
     ) {
         loop {
-            match select! {
-                _ = token.cancelled() => {
-                    log::info!("Disconnect timeout cancelled for player {:?}", player_id);
-                    return;
-                }
-                res = this.observer.check_player_timeout(player_id, disconnected_at) => {res}
-            } {
+            if token.is_cancelled() {
+                log::info!("Disconnect timeout cancelled for player {:?}", player_id);
+                return;
+            }
+            let res = this
+                .observer
+                .check_player_timeout(player_id, disconnected_at)
+                .await;
+            match res {
                 ObserveOutcome::Finished => {
                     log::info!(
                         "Player {:?} disconnect timeout processing finished",
@@ -54,7 +56,13 @@ impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> DisconnectTimeoutRunn
                         player_id,
                         delay
                     );
-                    tokio::time::sleep(delay).await;
+                    select! {
+                        _ = token.cancelled() => {
+                            log::info!("Disconnect timeout cancelled for player {:?}", player_id);
+                            return;
+                        }
+                        _ = tokio::time::sleep(delay) => {}
+                    }
                 }
             }
         }
@@ -73,6 +81,11 @@ impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> DisconnectTimeoutRunn
         }
         tokio::spawn(async move {
             Self::run(this, player_id, disconnected_at, token).await;
+            log::info!(
+                "Disconnect timeout task exited for player {:?} who disconnected at {:?}",
+                player_id,
+                disconnected_at
+            );
         });
     }
 

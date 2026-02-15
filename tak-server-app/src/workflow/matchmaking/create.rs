@@ -8,6 +8,7 @@ use crate::{
         seek::{CreateSeekError, SeekService},
     },
     ports::notification::{ListenerMessage, ListenerNotificationPort},
+    workflow::matchmaking::SeekView,
 };
 
 pub trait CreateSeekUseCase {
@@ -18,7 +19,7 @@ pub trait CreateSeekUseCase {
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
         is_rated: bool,
-    ) -> Result<(), CreateSeekError>;
+    ) -> Result<SeekView, CreateSeekError>;
 }
 
 pub struct CreateSeekUseCaseImpl<S: SeekService, L: ListenerNotificationPort> {
@@ -45,16 +46,17 @@ impl<S: SeekService + Send + Sync + 'static, L: ListenerNotificationPort + Send 
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
         is_rated: bool,
-    ) -> Result<(), CreateSeekError> {
+    ) -> Result<SeekView, CreateSeekError> {
         let created_seek =
             self.seek_service
                 .create_seek(player, opponent, color, game_settings, is_rated)?;
+        let seek_view: SeekView = created_seek.into();
         let message = ListenerMessage::SeekCreated {
-            seek: created_seek.into(),
+            seek: seek_view.clone(),
         };
 
         self.notification_port.notify_all(&message);
 
-        Ok(())
+        Ok(seek_view)
     }
 }
