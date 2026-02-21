@@ -274,7 +274,7 @@ impl OryAuthenticationService {
         };
 
         let account = Account::new(
-            AccountId(identity.id),
+            AccountId::from_string(identity.id),
             account_type,
             role,
             flags,
@@ -286,7 +286,8 @@ impl OryAuthenticationService {
     }
 
     pub async fn get_account(&self, account_id: &AccountId) -> Option<Account> {
-        let identity = match get_identity(&self.admin_config, &account_id.to_string(), None).await {
+        let id = account_id.as_uuid()?.as_simple().to_string();
+        let identity = match get_identity(&self.admin_config, &id, None).await {
             Ok(response) => response,
             Err(_) => return None,
         };
@@ -296,6 +297,7 @@ impl OryAuthenticationService {
     }
 
     pub async fn set_role(&self, account_id: &AccountId, role: AccountRole) -> Result<(), ()> {
+        let id = account_id.as_uuid().ok_or(())?.as_simple().to_string();
         let ory_role = match role {
             AccountRole::User => OryAccountRole::User,
             AccountRole::Moderator => OryAccountRole::Moderator,
@@ -307,7 +309,7 @@ impl OryAuthenticationService {
             value: Some(Some(serde_json::to_value(ory_role).map_err(|_| ())?)),
             from: None,
         }];
-        match patch_identity(self.admin_config.as_ref(), &account_id.0, Some(json_patch)).await {
+        match patch_identity(self.admin_config.as_ref(), &id, Some(json_patch)).await {
             Ok(_) => {}
             Err(_) => return Err(()),
         };
@@ -315,6 +317,7 @@ impl OryAuthenticationService {
     }
 
     pub async fn add_flag(&self, account_id: &AccountId, flag: ModerationFlag) -> Result<(), ()> {
+        let id = account_id.as_uuid().ok_or(())?.as_simple().to_string();
         let json_patch = vec![models::JsonPatch {
             op: "add".to_string(),
             path: format!(
@@ -327,7 +330,7 @@ impl OryAuthenticationService {
             value: Some(Some(serde_json::json!(true))),
             from: None,
         }];
-        match patch_identity(self.admin_config.as_ref(), &account_id.0, Some(json_patch)).await {
+        match patch_identity(self.admin_config.as_ref(), &id, Some(json_patch)).await {
             Ok(_) => {}
             Err(_) => return Err(()),
         };
@@ -339,6 +342,7 @@ impl OryAuthenticationService {
         account_id: &AccountId,
         flag: ModerationFlag,
     ) -> Result<(), ()> {
+        let id = account_id.as_uuid().ok_or(())?.as_simple().to_string();
         let json_patch = vec![models::JsonPatch {
             op: "add".to_string(),
             path: format!(
@@ -351,7 +355,7 @@ impl OryAuthenticationService {
             value: Some(Some(serde_json::json!(false))),
             from: None,
         }];
-        match patch_identity(self.admin_config.as_ref(), &account_id.0, Some(json_patch)).await {
+        match patch_identity(self.admin_config.as_ref(), &id, Some(json_patch)).await {
             Ok(_) => {}
             Err(_) => return Err(()),
         };

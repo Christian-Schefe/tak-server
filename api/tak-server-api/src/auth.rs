@@ -44,10 +44,7 @@ impl FromRequestParts<AppState> for StrictAuth {
                 if acc.is_guest() || acc.is_bot() {
                     return Ok(StrictAuth { account: Some(acc) });
                 } else {
-                    log::info!(
-                        "Rejected non-(guest-or-bot) JWT for strict auth: {:?}",
-                        acc
-                    );
+                    log::info!("Rejected non-(guest-or-bot) JWT for strict auth: {:?}", acc);
                 }
             } else {
                 log::info!("Failed to validate JWT for strict auth");
@@ -109,7 +106,7 @@ pub async fn get_bot_certificate(
     }
     let target_account = app
         .auth
-        .get_account(&AccountId(req.target_account_id))
+        .get_account(&AccountId::from_string(req.target_account_id))
         .await
         .ok_or_else(|| ServiceError::NotFound("Target account not found".to_string()))?;
     if !target_account.is_bot() {

@@ -71,7 +71,7 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
             .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
 
         if let Some(model) = player_model {
-            let account_id = AccountId(model.account_id);
+            let account_id = AccountId::from_string(model.account_id);
 
             self.account_id_to_player_id_cache
                 .insert(account_id.clone(), player_id);

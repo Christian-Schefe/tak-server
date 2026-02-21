@@ -53,8 +53,11 @@ async fn main() {
                 )
                 .await
             {
-                Ok(_) => println!("Account {} set to admin", acc.account_id.0),
-                Err(_) => println!("Failed to set account {} to admin", acc.account_id.0),
+                Ok(_) => println!("Account {} set to admin", acc.account_id.to_string()),
+                Err(_) => println!(
+                    "Failed to set account {} to admin",
+                    acc.account_id.to_string()
+                ),
             }
         }
         Commands::GenerateToken { username, duration } => {

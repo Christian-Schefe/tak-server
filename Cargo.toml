@@ -12,6 +12,7 @@ members = [
     "infra/tak-bot-registry",
     "infra/tak-email-lettre",
     "infra/tak-events-google-sheets",
+    "infra/tak-persistence-profile-pictures",
     "infra/tak-persistence-sea-orm",
     "infra/tak-persistence-sea-orm-entities",
     "infra/tak-persistence-sea-orm-migrations",
@@ -24,17 +25,18 @@ members = [
 resolver = "3"
 
 [dependencies]
-clap                     = { version = "4.5.57", features = [ "derive" ] }
-dotenvy                  = "0.15.7"
-log                      = "0.4.28"
-log4rs                   = { version = "1.4.0", features = [ "gzip" ] }
-tak-auth-ory             = { path = "./infra/tak-auth-ory" }
-tak-bot-registry         = { path = "./infra/tak-bot-registry" }
-tak-email-lettre         = { path = "./infra/tak-email-lettre" }
-tak-events-google-sheets = { path = "./infra/tak-events-google-sheets" }
-tak-persistence-sea-orm  = { path = "./infra/tak-persistence-sea-orm" }
-tak-player-connection    = { path = "./infra/tak-player-connection" }
-tak-server-api           = { path = "./api/tak-server-api" }
-tak-server-app           = { path = "./tak-server-app" }
-tak-server-legacy-api    = { path = "./api/tak-server-legacy-api" }
-tokio                    = { version = "1.47.1", features = [ "full" ] }
+clap                             = { version = "4.5.57", features = [ "derive" ] }
+dotenvy                          = "0.15.7"
+log                              = "0.4.28"
+log4rs                           = { version = "1.4.0", features = [ "gzip" ] }
+tak-auth-ory                     = { path = "./infra/tak-auth-ory" }
+tak-bot-registry                 = { path = "./infra/tak-bot-registry" }
+tak-email-lettre                 = { path = "./infra/tak-email-lettre" }
+tak-events-google-sheets         = { path = "./infra/tak-events-google-sheets" }
+tak-persistence-profile-pictures = { path = "./infra/tak-persistence-profile-pictures" }
+tak-persistence-sea-orm          = { path = "./infra/tak-persistence-sea-orm" }
+tak-player-connection            = { path = "./infra/tak-player-connection" }
+tak-server-api                   = { path = "./api/tak-server-api" }
+tak-server-app                   = { path = "./tak-server-app" }
+tak-server-legacy-api            = { path = "./api/tak-server-legacy-api" }
+tokio                            = { version = "1.47.1", features = [ "full" ] }

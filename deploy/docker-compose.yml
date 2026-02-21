@@ -98,6 +98,7 @@ services:
       - TAK_ORY_KRATOS_ADMIN_URL=${TAK_ORY_KRATOS_ADMIN_URL}
       - TAK_JWT_SECRET=${TAK_JWT_SECRET}
       - TAK_BOT_REGISTRY_PATH=${TAK_BOT_REGISTRY_PATH}
+      - PROFILE_PICTURE_STORAGE_PATH=${PROFILE_PICTURE_STORAGE_PATH}
       - LOG_FILE_PATH=${LOG_FILE_PATH}
       - LOG_ARCHIVE_PATTERN=${LOG_ARCHIVE_PATTERN}
       - GOOGLE_SERVICE_ACCOUNT_KEY=${GOOGLE_SERVICE_ACCOUNT_KEY}
@@ -114,9 +115,12 @@ services:
       - mariadb
     profiles:
       - production
+    volumes:
+      - profile_picture_storage:${PROFILE_PICTURE_STORAGE_PATH}
 
 volumes:
   caddy_data:
   caddy_config:
   mariadb_data:
   postgres_data:
+  profile_picture_storage:

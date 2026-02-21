@@ -6,7 +6,7 @@ use sea_orm::{DatabaseConnection, EntityTrait, Iterable, sea_query::OnConflict};
 use tak_persistence_sea_orm_entities::profile;
 use tak_server_app::domain::{
     AccountId, RepoError, RepoRetrieveError,
-    profile::{AccountProfile, AccountProfileRepository},
+    profile::{AccountProfile, AccountProfileRepository, ProfilePictureVersion},
 };
 
 pub struct ProfileRepositoryImpl {
@@ -37,6 +37,9 @@ impl AccountProfileRepository for ProfileRepositoryImpl {
         let active_model = profile::ActiveModel {
             account_id: sea_orm::ActiveValue::Set(account_id.to_string()),
             country: sea_orm::ActiveValue::Set(profile_information.country.map(|x| x.to_string())),
+            profile_picture_version: sea_orm::ActiveValue::Set(
+                profile_information.profile_picture_version.0,
+            ),
         };
         profile::Entity::insert(active_model)
             .on_conflict(
@@ -76,6 +79,7 @@ impl AccountProfileRepository for ProfileRepositoryImpl {
                     .country
                     .as_deref()
                     .and_then(|c| CountryCode::from_str(c).ok()),
+                profile_picture_version: ProfilePictureVersion(model.profile_picture_version),
             };
             self.profile_cache
                 .insert(account_id.clone(), profile_information.clone());

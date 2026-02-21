@@ -65,10 +65,12 @@ pub async fn serve(
             post(game::respond_to_request),
         )
         .route("/profiles/{account_id}", get(player::get_account_profile))
+        .route("/me/profile", post(player::update_account_profile))
         .route(
-            "/profiles/{account_id}",
-            post(player::update_account_profile),
+            "/profiles/{account_id}/picture",
+            get(player::get_profile_picture),
         )
+        .route("/me/profile/picture", post(player::set_profile_picture))
         .route("/usernames/{username}", get(player::get_player_by_username))
         .route(
             "/accounts/{account_id}",

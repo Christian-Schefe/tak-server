@@ -2,18 +2,24 @@ use std::str::FromStr;
 
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    body::Body,
+    extract::{Multipart, Path, Query, State},
+    http::header,
+    response::Response,
 };
 use tak_server_app::{
     domain::{
         AccountId, Pagination, PlayerId, SortOrder,
         game_history::{GamePlayerFilter, GameQuery, GameSortBy},
+        profile::ProfilePictureFileType,
     },
     workflow::{account::AccountProfileView, player::PlayerStatsView},
 };
 use uuid::Uuid;
 
-use crate::{AppState, PaginatedResponse, PaginationQuery, ServiceError, game::JsonEndedGameInfo};
+use crate::{
+    AppState, PaginatedResponse, PaginationQuery, ServiceError, auth::Auth, game::JsonEndedGameInfo,
+};
 
 async fn get_player_info_helper(
     app: &AppState,
@@ -104,8 +110,11 @@ pub async fn get_player_by_account_id(
     State(app): State<AppState>,
     Path(account_id): Path<String>,
 ) -> Result<Json<PlayerInfo>, ServiceError> {
-    let account_id = AccountId(account_id);
-    let Some(account) = app.auth.get_account(&account_id).await else {
+    let Some(account) = app
+        .auth
+        .get_account(&AccountId::from_string(account_id))
+        .await
+    else {
         return Err(ServiceError::NotFound("Player not found".to_string()));
     };
 
@@ -123,11 +132,17 @@ pub async fn get_account_profile(
     State(app): State<AppState>,
     Path(account_id): Path<String>,
 ) -> Result<Json<PlayerProfileInfo>, ServiceError> {
-    let account_id = AccountId(account_id);
+    let Some(account) = app
+        .auth
+        .get_account(&AccountId::from_string(account_id))
+        .await
+    else {
+        return Err(ServiceError::NotFound("Player not found".to_string()));
+    };
     let profile = app
         .app
         .get_profile_use_case
-        .get_profile(account_id)
+        .get_profile(&account.account_id)
         .await
         .map_err(|_| ServiceError::Internal("Failed to retrieve player profile".to_string()))?;
 
@@ -135,11 +150,10 @@ pub async fn get_account_profile(
 }
 
 pub async fn update_account_profile(
+    auth: Auth,
     State(app): State<AppState>,
-    Path(account_id): Path<String>,
-    Json(payload): Json<PlayerProfileInfo>,
+    Json(payload): Json<PlayerProfileUpdate>,
 ) -> Result<(), ServiceError> {
-    let account_id = AccountId(account_id);
     let country = match payload.country {
         Some(country_str) => Some(
             country_code_enum::CountryCode::from_str(&country_str)
@@ -150,9 +164,91 @@ pub async fn update_account_profile(
 
     app.app
         .update_profile_use_case
-        .update_profile(account_id, country)
+        .update_profile(&auth.account.account_id, country)
         .await
         .map_err(|_| ServiceError::Internal("Failed to update player profile".to_string()))
+}
+
+#[derive(serde::Deserialize)]
+#[allow(dead_code)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionQuery {
+    #[serde(rename = "v")]
+    version: Option<u64>,
+}
+
+pub async fn get_profile_picture(
+    State(app): State<AppState>,
+    Path(account_id): Path<String>,
+    Query(_version_query): Query<VersionQuery>,
+) -> Result<Response, ServiceError> {
+    let Some(account) = app
+        .auth
+        .get_account(&AccountId::from_string(account_id))
+        .await
+    else {
+        return Err(ServiceError::NotFound("Player not found".to_string()));
+    };
+    let profile_picture = app
+        .app
+        .get_profile_use_case
+        .get_profile_picture(&account.account_id)
+        .await
+        .map_err(|_| ServiceError::Internal("Failed to retrieve profile picture".to_string()))?;
+    let body = Body::from_stream(profile_picture.stream);
+    let mut response = Response::new(body);
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        header::HeaderValue::from_static(match profile_picture.content_type {
+            ProfilePictureFileType::WebP => "image/webp",
+        }),
+    );
+    Ok(response)
+}
+
+pub async fn set_profile_picture(
+    auth: Auth,
+    State(app): State<AppState>,
+    mut multipart: Multipart,
+) -> Result<(), ServiceError> {
+    while let Some(field) = match multipart.next_field().await {
+        Ok(field) => field,
+        Err(e) => {
+            return Err(ServiceError::BadRequest(format!(
+                "Failed to parse multipart: {}",
+                e
+            )));
+        }
+    } {
+        let data = field.bytes().await.map_err(|e| {
+            ServiceError::BadRequest(format!("Failed to read multipart field: {}", e))
+        })?;
+
+        let img = match image::load_from_memory(&data) {
+            Ok(img) => img,
+            Err(e) => {
+                return Err(ServiceError::BadRequest(format!(
+                    "Failed to parse image data: {}",
+                    e
+                )));
+            }
+        };
+
+        match app
+            .app
+            .update_profile_use_case
+            .set_profile_picture(&auth.account.account_id, img)
+            .await
+        {
+            Ok(_) => (),
+            Err(_) => {
+                return Err(ServiceError::Internal(
+                    "Failed to update profile picture".to_string(),
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 pub async fn get_games_history(
@@ -231,14 +327,22 @@ impl From<PlayerStatsView> for PlayerStatsInfo {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct PlayerProfileUpdate {
+    pub country: Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct PlayerProfileInfo {
     pub country: Option<String>,
+    pub profile_picture_version: u64,
 }
 
 impl From<AccountProfileView> for PlayerProfileInfo {
     fn from(profile: AccountProfileView) -> Self {
         PlayerProfileInfo {
             country: profile.country.map(|c| c.to_string()),
+            profile_picture_version: profile.profile_picture_version.0,
         }
     }
 }

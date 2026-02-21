@@ -4,36 +4,57 @@ use country_code_enum::CountryCode;
 
 use crate::{
     domain::{
-        AccountId, RepoError,
-        profile::{AccountProfile, AccountProfileRepository},
+        AccountId, RepoError, RepoRetrieveError,
+        profile::{
+            AccountProfile, AccountProfileRepository, ProfilePictureRepository,
+            ProfilePictureVersion,
+        },
     },
     ports::authentication::AuthenticationPort,
 };
+use image::DynamicImage;
 
 #[async_trait::async_trait]
 pub trait UpdateProfileUseCase {
     async fn update_profile(
         &self,
-        account_id: AccountId,
+        account_id: &AccountId,
         country: Option<CountryCode>,
     ) -> Result<(), UpdateProfileError>;
+    async fn set_profile_picture(
+        &self,
+        account_id: &AccountId,
+        picture_data: DynamicImage,
+    ) -> Result<ProfilePictureVersion, UpdateProfileError>;
 }
 
 pub enum UpdateProfileError {
-    ProfileNotFound,
+    AccountNotFound,
     RepositoryError,
 }
 
-pub struct UpdateProfileUseCaseImpl<PF: AccountProfileRepository, A: AuthenticationPort> {
+pub struct UpdateProfileUseCaseImpl<
+    PF: AccountProfileRepository,
+    A: AuthenticationPort,
+    PFP: ProfilePictureRepository,
+> {
     profile_information_repo: Arc<PF>,
     authentication_port: Arc<A>,
+    profile_picture_repo: Arc<PFP>,
 }
 
-impl<PF: AccountProfileRepository, A: AuthenticationPort> UpdateProfileUseCaseImpl<PF, A> {
-    pub fn new(profile_information_repo: Arc<PF>, authentication_port: Arc<A>) -> Self {
+impl<PF: AccountProfileRepository, A: AuthenticationPort, PFP: ProfilePictureRepository>
+    UpdateProfileUseCaseImpl<PF, A, PFP>
+{
+    pub fn new(
+        profile_information_repo: Arc<PF>,
+        authentication_port: Arc<A>,
+        profile_picture_repo: Arc<PFP>,
+    ) -> Self {
         Self {
             profile_information_repo,
             authentication_port,
+            profile_picture_repo,
         }
     }
 }
@@ -42,30 +63,128 @@ impl<PF: AccountProfileRepository, A: AuthenticationPort> UpdateProfileUseCaseIm
 impl<
     PF: AccountProfileRepository + Send + Sync + 'static,
     A: AuthenticationPort + Send + Sync + 'static,
-> UpdateProfileUseCase for UpdateProfileUseCaseImpl<PF, A>
+    PFP: ProfilePictureRepository + Send + Sync + 'static,
+> UpdateProfileUseCase for UpdateProfileUseCaseImpl<PF, A, PFP>
 {
     async fn update_profile(
         &self,
-        account_id: AccountId,
+        account_id: &AccountId,
         country: Option<CountryCode>,
     ) -> Result<(), UpdateProfileError> {
-        let account = match self.authentication_port.get_account(&account_id).await {
+        let account = match self.authentication_port.get_account(account_id).await {
             Some(acc) => acc,
-            None => return Err(UpdateProfileError::ProfileNotFound),
+            None => return Err(UpdateProfileError::AccountNotFound),
         };
         if account.is_guest() {
-            return Err(UpdateProfileError::ProfileNotFound);
+            return Err(UpdateProfileError::AccountNotFound);
         }
-        let new_profile = AccountProfile::new(country);
+        let mut profile_data = match self
+            .profile_information_repo
+            .get_profile_information(account_id)
+            .await
+        {
+            Ok(data) => data,
+            Err(RepoRetrieveError::NotFound) => {
+                AccountProfile::new(None, ProfilePictureVersion::initial())
+            }
+            Err(RepoRetrieveError::StorageError(e)) => {
+                log::error!(
+                    "Failed to retrieve profile information for account {}: {}",
+                    account_id,
+                    e
+                );
+                return Err(UpdateProfileError::RepositoryError);
+            }
+        };
+        profile_data.country = country;
         match self
             .profile_information_repo
-            .insert_profile_information(&account_id, new_profile)
+            .insert_profile_information(account_id, profile_data)
             .await
         {
             Ok(()) => Ok(()),
             Err(RepoError::StorageError(e)) => {
                 log::error!(
+                    "Failed to update profile information for account {}: {}",
+                    account_id,
+                    e
+                );
+                Err(UpdateProfileError::RepositoryError)
+            }
+        }
+    }
+
+    async fn set_profile_picture(
+        &self,
+        account_id: &AccountId,
+        picture_data: DynamicImage,
+    ) -> Result<ProfilePictureVersion, UpdateProfileError> {
+        let account = match self.authentication_port.get_account(account_id).await {
+            Some(acc) => acc,
+            None => return Err(UpdateProfileError::AccountNotFound),
+        };
+        if account.is_guest() {
+            return Err(UpdateProfileError::AccountNotFound);
+        }
+        let profile_data = match self
+            .profile_information_repo
+            .get_profile_information(account_id)
+            .await
+        {
+            Ok(data) => data,
+            Err(RepoRetrieveError::NotFound) => {
+                AccountProfile::new(None, ProfilePictureVersion::initial())
+            }
+            Err(RepoRetrieveError::StorageError(e)) => {
+                log::error!(
                     "Failed to retrieve profile information for account {}: {}",
+                    account_id,
+                    e
+                );
+                return Err(UpdateProfileError::RepositoryError);
+            }
+        };
+        log::info!(
+            "Updating profile picture for account {} with new version {}",
+            account_id,
+            profile_data.profile_picture_version.increment().0
+        );
+        let new_version = profile_data.profile_picture_version.increment();
+        match self
+            .profile_information_repo
+            .insert_profile_information(
+                account_id,
+                AccountProfile {
+                    country: profile_data.country,
+                    profile_picture_version: new_version,
+                },
+            )
+            .await
+        {
+            Ok(()) => (),
+            Err(RepoError::StorageError(e)) => {
+                log::error!(
+                    "Failed to update profile information for account {}: {}",
+                    account_id,
+                    e
+                );
+                return Err(UpdateProfileError::RepositoryError);
+            }
+        }
+        log::info!(
+            "Setting new profile picture for account {} with version {}",
+            account_id,
+            new_version.0
+        );
+        match self
+            .profile_picture_repo
+            .set_profile_picture(account_id, picture_data)
+            .await
+        {
+            Ok(()) => Ok(new_version),
+            Err(RepoError::StorageError(e)) => {
+                log::error!(
+                    "Failed to set profile picture for account {}: {}",
                     account_id,
                     e
                 );

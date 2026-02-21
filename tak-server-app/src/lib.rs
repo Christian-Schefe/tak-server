@@ -10,7 +10,7 @@ use crate::{
         game_history::{GameHistoryServiceImpl, GameRepository},
         r#match::MatchServiceImpl,
         moderation::{AdminAccountPolicy, HigherRoleAccountPolicy, ModeratorAccountPolicy},
-        profile::AccountProfileRepository,
+        profile::{AccountProfileRepository, ProfilePictureRepository},
         rating::{RatingRepository, RatingServiceImpl},
         seek::SeekServiceImpl,
         spectator::SpectatorServiceImpl,
@@ -131,6 +131,7 @@ pub async fn build_application<
     PR: PlayerAccountMappingRepository + Send + Sync + 'static,
     PF: AccountProfileRepository + Send + Sync + 'static,
     AC: AccountOnlineStatusPort + Send + Sync + 'static,
+    PFP: ProfilePictureRepository + Send + Sync + 'static,
 >(
     game_repository: Arc<G>,
     player_repository: Arc<PR>,
@@ -143,6 +144,7 @@ pub async fn build_application<
     authentication_service: Arc<AS>,
     profile_repository: Arc<PF>,
     account_online_status_port: Arc<AC>,
+    profile_picture_repo: Arc<PFP>,
 ) -> Application {
     let seek_service = Arc::new(SeekServiceImpl::new());
     let game_service = Arc::new(GameServiceImpl::new());
@@ -312,10 +314,14 @@ pub async fn build_application<
 
         get_snapshot_workflow,
         get_account_workflow,
-        get_profile_use_case: Arc::new(GetProfileUseCaseImpl::new(profile_repository.clone())),
+        get_profile_use_case: Arc::new(GetProfileUseCaseImpl::new(
+            profile_repository.clone(),
+            profile_picture_repo.clone(),
+        )),
         update_profile_use_case: Arc::new(UpdateProfileUseCaseImpl::new(
             profile_repository.clone(),
             authentication_service.clone(),
+            profile_picture_repo.clone(),
         )),
 
         get_stats_use_case: Arc::new(GetPlayerStatsUseCaseImpl::new(stats_repository.clone())),

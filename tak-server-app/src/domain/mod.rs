@@ -21,17 +21,36 @@ impl std::fmt::Display for PlayerId {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct AccountId(pub String);
+pub enum AccountId {
+    Uuid(uuid::Uuid),
+    Other(String),
+}
 
 impl AccountId {
     pub fn new() -> Self {
-        AccountId(uuid::Uuid::new_v4().to_string())
+        AccountId::Uuid(uuid::Uuid::new_v4())
+    }
+    pub fn from_string(s: String) -> Self {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&s) {
+            AccountId::Uuid(uuid)
+        } else {
+            AccountId::Other(s)
+        }
+    }
+    pub fn as_uuid(&self) -> Option<uuid::Uuid> {
+        match self {
+            AccountId::Uuid(uuid) => Some(*uuid),
+            AccountId::Other(_) => None,
+        }
     }
 }
 
 impl std::fmt::Display for AccountId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        match self {
+            AccountId::Uuid(uuid) => write!(f, "{}", uuid.as_hyphenated()),
+            AccountId::Other(s) => write!(f, "{}", s),
+        }
     }
 }
 

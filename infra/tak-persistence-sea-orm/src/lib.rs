@@ -16,7 +16,7 @@ async fn try_reconnect_db_pool(opt: ConnectOptions) -> DatabaseConnection {
         match Database::connect(opt.clone()).await {
             Ok(db) => return db,
             Err(e) => {
-                eprintln!(
+                log::error!(
                     "Failed to connect to database: {}. Retrying in 5 seconds...",
                     e
                 );

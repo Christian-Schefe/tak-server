@@ -4,6 +4,7 @@ use tak_auth_ory::AuthenticationService;
 use tak_bot_registry::FileBotRepository;
 use tak_email_lettre::LettreEmailAdapter;
 use tak_events_google_sheets::NoopEventRepository;
+use tak_persistence_profile_pictures::ProfilePictureRepositoryImpl;
 use tak_persistence_sea_orm::{
     games::GameRepositoryImpl, player_account_mapping::PlayerAccountMappingRepositoryImpl,
     profile::ProfileRepositoryImpl, ratings::RatingRepositoryImpl, stats::StatsRepositoryImpl,
@@ -83,6 +84,7 @@ async fn main() {
     let bot_repository = Arc::new(FileBotRepository::new());
     let authentication_adapter = Arc::new(AuthenticationService::new(bot_repository));
     let account_online_status_adapter = Arc::new(AccountOnlineStatusService::new());
+    let profile_picture_repo = Arc::new(ProfilePictureRepositoryImpl::new().await);
 
     let app = Arc::new(
         build_application(
@@ -97,6 +99,7 @@ async fn main() {
             authentication_adapter.clone(),
             profile_repo,
             account_online_status_adapter,
+            profile_picture_repo,
         )
         .await,
     );

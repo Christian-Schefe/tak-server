@@ -246,7 +246,7 @@ async fn handle_authenticated_client_message(
                 JsonChatMessageTarget::Global => MessageTarget::Global,
                 JsonChatMessageTarget::Room { room_name } => MessageTarget::Room(room_name),
                 JsonChatMessageTarget::Private { to_account_id } => {
-                    MessageTarget::Private(AccountId(to_account_id))
+                    MessageTarget::Private(AccountId::from_string(to_account_id))
                 }
             };
             app.app

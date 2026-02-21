@@ -10,6 +10,7 @@ pub struct Model {
     )]
     pub account_id: String,
     pub country: Option<String>,
+    pub profile_picture_version: u64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
