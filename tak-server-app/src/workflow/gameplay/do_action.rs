@@ -6,11 +6,11 @@ use crate::{
     domain::{
         GameId, PlayerId,
         game::{
-            DoActionResult, FinishedGame, GamePlayerActionResult, GameService, ResignResult,
+            DoActionResult, FinishedGame, GamePlayerActionResult, GameService,
             request::{GameRequest, GameRequestId, GameRequestType},
         },
     },
-    ports::notification::ListenerMessage,
+    ports::notification::{ListenerGameMessageType, ListenerMessage},
     workflow::{
         gameplay::finalize_game::FinalizeGameWorkflow, player::notify_player::NotifyPlayerWorkflow,
     },
@@ -172,10 +172,14 @@ impl<
             }
         };
 
-        let msg = ListenerMessage::GameAction {
+        let msg = ListenerMessage::GameEvent {
             game_id,
-            player_id,
-            record: action_record,
+            event_type: ListenerGameMessageType::GameAction {
+                player_id,
+                action: action_record.action,
+                ply_index: action_record.ply_index,
+            },
+            time_info: action_record.time_info,
         };
 
         // Needs different notification flow as game domain removes game once ended
@@ -239,11 +243,14 @@ impl<
             Ok(Err(())) => {
                 return ActionResult::ActionError(AddRequestError::AlreadyRequested);
             }
-            Ok(Ok(request)) => {
-                let msg = ListenerMessage::GameRequestAdded {
+            Ok(Ok((request, time_info))) => {
+                let msg = ListenerMessage::GameEvent {
                     game_id,
-                    requesting_player_id: player_id,
-                    request,
+                    event_type: ListenerGameMessageType::GameRequestAdded {
+                        requesting_player_id: player_id,
+                        request,
+                    },
+                    time_info,
                 };
                 self.notify_player_workflow
                     .notify_players_and_observers(game_id, &msg)
@@ -268,11 +275,14 @@ impl<
             .await
         {
             Err(e) => return ActionResult::NotPossible(e),
-            Ok(Ok(request)) => {
-                let msg = ListenerMessage::GameRequestRetracted {
+            Ok(Ok((request, time_info))) => {
+                let msg = ListenerMessage::GameEvent {
                     game_id,
-                    retracting_player_id: player_id,
-                    request,
+                    event_type: ListenerGameMessageType::GameRequestRetracted {
+                        retracting_player_id: player_id,
+                        request,
+                    },
+                    time_info,
                 };
                 self.notify_player_workflow
                     .notify_players_and_observers(game_id, &msg)
@@ -303,11 +313,14 @@ impl<
             .await
         {
             Err(e) => return ActionResult::NotPossible(e),
-            Ok(Ok(request)) => {
-                let msg = ListenerMessage::GameRequestRejected {
+            Ok(Ok((request, time_info))) => {
+                let msg = ListenerMessage::GameEvent {
                     game_id,
-                    rejecting_player_id: player_id,
-                    request,
+                    event_type: ListenerGameMessageType::GameRequestRejected {
+                        rejecting_player_id: player_id,
+                        request,
+                    },
+                    time_info,
                 };
                 self.notify_player_workflow
                     .notify_players_and_observers(game_id, &msg)
@@ -339,11 +352,14 @@ impl<
             .await
         {
             Err(e) => ActionResult::NotPossible(e),
-            Ok(Ok((request, ended_game))) => {
-                let request_msg = ListenerMessage::GameRequestAccepted {
+            Ok(Ok((request, time_info, ended_game))) => {
+                let request_msg = ListenerMessage::GameEvent {
                     game_id,
-                    accepting_player_id: player_id,
-                    request,
+                    event_type: ListenerGameMessageType::GameRequestAccepted {
+                        accepting_player_id: player_id,
+                        request,
+                    },
+                    time_info,
                 };
                 self.notify_player_workflow
                     .notify_players_and_observers_of_game(
@@ -380,19 +396,25 @@ impl<
             .await
         {
             Err(e) => ActionResult::NotPossible(e),
-            Ok(Ok((request, undo_record))) => {
-                let request_msg = ListenerMessage::GameRequestAccepted {
+            Ok(Ok((request, time_info, undo_record))) => {
+                let request_msg = ListenerMessage::GameEvent {
                     game_id,
-                    accepting_player_id: player_id,
-                    request,
+                    event_type: ListenerGameMessageType::GameRequestAccepted {
+                        accepting_player_id: player_id,
+                        request,
+                    },
+                    time_info,
                 };
                 self.notify_player_workflow
                     .notify_players_and_observers(game_id, &request_msg)
                     .await;
                 if let Some(undo_record) = undo_record {
-                    let msg = ListenerMessage::GameActionUndone {
+                    let msg = ListenerMessage::GameEvent {
                         game_id,
-                        record: undo_record,
+                        event_type: ListenerGameMessageType::GameActionUndone {
+                            ply_index: undo_record.ply_index,
+                        },
+                        time_info: undo_record.time_info,
                     };
                     self.notify_player_workflow
                         .notify_players_and_observers(game_id, &msg)
@@ -406,14 +428,10 @@ impl<
 
     async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), PlayerActionError> {
         let now = Instant::now();
-        match self
+        let ended_game = self
             .handle_game_action_result(self.game_service.resign(game_id, player_id, now))
-            .await?
-        {
-            ResignResult::GameOver(ended_game) => {
-                self.handle_ended_game(ended_game).await;
-                Ok(())
-            }
-        }
+            .await?;
+        self.handle_ended_game(ended_game).await;
+        Ok(())
     }
 }

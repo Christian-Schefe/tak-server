@@ -6,7 +6,7 @@ use crate::{
     domain::{
         AccountId, RepoError, RepoRetrieveError,
         profile::{
-            AccountProfile, AccountProfileRepository, ProfilePictureRepository,
+            AccountProfile, AccountProfileRepository, ProfilePicture, ProfilePictureRepository,
             ProfilePictureVersion,
         },
     },
@@ -176,9 +176,10 @@ impl<
             account_id,
             new_version.0
         );
+        let prepared_image = ProfilePicture::prepare_image(picture_data);
         match self
             .profile_picture_repo
-            .set_profile_picture(account_id, picture_data)
+            .set_profile_picture(account_id, prepared_image)
             .await
         {
             Ok(()) => Ok(new_version),

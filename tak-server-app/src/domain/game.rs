@@ -19,13 +19,15 @@ pub mod request;
 pub struct GameEvent {
     pub event_type: GameEventType,
     pub date: chrono::DateTime<chrono::Utc>,
+    pub time_info: TakTimeInfo,
 }
 
 impl GameEvent {
-    pub fn new(event_type: GameEventType) -> Self {
+    pub fn new(event_type: GameEventType, time_info: TakTimeInfo) -> Self {
         Self {
             event_type,
             date: chrono::Utc::now(),
+            time_info,
         }
     }
 }
@@ -34,7 +36,6 @@ impl GameEvent {
 pub enum GameEventType {
     Action {
         action: TakAction,
-        time_info: TakTimeInfo,
     },
     RequestAdded {
         request: GameRequest,
@@ -48,9 +49,8 @@ pub enum GameEventType {
     RequestAccepted {
         request_id: GameRequestId,
     },
-    ActionUndone {
-        time_info: TakTimeInfo,
-    },
+
+    ActionUndone,
     TimeGiven {
         player: TakPlayer,
         duration: Duration,
@@ -167,28 +167,28 @@ pub trait GameService {
         game_id: GameId,
         player: PlayerId,
         now: Instant,
-    ) -> GamePlayerActionResult<ResignResult>;
+    ) -> GamePlayerActionResult<FinishedGame>;
     fn add_request(
         &self,
         game_id: GameId,
         player: PlayerId,
         request: GameRequestType,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<GameRequest, ()>>;
+    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo), ()>>;
     fn retract_request(
         &self,
         game_id: GameId,
         player: PlayerId,
         request_id: GameRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<GameRequest, ()>>;
+    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo), ()>>;
     fn reject_request(
         &self,
         game_id: GameId,
         player: PlayerId,
         request_id: GameRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<GameRequest, ()>>;
+    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo), ()>>;
 
     fn accept_draw_request(
         &self,
@@ -196,14 +196,14 @@ pub trait GameService {
         player: PlayerId,
         request_id: GameRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<(GameRequest, FinishedGame), ()>>;
+    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo, FinishedGame), ()>>;
     fn accept_undo_request(
         &self,
         game_id: GameId,
         player: PlayerId,
         request_id: GameRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<(GameRequest, Option<GameUndoActionRecord>), ()>>;
+    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo, Option<GameUndoActionRecord>), ()>>;
 }
 
 #[derive(Clone, Debug)]
@@ -250,10 +250,6 @@ pub enum GamePlayerActionResult<R> {
     NotAPlayerInGame,
     Timeout(FinishedGame),
     Result(R),
-}
-
-pub enum ResignResult {
-    GameOver(FinishedGame),
 }
 
 pub enum CheckTimeoutResult {
@@ -318,11 +314,11 @@ impl GameServiceImpl {
             let action_res = action_fn(game_entry, current_player);
             match action_res {
                 Ok(MaybeTimeout::Timeout(finished_game)) => {
-                    game_entry
-                        .events
-                        .push(GameEvent::new(GameEventType::GameOver(
-                            GameOverEventType::Timeout,
-                        )));
+                    let time_info = finished_game.get_time_info();
+                    game_entry.events.push(GameEvent::new(
+                        GameEventType::GameOver(GameOverEventType::Timeout),
+                        time_info,
+                    ));
                     let finished_game = FinishedGame::new(game_entry, finished_game);
                     (
                         GameControl::Remove,
@@ -402,19 +398,18 @@ impl GameService for GameServiceImpl {
             },
             |game_entry, _, res| match res {
                 Some(finished_game) => {
-                    let ply_index = finished_game.action_history().len() - 1;
+                    let ply_index = finished_game.action_history().len();
                     let time_info = finished_game.get_time_info();
-                    game_entry
-                        .events
-                        .push(GameEvent::new(GameEventType::Action {
+                    game_entry.events.push(GameEvent::new(
+                        GameEventType::Action {
                             action: action.clone(),
-                            time_info: time_info.clone(),
-                        }));
-                    game_entry
-                        .events
-                        .push(GameEvent::new(GameEventType::GameOver(
-                            GameOverEventType::Action,
-                        )));
+                        },
+                        time_info.clone(),
+                    ));
+                    game_entry.events.push(GameEvent::new(
+                        GameEventType::GameOver(GameOverEventType::Action),
+                        time_info.clone(),
+                    ));
                     let finished_game = FinishedGame::new(game_entry, finished_game);
                     (
                         GameControl::Remove,
@@ -425,14 +420,14 @@ impl GameService for GameServiceImpl {
                     )
                 }
                 None => {
-                    let ply_index = game_entry.game.action_history().len() - 1;
+                    let ply_index = game_entry.game.action_history().len();
                     let time_info = game_entry.game.get_time_info(now);
-                    game_entry
-                        .events
-                        .push(GameEvent::new(GameEventType::Action {
+                    game_entry.events.push(GameEvent::new(
+                        GameEventType::Action {
                             action: action.clone(),
-                            time_info: time_info.clone(),
-                        }));
+                        },
+                        time_info.clone(),
+                    ));
                     (
                         GameControl::Keep,
                         DoActionResult::ActionPerformed(GameActionRecord::new(
@@ -451,19 +446,19 @@ impl GameService for GameServiceImpl {
         game_id: GameId,
         player: PlayerId,
         now: Instant,
-    ) -> GamePlayerActionResult<ResignResult> {
+    ) -> GamePlayerActionResult<FinishedGame> {
         self.game_player_action(
             game_id,
             player,
             |game_entry, current_player| Ok(game_entry.game.resign_or_abandon(current_player, now)),
             |game_entry, _, finished_game| {
-                game_entry
-                    .events
-                    .push(GameEvent::new(GameEventType::GameOver(
-                        GameOverEventType::Resignation,
-                    )));
+                let time_info = finished_game.get_time_info();
+                game_entry.events.push(GameEvent::new(
+                    GameEventType::GameOver(GameOverEventType::Resignation),
+                    time_info,
+                ));
                 let finished_game = FinishedGame::new(game_entry, finished_game);
-                (GameControl::Remove, ResignResult::GameOver(finished_game))
+                (GameControl::Remove, finished_game)
             },
         )
     }
@@ -474,7 +469,7 @@ impl GameService for GameServiceImpl {
         player: PlayerId,
         request_type: GameRequestType,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<GameRequest, ()>> {
+    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo), ()>> {
         self.game_player_action(
             game_id,
             player,
@@ -488,12 +483,14 @@ impl GameService for GameServiceImpl {
             },
             |game_entry, _, res| match res {
                 Some(request) => {
-                    game_entry
-                        .events
-                        .push(GameEvent::new(GameEventType::RequestAdded {
+                    let time_info = game_entry.game.get_time_info(now);
+                    game_entry.events.push(GameEvent::new(
+                        GameEventType::RequestAdded {
                             request: request.clone(),
-                        }));
-                    (GameControl::Keep, Ok(request))
+                        },
+                        time_info.clone(),
+                    ));
+                    (GameControl::Keep, Ok((request, time_info)))
                 }
                 None => (GameControl::Keep, Err(())),
             },
@@ -506,7 +503,7 @@ impl GameService for GameServiceImpl {
         player: PlayerId,
         request_id: GameRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<GameRequest, ()>> {
+    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo), ()>> {
         self.game_player_action(
             game_id,
             player,
@@ -520,12 +517,12 @@ impl GameService for GameServiceImpl {
             },
             |game_entry, _, res| match res {
                 Some(request) => {
-                    game_entry
-                        .events
-                        .push(GameEvent::new(GameEventType::RequestRetracted {
-                            request_id,
-                        }));
-                    (GameControl::Keep, Ok(request))
+                    let time_info = game_entry.game.get_time_info(now);
+                    game_entry.events.push(GameEvent::new(
+                        GameEventType::RequestRetracted { request_id },
+                        time_info.clone(),
+                    ));
+                    (GameControl::Keep, Ok((request, time_info)))
                 }
                 None => (GameControl::Keep, Err(())),
             },
@@ -537,7 +534,7 @@ impl GameService for GameServiceImpl {
         player: PlayerId,
         request_id: GameRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<GameRequest, ()>> {
+    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo), ()>> {
         self.game_player_action(
             game_id,
             player,
@@ -551,12 +548,12 @@ impl GameService for GameServiceImpl {
             },
             |game_entry, _, res| match res {
                 Some(request) => {
-                    game_entry
-                        .events
-                        .push(GameEvent::new(GameEventType::RequestRejected {
-                            request_id,
-                        }));
-                    (GameControl::Keep, Ok(request))
+                    let time_info = game_entry.game.get_time_info(now);
+                    game_entry.events.push(GameEvent::new(
+                        GameEventType::RequestRejected { request_id },
+                        time_info.clone(),
+                    ));
+                    (GameControl::Keep, Ok((request, time_info)))
                 }
                 None => (GameControl::Keep, Err(())),
             },
@@ -568,7 +565,7 @@ impl GameService for GameServiceImpl {
         player: PlayerId,
         request_id: GameRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<(GameRequest, FinishedGame), ()>> {
+    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo, FinishedGame), ()>> {
         self.game_player_action(
             game_id,
             player,
@@ -594,18 +591,17 @@ impl GameService for GameServiceImpl {
             },
             |game_entry, _, res| match res {
                 Some((request, finished_game)) => {
-                    game_entry
-                        .events
-                        .push(GameEvent::new(GameEventType::RequestAccepted {
-                            request_id,
-                        }));
-                    game_entry
-                        .events
-                        .push(GameEvent::new(GameEventType::GameOver(
-                            GameOverEventType::DrawAgreement,
-                        )));
+                    let time_info = game_entry.game.get_time_info(now);
+                    game_entry.events.push(GameEvent::new(
+                        GameEventType::RequestAccepted { request_id },
+                        time_info.clone(),
+                    ));
+                    game_entry.events.push(GameEvent::new(
+                        GameEventType::GameOver(GameOverEventType::DrawAgreement),
+                        time_info.clone(),
+                    ));
                     let finished_game = FinishedGame::new(game_entry, finished_game);
-                    (GameControl::Remove, Ok((request, finished_game)))
+                    (GameControl::Remove, Ok((request, time_info, finished_game)))
                 }
                 None => (GameControl::Keep, Err(())),
             },
@@ -617,7 +613,8 @@ impl GameService for GameServiceImpl {
         player: PlayerId,
         request_id: GameRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<(GameRequest, Option<GameUndoActionRecord>), ()>> {
+    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo, Option<GameUndoActionRecord>), ()>>
+    {
         self.game_player_action(
             game_id,
             player,
@@ -643,24 +640,22 @@ impl GameService for GameServiceImpl {
             },
             |game_entry, _, res| match res {
                 Some((request, did_undo)) => {
-                    game_entry
-                        .events
-                        .push(GameEvent::new(GameEventType::RequestAccepted {
-                            request_id,
-                        }));
+                    let time_info = game_entry.game.get_time_info(now);
+                    game_entry.events.push(GameEvent::new(
+                        GameEventType::RequestAccepted { request_id },
+                        time_info.clone(),
+                    ));
                     let undo_record = if did_undo {
-                        let time_info = game_entry.game.get_time_info(now);
-                        let ply_index = game_entry.game.action_history().len() - 1;
-                        game_entry
-                            .events
-                            .push(GameEvent::new(GameEventType::ActionUndone {
-                                time_info: time_info.clone(),
-                            }));
-                        Some(GameUndoActionRecord::new(ply_index, time_info))
+                        let ply_index = game_entry.game.action_history().len();
+                        game_entry.events.push(GameEvent::new(
+                            GameEventType::ActionUndone,
+                            time_info.clone(),
+                        ));
+                        Some(GameUndoActionRecord::new(ply_index, time_info.clone()))
                     } else {
                         None
                     };
-                    (GameControl::Keep, Ok((request, undo_record)))
+                    (GameControl::Keep, Ok((request, time_info, undo_record)))
                 }
                 None => (GameControl::Keep, Err(())),
             },
@@ -672,11 +667,11 @@ impl GameService for GameServiceImpl {
             match game_entry.game.check_timeout(now) {
                 MaybeTimeout::Timeout(finished_game) => {
                     let finished_game = FinishedGame::new(game_entry, finished_game);
-                    game_entry
-                        .events
-                        .push(GameEvent::new(GameEventType::GameOver(
-                            GameOverEventType::Timeout,
-                        )));
+                    let time_info = finished_game.get_time_info();
+                    game_entry.events.push(GameEvent::new(
+                        GameEventType::GameOver(GameOverEventType::Timeout),
+                        time_info,
+                    ));
                     (
                         GameControl::Remove,
                         CheckTimeoutResult::TimedOut(finished_game),
@@ -717,11 +712,11 @@ impl GameService for GameServiceImpl {
                 Ok(game_entry.game.resign_or_abandon(current_player, now))
             },
             |game_entry, _, finished_game| {
-                game_entry
-                    .events
-                    .push(GameEvent::new(GameEventType::GameOver(
-                        GameOverEventType::Abandonment,
-                    )));
+                let time_info = finished_game.get_time_info();
+                game_entry.events.push(GameEvent::new(
+                    GameEventType::GameOver(GameOverEventType::Abandonment),
+                    time_info,
+                ));
                 let finished_game = FinishedGame::new(game_entry, finished_game);
                 (
                     GameControl::Remove,

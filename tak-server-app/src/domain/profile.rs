@@ -72,6 +72,15 @@ impl ProfilePicture {
             content_type,
         }
     }
+
+    pub fn prepare_image(image: DynamicImage) -> DynamicImage {
+        let min_size = image.width().min(image.height());
+        let min_x = (image.width() - min_size) / 2;
+        let min_y = (image.height() - min_size) / 2;
+        let cropped_image = image.crop_imm(min_x, min_y, min_size, min_size);
+        let resized_image = cropped_image.resize(256, 256, image::imageops::FilterType::Lanczos3);
+        resized_image
+    }
 }
 
 pub enum ProfilePictureFileType {

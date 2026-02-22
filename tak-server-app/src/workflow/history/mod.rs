@@ -47,16 +47,7 @@ impl GameRecordView {
     }
 
     pub fn reconstruct_time_info(&self) -> TakTimeInfo {
-        let mut maybe_time_info = None;
-        for event in &self.events {
-            match &event.event_type {
-                GameEventType::Action { time_info, .. } => {
-                    maybe_time_info = Some(time_info);
-                }
-                _ => {}
-            }
-        }
-
+        let maybe_time_info = self.events.last().map(|event| event.time_info.clone());
         match maybe_time_info {
             Some(ti) => ti.clone(),
             None => match &self.metadata.settings.time_settings {

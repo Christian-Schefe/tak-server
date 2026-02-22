@@ -4,6 +4,7 @@ use std::{
 };
 
 use tak_core::{TakBaseGameSettings, TakOngoingBaseGame, TakPlayer};
+use tak_server_api::game::GameStatus;
 
 pub struct GameService {
     games: Arc<Mutex<HashMap<i64, (TakPlayer, TakOngoingBaseGame)>>>,
@@ -16,11 +17,27 @@ impl GameService {
         }
     }
 
-    pub fn load_games(&self, games: Vec<(i64, TakPlayer, TakBaseGameSettings)>) {
-        let mut games_map = self.games.lock().unwrap();
-        for (game_id, player, settings) in games {
-            games_map.insert(game_id, (player, TakOngoingBaseGame::new(settings)));
+    pub fn load_game(
+        &self,
+        game_id: i64,
+        player: TakPlayer,
+        status: &GameStatus,
+    ) -> Option<(TakPlayer, TakOngoingBaseGame)> {
+        let mut game = TakOngoingBaseGame::new(status.game_settings.to_game_settings().base);
+        for action in &status.actions {
+            let action = tak_core::ptn::action_from_ptn(action)?;
+            if let Some(_finished_game) = game.do_action(action).ok()? {
+                return None;
+            }
         }
+        self.games
+            .lock()
+            .unwrap()
+            .insert(game_id, (player, game.clone()));
+        if game.current_player != player {
+            return None;
+        }
+        Some((player, game))
     }
 
     pub fn begin_game(
@@ -52,7 +69,7 @@ impl GameService {
     ) -> Option<(TakPlayer, TakOngoingBaseGame)> {
         let mut games = self.games.lock().unwrap();
         let game = games.get_mut(&game_id)?;
-        if game.1.action_history.len() != ply_index {
+        if game.1.action_history.len() + 1 != ply_index {
             return None;
         }
         let action = tak_core::ptn::action_from_ptn(ptn_move)?;
@@ -66,10 +83,16 @@ impl GameService {
         Some(game.clone())
     }
 
-    pub fn undo_action(&self, game_id: i64) -> Option<(TakPlayer, TakOngoingBaseGame)> {
+    pub fn undo_action(
+        &self,
+        game_id: i64,
+        ply_index: usize,
+    ) -> Option<(TakPlayer, TakOngoingBaseGame)> {
         let mut games = self.games.lock().unwrap();
         let game = games.get_mut(&game_id)?;
-
+        if game.1.action_history.len() - 1 != ply_index {
+            return None;
+        }
         if !game.1.undo_action() {
             return None;
         }

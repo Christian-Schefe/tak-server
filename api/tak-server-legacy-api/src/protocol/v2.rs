@@ -4,7 +4,7 @@ use dashmap::DashMap;
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
     domain::{AccountId, GameId, PlayerId, game::request::GameRequestType},
-    ports::notification::{ListenerMessage, ServerAlertMessage},
+    ports::notification::{ListenerGameMessageType, ListenerMessage, ServerAlertMessage},
 };
 
 use crate::{
@@ -166,79 +166,80 @@ impl ProtocolV2Handler {
                     .await;
             }
 
-            ListenerMessage::GameOver {
+            ListenerMessage::GameEvent {
                 game_id,
-                game_result,
-            } => {
-                self.send_game_over_message(id, *game_id, game_result);
-            }
-            ListenerMessage::GameAction {
-                game_id,
-                record,
-                player_id: moving_player_id,
-            } => {
-                self.send_time_update_message(
-                    id,
-                    *game_id,
-                    record.time_info.white_remaining,
-                    record.time_info.black_remaining,
-                );
-                // legacy api expects only opponent to receive action messages
-                if player_id.is_none_or(|x| {
-                    x != *moving_player_id
-                        || self
-                            .connection_that_did_last_move
-                            .get(&(*game_id, x))
-                            .is_none_or(|c| *c != id)
-                }) {
-                    self.send_game_action_message(id, *game_id, &record.action);
+                event_type,
+                time_info,
+            } => match event_type {
+                ListenerGameMessageType::GameOver { game_result } => {
+                    self.send_game_over_message(id, *game_id, game_result);
                 }
-            }
-            ListenerMessage::GameActionUndone { game_id, record } => {
-                self.send_time_update_message(
-                    id,
-                    *game_id,
-                    record.time_info.white_remaining,
-                    record.time_info.black_remaining,
-                );
-                self.send_undo_message(id, *game_id);
-            }
-            ListenerMessage::GameRequestAdded {
-                game_id,
-                requesting_player_id,
-                request,
-            } => {
-                if self.is_opponent_in_game(*requesting_player_id, player_id, *game_id) {
-                    match request.request_type {
-                        GameRequestType::Draw => {
-                            self.send_draw_offer_message(id, *game_id, true);
-                        }
-                        GameRequestType::Undo => {
-                            self.send_undo_request_message(id, *game_id, true);
-                        }
-                        _ => {}
+                ListenerGameMessageType::GameAction {
+                    player_id: moving_player_id,
+                    action,
+                    ply_index: _,
+                } => {
+                    self.send_time_update_message(
+                        id,
+                        *game_id,
+                        time_info.white_remaining,
+                        time_info.black_remaining,
+                    );
+                    // legacy api expects only opponent to receive action messages
+                    if player_id.is_none_or(|x| {
+                        x != *moving_player_id
+                            || self
+                                .connection_that_did_last_move
+                                .get(&(*game_id, x))
+                                .is_none_or(|c| *c != id)
+                    }) {
+                        self.send_game_action_message(id, *game_id, action);
                     }
                 }
-            }
-            ListenerMessage::GameRequestRetracted {
-                game_id,
-                retracting_player_id,
-                request,
-            } => {
-                if self.is_opponent_in_game(*retracting_player_id, player_id, *game_id) {
-                    match request.request_type {
-                        GameRequestType::Draw => {
-                            self.send_draw_offer_message(id, *game_id, false);
+                ListenerGameMessageType::GameActionUndone { ply_index: _ } => {
+                    self.send_time_update_message(
+                        id,
+                        *game_id,
+                        time_info.white_remaining,
+                        time_info.black_remaining,
+                    );
+                    self.send_undo_message(id, *game_id);
+                }
+                ListenerGameMessageType::GameRequestAdded {
+                    requesting_player_id,
+                    request,
+                } => {
+                    if self.is_opponent_in_game(*requesting_player_id, player_id, *game_id) {
+                        match request.request_type {
+                            GameRequestType::Draw => {
+                                self.send_draw_offer_message(id, *game_id, true);
+                            }
+                            GameRequestType::Undo => {
+                                self.send_undo_request_message(id, *game_id, true);
+                            }
+                            _ => {}
                         }
-                        GameRequestType::Undo => {
-                            self.send_undo_request_message(id, *game_id, false);
-                        }
-                        _ => {}
                     }
                 }
-            }
-            ListenerMessage::GameRequestRejected { .. } => {} // legacy api does not support request rejections
-            ListenerMessage::GameRequestAccepted { .. } => {} // legacy api does not support request acceptances
+                ListenerGameMessageType::GameRequestRetracted {
+                    retracting_player_id,
+                    request,
+                } => {
+                    if self.is_opponent_in_game(*retracting_player_id, player_id, *game_id) {
+                        match request.request_type {
+                            GameRequestType::Draw => {
+                                self.send_draw_offer_message(id, *game_id, false);
+                            }
+                            GameRequestType::Undo => {
+                                self.send_undo_request_message(id, *game_id, false);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                ListenerGameMessageType::GameRequestRejected { .. } => {} // legacy api does not support request rejections
+                ListenerGameMessageType::GameRequestAccepted { .. } => {} // legacy api does not support request acceptances
+            },
 
             ListenerMessage::AccountsOnline { accounts: players } => {
                 self.send_online_players_message(id, players).await;

@@ -288,6 +288,10 @@ impl ServerApi for ServerApiImpl {
         self.get_request("/games").await
     }
 
+    async fn load_game(&self, id: i64) -> Result<tak_server_api::game::GameStatus, String> {
+        self.get_request(&format!("/games/{}", id)).await
+    }
+
     async fn create_seek(&self, seek: CreateSeekPayload) -> Result<SeekInfo, String> {
         self.post_request("/seeks", seek).await
     }

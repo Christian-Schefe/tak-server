@@ -1,10 +1,7 @@
-use tak_core::TakGameResult;
+use tak_core::{TakAction, TakGameResult, TakTimeInfo};
 
 use crate::{
-    domain::{
-        AccountId, GameId, ListenerId, PlayerId,
-        game::{GameActionRecord, GameUndoActionRecord, request::GameRequest},
-    },
+    domain::{AccountId, GameId, ListenerId, PlayerId, game::request::GameRequest},
     workflow::{
         chat::message::MessageTarget,
         gameplay::{FinishedGameView, OngoingGameView},
@@ -42,38 +39,10 @@ pub enum ListenerMessage {
     AccountsOnline {
         accounts: Vec<AccountId>,
     },
-    GameOver {
+    GameEvent {
         game_id: GameId,
-        game_result: TakGameResult,
-    },
-    GameAction {
-        game_id: GameId,
-        player_id: PlayerId,
-        record: GameActionRecord,
-    },
-    GameActionUndone {
-        game_id: GameId,
-        record: GameUndoActionRecord,
-    },
-    GameRequestAdded {
-        game_id: GameId,
-        requesting_player_id: PlayerId,
-        request: GameRequest,
-    },
-    GameRequestRetracted {
-        game_id: GameId,
-        retracting_player_id: PlayerId,
-        request: GameRequest,
-    },
-    GameRequestRejected {
-        game_id: GameId,
-        rejecting_player_id: PlayerId,
-        request: GameRequest,
-    },
-    GameRequestAccepted {
-        game_id: GameId,
-        accepting_player_id: PlayerId,
-        request: GameRequest,
+        event_type: ListenerGameMessageType,
+        time_info: TakTimeInfo,
     },
 
     GameRematchRequested {
@@ -89,6 +58,37 @@ pub enum ListenerMessage {
     },
     ServerAlert {
         message: ServerAlertMessage,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub enum ListenerGameMessageType {
+    GameOver {
+        game_result: TakGameResult,
+    },
+    GameAction {
+        player_id: PlayerId,
+        action: TakAction,
+        ply_index: usize,
+    },
+    GameActionUndone {
+        ply_index: usize,
+    },
+    GameRequestAdded {
+        requesting_player_id: PlayerId,
+        request: GameRequest,
+    },
+    GameRequestRetracted {
+        retracting_player_id: PlayerId,
+        request: GameRequest,
+    },
+    GameRequestRejected {
+        rejecting_player_id: PlayerId,
+        request: GameRequest,
+    },
+    GameRequestAccepted {
+        accepting_player_id: PlayerId,
+        request: GameRequest,
     },
 }
 

@@ -3,9 +3,9 @@ use std::sync::{Arc, Mutex};
 use tak_core::TakPlayer;
 use tak_server_api::{
     IdentityInfo,
-    game::{GameSettingsInfo, JsonGameMetadata, JsonTimeSettings},
+    game::{GameSettingsInfo, GameStatus, JsonGameMetadata, JsonTimeSettings},
     seek::{CreateSeekPayload, SeekInfo},
-    ws::{ClientMessage, ServerMessage},
+    ws::{ClientMessage, ServerGameEventType, ServerMessage},
 };
 use tokio::{select, sync::mpsc::UnboundedReceiver};
 use tokio_util::sync::CancellationToken;
@@ -16,6 +16,7 @@ use crate::{engine::EngineService, game::GameService, seek::SeekService};
 pub trait ServerApi {
     async fn send_message(&self, message: ClientMessage) -> Result<(), String>;
     async fn load_games(&self) -> Result<Vec<JsonGameMetadata>, String>;
+    async fn load_game(&self, id: i64) -> Result<GameStatus, String>;
     async fn create_seek(&self, seek: CreateSeekPayload) -> Result<SeekInfo, String>;
 }
 
@@ -86,15 +87,21 @@ impl Orchestrator {
 
     pub async fn run(this: Arc<Self>, mut rx: UnboundedReceiver<ServerMessage>) {
         let games = this.server_api.load_games().await.unwrap();
-        this.game_service.load_games(
-            games
-                .into_iter()
-                .filter_map(|game| {
-                    let player = this.get_player_color(&game)?;
-                    Some((game.id, player, game.game_settings.to_game_settings().base))
-                })
-                .collect(),
-        );
+        for game in &games {
+            let Some(player) = this.get_player_color(game) else {
+                continue;
+            };
+            let status = this.server_api.load_game(game.id).await.unwrap();
+            if let Some((player, game_state)) =
+                this.game_service.load_game(game.id, player, &status)
+            {
+                let time_remaining = match player {
+                    TakPlayer::White => status.remaining_ms.white,
+                    TakPlayer::Black => status.remaining_ms.black,
+                };
+                Self::on_my_turn(this.clone(), game.id, game_state, time_remaining);
+            }
+        }
 
         // TODO: Create seek sync that allows recovery if the seek disappears without the bot noticing.
         Self::create_seek(&this).await;
@@ -116,34 +123,37 @@ impl Orchestrator {
                         println!("Other player removed seek {}, ignoring", seek_id);
                     }
                 }
-                ServerMessage::GameAction {
+                ServerMessage::GameEvent {
                     game_id,
-                    action,
-                    ply_index,
-                    remaining_ms,
-                } => {
-                    if let Some((player, game_state)) =
-                        this.game_service.do_action(game_id, &action, ply_index)
-                    {
-                        let remaining_ms = match player {
-                            TakPlayer::White => remaining_ms.white,
-                            TakPlayer::Black => remaining_ms.black,
-                        };
-                        Self::on_my_turn(this.clone(), game_id, game_state, remaining_ms);
+                    event_type: event,
+                    time_info,
+                } => match event {
+                    ServerGameEventType::GameAction { ply_index, action } => {
+                        if let Some((player, game_state)) =
+                            this.game_service.do_action(game_id, &action, ply_index)
+                        {
+                            let remaining_ms = match player {
+                                TakPlayer::White => time_info.white,
+                                TakPlayer::Black => time_info.black,
+                            };
+                            Self::on_my_turn(this.clone(), game_id, game_state, remaining_ms);
+                        }
                     }
-                }
-                ServerMessage::GameActionUndone {
-                    game_id,
-                    remaining_ms,
-                } => {
-                    if let Some((player, game_state)) = this.game_service.undo_action(game_id) {
-                        let remaining_ms = match player {
-                            TakPlayer::White => remaining_ms.white,
-                            TakPlayer::Black => remaining_ms.black,
-                        };
-                        Self::on_my_turn(this.clone(), game_id, game_state, remaining_ms);
+                    ServerGameEventType::GameActionUndone { ply_index } => {
+                        if let Some((player, game_state)) =
+                            this.game_service.undo_action(game_id, ply_index)
+                        {
+                            let remaining_ms = match player {
+                                TakPlayer::White => time_info.white,
+                                TakPlayer::Black => time_info.black,
+                            };
+                            Self::on_my_turn(this.clone(), game_id, game_state, remaining_ms);
+                        }
                     }
-                }
+                    ServerGameEventType::GameEnded { .. } => {}
+                    ServerGameEventType::GameRequestAdded { .. } => {}
+                    ServerGameEventType::GameRequestRemoved { .. } => {}
+                },
                 ServerMessage::GameStarted { game } => {
                     let Some(player) = this.get_player_color(&game) else {
                         continue;
@@ -164,12 +174,10 @@ impl Orchestrator {
                         Self::on_my_turn(this.clone(), game_id, game_state, time_remaining);
                     }
                 }
-                ServerMessage::GameEnded { game_id, result: _ } => {
+                ServerMessage::GameEnded { game_id } => {
                     this.game_service.end_game(game_id);
                     this.engine_service.remove_game(game_id).await;
                 }
-                ServerMessage::GameRequestAdded { .. } => {}
-                ServerMessage::GameRequestRemoved { .. } => {}
                 ServerMessage::ChatMessage { .. } => {}
             }
         }

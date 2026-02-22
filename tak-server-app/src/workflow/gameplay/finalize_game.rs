@@ -11,7 +11,7 @@ use crate::{
         spectator::SpectatorService,
         stats::{GameOutcome, StatsRepository},
     },
-    ports::notification::{ListenerMessage, ListenerNotificationPort},
+    ports::notification::{ListenerGameMessageType, ListenerMessage, ListenerNotificationPort},
     workflow::{
         account::get_account::GetAccountWorkflow, gameplay::FinishedGameView,
         player::notify_player::NotifyPlayerWorkflow,
@@ -104,15 +104,13 @@ impl<
     async fn finalize_game(&self, ended_game: FinishedGame) {
         log::info!("Finalizing game {}", ended_game.game_id);
         let game_id = ended_game.game_id;
-        let over_msg = ListenerMessage::GameOver {
-            game_id: game_id,
-            game_result: ended_game.game.game_result().clone(),
+        let over_msg = ListenerMessage::GameEvent {
+            game_id,
+            event_type: ListenerGameMessageType::GameOver {
+                game_result: ended_game.game.game_result().clone(),
+            },
+            time_info: ended_game.get_time_info(),
         };
-
-        let ended_msg = ListenerMessage::GameEnded {
-            game: FinishedGameView::from(&ended_game),
-        };
-        self.listener_notification_port.notify_all(&ended_msg);
 
         self.notify_player_workflow
             .notify_players(
@@ -124,6 +122,11 @@ impl<
         let observers = self.spectator_service.remove_game(game_id);
         self.listener_notification_port
             .notify_listeners(&observers, &over_msg);
+
+        let ended_msg = ListenerMessage::GameEnded {
+            game: FinishedGameView::from(&ended_game),
+        };
+        self.listener_notification_port.notify_all(&ended_msg);
 
         log::debug!(
             "Notified players and spectators about game {} ending, updating ratings and stats",

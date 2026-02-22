@@ -16,7 +16,7 @@ use tak_core::ptn::{action_from_ptn, action_to_ptn, game_result_to_string};
 use tak_player_connection::{ConnectionId, PlayerSimpleConnectionPort};
 use tak_server_app::{
     domain::{AccountId, GameId, PlayerId, game::request::GameRequestType},
-    ports::notification::ListenerMessage,
+    ports::notification::{ListenerGameMessageType, ListenerMessage},
     workflow::{
         chat::message::MessageTarget,
         gameplay::{
@@ -376,38 +376,105 @@ pub enum ServerMessage {
     SeekRemoved {
         seek_id: u64,
     },
-    GameAction {
+    GameEvent {
         game_id: i64,
-        ply_index: usize,
-        action: String,
-        remaining_ms: ForPlayer<u64>,
-    },
-    GameActionUndone {
-        game_id: i64,
-        remaining_ms: ForPlayer<u64>,
+        #[serde(flatten)]
+        event_type: ServerGameEventType,
+        time_info: ForPlayer<u64>,
     },
     GameStarted {
         game: JsonGameMetadata,
     },
     GameEnded {
         game_id: i64,
-        result: String,
-    },
-    GameRequestAdded {
-        game_id: i64,
-        request_id: u64,
-        request_type: JsonGameRequestType,
-        from_player_id: String,
-    },
-    GameRequestRemoved {
-        game_id: i64,
-        request_id: u64,
     },
     ChatMessage {
         from_account_id: String,
         message: String,
         target: JsonChatMessageTarget,
     },
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(
+    tag = "eventType",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum ServerGameEventType {
+    GameAction {
+        ply_index: usize,
+        action: String,
+    },
+    GameActionUndone {
+        ply_index: usize,
+    },
+    GameEnded {
+        result: String,
+    },
+    GameRequestAdded {
+        request_id: u64,
+        request_type: JsonGameRequestType,
+        from_player_id: String,
+    },
+    GameRequestRemoved {
+        request_id: u64,
+    },
+}
+
+impl ServerGameEventType {
+    fn from_listener_game_event_type(event_type: ListenerGameMessageType) -> Option<Self> {
+        let res = match event_type {
+            ListenerGameMessageType::GameOver { game_result } => ServerGameEventType::GameEnded {
+                result: game_result_to_string(&game_result),
+            },
+            ListenerGameMessageType::GameAction {
+                player_id: _,
+                action,
+                ply_index,
+            } => ServerGameEventType::GameAction {
+                ply_index,
+                action: action_to_ptn(&action),
+            },
+            ListenerGameMessageType::GameActionUndone { ply_index } => {
+                ServerGameEventType::GameActionUndone { ply_index }
+            }
+            ListenerGameMessageType::GameRequestAdded {
+                requesting_player_id,
+                request,
+            } => {
+                let request_type = match request.request_type {
+                    GameRequestType::Draw => JsonGameRequestType::Draw,
+                    GameRequestType::Undo => JsonGameRequestType::Undo,
+                    GameRequestType::MoreTime(_) => return None,
+                };
+                ServerGameEventType::GameRequestAdded {
+                    request_id: request.id.0,
+                    request_type,
+                    from_player_id: requesting_player_id.0.to_string(),
+                }
+            }
+            ListenerGameMessageType::GameRequestRetracted {
+                retracting_player_id: _,
+                request,
+            } => ServerGameEventType::GameRequestRemoved {
+                request_id: request.id.0,
+            },
+            ListenerGameMessageType::GameRequestRejected {
+                rejecting_player_id: _,
+                request,
+            } => ServerGameEventType::GameRequestRemoved {
+                request_id: request.id.0,
+            },
+            ListenerGameMessageType::GameRequestAccepted {
+                accepting_player_id: _,
+                request,
+            } => ServerGameEventType::GameRequestRemoved {
+                request_id: request.id.0,
+            },
+        };
+        Some(res)
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -449,80 +516,33 @@ impl ServerMessage {
             ListenerMessage::SeekCanceled { seek } | ListenerMessage::SeekAccepted { seek } => {
                 MessageTransformation::Transform(ServerMessage::SeekRemoved { seek_id: seek.id.0 })
             }
-            ListenerMessage::GameAction {
+            ListenerMessage::GameEvent {
                 game_id,
-                player_id: _,
-                record: action,
-            } => MessageTransformation::Transform(ServerMessage::GameAction {
-                game_id: game_id.0,
-                ply_index: action.ply_index,
-                action: action_to_ptn(&action.action),
-                remaining_ms: ForPlayer {
-                    white: action.time_info.white_remaining.as_millis() as u64,
-                    black: action.time_info.black_remaining.as_millis() as u64,
+                event_type,
+                time_info,
+            } => ServerGameEventType::from_listener_game_event_type(event_type).map_or(
+                MessageTransformation::Ignore,
+                |event| {
+                    MessageTransformation::Transform(ServerMessage::GameEvent {
+                        game_id: game_id.0,
+                        event_type: event,
+                        time_info: ForPlayer {
+                            white: time_info.white_remaining.as_millis() as u64,
+                            black: time_info.black_remaining.as_millis() as u64,
+                        },
+                    })
                 },
-            }),
-            ListenerMessage::GameActionUndone { game_id, record } => {
-                MessageTransformation::Transform(ServerMessage::GameActionUndone {
-                    game_id: game_id.0,
-                    remaining_ms: ForPlayer {
-                        white: record.time_info.white_remaining.as_millis() as u64,
-                        black: record.time_info.black_remaining.as_millis() as u64,
-                    },
-                })
-            }
+            ),
+
             ListenerMessage::GameStarted { game } => {
                 MessageTransformation::Transform(ServerMessage::GameStarted {
                     game: JsonGameMetadata::from_metadata_view(game.id, &game.metadata),
                 })
             }
             ListenerMessage::GameEnded { game } => {
-                MessageTransformation::Transform(ServerMessage::GameEnded {
-                    game_id: game.id.0,
-                    result: game_result_to_string(game.game.game_result()),
-                })
+                MessageTransformation::Transform(ServerMessage::GameEnded { game_id: game.id.0 })
             }
-            ListenerMessage::GameRequestAdded {
-                game_id,
-                requesting_player_id,
-                request,
-            } => {
-                let request_type = match request.request_type {
-                    GameRequestType::Draw => JsonGameRequestType::Draw,
-                    GameRequestType::Undo => JsonGameRequestType::Undo,
-                    _ => return MessageTransformation::Ignore,
-                };
-                MessageTransformation::Transform(ServerMessage::GameRequestAdded {
-                    game_id: game_id.0,
-                    request_id: request.id.0,
-                    request_type,
-                    from_player_id: requesting_player_id.0.to_string(),
-                })
-            }
-            ListenerMessage::GameRequestRetracted {
-                game_id,
-                request,
-                retracting_player_id: _,
-            } => MessageTransformation::Transform(ServerMessage::GameRequestRemoved {
-                game_id: game_id.0,
-                request_id: request.id.0,
-            }),
-            ListenerMessage::GameRequestRejected {
-                game_id,
-                request,
-                rejecting_player_id: _,
-            } => MessageTransformation::Transform(ServerMessage::GameRequestRemoved {
-                game_id: game_id.0,
-                request_id: request.id.0,
-            }),
-            ListenerMessage::GameRequestAccepted {
-                game_id,
-                request,
-                accepting_player_id: _,
-            } => MessageTransformation::Transform(ServerMessage::GameRequestRemoved {
-                game_id: game_id.0,
-                request_id: request.id.0,
-            }),
+
             ListenerMessage::ChatMessage {
                 from_account_id,
                 message,
@@ -542,7 +562,6 @@ impl ServerMessage {
                 })
             }
             ListenerMessage::AccountsOnline { .. } => MessageTransformation::Ignore,
-            ListenerMessage::GameOver { .. } => MessageTransformation::Ignore,
             ListenerMessage::GameRematchRequested { .. } => MessageTransformation::Ignore,
             ListenerMessage::GameRematchRequestRetracted { .. } => MessageTransformation::Ignore,
             ListenerMessage::ServerAlert { .. } => MessageTransformation::Ignore,

@@ -389,7 +389,7 @@ pub struct RequestResponse {
     pub accept: bool,
 }
 
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct GameStatus {
     pub id: i64,
@@ -401,7 +401,7 @@ pub struct GameStatus {
     pub remaining_ms: ForPlayer<u64>,
 }
 
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct GameRequest {
     id: u64,
@@ -409,7 +409,7 @@ pub struct GameRequest {
     request_type: JsonGameRequestType,
 }
 
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(
     rename_all = "camelCase",
     tag = "type",
@@ -420,7 +420,7 @@ pub enum JsonGameRequestType {
     Undo,
 }
 
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(
     rename_all = "camelCase",
     tag = "type",

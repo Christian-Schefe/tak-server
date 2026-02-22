@@ -67,6 +67,7 @@ struct JsonEventRecord {
     #[serde(with = "chrono::serde::ts_milliseconds")]
     timestamp: chrono::DateTime<chrono::Utc>,
     event: JsonEventRecordType,
+    time_info: JsonTimeInfo,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -82,7 +83,6 @@ enum JsonEventRecordType {
             deserialize_with = "deserialize_action"
         )]
         action: TakAction,
-        time_info: JsonTimeInfo,
     },
     RequestAdded {
         request_id: u64,
@@ -98,9 +98,7 @@ enum JsonEventRecordType {
     RequestAccepted {
         request_id: u64,
     },
-    ActionUndone {
-        time_info: JsonTimeInfo,
-    },
+    ActionUndone,
     TimeGiven {
         player: JsonTakPlayer,
         amount_ms: u64,
@@ -145,10 +143,7 @@ impl JsonTimeInfo {
 impl JsonEventRecordType {
     fn from_game_event(event: GameEventType) -> Self {
         match event {
-            GameEventType::Action { action, time_info } => JsonEventRecordType::Action {
-                action,
-                time_info: JsonTimeInfo::from_time_info(&time_info),
-            },
+            GameEventType::Action { action } => JsonEventRecordType::Action { action },
             GameEventType::RequestAdded { request } => JsonEventRecordType::RequestAdded {
                 request_id: request.id.0,
                 request_type: match request.request_type {
@@ -171,9 +166,7 @@ impl JsonEventRecordType {
             GameEventType::RequestAccepted { request_id } => JsonEventRecordType::RequestAccepted {
                 request_id: request_id.0,
             },
-            GameEventType::ActionUndone { time_info } => JsonEventRecordType::ActionUndone {
-                time_info: JsonTimeInfo::from_time_info(&time_info),
-            },
+            GameEventType::ActionUndone => JsonEventRecordType::ActionUndone,
             GameEventType::GameOver(game_over_type) => JsonEventRecordType::GameOver {
                 game_over_type: match game_over_type {
                     GameOverEventType::Action => JsonEventGameOverType::Action,
@@ -192,9 +185,8 @@ impl JsonEventRecordType {
 
     fn to_game_event(&self) -> GameEventType {
         match self {
-            JsonEventRecordType::Action { action, time_info } => GameEventType::Action {
+            JsonEventRecordType::Action { action } => GameEventType::Action {
                 action: action.clone(),
-                time_info: time_info.to_time_info(),
             },
             JsonEventRecordType::RequestAdded {
                 request_id,
@@ -224,9 +216,7 @@ impl JsonEventRecordType {
             JsonEventRecordType::RequestAccepted { request_id } => GameEventType::RequestAccepted {
                 request_id: GameRequestId(*request_id),
             },
-            JsonEventRecordType::ActionUndone { time_info } => GameEventType::ActionUndone {
-                time_info: time_info.to_time_info(),
-            },
+            JsonEventRecordType::ActionUndone => GameEventType::ActionUndone,
             JsonEventRecordType::TimeGiven { player, amount_ms } => GameEventType::TimeGiven {
                 player: player.to_tak_player(),
                 duration: Duration::from_millis(*amount_ms),
@@ -391,6 +381,7 @@ impl GameRepositoryImpl {
                 .map(|jm| GameEvent {
                     date: jm.timestamp,
                     event_type: jm.event.to_game_event(),
+                    time_info: jm.time_info.to_time_info(),
                 })
                 .collect(),
             rating_info,
@@ -466,6 +457,7 @@ impl GameRepository for GameRepositoryImpl {
             .map(|event| JsonEventRecord {
                 timestamp: event.date,
                 event: JsonEventRecordType::from_game_event(event.event_type.clone()),
+                time_info: JsonTimeInfo::from_time_info(&event.time_info),
             })
             .collect::<Vec<_>>();
         let events = serde_json::to_value(&events)
