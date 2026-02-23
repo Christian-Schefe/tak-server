@@ -14,7 +14,7 @@ pub mod update_profile;
 
 pub struct AccountProfileView {
     pub country: Option<CountryCode>,
-    pub profile_picture_version: ProfilePictureVersion,
+    pub profile_picture_version: Option<ProfilePictureVersion>,
 }
 
 impl From<AccountProfile> for AccountProfileView {

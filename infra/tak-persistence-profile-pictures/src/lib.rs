@@ -73,16 +73,4 @@ impl ProfilePictureRepository for ProfilePictureRepositoryImpl {
             ProfilePictureFileType::WebP,
         ))
     }
-
-    async fn get_default_profile_picture(&self) -> Result<ProfilePicture, RepoRetrieveError> {
-        let file_path = self.file_path.join("default_pfp.webp");
-        let file = tokio::fs::File::open(&file_path)
-            .await
-            .map_err(|_| RepoRetrieveError::NotFound)?;
-        let stream = tokio_util::io::ReaderStream::new(file);
-        Ok(ProfilePicture::new(
-            Box::new(stream),
-            ProfilePictureFileType::WebP,
-        ))
-    }
 }

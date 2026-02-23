@@ -84,9 +84,7 @@ impl<
             .await
         {
             Ok(data) => data,
-            Err(RepoRetrieveError::NotFound) => {
-                AccountProfile::new(None, ProfilePictureVersion::initial())
-            }
+            Err(RepoRetrieveError::NotFound) => AccountProfile::new(None, None),
             Err(RepoRetrieveError::StorageError(e)) => {
                 log::error!(
                     "Failed to retrieve profile information for account {}: {}",
@@ -132,9 +130,7 @@ impl<
             .await
         {
             Ok(data) => data,
-            Err(RepoRetrieveError::NotFound) => {
-                AccountProfile::new(None, ProfilePictureVersion::initial())
-            }
+            Err(RepoRetrieveError::NotFound) => AccountProfile::new(None, None),
             Err(RepoRetrieveError::StorageError(e)) => {
                 log::error!(
                     "Failed to retrieve profile information for account {}: {}",
@@ -144,19 +140,22 @@ impl<
                 return Err(UpdateProfileError::RepositoryError);
             }
         };
+        let new_version = profile_data
+            .profile_picture_version
+            .map(|x| x.increment())
+            .unwrap_or(ProfilePictureVersion::initial());
         log::info!(
             "Updating profile picture for account {} with new version {}",
             account_id,
-            profile_data.profile_picture_version.increment().0
+            new_version.0
         );
-        let new_version = profile_data.profile_picture_version.increment();
         match self
             .profile_information_repo
             .insert_profile_information(
                 account_id,
                 AccountProfile {
                     country: profile_data.country,
-                    profile_picture_version: new_version,
+                    profile_picture_version: Some(new_version),
                 },
             )
             .await

@@ -31,13 +31,13 @@ impl ProfilePictureVersion {
 #[derive(Clone, Debug)]
 pub struct AccountProfile {
     pub country: Option<CountryCode>,
-    pub profile_picture_version: ProfilePictureVersion,
+    pub profile_picture_version: Option<ProfilePictureVersion>,
 }
 
 impl AccountProfile {
     pub fn new(
         country: Option<CountryCode>,
-        profile_picture_version: ProfilePictureVersion,
+        profile_picture_version: Option<ProfilePictureVersion>,
     ) -> Self {
         Self {
             country,
@@ -57,7 +57,6 @@ pub trait ProfilePictureRepository {
         &self,
         account_id: &AccountId,
     ) -> Result<ProfilePicture, RepoRetrieveError>;
-    async fn get_default_profile_picture(&self) -> Result<ProfilePicture, RepoRetrieveError>;
 }
 
 pub struct ProfilePicture {

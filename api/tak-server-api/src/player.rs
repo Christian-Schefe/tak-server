@@ -195,6 +195,11 @@ pub async fn get_profile_picture(
         .get_profile_picture(&account.account_id)
         .await
         .map_err(|_| ServiceError::Internal("Failed to retrieve profile picture".to_string()))?;
+    let Some(profile_picture) = profile_picture else {
+        return Err(ServiceError::NotFound(
+            "Profile picture not found".to_string(),
+        ));
+    };
     let body = Body::from_stream(profile_picture.stream);
     let mut response = Response::new(body);
     response.headers_mut().insert(
@@ -335,14 +340,14 @@ pub struct PlayerProfileUpdate {
 #[serde(rename_all = "camelCase")]
 pub struct PlayerProfileInfo {
     pub country: Option<String>,
-    pub profile_picture_version: u64,
+    pub profile_picture_version: Option<u64>,
 }
 
 impl From<AccountProfileView> for PlayerProfileInfo {
     fn from(profile: AccountProfileView) -> Self {
         PlayerProfileInfo {
             country: profile.country.map(|c| c.to_string()),
-            profile_picture_version: profile.profile_picture_version.0,
+            profile_picture_version: profile.profile_picture_version.map(|x| x.0),
         }
     }
 }

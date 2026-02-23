@@ -3,10 +3,7 @@ use std::sync::Arc;
 use crate::{
     domain::{
         AccountId, RepoRetrieveError,
-        profile::{
-            AccountProfileRepository, ProfilePicture, ProfilePictureRepository,
-            ProfilePictureVersion,
-        },
+        profile::{AccountProfileRepository, ProfilePicture, ProfilePictureRepository},
     },
     workflow::account::AccountProfileView,
 };
@@ -20,7 +17,7 @@ pub trait GetProfileUseCase {
     async fn get_profile_picture(
         &self,
         account_id: &AccountId,
-    ) -> Result<ProfilePicture, GetProfileError>;
+    ) -> Result<Option<ProfilePicture>, GetProfileError>;
 }
 
 pub enum GetProfileError {
@@ -59,7 +56,7 @@ impl<
             Ok(profile_information) => Ok(profile_information.into()),
             Err(RepoRetrieveError::NotFound) => Ok(AccountProfileView {
                 country: None,
-                profile_picture_version: ProfilePictureVersion(0),
+                profile_picture_version: None,
             }),
             Err(RepoRetrieveError::StorageError(e)) => {
                 log::error!(
@@ -75,26 +72,14 @@ impl<
     async fn get_profile_picture(
         &self,
         account_id: &AccountId,
-    ) -> Result<ProfilePicture, GetProfileError> {
+    ) -> Result<Option<ProfilePicture>, GetProfileError> {
         match self
             .profile_picture_repo
             .get_profile_picture(account_id)
             .await
         {
-            Ok(profile_picture) => Ok(profile_picture),
-            Err(RepoRetrieveError::NotFound) => {
-                match self
-                    .profile_picture_repo
-                    .get_default_profile_picture()
-                    .await
-                {
-                    Ok(default_profile_picture) => Ok(default_profile_picture),
-                    Err(e) => {
-                        log::error!("Failed to retrieve default profile picture: {}", e);
-                        Err(GetProfileError::RepositoryError)
-                    }
-                }
-            }
+            Ok(profile_picture) => Ok(Some(profile_picture)),
+            Err(RepoRetrieveError::NotFound) => Ok(None),
             Err(RepoRetrieveError::StorageError(e)) => {
                 log::error!("Failed to retrieve profile picture: {}", e);
                 Err(GetProfileError::RepositoryError)
