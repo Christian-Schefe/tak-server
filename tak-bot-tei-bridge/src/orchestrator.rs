@@ -36,7 +36,7 @@ fn get_seek_payload() -> CreateSeekPayload {
         color: "random".to_string(),
         is_rated: true,
         game_settings: GameSettingsInfo {
-            board_size: 5,
+            board_size: 6,
             time_settings: JsonTimeSettings::Realtime {
                 increment_ms: 5_000,
                 contingent_ms: 300_000,

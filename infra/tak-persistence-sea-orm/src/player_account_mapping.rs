@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use crate::create_db_pool;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set, sea_query::OnConflict,
+};
 use tak_persistence_sea_orm_entities::player_account_mapping;
 use tak_server_app::{
     domain::{AccountId, PlayerId, RepoError, RepoRetrieveError},
@@ -97,24 +99,27 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
             return Ok(player_id);
         }
 
-        let new_player_id = create_fn();
         let active_model = player_account_mapping::ActiveModel {
-            player_id: Set(new_player_id.0),
             account_id: Set(account_id.to_string()),
+            player_id: Set(create_fn().0),
         };
 
-        let res = active_model
-            .insert(&self.db)
+        player_account_mapping::Entity::insert(active_model)
+            .on_conflict(
+                OnConflict::column(player_account_mapping::Column::AccountId)
+                    .do_nothing_on([player_account_mapping::Column::AccountId])
+                    .to_owned(),
+            )
+            .exec(&self.db)
             .await
             .map_err(|e| RepoError::StorageError(e.to_string()))?;
 
-        let player_id = PlayerId(res.player_id);
-
-        self.account_id_to_player_id_cache
-            .insert(account_id.clone(), player_id.clone());
-        self.player_id_to_account_id_cache
-            .insert(player_id.clone(), account_id.clone());
-        Ok(player_id)
+        if let Some(player_id) = self.get_by_account_id(account_id).await? {
+            return Ok(player_id);
+        }
+        Err(RepoError::StorageError(
+            "Failed to retrieve player ID after insert".to_string(),
+        ))
     }
 
     async fn remove_account_id(

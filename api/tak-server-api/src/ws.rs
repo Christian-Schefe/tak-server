@@ -94,7 +94,7 @@ async fn receive_ws(
                         let response = if let Err(e) =
                             handle_client_message(&app, msg.message, connection_id).await
                         {
-                            log::error!("Failed to handle WS message: {}", e);
+                            log::warn!("Failed to handle WS message: {}", e);
                             ServerMessage::Error {
                                 message: e.to_string(),
                                 code: e.status_code().as_u16(),
@@ -108,7 +108,7 @@ async fn receive_ws(
                         let _ = sender.send(response);
                     }
                     Err(e) => {
-                        log::error!("Failed to parse WS message: {}", e);
+                        log::warn!("Failed to parse WS message: {}", e);
                         let _ = sender.send(ServerMessage::Error {
                             message: "Invalid message format".to_string(),
                             code: 400,
@@ -125,7 +125,7 @@ async fn receive_ws(
                 break;
             }
             Err(e) => {
-                log::error!("WS error: {}", e);
+                log::warn!("WS error: {}", e);
                 break;
             }
             _ => {}
@@ -533,7 +533,6 @@ impl ServerMessage {
                     })
                 },
             ),
-
             ListenerMessage::GameStarted { game } => {
                 MessageTransformation::Transform(ServerMessage::GameStarted {
                     game: JsonGameMetadata::from_metadata_view(game.id, &game.metadata),

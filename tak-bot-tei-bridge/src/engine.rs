@@ -66,15 +66,115 @@ pub struct EngineConnection {
     tasks: Vec<tokio::task::JoinHandle<()>>,
 }
 
+struct TeiOption {
+    name: String,
+    option_type: TeiOptionType,
+}
+
+#[allow(dead_code)]
+enum TeiOptionType {
+    Spin {
+        default: i64,
+        min: i64,
+        max: i64,
+    },
+    Combo {
+        default: String,
+        options: Vec<String>,
+    },
+}
+
+impl TeiOption {
+    fn parse_option(output: &str) -> Option<TeiOption> {
+        let mut parts = HashMap::new();
+        let words = output.split_whitespace().collect::<Vec<_>>();
+        let mut key = None;
+        for word in words {
+            if word == "option" {
+                continue;
+            }
+            if key.is_none() {
+                key = Some(word.to_string());
+            } else {
+                parts.insert(key.take().unwrap(), word.to_string());
+            }
+        }
+        let Some(name) = parts.get("name") else {
+            return None;
+        };
+        let Some(option_type) = parts.get("type") else {
+            return None;
+        };
+        let option_type = match option_type.as_str() {
+            "spin" => {
+                let default = parts.get("default")?.parse::<i64>().ok()?;
+                let min = parts.get("min")?.parse::<i64>().ok()?;
+                let max = parts.get("max")?.parse::<i64>().ok()?;
+                TeiOptionType::Spin { default, min, max }
+            }
+            "combo" => {
+                let default = parts.get("default")?.clone();
+                let options = parts
+                    .iter()
+                    .filter(|(k, _)| k.starts_with("var"))
+                    .map(|(_, v)| v.clone())
+                    .collect::<Vec<_>>();
+                TeiOptionType::Combo { default, options }
+            }
+            _ => return None,
+        };
+        let opt = TeiOption {
+            name: name.clone(),
+            option_type,
+        };
+        Some(opt)
+    }
+
+    fn is_valid_value(&self, value: &str) -> bool {
+        match &self.option_type {
+            TeiOptionType::Spin { min, max, .. } => {
+                if let Ok(val) = value.parse::<i64>() {
+                    return val >= *min && val <= *max;
+                }
+                false
+            }
+            TeiOptionType::Combo { options, .. } => options.contains(&value.to_string()),
+        }
+    }
+
+    fn set_value_command(&self, value: &str) -> Option<String> {
+        if self.is_valid_value(value) {
+            Some(format!("setoption name {} value {}", self.name, value))
+        } else {
+            None
+        }
+    }
+}
+
 impl EngineConnection {
     async fn initialize(&mut self, settings: TakBaseGameSettings) {
         self.send_tei
             .send("tei".to_string())
             .expect("Failed to send TEI command");
 
+        let mut options = HashMap::new();
+
         while let Some(output) = self.receive_tei.recv().await {
+            if output.starts_with("option") {
+                if let Some(opt) = TeiOption::parse_option(&output) {
+                    options.insert(opt.name.to_ascii_lowercase().clone(), opt);
+                }
+            }
             if output == "teiok" {
                 break;
+            }
+        }
+
+        if let Some(komi_option) = options.get("halfkomi") {
+            if let Some(cmd) = komi_option.set_value_command(&settings.half_komi.to_string()) {
+                self.send_tei
+                    .send(cmd)
+                    .expect("Failed to send TEI setoption command");
             }
         }
 
