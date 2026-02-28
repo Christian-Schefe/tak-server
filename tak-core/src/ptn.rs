@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use crate::{
-    TakAction, TakDir, TakGameResult, TakGameSettings, TakPlayer, TakPos, TakRealtimeTimeControl,
-    TakReserve, TakTimeSettings, TakVariant, TakWinReason,
+    TakAction, TakBoard, TakDir, TakGameResult, TakGameSettings, TakPlayer, TakPos,
+    TakRealtimeTimeControl, TakReserve, TakTimeSettings, TakVariant, TakWinReason, board::TakStack,
 };
 
 pub enum PtnHeader {
@@ -307,6 +307,133 @@ pub fn game_result_from_string(s: &str) -> Option<TakGameResult> {
         "1/2-1/2" => Some(TakGameResult::Draw),
         _ => None,
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct TakGamePosition {
+    pub board: TakBoard,
+    pub ply_index: usize,
+}
+
+pub fn game_position_to_string(position: &TakGamePosition) -> String {
+    let board = &position.board;
+    let mut out = String::new();
+    for y in (0..board.size).rev() {
+        let mut empty_count = 0;
+        for x in 0..board.size {
+            let index = (y * board.size + x) as usize;
+            let Some(stack) = board.stacks[index].as_ref() else {
+                empty_count += 1;
+                continue;
+            };
+            if empty_count > 0 {
+                out.push('x');
+                if empty_count > 1 {
+                    out.push_str(&empty_count.to_string());
+                }
+                out.push(',');
+                empty_count = 0;
+            }
+            for player in &stack.composition {
+                let num = match player {
+                    TakPlayer::White => "1",
+                    TakPlayer::Black => "2",
+                };
+                out.push_str(num);
+            }
+            out.push_str(variant_to_string(&stack.variant));
+            if x < board.size - 1 {
+                out.push(',');
+            }
+        }
+        if empty_count > 0 {
+            out.push('x');
+            if empty_count > 1 {
+                out.push_str(&empty_count.to_string());
+            }
+        }
+        if y > 0 {
+            out.push('/');
+        }
+    }
+    out.push_str(&format!(
+        " {} {}",
+        position.ply_index % 2 + 1, // 1 for white, 2 for black
+        position.ply_index / 2 + 1, // 1-based move index
+    ));
+    out
+}
+
+pub fn game_position_from_string(s: &str) -> Option<TakGamePosition> {
+    let parts = s.split_whitespace().collect::<Vec<_>>();
+    if parts.len() != 3 {
+        return None;
+    }
+    let board_str = parts[0];
+    let turn_indicator = parts[1].parse::<usize>().ok()?;
+    let move_index = parts[2].parse::<usize>().ok()?;
+    if (turn_indicator != 1 && turn_indicator != 2) || move_index == 0 {
+        return None;
+    }
+    let ply_index = (move_index - 1) * 2 + (turn_indicator - 1);
+    let rows = board_str.split('/').collect::<Vec<_>>();
+    let size = rows.len();
+    let mut stacks = vec![None; size * size];
+    for (y, row) in rows.iter().rev().enumerate() {
+        let cells = row.split(',');
+        let mut x = 0;
+        for cell in cells {
+            if x >= size {
+                return None;
+            }
+            if cell.starts_with('x') {
+                if cell.len() == 1 {
+                    x += 1;
+                } else {
+                    let empty_count = cell[1..].parse::<usize>().ok()?;
+                    x += empty_count;
+                    if x > size {
+                        return None;
+                    }
+                }
+            } else {
+                let mut chars = cell.chars().collect::<Vec<_>>();
+                let Some(last) = chars.last() else {
+                    return None;
+                };
+                let variant = match last {
+                    'S' => TakVariant::Standing,
+                    'C' => TakVariant::Capstone,
+                    _ => TakVariant::Flat,
+                };
+                if variant != TakVariant::Flat {
+                    chars.pop();
+                }
+                let mut composition = Vec::new();
+                while let Some(c) = chars.pop() {
+                    match c {
+                        '1' => composition.push(TakPlayer::White),
+                        '2' => composition.push(TakPlayer::Black),
+                        _ => return None,
+                    }
+                }
+                let index = (y * size + x) as usize;
+                stacks[index] = Some(TakStack {
+                    variant,
+                    composition,
+                });
+                x += 1;
+            }
+        }
+        if x != size {
+            return None;
+        }
+    }
+    let board = TakBoard {
+        size: size as u32,
+        stacks,
+    };
+    Some(TakGamePosition { board, ply_index })
 }
 
 fn variant_to_string(variant: &TakVariant) -> &'static str {

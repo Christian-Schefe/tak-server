@@ -3,7 +3,9 @@ use std::sync::{Arc, Mutex};
 use tak_core::TakPlayer;
 use tak_server_api::{
     IdentityInfo,
-    game::{GameSettingsInfo, GameStatus, JsonGameMetadata, JsonTimeSettings},
+    game::{
+        GameSettingsInfo, GameSettingsInfoBase, GameStatus, JsonGameMetadata, JsonTimeSettings,
+    },
     seek::{CreateSeekPayload, SeekInfo},
     ws::{ClientMessage, ServerGameEventType, ServerMessage},
 };
@@ -36,15 +38,17 @@ fn get_seek_payload() -> CreateSeekPayload {
         color: "random".to_string(),
         is_rated: true,
         game_settings: GameSettingsInfo {
-            board_size: 6,
+            base: GameSettingsInfoBase {
+                board_size: 6,
+                half_komi: 4,
+                pieces: 30,
+                capstones: 1,
+            },
             time_settings: JsonTimeSettings::Realtime {
                 increment_ms: 5_000,
                 contingent_ms: 300_000,
                 extra: None,
             },
-            half_komi: 4,
-            pieces: 30,
-            capstones: 1,
         },
     }
 }

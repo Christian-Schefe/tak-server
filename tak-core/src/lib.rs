@@ -7,6 +7,7 @@ use std::time::Duration;
 
 pub use base::TakFinishedBaseGame;
 pub use base::TakOngoingBaseGame;
+pub use board::TakBoard;
 pub use game::TakFinishedGame;
 pub use game::TakOngoingGame;
 
@@ -53,7 +54,7 @@ impl TakPlayer {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TakAction {
     Place {
         pos: TakPos,

@@ -7,7 +7,8 @@ use tak_events_google_sheets::NoopEventRepository;
 use tak_persistence_profile_pictures::ProfilePictureRepositoryImpl;
 use tak_persistence_sea_orm::{
     games::GameRepositoryImpl, player_account_mapping::PlayerAccountMappingRepositoryImpl,
-    profile::ProfileRepositoryImpl, ratings::RatingRepositoryImpl, stats::StatsRepositoryImpl,
+    profile::ProfileRepositoryImpl, puzzle::PuzzleRepositoryImpl, ratings::RatingRepositoryImpl,
+    stats::StatsRepositoryImpl,
 };
 use tak_player_connection::{
     AccountOnlineStatusService, PlayerConnectionDriver, PlayerConnectionService,
@@ -85,6 +86,7 @@ async fn main() {
     let authentication_adapter = Arc::new(AuthenticationService::new(bot_repository));
     let account_online_status_adapter = Arc::new(AccountOnlineStatusService::new());
     let profile_picture_repo = Arc::new(ProfilePictureRepositoryImpl::new().await);
+    let puzzle_repo = Arc::new(PuzzleRepositoryImpl::new().await);
 
     let app = Arc::new(
         build_application(
@@ -100,6 +102,7 @@ async fn main() {
             profile_repo,
             account_online_status_adapter,
             profile_picture_repo,
+            puzzle_repo,
         )
         .await,
     );

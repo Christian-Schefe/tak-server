@@ -6,6 +6,7 @@ use tak_persistence_sea_orm_migrations::Migrator;
 pub mod games;
 pub mod player_account_mapping;
 pub mod profile;
+pub mod puzzle;
 pub mod ratings;
 pub mod stats;
 

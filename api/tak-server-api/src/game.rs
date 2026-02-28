@@ -514,11 +514,18 @@ pub struct JsonPlayerSnapshot {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct GameSettingsInfo {
+pub struct GameSettingsInfoBase {
     pub board_size: u32,
     pub half_komi: u32,
     pub pieces: u32,
     pub capstones: u32,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GameSettingsInfo {
+    #[serde(flatten)]
+    pub base: GameSettingsInfoBase,
     pub time_settings: JsonTimeSettings,
 }
 
@@ -539,13 +546,32 @@ pub enum JsonTimeSettings {
     },
 }
 
+impl GameSettingsInfoBase {
+    pub fn from_base_settings(settings: &TakBaseGameSettings) -> Self {
+        GameSettingsInfoBase {
+            board_size: settings.board_size,
+            half_komi: settings.half_komi,
+            pieces: settings.reserve.pieces,
+            capstones: settings.reserve.capstones,
+        }
+    }
+
+    pub fn to_base_settings(&self) -> TakBaseGameSettings {
+        TakBaseGameSettings {
+            board_size: self.board_size,
+            half_komi: self.half_komi,
+            reserve: TakReserve {
+                pieces: self.pieces,
+                capstones: self.capstones,
+            },
+        }
+    }
+}
+
 impl GameSettingsInfo {
     pub fn from_game_settings(settings: &TakGameSettings) -> Self {
         GameSettingsInfo {
-            board_size: settings.base.board_size,
-            half_komi: settings.base.half_komi,
-            pieces: settings.base.reserve.pieces,
-            capstones: settings.base.reserve.capstones,
+            base: GameSettingsInfoBase::from_base_settings(&settings.base),
             time_settings: match &settings.time_settings {
                 TakTimeSettings::Realtime(tc) => JsonTimeSettings::Realtime {
                     contingent_ms: tc.contingent.as_millis() as u64,
@@ -564,14 +590,7 @@ impl GameSettingsInfo {
 
     pub fn to_game_settings(&self) -> TakGameSettings {
         TakGameSettings {
-            base: TakBaseGameSettings {
-                board_size: self.board_size,
-                half_komi: self.half_komi,
-                reserve: TakReserve {
-                    pieces: self.pieces,
-                    capstones: self.capstones,
-                },
-            },
+            base: self.base.to_base_settings(),
             time_settings: match &self.time_settings {
                 JsonTimeSettings::Realtime {
                     contingent_ms,

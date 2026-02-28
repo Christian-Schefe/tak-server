@@ -11,6 +11,7 @@ use crate::{
         r#match::MatchServiceImpl,
         moderation::{AdminAccountPolicy, HigherRoleAccountPolicy, ModeratorAccountPolicy},
         profile::{AccountProfileRepository, ProfilePictureRepository},
+        puzzle::PuzzleRepository,
         rating::{RatingRepository, RatingServiceImpl},
         seek::SeekServiceImpl,
         spectator::SpectatorServiceImpl,
@@ -70,6 +71,10 @@ use crate::{
             get_stats::{GetPlayerStatsUseCase, GetPlayerStatsUseCaseImpl},
             notify_player::NotifyPlayerWorkflowImpl,
         },
+        puzzle::{
+            get::{GetPuzzleUseCase, GetPuzzleUseCaseImpl},
+            solve::{SolvePuzzleUseCase, SolvePuzzleUseCaseImpl},
+        },
     },
 };
 
@@ -117,6 +122,9 @@ pub struct Application {
     pub update_profile_use_case: Arc<dyn UpdateProfileUseCase + Send + Sync + 'static>,
 
     pub get_stats_use_case: Arc<dyn GetPlayerStatsUseCase + Send + Sync + 'static>,
+
+    pub get_puzzle_use_case: Arc<dyn GetPuzzleUseCase + Send + Sync + 'static>,
+    pub solve_puzzle_use_case: Arc<dyn SolvePuzzleUseCase + Send + Sync + 'static>,
 }
 
 pub async fn build_application<
@@ -132,6 +140,7 @@ pub async fn build_application<
     PF: AccountProfileRepository + Send + Sync + 'static,
     AC: AccountOnlineStatusPort + Send + Sync + 'static,
     PFP: ProfilePictureRepository + Send + Sync + 'static,
+    PZR: PuzzleRepository + Send + Sync + 'static,
 >(
     game_repository: Arc<G>,
     player_repository: Arc<PR>,
@@ -145,6 +154,7 @@ pub async fn build_application<
     profile_repository: Arc<PF>,
     account_online_status_port: Arc<AC>,
     profile_picture_repo: Arc<PFP>,
+    puzzle_repository: Arc<PZR>,
 ) -> Application {
     let seek_service = Arc::new(SeekServiceImpl::new());
     let game_service = Arc::new(GameServiceImpl::new());
@@ -325,6 +335,9 @@ pub async fn build_application<
         )),
 
         get_stats_use_case: Arc::new(GetPlayerStatsUseCaseImpl::new(stats_repository.clone())),
+
+        get_puzzle_use_case: Arc::new(GetPuzzleUseCaseImpl::new(puzzle_repository.clone())),
+        solve_puzzle_use_case: Arc::new(SolvePuzzleUseCaseImpl::new(puzzle_repository.clone())),
     };
 
     application

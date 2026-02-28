@@ -4,14 +4,14 @@ use crate::{InvalidMoveReason, InvalidPlaceReason, TakDir, TakPlayer, TakPos, Ta
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TakStack {
-    variant: TakVariant,
-    composition: Vec<TakPlayer>,
+    pub variant: TakVariant,
+    pub composition: Vec<TakPlayer>,
 }
 
 #[derive(Clone, Debug)]
 pub struct TakBoard {
-    size: u32,
-    stacks: Vec<Option<TakStack>>,
+    pub size: u32,
+    pub stacks: Vec<Option<TakStack>>,
 }
 
 impl TakBoard {
