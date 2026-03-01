@@ -56,6 +56,7 @@ pub async fn create_db_pool() -> DatabaseConnection {
                 .register(tak_persistence_sea_orm_entities::profile::Entity)
                 .register(tak_persistence_sea_orm_entities::rating::Entity)
                 .register(tak_persistence_sea_orm_entities::stats::Entity)
+                .register(tak_persistence_sea_orm_entities::puzzle::Entity)
                 .sync(&db)
                 .await
                 .expect("Failed to apply entity sync");

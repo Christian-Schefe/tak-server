@@ -2,7 +2,7 @@ use axum::{
     Json,
     extract::{Path, State},
 };
-use tak_core::ptn::{action_from_ptn, action_to_ptn, game_position_to_string};
+use tak_core::ptn::{action_from_ptn, action_to_ptn};
 use tak_server_app::{
     domain::{PuzzleId, puzzle::PuzzleResponse},
     workflow::puzzle::{PuzzleView, get::GetPuzzleError, solve::SolvePuzzleError},
@@ -17,6 +17,7 @@ pub fn register_routes(router: axum::Router<AppState>) -> axum::Router<AppState>
             "/puzzles/{puzzle_id}",
             axum::routing::post(try_solve_puzzle),
         )
+        .route("/puzzles", axum::routing::get(get_random_puzzle))
 }
 
 pub async fn get_puzzle(
@@ -77,6 +78,7 @@ pub async fn try_solve_puzzle(
             SolvePuzzleError::InternalError => {
                 ServiceError::Internal("Failed to solve puzzle".to_string())
             }
+            SolvePuzzleError::InvalidInput(msg) => ServiceError::BadRequest(msg),
         })?;
     let res = match response {
         PuzzleResponse::Success => TrySolvePuzzleResponse::Correct,
@@ -100,11 +102,29 @@ pub enum TrySolvePuzzleResponse {
     Incorrect,
 }
 
+pub async fn get_random_puzzle(
+    State(app): State<AppState>,
+) -> Result<Json<PuzzleSelection>, ServiceError> {
+    let puzzle_id = app
+        .app
+        .get_puzzle_use_case
+        .select_random_puzzle()
+        .await
+        .map_err(|_| ServiceError::Internal("Failed to select random puzzle".to_string()))?;
+    Ok(Json(PuzzleSelection { id: puzzle_id.0 }))
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PuzzleSelection {
+    pub id: i64,
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonPuzzle {
     pub id: i64,
-    pub position: String,
+    pub actions: Vec<String>,
     pub game_settings: GameSettingsInfoBase,
 }
 
@@ -112,7 +132,7 @@ impl JsonPuzzle {
     pub fn from(puzzle: PuzzleView) -> Self {
         Self {
             id: puzzle.id.0,
-            position: game_position_to_string(&puzzle.position),
+            actions: puzzle.position.iter().map(|a| action_to_ptn(a)).collect(),
             game_settings: GameSettingsInfoBase::from_base_settings(&puzzle.game_settings),
         }
     }

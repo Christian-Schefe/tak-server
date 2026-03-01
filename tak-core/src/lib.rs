@@ -77,6 +77,17 @@ impl TakReserve {
     pub fn new(pieces: u32, capstones: u32) -> Self {
         TakReserve { pieces, capstones }
     }
+    pub fn from_size(size: u32) -> Option<Self> {
+        Some(match size {
+            3 => TakReserve::new(10, 0),
+            4 => TakReserve::new(15, 0),
+            5 => TakReserve::new(21, 1),
+            6 => TakReserve::new(30, 1),
+            7 => TakReserve::new(40, 2),
+            8 => TakReserve::new(50, 2),
+            _ => return None,
+        })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

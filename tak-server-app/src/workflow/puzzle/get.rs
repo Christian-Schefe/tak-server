@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
 use crate::{
-    domain::{PuzzleId, RepoRetrieveError, puzzle::PuzzleRepository},
+    domain::{PuzzleId, RepoError, RepoRetrieveError, puzzle::PuzzleRepository},
     workflow::puzzle::PuzzleView,
 };
 
 #[async_trait::async_trait]
 pub trait GetPuzzleUseCase {
     async fn get_puzzle(&self, id: PuzzleId) -> Result<PuzzleView, GetPuzzleError>;
+    async fn select_random_puzzle(&self) -> Result<PuzzleId, ()>;
 }
 
 pub enum GetPuzzleError {
@@ -40,5 +41,15 @@ impl<P: PuzzleRepository + Send + Sync + 'static> GetPuzzleUseCase for GetPuzzle
                 }
             })?;
         Ok(PuzzleView::from(&puzzle))
+    }
+
+    async fn select_random_puzzle(&self) -> Result<PuzzleId, ()> {
+        self.puzzle_repository
+            .select_random_puzzle()
+            .await
+            .map_err(|RepoError::StorageError(e)| {
+                log::error!("Error selecting random puzzle: {}", e);
+                ()
+            })
     }
 }

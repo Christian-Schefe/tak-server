@@ -19,6 +19,7 @@ pub trait SolvePuzzleUseCase {
 pub enum SolvePuzzleError {
     NotFound,
     InternalError,
+    InvalidInput(String),
 }
 
 pub struct SolvePuzzleUseCaseImpl<P: PuzzleRepository> {
@@ -46,6 +47,8 @@ impl<P: PuzzleRepository + Send + Sync + 'static> SolvePuzzleUseCase for SolvePu
                 RepoRetrieveError::NotFound => SolvePuzzleError::NotFound,
                 RepoRetrieveError::StorageError(_) => SolvePuzzleError::InternalError,
             })?;
-        Ok(puzzle.do_response(&actions))
+        Ok(puzzle
+            .do_response(&actions)
+            .ok_or_else(|| SolvePuzzleError::InvalidInput("Invalid action sequence".to_string()))?)
     }
 }

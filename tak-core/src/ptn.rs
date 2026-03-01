@@ -213,6 +213,9 @@ pub fn action_from_ptn(ptn: &str) -> Option<TakAction> {
             return None;
         }
         let (take_str, rest) = chars.split_at(move_idx - 2);
+        if rest.len() < 3 {
+            return None;
+        }
         let dir = match rest[2] {
             '+' => TakDir::Up,
             '-' => TakDir::Down,
@@ -220,9 +223,6 @@ pub fn action_from_ptn(ptn: &str) -> Option<TakAction> {
             '>' => TakDir::Right,
             _ => return None,
         };
-        if rest.len() < 3 {
-            return None;
-        }
         let pos = parse_pos(&rest[..2])?;
         let take_num = if take_str.is_empty() {
             1

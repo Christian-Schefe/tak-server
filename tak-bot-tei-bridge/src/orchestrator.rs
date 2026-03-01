@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use tak_core::TakPlayer;
+use tak_core::{TakPlayer, TakReserve};
 use tak_server_api::{
     IdentityInfo,
     game::{
@@ -33,6 +33,7 @@ pub struct Orchestrator {
 }
 
 fn get_seek_payload() -> CreateSeekPayload {
+    let reserve = TakReserve::from_size(6).unwrap();
     CreateSeekPayload {
         opponent_id: None,
         color: "random".to_string(),
@@ -41,8 +42,8 @@ fn get_seek_payload() -> CreateSeekPayload {
             base: GameSettingsInfoBase {
                 board_size: 6,
                 half_komi: 4,
-                pieces: 30,
-                capstones: 1,
+                pieces: reserve.pieces,
+                capstones: reserve.capstones,
             },
             time_settings: JsonTimeSettings::Realtime {
                 increment_ms: 5_000,

@@ -1,4 +1,4 @@
-use tak_core::{TakBaseGameSettings, ptn::TakGamePosition};
+use tak_core::{TakAction, TakBaseGameSettings};
 
 use crate::domain::{PuzzleId, puzzle::Puzzle};
 
@@ -8,7 +8,7 @@ pub mod solve;
 #[derive(Clone, Debug)]
 pub struct PuzzleView {
     pub id: PuzzleId,
-    pub position: TakGamePosition,
+    pub position: Vec<TakAction>,
     pub game_settings: TakBaseGameSettings,
 }
 
