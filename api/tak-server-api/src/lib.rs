@@ -7,6 +7,7 @@ use axum::{
     routing::{delete, get, post},
 };
 use tak_player_connection::PlayerConnectionDriver;
+use tak_server_api_contract::auth::IdentityInfo;
 use tak_server_app::{Application, services::player_resolver::ResolveError};
 
 use crate::auth::StrictAuth;
@@ -137,16 +138,6 @@ async fn who_am_i(
             std::time::Duration::from_secs(60 * 60 * 24),
         ),
     }))
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IdentityInfo {
-    pub account_id: String,
-    pub player_id: String,
-    pub is_guest: bool,
-    pub new_guest: bool,
-    pub jwt: String,
 }
 
 #[derive(serde::Deserialize)]

@@ -4,7 +4,7 @@ use std::{
 };
 
 use tak_core::{TakBaseGameSettings, TakOngoingBaseGame, TakPlayer};
-use tak_server_api::game::GameStatus;
+use tak_server_api_contract::game::GameStatus;
 
 pub struct GameService {
     games: Arc<Mutex<HashMap<i64, (TakPlayer, TakOngoingBaseGame)>>>,

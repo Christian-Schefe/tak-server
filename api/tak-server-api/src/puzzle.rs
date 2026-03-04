@@ -3,12 +3,13 @@ use axum::{
     extract::{Path, State},
 };
 use tak_core::ptn::{action_from_ptn, action_to_ptn};
+use tak_server_api_contract::game::GameSettingsInfoBase;
 use tak_server_app::{
     domain::{PuzzleId, puzzle::PuzzleResponse},
     workflow::puzzle::{PuzzleView, get::GetPuzzleError, solve::SolvePuzzleError},
 };
 
-use crate::{AppState, ServiceError, game::GameSettingsInfoBase};
+use crate::{AppState, ServiceError};
 
 pub fn register_routes(router: axum::Router<AppState>) -> axum::Router<AppState> {
     router

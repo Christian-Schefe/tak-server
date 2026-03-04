@@ -3,6 +3,7 @@ use axum::{
     extract::{Path, State},
 };
 use tak_core::TakPlayer;
+use tak_server_api_contract::{game::GameSettingsInfo, seek::SeekInfo};
 use tak_server_app::{
     domain::{PlayerId, SeekId, seek::CreateSeekError},
     services::player_resolver::ResolveError,
@@ -10,16 +11,11 @@ use tak_server_app::{
 };
 use uuid::Uuid;
 
-use crate::{AppState, ServiceError, auth::Auth, game::GameSettingsInfo};
+use crate::{AppState, ServiceError, auth::Auth};
 
 pub async fn get_seeks(State(app): State<AppState>) -> Json<Vec<SeekInfo>> {
     let seeks = app.app.seek_list_use_case.list_seeks();
-    Json(
-        seeks
-            .into_iter()
-            .map(|seek| SeekInfo::from_seek_view(seek))
-            .collect(),
-    )
+    Json(seeks.into_iter().map(|seek| from_seek_view(seek)).collect())
 }
 
 pub async fn create_seek(
@@ -67,7 +63,7 @@ pub async fn create_seek(
         game_settings,
         payload.is_rated,
     ) {
-        Ok(seek) => Ok(Json(SeekInfo::from_seek_view(seek))),
+        Ok(seek) => Ok(Json(from_seek_view(seek))),
         Err(CreateSeekError::InvalidGameSettings) => Err(ServiceError::BadRequest(
             "Invalid game settings".to_string(),
         )),
@@ -151,30 +147,17 @@ pub async fn accept_seek(
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct SeekInfo {
-    pub id: u64,
-    pub creator_id: String,
-    pub opponent_id: Option<String>,
-    pub color: String,
-    pub is_rated: bool,
-    pub game_settings: GameSettingsInfo,
-}
-
-impl SeekInfo {
-    pub fn from_seek_view(seek: SeekView) -> Self {
-        SeekInfo {
-            id: seek.id.0 as u64,
-            creator_id: seek.creator_id.to_string(),
-            opponent_id: seek.opponent_id.map(|id| id.to_string()),
-            color: match seek.color {
-                None => "random".to_string(),
-                Some(TakPlayer::White) => "white".to_string(),
-                Some(TakPlayer::Black) => "black".to_string(),
-            },
-            game_settings: GameSettingsInfo::from_game_settings(&seek.game_settings),
-            is_rated: seek.is_rated,
-        }
+pub fn from_seek_view(seek: SeekView) -> SeekInfo {
+    SeekInfo {
+        id: seek.id.0 as u64,
+        creator_id: seek.creator_id.to_string(),
+        opponent_id: seek.opponent_id.map(|id| id.to_string()),
+        color: match seek.color {
+            None => "random".to_string(),
+            Some(TakPlayer::White) => "white".to_string(),
+            Some(TakPlayer::Black) => "black".to_string(),
+        },
+        game_settings: GameSettingsInfo::from_game_settings(&seek.game_settings),
+        is_rated: seek.is_rated,
     }
 }

@@ -1,8 +1,9 @@
 use std::sync::{Arc, Mutex};
 
 use tak_core::{TakPlayer, TakReserve};
-use tak_server_api::{
-    IdentityInfo,
+
+use tak_server_api_contract::{
+    auth::IdentityInfo,
     game::{
         GameSettingsInfo, GameSettingsInfoBase, GameStatus, JsonGameMetadata, JsonTimeSettings,
     },

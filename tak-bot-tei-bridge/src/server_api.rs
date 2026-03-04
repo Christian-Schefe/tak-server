@@ -3,8 +3,9 @@ use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
-use tak_server_api::{
-    IdentityInfo,
+use tak_server_api_contract::{
+    auth::IdentityInfo,
+    game::{GameStatus, JsonGameMetadata},
     seek::{CreateSeekPayload, SeekInfo},
     ws::{ClientMessage, ClientMessageWrapper, ServerMessage},
 };
@@ -284,11 +285,11 @@ impl ServerApi for ServerApiImpl {
             .ok_or_else(|| "Failed to receive response".to_string())?
     }
 
-    async fn load_games(&self) -> Result<Vec<tak_server_api::game::JsonGameMetadata>, String> {
+    async fn load_games(&self) -> Result<Vec<JsonGameMetadata>, String> {
         self.get_request("/games").await
     }
 
-    async fn load_game(&self, id: i64) -> Result<tak_server_api::game::GameStatus, String> {
+    async fn load_game(&self, id: i64) -> Result<GameStatus, String> {
         self.get_request(&format!("/games/{}", id)).await
     }
 

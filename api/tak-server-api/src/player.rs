@@ -7,6 +7,7 @@ use axum::{
     http::header,
     response::Response,
 };
+use tak_server_api_contract::game::JsonEndedGameInfo;
 use tak_server_app::{
     domain::{
         AccountId, Pagination, PlayerId, SortOrder,
@@ -18,7 +19,7 @@ use tak_server_app::{
 use uuid::Uuid;
 
 use crate::{
-    AppState, PaginatedResponse, PaginationQuery, ServiceError, auth::Auth, game::JsonEndedGameInfo,
+    AppState, PaginatedResponse, PaginationQuery, ServiceError, auth::Auth, game::from_game_record,
 };
 
 async fn get_player_info_helper(
@@ -281,7 +282,7 @@ pub async fn get_games_history(
             items: result
                 .items
                 .into_iter()
-                .map(|record| JsonEndedGameInfo::from_game_record(&record))
+                .map(|record| from_game_record(&record))
                 .collect(),
             total_count: result.total_count as u32,
         })),
