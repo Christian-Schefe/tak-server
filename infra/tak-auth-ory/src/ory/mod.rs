@@ -273,8 +273,10 @@ impl OryAuthenticationService {
             moderation_flags
         };
 
+        let account_id = AccountId::from_string(identity.id.clone())?;
+
         let account = Account::new(
-            AccountId::from_string(identity.id),
+            account_id,
             account_type,
             role,
             flags,
@@ -286,7 +288,7 @@ impl OryAuthenticationService {
     }
 
     pub async fn get_account(&self, account_id: &AccountId) -> Option<Account> {
-        let id = account_id.as_uuid()?.as_simple().to_string();
+        let id = account_id.to_string();
         let identity = match get_identity(&self.admin_config, &id, None).await {
             Ok(response) => response,
             Err(_) => return None,
@@ -297,7 +299,7 @@ impl OryAuthenticationService {
     }
 
     pub async fn set_role(&self, account_id: &AccountId, role: AccountRole) -> Result<(), ()> {
-        let id = account_id.as_uuid().ok_or(())?.as_simple().to_string();
+        let id = account_id.to_string();
         let ory_role = match role {
             AccountRole::User => OryAccountRole::User,
             AccountRole::Moderator => OryAccountRole::Moderator,
@@ -317,7 +319,7 @@ impl OryAuthenticationService {
     }
 
     pub async fn add_flag(&self, account_id: &AccountId, flag: ModerationFlag) -> Result<(), ()> {
-        let id = account_id.as_uuid().ok_or(())?.as_simple().to_string();
+        let id = account_id.to_string();
         let json_patch = vec![models::JsonPatch {
             op: "add".to_string(),
             path: format!(
@@ -342,7 +344,7 @@ impl OryAuthenticationService {
         account_id: &AccountId,
         flag: ModerationFlag,
     ) -> Result<(), ()> {
-        let id = account_id.as_uuid().ok_or(())?.as_simple().to_string();
+        let id = account_id.to_string();
         let json_patch = vec![models::JsonPatch {
             op: "add".to_string(),
             path: format!(

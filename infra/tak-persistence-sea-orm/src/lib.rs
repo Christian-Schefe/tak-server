@@ -3,6 +3,7 @@ use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::MigratorTrait;
 use tak_persistence_sea_orm_migrations::Migrator;
 
+pub mod chat;
 pub mod games;
 pub mod player_account_mapping;
 pub mod profile;

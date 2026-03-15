@@ -42,7 +42,7 @@ impl PlayerAccountMappingRepositoryImpl {
         &self,
         account_id: &AccountId,
     ) -> Result<Option<PlayerId>, RepoError> {
-        let player_model = player_account_mapping::Entity::find_by_id(account_id.to_string())
+        let player_model = player_account_mapping::Entity::find_by_id(account_id.0)
             .one(&self.db)
             .await
             .map_err(|e| RepoError::StorageError(e.to_string()))?;
@@ -73,7 +73,7 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
             .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
 
         if let Some(model) = player_model {
-            let account_id = AccountId::from_string(model.account_id);
+            let account_id = AccountId(model.account_id);
 
             self.account_id_to_player_id_cache
                 .insert(account_id.clone(), player_id);
@@ -100,7 +100,7 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
         }
 
         let active_model = player_account_mapping::ActiveModel {
-            account_id: Set(account_id.to_string()),
+            account_id: Set(account_id.0),
             player_id: Set(create_fn().0),
         };
 
@@ -131,7 +131,7 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
         let Some(player_id) = self.get_by_account_id(account_id).await? else {
             return Ok(None);
         };
-        let res = player_account_mapping::Entity::delete_by_id(account_id.to_string())
+        let res = player_account_mapping::Entity::delete_by_id(account_id.0)
             .exec(&self.db)
             .await
             .map_err(|e| RepoError::StorageError(e.to_string()))?;

@@ -21,7 +21,7 @@ pub enum ClientMessage {
     },
     ChatMessage {
         message: String,
-        target: JsonChatMessageTarget,
+        conversation: JsonChatConversation,
     },
     SpectateGame {
         game_id: i64,
@@ -73,7 +73,7 @@ pub enum ServerMessage {
     ChatMessage {
         from_account_id: String,
         message: String,
-        target: JsonChatMessageTarget,
+        conversation: JsonChatConversation,
     },
 }
 
@@ -110,8 +110,13 @@ pub enum ServerGameEventType {
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
-pub enum JsonChatMessageTarget {
+pub enum JsonChatConversation {
     Global,
-    Room { room_name: String },
-    Private { to_account_id: String },
+    Room {
+        room_name: String,
+    },
+    Private {
+        account_id1: String,
+        account_id2: String,
+    },
 }

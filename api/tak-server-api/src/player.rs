@@ -111,11 +111,12 @@ pub async fn get_player_by_account_id(
     State(app): State<AppState>,
     Path(account_id): Path<String>,
 ) -> Result<Json<PlayerInfo>, ServiceError> {
-    let Some(account) = app
-        .auth
-        .get_account(&AccountId::from_string(account_id))
-        .await
-    else {
+    let Some(account_id) = AccountId::from_string(account_id) else {
+        return Err(ServiceError::BadRequest(
+            "Invalid account ID format".to_string(),
+        ));
+    };
+    let Some(account) = app.auth.get_account(&account_id).await else {
         return Err(ServiceError::NotFound("Player not found".to_string()));
     };
 
@@ -133,11 +134,12 @@ pub async fn get_account_profile(
     State(app): State<AppState>,
     Path(account_id): Path<String>,
 ) -> Result<Json<PlayerProfileInfo>, ServiceError> {
-    let Some(account) = app
-        .auth
-        .get_account(&AccountId::from_string(account_id))
-        .await
-    else {
+    let Some(account_id) = AccountId::from_string(account_id) else {
+        return Err(ServiceError::BadRequest(
+            "Invalid account ID format".to_string(),
+        ));
+    };
+    let Some(account) = app.auth.get_account(&account_id).await else {
         return Err(ServiceError::NotFound("Player not found".to_string()));
     };
     let profile = app
@@ -183,11 +185,12 @@ pub async fn get_profile_picture(
     Path(account_id): Path<String>,
     Query(_version_query): Query<VersionQuery>,
 ) -> Result<Response, ServiceError> {
-    let Some(account) = app
-        .auth
-        .get_account(&AccountId::from_string(account_id))
-        .await
-    else {
+    let Some(account_id) = AccountId::from_string(account_id) else {
+        return Err(ServiceError::BadRequest(
+            "Invalid account ID format".to_string(),
+        ));
+    };
+    let Some(account) = app.auth.get_account(&account_id).await else {
         return Err(ServiceError::NotFound("Player not found".to_string()));
     };
     let profile_picture = app

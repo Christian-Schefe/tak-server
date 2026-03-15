@@ -21,37 +21,25 @@ impl std::fmt::Display for PlayerId {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum AccountId {
-    Uuid(uuid::Uuid),
-    Other(String),
-}
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct AccountId(pub uuid::Uuid);
 
 impl AccountId {
     pub fn new() -> Self {
-        AccountId::Uuid(uuid::Uuid::new_v4())
+        AccountId(uuid::Uuid::new_v4())
     }
-    pub fn from_string(s: String) -> Self {
+    pub fn from_string(s: String) -> Option<Self> {
         if let Ok(uuid) = uuid::Uuid::parse_str(&s) {
-            AccountId::Uuid(uuid)
+            Some(AccountId(uuid))
         } else {
-            AccountId::Other(s)
-        }
-    }
-    pub fn as_uuid(&self) -> Option<uuid::Uuid> {
-        match self {
-            AccountId::Uuid(uuid) => Some(*uuid),
-            AccountId::Other(_) => None,
+            None
         }
     }
 }
 
 impl std::fmt::Display for AccountId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AccountId::Uuid(uuid) => write!(f, "{}", uuid.as_hyphenated()),
-            AccountId::Other(s) => write!(f, "{}", s),
-        }
+        write!(f, "{}", self.0.as_hyphenated())
     }
 }
 
@@ -74,6 +62,21 @@ impl SeekId {
 }
 
 impl std::fmt::Display for SeekId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ChatMessageId(pub i64);
+
+impl ChatMessageId {
+    pub fn new(id: i64) -> Self {
+        ChatMessageId(id)
+    }
+}
+
+impl std::fmt::Display for ChatMessageId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }

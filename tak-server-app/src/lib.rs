@@ -4,7 +4,7 @@ use tokio::task::JoinHandle;
 
 use crate::{
     domain::{
-        chat::{ChatRoomServiceImpl, RustrictContentPolicy},
+        chat::{ChatRepository, ChatRoomServiceImpl, RustrictContentPolicy},
         event::EventRepository,
         game::GameServiceImpl,
         game_history::{GameHistoryServiceImpl, GameRepository},
@@ -141,6 +141,7 @@ pub async fn build_application<
     AC: AccountOnlineStatusPort + Send + Sync + 'static,
     PFP: ProfilePictureRepository + Send + Sync + 'static,
     PZR: PuzzleRepository + Send + Sync + 'static,
+    CR: ChatRepository + Send + Sync + 'static,
 >(
     game_repository: Arc<G>,
     player_repository: Arc<PR>,
@@ -155,6 +156,7 @@ pub async fn build_application<
     account_online_status_port: Arc<AC>,
     profile_picture_repo: Arc<PFP>,
     puzzle_repository: Arc<PZR>,
+    chat_repository: Arc<CR>,
 ) -> Application {
     let seek_service = Arc::new(SeekServiceImpl::new());
     let game_service = Arc::new(GameServiceImpl::new());
@@ -311,6 +313,7 @@ pub async fn build_application<
             player_connection_port.clone(),
             chat_room_service.clone(),
             chat_content_policy.clone(),
+            chat_repository.clone(),
         )),
         chat_room_use_case: Box::new(ChatRoomUseCaseImpl::new(chat_room_service.clone())),
 

@@ -109,7 +109,7 @@ impl ApiAuthPort for AuthenticationService {
 
     fn validate_account_jwt(&self, token: &str) -> Option<AccountId> {
         if let Ok(claims) = jwt::Claims::from_token(token) {
-            Some(AccountId::from_string(claims.sub))
+            AccountId::from_string(claims.sub)
         } else {
             None
         }

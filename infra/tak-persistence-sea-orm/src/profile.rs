@@ -35,7 +35,7 @@ impl AccountProfileRepository for ProfileRepositoryImpl {
         profile_information: AccountProfile,
     ) -> Result<(), RepoError> {
         let active_model = profile::ActiveModel {
-            account_id: sea_orm::ActiveValue::Set(account_id.to_string()),
+            account_id: sea_orm::ActiveValue::Set(account_id.0),
             country: sea_orm::ActiveValue::Set(profile_information.country.map(|x| x.to_string())),
             profile_picture_version: sea_orm::ActiveValue::Set(
                 profile_information.profile_picture_version.map(|x| x.0),
@@ -68,7 +68,7 @@ impl AccountProfileRepository for ProfileRepositoryImpl {
             return Ok(cached_profile);
         }
 
-        let profile_model = profile::Entity::find_by_id(account_id.to_string())
+        let profile_model = profile::Entity::find_by_id(account_id.0)
             .one(&self.db)
             .await
             .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;

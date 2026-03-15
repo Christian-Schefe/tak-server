@@ -247,7 +247,7 @@ impl ProtocolV2Handler {
             ListenerMessage::ChatMessage {
                 from_account_id,
                 message,
-                target,
+                conversation: target,
             } => {
                 self.send_chat_message(id, account_id.as_ref(), from_account_id, message, target)
                     .await;

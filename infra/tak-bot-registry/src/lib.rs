@@ -23,7 +23,7 @@ impl FileBotRepository {
             entries: entries
                 .into_iter()
                 .map(|e| BotEntry {
-                    account_id: AccountId::from_string(e.account_id.to_string()),
+                    account_id: AccountId(e.account_id),
                     username: e.username,
                     display_name: e.display_name,
                 })

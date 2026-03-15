@@ -1,9 +1,10 @@
 use log::error;
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
-    domain::{AccountId, moderation::ModerationFlag},
-    workflow::chat::message::MessageTarget,
+    domain::{AccountId, chat::ChatConversation, moderation::ModerationFlag},
+    workflow::chat::message::ChatSendMessageError,
 };
+use unordered_pair::UnorderedPair;
 
 use crate::{
     app::ServiceError,
@@ -17,19 +18,19 @@ impl ProtocolV2Handler {
         this_account_id: Option<&AccountId>,
         from_account_id: &AccountId,
         message: &str,
-        target: &MessageTarget,
+        target: &ChatConversation,
     ) {
         let Some(account) = self.auth.get_account(from_account_id).await else {
             error!("Failed to retrieve account information for sending chat message");
             return;
         };
         let msg = match target {
-            MessageTarget::Global => format!("Shout <{}> {}", account.username, message),
-            MessageTarget::Room(name) => {
-                format!("ShoutRoom {} <{}> {}", name, account.username, message)
+            ChatConversation::Global => format!("Shout <{}> {}", account.username, message),
+            ChatConversation::Room { room_name } => {
+                format!("ShoutRoom {} <{}> {}", room_name, account.username, message)
             }
-            MessageTarget::Private(to_account_id) => {
-                if this_account_id.is_some_and(|x| x != to_account_id) {
+            ChatConversation::Private { .. } => {
+                if this_account_id.is_some_and(|x| x == from_account_id) {
                     format!("Told <{}> {}", account.username, message)
                 } else {
                     format!("Tell <{}> {}", account.username, message)
@@ -88,10 +89,22 @@ impl ProtocolV2Handler {
             return V2Response::OK;
         }
 
-        self.app
+        if let Err(e) = self
+            .app
             .chat_message_use_case
-            .send_message(account_id, MessageTarget::Global, &msg)
-            .await;
+            .send_message(account_id, &ChatConversation::Global, &msg)
+            .await
+        {
+            return match e {
+                ChatSendMessageError::NotAllowed(reason) => V2Response::ErrorMessage(
+                    ServiceError::BadRequest(reason.clone()),
+                    format!("Failed to send chat message: {}", reason),
+                ),
+                ChatSendMessageError::RepositoryError => V2Response::ErrorNOK(
+                    ServiceError::Internal("Failed to save chat message".to_string()),
+                ),
+            };
+        }
         V2Response::OK
     }
 
@@ -125,10 +138,26 @@ impl ProtocolV2Handler {
             return V2Response::OK;
         }
 
-        self.app
+        if let Err(e) = self
+            .app
             .chat_message_use_case
-            .send_message(account_id, MessageTarget::Room(room), &msg)
-            .await;
+            .send_message(
+                account_id,
+                &ChatConversation::Room { room_name: room },
+                &msg,
+            )
+            .await
+        {
+            return match e {
+                ChatSendMessageError::NotAllowed(reason) => V2Response::ErrorMessage(
+                    ServiceError::BadRequest(reason.clone()),
+                    format!("Failed to send chat message: {}", reason),
+                ),
+                ChatSendMessageError::RepositoryError => V2Response::ErrorNOK(
+                    ServiceError::Internal("Failed to save chat message".to_string()),
+                ),
+            };
+        }
         V2Response::OK
     }
 
@@ -157,14 +186,23 @@ impl ProtocolV2Handler {
                 target_username
             ));
         }
-        self.app
+        let account_ids = UnorderedPair(account_id.clone(), target_account.account_id.clone());
+        if let Err(e) = self
+            .app
             .chat_message_use_case
-            .send_message(
-                account_id,
-                MessageTarget::Private(target_account.account_id),
-                &msg,
-            )
-            .await;
+            .send_message(account_id, &ChatConversation::Private { account_ids }, &msg)
+            .await
+        {
+            return match e {
+                ChatSendMessageError::NotAllowed(reason) => V2Response::ErrorMessage(
+                    ServiceError::BadRequest(reason.clone()),
+                    format!("Failed to send chat message: {}", reason),
+                ),
+                ChatSendMessageError::RepositoryError => V2Response::ErrorNOK(
+                    ServiceError::Internal("Failed to save chat message".to_string()),
+                ),
+            };
+        }
         V2Response::OK
     }
 }

@@ -104,9 +104,14 @@ pub async fn get_bot_certificate(
             "Admin role required".to_string(),
         ));
     }
+    let Some(target_account_id) = AccountId::from_string(req.target_account_id.clone()) else {
+        return Err(ServiceError::BadRequest(
+            "Invalid target account ID format".to_string(),
+        ));
+    };
     let target_account = app
         .auth
-        .get_account(&AccountId::from_string(req.target_account_id))
+        .get_account(&target_account_id)
         .await
         .ok_or_else(|| ServiceError::NotFound("Target account not found".to_string()))?;
     if !target_account.is_bot() {

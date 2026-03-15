@@ -3,12 +3,8 @@ use sea_orm::entity::prelude::*;
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "profile")]
 pub struct Model {
-    #[sea_orm(
-        primary_key,
-        auto_increment = false,
-        column_type = "String(StringLen::None)"
-    )]
-    pub account_id: String,
+    #[sea_orm(primary_key, auto_increment = false)]
+    pub account_id: Uuid,
     pub country: Option<String>,
     pub profile_picture_version: Option<u64>,
 }

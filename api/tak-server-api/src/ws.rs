@@ -17,15 +17,15 @@ use tak_player_connection::{ConnectionId, PlayerSimpleConnectionPort};
 use tak_server_api_contract::{
     game::{ForPlayer, JsonGameRequestType},
     ws::{
-        ClientMessage, ClientMessageWrapper, JsonChatMessageTarget, ServerGameEventType,
+        ClientMessage, ClientMessageWrapper, JsonChatConversation, ServerGameEventType,
         ServerMessage,
     },
 };
 use tak_server_app::{
-    domain::{AccountId, GameId, PlayerId, game::request::GameRequestType},
+    domain::{AccountId, GameId, PlayerId, chat::ChatConversation, game::request::GameRequestType},
     ports::notification::{ListenerGameMessageType, ListenerMessage},
     workflow::{
-        chat::message::MessageTarget,
+        chat::message::ChatSendMessageError,
         gameplay::{
             do_action::{ActionResult, DoActionError, PlayerActionError},
             observe::ObserveGameError,
@@ -34,6 +34,7 @@ use tak_server_app::{
 };
 use tokio::select;
 use tokio_util::sync::CancellationToken;
+use unordered_pair::UnorderedPair;
 use uuid::Uuid;
 
 use crate::{AppState, ServiceError, game::from_metadata_view, seek::from_seek_view};
@@ -243,20 +244,48 @@ async fn handle_authenticated_client_message(
                 },
             }
         }
-        ClientMessage::ChatMessage { message, target } => {
-            log::info!("Received ChatMessage: {:?} -> {}", target, message);
-            let message_target = match target {
-                JsonChatMessageTarget::Global => MessageTarget::Global,
-                JsonChatMessageTarget::Room { room_name } => MessageTarget::Room(room_name),
-                JsonChatMessageTarget::Private { to_account_id } => {
-                    MessageTarget::Private(AccountId::from_string(to_account_id))
+        ClientMessage::ChatMessage {
+            message,
+            conversation,
+        } => {
+            log::info!("Received ChatMessage: {:?} -> {}", conversation, message);
+            let message_target = match conversation {
+                JsonChatConversation::Global => ChatConversation::Global,
+                JsonChatConversation::Room { room_name } => ChatConversation::Room { room_name },
+                JsonChatConversation::Private {
+                    account_id1,
+                    account_id2,
+                } => {
+                    let Some(account_id1) = AccountId::from_string(account_id1) else {
+                        return Err(ServiceError::BadRequest(
+                            "Invalid account ID format in private conversation".to_string(),
+                        ));
+                    };
+                    let Some(account_id2) = AccountId::from_string(account_id2) else {
+                        return Err(ServiceError::BadRequest(
+                            "Invalid account ID format in private conversation".to_string(),
+                        ));
+                    };
+                    let members = UnorderedPair(account_id1, account_id2);
+                    ChatConversation::Private { account_ids: members }
                 }
             };
-            app.app
+            match app
+                .app
                 .chat_message_use_case
-                .send_message(&account_id, message_target, &message)
-                .await;
-            Ok(())
+                .send_message(&account_id, &message_target, &message)
+                .await
+            {
+                Ok(_) => Ok(()),
+                Err(e) => match e {
+                    ChatSendMessageError::NotAllowed(reason) => {
+                        Err(ServiceError::BadRequest(reason))
+                    }
+                    ChatSendMessageError::RepositoryError => Err(ServiceError::Internal(
+                        "Failed to save chat message".to_string(),
+                    )),
+                },
+            }
         }
         ClientMessage::SpectateGame { game_id, spectate } => {
             log::info!("Received SpectateGame for game {}: {}", game_id, spectate);
@@ -425,19 +454,20 @@ fn from_listener_message(message: ListenerMessage) -> MessageTransformation {
         ListenerMessage::ChatMessage {
             from_account_id,
             message,
-            target: source,
+            conversation,
         } => {
-            let target = match source {
-                MessageTarget::Global => JsonChatMessageTarget::Global,
-                MessageTarget::Room(room_name) => JsonChatMessageTarget::Room { room_name },
-                MessageTarget::Private(to_account_id) => JsonChatMessageTarget::Private {
-                    to_account_id: to_account_id.to_string(),
+            let conversation = match conversation {
+                ChatConversation::Global => JsonChatConversation::Global,
+                ChatConversation::Room { room_name } => JsonChatConversation::Room { room_name },
+                ChatConversation::Private { account_ids: members } => JsonChatConversation::Private {
+                    account_id1: members.0.to_string(),
+                    account_id2: members.1.to_string(),
                 },
             };
             MessageTransformation::Transform(ServerMessage::ChatMessage {
                 from_account_id: from_account_id.to_string(),
                 message,
-                target,
+                conversation,
             })
         }
         ListenerMessage::AccountsOnline { .. } => MessageTransformation::Ignore,

@@ -1,9 +1,10 @@
 use tak_core::{TakAction, TakGameResult, TakTimeInfo};
 
 use crate::{
-    domain::{AccountId, GameId, ListenerId, PlayerId, game::request::GameRequest},
+    domain::{
+        AccountId, GameId, ListenerId, PlayerId, chat::ChatConversation, game::request::GameRequest,
+    },
     workflow::{
-        chat::message::MessageTarget,
         gameplay::{FinishedGameView, OngoingGameView},
         matchmaking::SeekView,
     },
@@ -54,7 +55,7 @@ pub enum ListenerMessage {
     ChatMessage {
         from_account_id: AccountId,
         message: String,
-        target: MessageTarget,
+        conversation: ChatConversation,
     },
     ServerAlert {
         message: ServerAlertMessage,
