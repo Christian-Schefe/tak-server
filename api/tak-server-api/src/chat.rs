@@ -2,6 +2,7 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
+use tak_server_api_contract::ws::JsonChatMessage;
 use tak_server_app::domain::{AccountId, ChatMessageId, chat::ChatConversation};
 use unordered_pair::UnorderedPair;
 
@@ -81,20 +82,11 @@ pub async fn get_chat_messages(
     let messages = messages
         .into_iter()
         .map(|msg| JsonChatMessage {
-            id: msg.id.0,
-            sender_account_id: msg.sender.to_string(),
+            message_id: msg.id.0,
+            sender: msg.sender.to_string(),
             message: msg.message,
-            date: msg.date,
+            timestamp: msg.date,
         })
         .collect();
     Ok(Json(messages))
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct JsonChatMessage {
-    pub id: i64,
-    pub sender_account_id: String,
-    pub message: String,
-    #[serde(with = "chrono::serde::ts_milliseconds")]
-    pub date: chrono::DateTime<chrono::Utc>,
 }

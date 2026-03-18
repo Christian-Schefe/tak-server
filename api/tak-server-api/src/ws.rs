@@ -17,8 +17,8 @@ use tak_player_connection::{ConnectionId, PlayerSimpleConnectionPort};
 use tak_server_api_contract::{
     game::{ForPlayer, JsonGameRequestType},
     ws::{
-        ClientMessage, ClientMessageWrapper, JsonChatConversation, ServerGameEventType,
-        ServerMessage,
+        ClientMessage, ClientMessageWrapper, JsonChatConversation, JsonChatMessage,
+        ServerGameEventType, ServerMessage,
     },
 };
 use tak_server_app::{
@@ -267,7 +267,9 @@ async fn handle_authenticated_client_message(
                         ));
                     };
                     let members = UnorderedPair(account_id1, account_id2);
-                    ChatConversation::Private { account_ids: members }
+                    ChatConversation::Private {
+                        account_ids: members,
+                    }
                 }
             };
             match app
@@ -452,21 +454,26 @@ fn from_listener_message(message: ListenerMessage) -> MessageTransformation {
         }
 
         ListenerMessage::ChatMessage {
-            from_account_id,
             message,
             conversation,
         } => {
             let conversation = match conversation {
                 ChatConversation::Global => JsonChatConversation::Global,
                 ChatConversation::Room { room_name } => JsonChatConversation::Room { room_name },
-                ChatConversation::Private { account_ids: members } => JsonChatConversation::Private {
+                ChatConversation::Private {
+                    account_ids: members,
+                } => JsonChatConversation::Private {
                     account_id1: members.0.to_string(),
                     account_id2: members.1.to_string(),
                 },
             };
             MessageTransformation::Transform(ServerMessage::ChatMessage {
-                from_account_id: from_account_id.to_string(),
-                message,
+                message: JsonChatMessage {
+                    message_id: message.id.0,
+                    sender: message.sender.to_string(),
+                    message: message.message,
+                    timestamp: message.date,
+                },
                 conversation,
             })
         }

@@ -12,7 +12,7 @@ pub trait ChatRepository {
         &self,
         conversation: &ChatConversation,
         message: &ChatMessage,
-    ) -> Result<(), RepoError>;
+    ) -> Result<ChatMessageId, RepoError>;
     async fn get_messages(
         &self,
         conversation: &ChatConversation,

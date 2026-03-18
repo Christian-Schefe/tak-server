@@ -84,6 +84,7 @@ pub async fn serve(
         .route("/players/{player_id}/games", get(player::get_games_history));
 
     let router = puzzle::register_routes(router);
+    let router = chat::register_routes(router);
 
     let port = std::env::var("TAK_HTTP_API_PORT")
         .expect("TAK_HTTP_API_PORT must be set")

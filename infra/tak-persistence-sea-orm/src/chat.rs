@@ -1,6 +1,6 @@
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect,
+    ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect,
 };
 use tak_persistence_sea_orm_entities::chat;
 use tak_server_app::domain::{
@@ -40,7 +40,7 @@ impl ChatRepository for ChatRepositoryImpl {
         &self,
         conversation: &ChatConversation,
         message: &ChatMessage,
-    ) -> Result<(), RepoError> {
+    ) -> Result<ChatMessageId, RepoError> {
         let new_message = chat::ActiveModel {
             conversation: Set(conversation_id_from_chat_conversation(conversation)),
             id: Default::default(),
@@ -48,12 +48,13 @@ impl ChatRepository for ChatRepositoryImpl {
             date: Set(message.date),
             message: Set(message.message.to_string()),
         };
-        new_message
-            .insert(&self.db)
+        let inserted_message = chat::Entity::insert(new_message)
+            .exec(&self.db)
             .await
             .map_err(|e| RepoError::StorageError(e.to_string()))?;
-        Ok(())
+        Ok(ChatMessageId::new(inserted_message.last_insert_id))
     }
+
     async fn get_messages(
         &self,
         conversation: &ChatConversation,

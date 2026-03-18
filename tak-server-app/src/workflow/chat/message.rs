@@ -105,20 +105,26 @@ impl<
             Err(reason) => return Err(ChatSendMessageError::NotAllowed(reason)),
         };
 
-        let msg = ChatMessage {
+        let chat_msg = ChatMessage {
             date: chrono::Utc::now(),
             sender: from_account_id.clone(),
             message: filtered_message.clone(),
         };
 
-        if let Err(e) = self.chat_repository.save_message(conversation, &msg).await {
-            log::error!("Failed to save chat message: {}", e);
-            return Err(ChatSendMessageError::RepositoryError);
-        }
+        let msg_id = match self
+            .chat_repository
+            .save_message(conversation, &chat_msg)
+            .await
+        {
+            Ok(id) => id,
+            Err(e) => {
+                log::error!("Failed to save chat message: {}", e);
+                return Err(ChatSendMessageError::RepositoryError);
+            }
+        };
 
         let msg = ListenerMessage::ChatMessage {
-            from_account_id: from_account_id.clone(),
-            message: filtered_message.clone(),
+            message: ChatMessageView::from(msg_id, chat_msg),
             conversation: conversation.clone(),
         };
 

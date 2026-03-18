@@ -5,6 +5,7 @@ use crate::{
         AccountId, GameId, ListenerId, PlayerId, chat::ChatConversation, game::request::GameRequest,
     },
     workflow::{
+        chat::ChatMessageView,
         gameplay::{FinishedGameView, OngoingGameView},
         matchmaking::SeekView,
     },
@@ -53,8 +54,7 @@ pub enum ListenerMessage {
         game_id: GameId,
     },
     ChatMessage {
-        from_account_id: AccountId,
-        message: String,
+        message: ChatMessageView,
         conversation: ChatConversation,
     },
     ServerAlert {

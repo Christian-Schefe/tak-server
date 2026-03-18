@@ -245,12 +245,17 @@ impl ProtocolV2Handler {
                 self.send_online_players_message(id, players).await;
             }
             ListenerMessage::ChatMessage {
-                from_account_id,
                 message,
                 conversation: target,
             } => {
-                self.send_chat_message(id, account_id.as_ref(), from_account_id, message, target)
-                    .await;
+                self.send_chat_message(
+                    id,
+                    account_id.as_ref(),
+                    &message.sender,
+                    &message.message,
+                    target,
+                )
+                .await;
             }
             ListenerMessage::GameRematchRequested { .. } => {} //legacy api does not support rematch messages
             ListenerMessage::GameRematchRequestRetracted { .. } => {} //legacy api does not support rematch messages

@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::{
@@ -71,10 +72,20 @@ pub enum ServerMessage {
         game_id: i64,
     },
     ChatMessage {
-        from_account_id: String,
-        message: String,
+        #[serde(flatten)]
+        message: JsonChatMessage,
         conversation: JsonChatConversation,
     },
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonChatMessage {
+    pub message_id: i64,
+    pub sender: String,
+    pub message: String,
+    #[serde(with = "chrono::serde::ts_milliseconds")]
+    pub timestamp: DateTime<Utc>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
