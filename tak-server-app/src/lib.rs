@@ -15,7 +15,7 @@ use crate::{
         rating::{RatingRepository, RatingServiceImpl},
         seek::SeekServiceImpl,
         spectator::SpectatorServiceImpl,
-        stats::StatsRepository,
+        stats::{RatingHistoryRepository, StatsRepository},
     },
     ports::{
         authentication::AuthenticationPort,
@@ -142,6 +142,7 @@ pub async fn build_application<
     PFP: ProfilePictureRepository + Send + Sync + 'static,
     PZR: PuzzleRepository + Send + Sync + 'static,
     CR: ChatRepository + Send + Sync + 'static,
+    RH: RatingHistoryRepository + Send + Sync + 'static,
 >(
     game_repository: Arc<G>,
     player_repository: Arc<PR>,
@@ -157,6 +158,7 @@ pub async fn build_application<
     profile_picture_repo: Arc<PFP>,
     puzzle_repository: Arc<PZR>,
     chat_repository: Arc<CR>,
+    rating_history_repository: Arc<RH>,
 ) -> Application {
     let seek_service = Arc::new(SeekServiceImpl::new());
     let game_service = Arc::new(GameServiceImpl::new());
@@ -209,6 +211,7 @@ pub async fn build_application<
         listener_notification_port.clone(),
         get_account_workflow.clone(),
         stats_repository.clone(),
+        rating_history_repository.clone(),
     ));
     let observe_game_timeout_use_case = Arc::new(ObserveGameTimeoutUseCaseImpl::new(
         game_service.clone(),
@@ -288,6 +291,7 @@ pub async fn build_application<
 
         player_get_rating_use_case: Box::new(PlayerGetRatingUseCaseImpl::new(
             rating_repository.clone(),
+            rating_history_repository.clone(),
             rating_service.clone(),
         )),
         player_resolver_service,

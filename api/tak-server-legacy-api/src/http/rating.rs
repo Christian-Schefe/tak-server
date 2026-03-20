@@ -6,7 +6,7 @@ use axum::{
 };
 use tak_server_app::{
     domain::{
-        Pagination, RepoError, SortOrder,
+        Pagination, SortOrder,
         rating::{RatingQuery, RatingSortBy},
     },
     workflow::{account::get_account::GetAccountError, player::get_rating::GetRatingError},
@@ -87,7 +87,7 @@ async fn query_ratings(
         .await
     {
         Ok(result) => result,
-        Err(RepoError::StorageError(_)) => {
+        Err(GetRatingError::Internal) => {
             return Err(ServiceError::Internal("Error querying ratings".to_string()));
         }
     };

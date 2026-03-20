@@ -7,6 +7,7 @@ use axum::{
     http::header,
     response::Response,
 };
+use chrono::{DateTime, Utc};
 use tak_server_api_contract::game::JsonEndedGameInfo;
 use tak_server_app::{
     domain::{
@@ -293,6 +294,67 @@ pub async fn get_games_history(
             "Failed to retrieve game history".to_string(),
         )),
     }
+}
+
+pub async fn get_rating_history(
+    State(app): State<AppState>,
+    Path(player_id): Path<String>,
+    Query(query): Query<RatingHistoryQuery>,
+) -> Result<Json<JsonRatingHistory>, ServiceError> {
+    let player_id = PlayerId(
+        Uuid::parse_str(&player_id)
+            .map_err(|_| ServiceError::BadRequest("Invalid player ID".to_string()))?,
+    );
+    match app
+        .app
+        .player_get_rating_use_case
+        .get_rating_history(player_id, query.from.map(|t| t.0), query.to.map(|t| t.0))
+        .await
+    {
+        Ok(history) => Ok(Json(JsonRatingHistory {
+            entries: history
+                .entries
+                .into_iter()
+                .map(|entry| JsonRatingHistoryEntry {
+                    timestamp: entry.timestamp,
+                    rating: entry.rating,
+                })
+                .collect(),
+            first_entry_before_range: history.first_entry_before_range.map(|entry| {
+                JsonRatingHistoryEntry {
+                    timestamp: entry.timestamp,
+                    rating: entry.rating,
+                }
+            }),
+        })),
+        Err(_) => Err(ServiceError::Internal(
+            "Failed to retrieve rating history".to_string(),
+        )),
+    }
+}
+
+#[derive(serde::Deserialize)]
+pub struct RatingHistoryQuery {
+    pub from: Option<SerdeTimestamp>,
+    pub to: Option<SerdeTimestamp>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct SerdeTimestamp(#[serde(with = "chrono::serde::ts_milliseconds")] pub DateTime<Utc>);
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonRatingHistory {
+    pub entries: Vec<JsonRatingHistoryEntry>,
+    pub first_entry_before_range: Option<JsonRatingHistoryEntry>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonRatingHistoryEntry {
+    #[serde(with = "chrono::serde::ts_milliseconds")]
+    timestamp: DateTime<Utc>,
+    rating: f64,
 }
 
 #[derive(serde::Serialize)]

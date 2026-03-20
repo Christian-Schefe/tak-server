@@ -1,3 +1,5 @@
+use chrono::{DateTime, Utc};
+
 use crate::domain::{PlayerId, rating::PlayerRating, stats::PlayerStats};
 
 pub mod get_rating;
@@ -8,8 +10,8 @@ pub mod notify_player;
 pub struct RatedPlayerView {
     pub player_id: PlayerId,
     pub rating: f64,
-    pub max_rating: f64, //TODO: Remove and use stats to track max rating, this value should be for internal use only
-    pub rated_games_played: u32, //TODO: Remove and use stats to track games played, this value should be for internal use only
+    pub rated_games_played: u32,
+    pub max_rating: f64,
     pub participation_rating: f64,
 }
 
@@ -43,4 +45,14 @@ impl PlayerStatsView {
             games_drawn: stats.games_drawn,
         }
     }
+}
+
+pub struct RatingHistoryEntryView {
+    pub timestamp: DateTime<Utc>,
+    pub rating: f64,
+}
+
+pub struct RatingHistoryRangeView {
+    pub entries: Vec<RatingHistoryEntryView>,
+    pub first_entry_before_range: Option<RatingHistoryEntryView>,
 }

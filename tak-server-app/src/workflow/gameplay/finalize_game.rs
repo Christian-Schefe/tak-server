@@ -9,7 +9,7 @@ use crate::{
         r#match::MatchService,
         rating::{PlayerRating, RatingRepository, RatingService},
         spectator::SpectatorService,
-        stats::{GameOutcome, StatsRepository},
+        stats::{GameOutcome, RatingHistoryEntry, RatingHistoryRepository, StatsRepository},
     },
     ports::notification::{ListenerGameMessageType, ListenerMessage, ListenerNotificationPort},
     workflow::{
@@ -34,6 +34,7 @@ pub struct FinalizeGameWorkflowImpl<
     L: ListenerNotificationPort,
     A: GetAccountWorkflow,
     S: StatsRepository,
+    RH: RatingHistoryRepository,
 > {
     game_repository: Arc<G>,
     rating_service: Arc<R>,
@@ -45,6 +46,7 @@ pub struct FinalizeGameWorkflowImpl<
     listener_notification_port: Arc<L>,
     get_account_workflow: Arc<A>,
     stats_repository: Arc<S>,
+    rating_history_repository: Arc<RH>,
 }
 
 impl<
@@ -58,7 +60,8 @@ impl<
     L: ListenerNotificationPort,
     A: GetAccountWorkflow,
     S: StatsRepository,
-> FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, A, S>
+    RH: RatingHistoryRepository,
+> FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, A, S, RH>
 {
     pub fn new(
         game_repository: Arc<G>,
@@ -71,6 +74,7 @@ impl<
         listener_notification_port: Arc<L>,
         get_account_workflow: Arc<A>,
         stats_repository: Arc<S>,
+        rating_history_repository: Arc<RH>,
     ) -> Self {
         Self {
             game_repository,
@@ -83,6 +87,7 @@ impl<
             listener_notification_port,
             get_account_workflow,
             stats_repository,
+            rating_history_repository,
         }
     }
 }
@@ -99,7 +104,8 @@ impl<
     L: ListenerNotificationPort + Send + Sync + 'static,
     A: GetAccountWorkflow + Send + Sync + 'static,
     S: StatsRepository + Send + Sync + 'static,
-> FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, A, S>
+    RH: RatingHistoryRepository + Send + Sync + 'static,
+> FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, A, S, RH>
 {
     async fn finalize_game(&self, ended_game: FinishedGame) {
         log::info!("Finalizing game {}", ended_game.game_id);
@@ -137,6 +143,7 @@ impl<
             &self.get_account_workflow,
             &self.rating_service,
             &self.rating_repository,
+            &self.rating_history_repository,
             &ended_game,
         )
         .await;
@@ -179,10 +186,12 @@ async fn update_ratings<
     A: GetAccountWorkflow,
     RS: RatingService + Send + Sync + 'static,
     RR: RatingRepository,
+    RH: RatingHistoryRepository,
 >(
     get_account_workflow: &Arc<A>,
     rating_service: &Arc<RS>,
     rating_repository: &Arc<RR>,
+    rating_history_repository: &Arc<RH>,
     ended_game: &FinishedGame,
 ) -> Option<GameRatingInfo> {
     let white_account = get_account_workflow
@@ -201,7 +210,7 @@ async fn update_ratings<
         let black_id = ended_game.metadata.black_id;
         let ended_game_clone = ended_game.clone();
         let rating_service = rating_service.clone();
-        match rating_repository
+        let info = match rating_repository
             .update_player_ratings(
                 ended_game.metadata.white_id,
                 ended_game.metadata.black_id,
@@ -213,7 +222,8 @@ async fn update_ratings<
                         &mut w_rating,
                         &mut b_rating,
                     );
-                    (w_rating, b_rating, res)
+                    let info = res.map(|info| (w_rating.rating, b_rating.rating, info));
+                    (w_rating, b_rating, info)
                 },
             )
             .await
@@ -227,7 +237,36 @@ async fn update_ratings<
                 );
                 None
             }
+        };
+        if let Some((new_rating_white, new_rating_black, _)) = &info {
+            if let Err(e) = rating_history_repository
+                .add_rating_history_entry(
+                    white_id,
+                    RatingHistoryEntry::new(ended_game.metadata.date, *new_rating_white),
+                )
+                .await
+            {
+                log::error!(
+                    "Failed to add rating history entry for player {}: {}",
+                    white_id,
+                    e
+                );
+            }
+            if let Err(e) = rating_history_repository
+                .add_rating_history_entry(
+                    black_id,
+                    RatingHistoryEntry::new(ended_game.metadata.date, *new_rating_black),
+                )
+                .await
+            {
+                log::error!(
+                    "Failed to add rating history entry for player {}: {}",
+                    black_id,
+                    e
+                );
+            }
         }
+        info.map(|(_, _, info)| info)
     }
 }
 
