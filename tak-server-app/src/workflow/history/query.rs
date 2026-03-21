@@ -44,7 +44,7 @@ impl<G: GameRepository + Send + Sync + 'static> GameHistoryQueryUseCase
                 Ok(result.map(|(id, record)| GameRecordView::from_game_record(id, record)))
             }
             Err(RepoError::StorageError(e)) => {
-                log::error!("Error querying games: {}", e);
+                tracing::error!("Error querying games: {}", e);
                 Err(GameQueryError::RepositoryError)
             }
         }
@@ -53,7 +53,7 @@ impl<G: GameRepository + Send + Sync + 'static> GameHistoryQueryUseCase
         match self.game_repository.get_game_record(game_id).await {
             Ok(result) => Ok(Some(GameRecordView::from_game_record(game_id, result))),
             Err(RepoRetrieveError::StorageError(e)) => {
-                log::error!("Error getting game record: {}", e);
+                tracing::error!("Error getting game record: {}", e);
                 Err(GameQueryError::RepositoryError)
             }
             Err(RepoRetrieveError::NotFound) => Ok(None),

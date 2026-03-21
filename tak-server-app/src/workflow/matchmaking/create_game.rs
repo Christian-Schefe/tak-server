@@ -86,6 +86,7 @@ impl<
     S: GetSnapshotWorkflow + Send + Sync,
 > CreateGameFromMatchWorkflow for CreateGameFromMatchWorkflowImpl<M, GH, GR, G, GT, L, S>
 {
+    #[tracing::instrument(skip(self))]
     async fn create_game_from_match(
         &self,
         match_id: MatchId,
@@ -123,7 +124,7 @@ impl<
         let game_id = match self.game_repository.save_ongoing_game(game_record).await {
             Ok(id) => id,
             Err(e) => {
-                log::error!(
+                tracing::error!(
                     "Failed to save ongoing game for match {}: {}",
                     match_entry.id,
                     e
@@ -136,7 +137,7 @@ impl<
             .match_service
             .start_game_in_match(match_entry.id, game_id)
         {
-            log::error!(
+            tracing::error!(
                 "Failed to start game {} in match {}",
                 game_id,
                 match_entry.id

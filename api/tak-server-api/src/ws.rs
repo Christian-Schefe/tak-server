@@ -67,15 +67,15 @@ pub async fn ws_handler(ws: WebSocketUpgrade, State(app): State<AppState>) -> Re
 
         let (receive_res, send_res) = tokio::join!(receive_task, send_task);
         if let Err(e) = receive_res {
-            log::error!("WebSocket receive task failed: {}", e);
+            tracing::error!("WebSocket receive task failed: {}", e);
         }
         if let Err(e) = send_res {
-            log::error!("WebSocket send task failed: {}", e);
+            tracing::error!("WebSocket send task failed: {}", e);
         }
 
         app.ws.remove_connection(conn_id);
         app.connection_driver.remove_connection(&conn_id).await;
-        log::info!("WebSocket connection {} handler finished", conn_id);
+        tracing::info!("WebSocket connection {} handler finished", conn_id);
     })
 }
 
@@ -94,11 +94,11 @@ async fn receive_ws(
             Ok(axum::extract::ws::Message::Text(text)) => {
                 match serde_json::from_str::<ClientMessageWrapper>(&text) {
                     Ok(msg) => {
-                        log::info!("Received WS message from {}: {:?}", connection_id, msg);
+                        tracing::info!("Received WS message from {}: {:?}", connection_id, msg);
                         let response = if let Err(e) =
                             handle_client_message(&app, msg.message, connection_id).await
                         {
-                            log::warn!("Failed to handle WS message: {}", e);
+                            tracing::warn!("Failed to handle WS message: {}", e);
                             ServerMessage::Error {
                                 message: e.to_string(),
                                 code: e.status_code().as_u16(),
@@ -112,7 +112,7 @@ async fn receive_ws(
                         let _ = sender.send(response);
                     }
                     Err(e) => {
-                        log::warn!("Failed to parse WS message: {}", e);
+                        tracing::warn!("Failed to parse WS message: {}", e);
                         let _ = sender.send(ServerMessage::Error {
                             message: "Invalid message format".to_string(),
                             code: 400,
@@ -122,14 +122,14 @@ async fn receive_ws(
                 }
             }
             Ok(axum::extract::ws::Message::Binary(bin)) => {
-                log::info!("Received WS binary message: {:?}", bin);
+                tracing::info!("Received WS binary message: {:?}", bin);
             }
             Ok(axum::extract::ws::Message::Close(frame)) => {
-                log::info!("WS connection closed: {:?}", frame);
+                tracing::info!("WS connection closed: {:?}", frame);
                 break;
             }
             Err(e) => {
-                log::warn!("WS error: {}", e);
+                tracing::warn!("WS error: {}", e);
                 break;
             }
             _ => {}
@@ -168,7 +168,7 @@ async fn handle_client_message(
             app.connection_driver
                 .add_connection(&account_id, connection_id)
                 .await;
-            log::info!(
+            tracing::info!(
                 "WS connection {} associated with account {}",
                 connection_id,
                 &account_id
@@ -212,7 +212,7 @@ async fn handle_authenticated_client_message(
             "Already authenticated".to_string(),
         )),
         ClientMessage::GameAction { game_id, action } => {
-            log::info!("Received GameAction for game {}: {}", game_id, action);
+            tracing::info!("Received GameAction for game {}: {}", game_id, action);
             let Some(action) = action_from_ptn(&action) else {
                 return Err(ServiceError::BadRequest(
                     "Invalid action format".to_string(),
@@ -248,7 +248,7 @@ async fn handle_authenticated_client_message(
             message,
             conversation,
         } => {
-            log::info!("Received ChatMessage: {:?} -> {}", conversation, message);
+            tracing::info!("Received ChatMessage: {:?} -> {}", conversation, message);
             let message_target = match conversation {
                 JsonChatConversation::Global => ChatConversation::Global,
                 JsonChatConversation::Room { room_name } => ChatConversation::Room { room_name },
@@ -290,7 +290,7 @@ async fn handle_authenticated_client_message(
             }
         }
         ClientMessage::SpectateGame { game_id, spectate } => {
-            log::info!("Received SpectateGame for game {}: {}", game_id, spectate);
+            tracing::info!("Received SpectateGame for game {}: {}", game_id, spectate);
             if spectate {
                 app.app
                     .game_observe_use_case

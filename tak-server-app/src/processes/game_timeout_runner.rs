@@ -32,11 +32,11 @@ impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> GameTimeoutRunnerImpl
         loop {
             match this.observer.check_game_timeout(game_id).await {
                 ObserveOutcome::Finished => {
-                    log::info!("Game {:?} timeout processing finished", game_id);
+                    tracing::info!("Game {:?} timeout processing finished", game_id);
                     return;
                 }
                 ObserveOutcome::Continue(delay) => {
-                    log::info!(
+                    tracing::info!(
                         "Scheduling next timeout check for game {:?} in {:?}",
                         game_id,
                         delay

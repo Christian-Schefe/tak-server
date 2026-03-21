@@ -118,7 +118,7 @@ impl<
         {
             Ok(id) => id,
             Err(e) => {
-                log::error!("Failed to save chat message: {}", e);
+                tracing::error!("Failed to save chat message: {}", e);
                 return Err(ChatSendMessageError::RepositoryError);
             }
         };
@@ -174,7 +174,7 @@ impl<
                 .map(|(id, msg)| ChatMessageView::from(id, msg))
                 .collect()),
             Err(RepoError::StorageError(e)) => {
-                log::error!("Failed to retrieve chat messages: {}", e);
+                tracing::error!("Failed to retrieve chat messages: {}", e);
                 Err(())
             }
         }

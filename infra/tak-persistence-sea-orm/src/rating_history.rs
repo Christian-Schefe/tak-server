@@ -1,8 +1,8 @@
 use crate::create_db_pool;
 use chrono::{DateTime, Utc};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QueryTrait,
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QueryTrait,
+    sea_query::OnConflict,
 };
 use tak_persistence_sea_orm_entities::rating_history;
 use tak_server_app::domain::{
@@ -86,9 +86,20 @@ impl RatingHistoryRepository for RatingHistoryRepositoryImpl {
         rating: RatingHistoryEntry,
     ) -> Result<(), RepoError> {
         let model = Self::rating_to_model(player_id, &rating);
-        model.insert(&self.db).await.map_err(|e| {
-            RepoError::StorageError(format!("Failed to add rating history entry: {e}"))
-        })?;
+        rating_history::Entity::insert(model)
+            .on_conflict(
+                OnConflict::columns([
+                    rating_history::Column::PlayerId,
+                    rating_history::Column::Timestamp,
+                ])
+                .update_column(rating_history::Column::Rating)
+                .to_owned(),
+            )
+            .exec(&self.db)
+            .await
+            .map_err(|e| {
+                RepoError::StorageError(format!("Failed to add rating history entry: {e}"))
+            })?;
         Ok(())
     }
 }

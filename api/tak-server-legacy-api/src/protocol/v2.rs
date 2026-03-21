@@ -55,7 +55,7 @@ impl ProtocolV2Handler {
     pub async fn handle_client_message(&self, id: ConnectionId, msg: String) {
         let parts = msg.split_whitespace().collect::<Vec<_>>();
         if parts.is_empty() {
-            log::info!("Received empty message");
+            tracing::info!("Received empty message");
             return;
         }
         let subject = parts[0].to_ascii_lowercase();
@@ -88,17 +88,17 @@ impl ProtocolV2Handler {
             }
             V2Response::ErrorMessage(err, msg) => {
                 if !sensitive {
-                    log::error!("Error handling message {:?}: {}", parts, err);
+                    tracing::error!("Error handling message {:?}: {}", parts, err);
                 } else {
-                    log::error!("Error handling sensitive message {:?}: {}", subject, err);
+                    tracing::error!("Error handling sensitive message {:?}: {}", subject, err);
                 }
                 self.send_to(id, msg);
             }
             V2Response::ErrorNOK(err) => {
                 if !sensitive {
-                    log::error!("Error handling message {:?}: {}", parts, err);
+                    tracing::error!("Error handling message {:?}: {}", parts, err);
                 } else {
-                    log::error!("Error handling sensitive message {:?}: {}", subject, err);
+                    tracing::error!("Error handling sensitive message {:?}: {}", subject, err);
                 }
                 self.send_to(id, "NOK");
             }

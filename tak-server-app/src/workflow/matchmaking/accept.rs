@@ -93,21 +93,21 @@ impl<
         {
             Ok(_) => Ok(()),
             Err(CreateGameFromMatchError::AlreadyInProgress) => {
-                log::error!(
+                tracing::error!(
                     "Failed to create game from match {}: already in progress",
                     match_id
                 );
                 Err(AcceptSeekError::FailedToCreateGame)
             }
             Err(CreateGameFromMatchError::RepositoryError) => {
-                log::error!(
+                tracing::error!(
                     "Failed to create game from match {}: repository error",
                     match_id
                 );
                 Err(AcceptSeekError::FailedToCreateGame)
             }
             Err(CreateGameFromMatchError::MatchNotFound) => {
-                log::error!(
+                tracing::error!(
                     "Failed to create game from match {}: match not found",
                     match_id
                 );

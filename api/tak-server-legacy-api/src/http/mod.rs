@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use axum::{Router, routing::get};
-use log::info;
 use tak_server_app::{Application, ports::authentication::AuthenticationPort};
 
 use crate::acl::LegacyAPIAntiCorruptionLayer;
@@ -41,13 +40,13 @@ pub async fn run(
         .await
         .unwrap();
 
-    info!("Legacy API server listening on port {}", port);
+    tracing::info!("Legacy API server listening on port {}", port);
     axum::serve(listener, router.with_state(AppState { app, auth, acl }))
         .with_graceful_shutdown(shutdown_signal)
         .await
         .unwrap();
 
-    info!("Legacy HTTP API shut down gracefully");
+    tracing::info!("Legacy HTTP API shut down gracefully");
 }
 
 #[derive(serde::Serialize)]

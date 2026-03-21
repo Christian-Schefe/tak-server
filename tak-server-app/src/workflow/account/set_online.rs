@@ -83,7 +83,7 @@ impl<
                 self.disconnect_timeout_runner.cancel_disconnect_timeout(id);
             }
             Err(ResolveError::Internal) => {
-                log::error!(
+                tracing::error!(
                     "Failed to resolve player ID when setting account online: {}",
                     account_id
                 )
@@ -123,7 +123,7 @@ impl<
                 );
             }
             Err(ResolveError::Internal) => {
-                log::error!(
+                tracing::error!(
                     "Failed to resolve player ID when setting account offline: {}",
                     account_id
                 )

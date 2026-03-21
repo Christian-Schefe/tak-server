@@ -110,7 +110,7 @@ async fn query_ratings(
             Ok(account) => Some((rating, account.username.clone(), account.is_bot())),
             Err(GetAccountError::AccountNotFound) => None,
             Err(GetAccountError::RepositoryError) => {
-                log::error!(
+                tracing::error!(
                     "Failed to get account for player {}: Repository error",
                     rating.player_id,
                 );

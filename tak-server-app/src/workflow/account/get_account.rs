@@ -48,7 +48,7 @@ impl<
             Ok(account_id) => account_id,
             Err(RepoRetrieveError::NotFound) => return Err(GetAccountError::AccountNotFound),
             Err(RepoRetrieveError::StorageError(e)) => {
-                log::error!(
+                tracing::error!(
                     "Failed to retrieve account ID for player {}: {}",
                     player_id,
                     e

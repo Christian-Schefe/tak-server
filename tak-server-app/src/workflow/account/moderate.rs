@@ -125,7 +125,7 @@ impl<E: EmailPort, A: AuthenticationPort> ModeratePlayerUseCaseImpl<E, A> {
         };
 
         if let Err(_) = res {
-            log::error!("Failed to set player banned status");
+            tracing::error!("Failed to set player banned status");
             return Err(ModerationError::AccountNotFound);
         }
 
@@ -160,7 +160,7 @@ impl<E: EmailPort, A: AuthenticationPort> ModeratePlayerUseCaseImpl<E, A> {
         };
 
         if let Err(_) = res {
-            log::error!("Failed to set player silenced status");
+            tracing::error!("Failed to set player silenced status");
             return Err(ModerationError::AccountNotFound);
         }
 
@@ -193,7 +193,7 @@ impl<E: EmailPort, A: AuthenticationPort> ModeratePlayerUseCaseImpl<E, A> {
         {
             Ok(()) => Ok(()),
             Err(()) => {
-                log::error!("Failed to set player role to {:?}", role);
+                tracing::error!("Failed to set player role to {:?}", role);
                 Err(ModerationError::AccountNotFound)
             }
         }
@@ -247,7 +247,7 @@ impl<E: EmailPort + Send + Sync + 'static, A: AuthenticationPort + Send + Sync +
             match self.email_port.send_email(&email, &subject, &body) {
                 Ok(_) => {}
                 Err(e) => {
-                    log::error!("Failed to send ban email to {}: {:?}", email, e);
+                    tracing::error!("Failed to send ban email to {}: {:?}", email, e);
                 }
             }
         }

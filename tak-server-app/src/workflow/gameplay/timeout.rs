@@ -47,7 +47,7 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
         let now = Instant::now();
         match self.game_service.check_timeout(game_id, now) {
             CheckTimeoutResult::TimedOut(game) => {
-                log::info!("Game {:?} timed out, finalizing game", game_id);
+                tracing::info!("Game {:?} timed out, finalizing game", game_id);
                 self.finalize_game_workflow.finalize_game(game).await;
                 ObserveOutcome::Finished
             }
@@ -85,7 +85,7 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
                 now,
             ) {
                 GamePlayerActionResult::GameNotFound | GamePlayerActionResult::NotAPlayerInGame => {
-                    log::warn!(
+                    tracing::warn!(
                         "Received unexpected result when checking disconnect timeout for player {:?} in game {:?}",
                         player_id,
                         game.game_id
@@ -96,7 +96,7 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
                 }
                 GamePlayerActionResult::Result(res) => match res {
                     CheckDisconnectTimeoutResult::TimedOut(ended_game) => {
-                        log::info!(
+                        tracing::info!(
                             "Player {:?} timed out in game {:?} after being disconnected for {:?}",
                             player_id,
                             game.game_id,

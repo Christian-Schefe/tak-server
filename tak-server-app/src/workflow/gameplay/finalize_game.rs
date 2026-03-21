@@ -107,8 +107,9 @@ impl<
     RH: RatingHistoryRepository + Send + Sync + 'static,
 > FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, A, S, RH>
 {
+    #[tracing::instrument(skip(self, ended_game), fields(game_id = %ended_game.game_id))]
     async fn finalize_game(&self, ended_game: FinishedGame) {
-        log::info!("Finalizing game {}", ended_game.game_id);
+        tracing::info!("Finalizing game {}", ended_game.game_id);
         let game_id = ended_game.game_id;
         let over_msg = ListenerMessage::GameEvent {
             game_id,
@@ -134,7 +135,7 @@ impl<
         };
         self.listener_notification_port.notify_all(&ended_msg);
 
-        log::debug!(
+        tracing::debug!(
             "Notified players and spectators about game {} ending, updating ratings and stats",
             game_id
         );
@@ -148,18 +149,18 @@ impl<
         )
         .await;
 
-        log::debug!(
+        tracing::debug!(
             "Ratings updated for game {}, updating match and game history",
             game_id
         );
 
         if let Some(match_id) = self.match_service.get_match_id_by_game_id(game_id) {
-            log::info!("Finalizing game {} in match {}", game_id, match_id);
+            tracing::info!("Finalizing game {} in match {}", game_id, match_id);
             if !self.match_service.end_game_in_match(match_id, game_id) {
-                log::error!("Failed to end game {} in match {}", game_id, match_id);
+                tracing::error!("Failed to end game {} in match {}", game_id, match_id);
             }
         } else {
-            log::info!("Game {} is not part of a match", game_id);
+            tracing::info!("Game {} is not part of a match", game_id);
         }
 
         update_stats(&self.stats_repository, &ended_game).await;
@@ -172,13 +173,13 @@ impl<
             .update_finished_game(game_id, game_record_update)
             .await
         {
-            log::error!(
+            tracing::error!(
                 "Failed to update finished game record for game {}: {}",
                 game_id,
                 e
             );
         }
-        log::debug!("Finished finalizing game {}", game_id);
+        tracing::debug!("Finished finalizing game {}", game_id);
     }
 }
 
@@ -210,11 +211,14 @@ async fn update_ratings<
         let black_id = ended_game.metadata.black_id;
         let ended_game_clone = ended_game.clone();
         let rating_service = rating_service.clone();
-        let info = match rating_repository
+        let (white_rating_if_changed, black_rating_if_changed, info) = match rating_repository
             .update_player_ratings(
                 ended_game.metadata.white_id,
                 ended_game.metadata.black_id,
                 move |w_rating, b_rating| {
+                    let prev_white_rating = w_rating.as_ref().map(|r| r.rating);
+                    let prev_black_rating = b_rating.as_ref().map(|r| r.rating);
+
                     let mut w_rating = w_rating.unwrap_or(PlayerRating::new(white_id));
                     let mut b_rating = b_rating.unwrap_or(PlayerRating::new(black_id));
                     let res = rating_service.calculate_ratings(
@@ -222,51 +226,81 @@ async fn update_ratings<
                         &mut w_rating,
                         &mut b_rating,
                     );
-                    let info = res.map(|info| (w_rating.rating, b_rating.rating, info));
-                    (w_rating, b_rating, info)
+                    let white_rating_if_changed =
+                        Some(w_rating.rating).filter(|&r| Some(r) != prev_white_rating);
+                    let black_rating_if_changed =
+                        Some(b_rating.rating).filter(|&r| Some(r) != prev_black_rating);
+                    let info = res.map(|info| info);
+                    (
+                        w_rating,
+                        b_rating,
+                        (white_rating_if_changed, black_rating_if_changed, info),
+                    )
                 },
             )
             .await
         {
-            Ok(info) => info,
+            Ok(res) => res,
             Err(e) => {
-                log::error!(
+                tracing::error!(
                     "Failed to update player ratings for game {}: {}",
                     ended_game.game_id,
                     e
                 );
-                None
+                (None, None, None)
             }
         };
-        if let Some((new_rating_white, new_rating_black, _)) = &info {
+        if let Some(new_white_rating) = &white_rating_if_changed {
             if let Err(e) = rating_history_repository
                 .add_rating_history_entry(
                     white_id,
-                    RatingHistoryEntry::new(ended_game.metadata.date, *new_rating_white),
+                    RatingHistoryEntry::new(ended_game.metadata.date, *new_white_rating),
                 )
                 .await
             {
-                log::error!(
+                tracing::error!(
                     "Failed to add rating history entry for player {}: {}",
                     white_id,
                     e
                 );
             }
-            if let Err(e) = rating_history_repository
-                .add_rating_history_entry(
-                    black_id,
-                    RatingHistoryEntry::new(ended_game.metadata.date, *new_rating_black),
-                )
-                .await
-            {
-                log::error!(
-                    "Failed to add rating history entry for player {}: {}",
-                    black_id,
-                    e
-                );
-            }
+            tracing::debug!(
+                "White player's rating changed to {} after game {}, history entry added",
+                new_white_rating,
+                ended_game.game_id
+            );
+        } else {
+            tracing::debug!(
+                "White player's rating did not change after game {}, no history entry added",
+                ended_game.game_id
+            );
         }
-        info.map(|(_, _, info)| info)
+        if let Some(new_black_rating) = &black_rating_if_changed {
+            if let Err(e) = rating_history_repository
+                .add_rating_history_entry(
+                    black_id,
+                    RatingHistoryEntry::new(ended_game.metadata.date, *new_black_rating),
+                )
+                .await
+            {
+                tracing::error!(
+                    "Failed to add rating history entry for player {}: {}",
+                    black_id,
+                    e
+                );
+            }
+            tracing::debug!(
+                "Black player's rating changed to {} after game {}, history entry added",
+                new_black_rating,
+                ended_game.game_id
+            );
+        } else {
+            tracing::debug!(
+                "Black player's rating did not change after game {}, no history entry added",
+                ended_game.game_id
+            );
+        }
+        info
     }
 }
 
@@ -291,7 +325,7 @@ async fn update_stats<S: StatsRepository>(stats_repository: &Arc<S>, ended_game:
         )
         .await
     {
-        log::error!(
+        tracing::error!(
             "Failed to update stats for player {}: {}",
             ended_game.metadata.white_id,
             e
@@ -306,7 +340,7 @@ async fn update_stats<S: StatsRepository>(stats_repository: &Arc<S>, ended_game:
         )
         .await
     {
-        log::error!(
+        tracing::error!(
             "Failed to update stats for player {}: {}",
             ended_game.metadata.black_id,
             e

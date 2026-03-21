@@ -19,7 +19,7 @@ async fn try_reconnect_db_pool(opt: ConnectOptions) -> DatabaseConnection {
         match Database::connect(opt.clone()).await {
             Ok(db) => return db,
             Err(e) => {
-                log::error!(
+                tracing::error!(
                     "Failed to connect to database: {}. Retrying in 5 seconds...",
                     e
                 );
@@ -44,7 +44,7 @@ pub async fn create_db_pool() -> DatabaseConnection {
                 mariadb_user, mariadb_password, mariadb_host, mariadb_port, mariadb_database
             );
 
-            log::info!("Connecting to database at {}", db_url);
+            tracing::info!("Connecting to database at {}", db_url);
 
             let mut opt = ConnectOptions::new(&db_url);
             opt.max_connections(5);

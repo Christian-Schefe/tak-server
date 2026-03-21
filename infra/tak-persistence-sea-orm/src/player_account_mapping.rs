@@ -140,7 +140,7 @@ impl PlayerAccountMappingRepository for PlayerAccountMappingRepositoryImpl {
         self.player_id_to_account_id_cache.invalidate(&player_id);
 
         if res.rows_affected == 0 {
-            log::warn!(
+            tracing::warn!(
                 "Tried to remove player mapping for account_id {:?}, but no rows were affected",
                 account_id
             );

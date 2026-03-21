@@ -81,6 +81,10 @@ pub async fn serve(
         )
         .route("/players/{player_id}", get(player::get_player_info))
         .route("/players/{player_id}/stats", get(player::get_player_stats))
+        .route(
+            "/players/{player_id}/rating-history",
+            get(player::get_rating_history),
+        )
         .route("/players/{player_id}/games", get(player::get_games_history));
 
     let router = puzzle::register_routes(router);
@@ -95,13 +99,13 @@ pub async fn serve(
         .await
         .unwrap();
 
-    log::info!("API server listening on port {}", port);
+    tracing::info!("API server listening on port {}", port);
     axum::serve(listener, router.with_state(state))
         .with_graceful_shutdown(shutdown_signal)
         .await
         .unwrap();
 
-    log::info!("HTTP API shut down gracefully");
+    tracing::info!("HTTP API shut down gracefully");
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

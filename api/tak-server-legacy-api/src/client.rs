@@ -154,7 +154,7 @@ impl TransportServiceImpl {
             .remove_connection(&connection_id)
             .await;
 
-        log::info!("Client {} fully disconnected", connection_id);
+        tracing::info!("Client {} fully disconnected", connection_id);
     }
 
     async fn handle_send<S, M>(
@@ -180,7 +180,7 @@ impl TransportServiceImpl {
             }
         }
         let _ = ws_sender.close().await;
-        log::info!("Client {} send ended", id);
+        tracing::info!("Client {} send ended", id);
         cancellation_token.cancel();
     }
 
@@ -204,11 +204,11 @@ impl TransportServiceImpl {
                     .handle_server_message(&protocol, id, &ServerMessage::Notification(msg))
                     .await;
             } else {
-                log::error!("Client {} connection not found for notification", id);
+                tracing::error!("Client {} connection not found for notification", id);
                 break;
             }
         }
-        log::info!("Client {} notification handler ended", id);
+        tracing::info!("Client {} notification handler ended", id);
     }
 
     async fn handle_receive<S, M, E>(
@@ -233,7 +233,7 @@ impl TransportServiceImpl {
             let msg = match msg_parser(msg) {
                 Some(m) => m,
                 None => {
-                    log::info!("Client {} sent invalid message", id);
+                    tracing::info!("Client {} sent invalid message", id);
                     continue;
                 }
             };
@@ -241,7 +241,7 @@ impl TransportServiceImpl {
                 ClientMessage::Text(text) => {
                     if text.to_ascii_lowercase().starts_with("protocol") {
                         self.try_switch_protocol(id, &text).unwrap_or_else(|e| {
-                            log::error!(
+                            tracing::error!(
                                 "Client {} failed to switch to protocol {}: {}",
                                 id,
                                 text,
@@ -253,7 +253,7 @@ impl TransportServiceImpl {
 
                     let Some(protocol) = self.connections.get(&id).map(|c| c.protocol.clone())
                     else {
-                        log::error!("Client {} protocol not found", id);
+                        tracing::error!("Client {} protocol not found", id);
                         continue;
                     };
 
@@ -267,7 +267,7 @@ impl TransportServiceImpl {
                 ClientMessage::Close => break,
             }
         }
-        log::info!("Client {} received ended", id);
+        tracing::info!("Client {} received ended", id);
         cancellation_token.cancel();
     }
 
@@ -277,7 +277,7 @@ impl TransportServiceImpl {
             let protocol = Protocol::from_id(parts[1]).ok_or("Unknown protocol")?;
             if let Some(mut conn) = self.connections.get_mut(&id) {
                 conn.protocol = protocol;
-                log::info!("Client {} switched to protocol {:?}", id, protocol);
+                tracing::info!("Client {} switched to protocol {:?}", id, protocol);
             } else {
                 return Err("Connection not found".into());
             }
@@ -288,7 +288,7 @@ impl TransportServiceImpl {
     }
 
     fn on_connect(&self, id: ConnectionId) {
-        log::info!("Client {} connected", id);
+        tracing::info!("Client {} connected", id);
         if let Some(conn) = self.connections.get(&id) {
             let protocol = conn.protocol.clone();
             drop(conn);
@@ -371,7 +371,7 @@ impl TransportServiceImpl {
 
     pub async fn close_with_reason(&self, id: ConnectionId, reason: DisconnectReason) {
         let Some(conn) = self.connections.get(&id) else {
-            log::info!("Client {} already disconnected", id);
+            tracing::info!("Client {} already disconnected", id);
             return;
         };
         let protocol = conn.protocol.clone();
@@ -389,7 +389,7 @@ impl TransportServiceImpl {
         //wait a moment to allow message to be sent
         tokio::time::sleep(Duration::from_millis(100)).await;
         cancellation_token.cancel();
-        log::info!("Client {} closed", id);
+        tracing::info!("Client {} closed", id);
     }
 
     async fn close_all_clients(&self) {
@@ -422,7 +422,7 @@ impl TransportServiceImpl {
         loop {
             select! {
                 _ = cancellation_token.cancelled() => {
-                    log::info!("Client cleanup task shutting down");
+                    tracing::info!("Client cleanup task shutting down");
                     break;
                 }
                 _ = tokio::time::sleep(Duration::from_secs(60)) => {}
@@ -443,7 +443,7 @@ impl TransportServiceImpl {
                     .collect()
             };
             for client_id in inactive_clients {
-                log::info!("Cleaning up inactive client {}", client_id);
+                tracing::info!("Cleaning up inactive client {}", client_id);
                 self.close_with_reason(client_id, DisconnectReason::Inactivity)
                     .await;
             }
@@ -528,12 +528,12 @@ impl TransportServiceImpl {
 
         let on_shutdown = async move {
             shutdown_signal.await;
-            log::info!("Shutdown signal received, closing all clients");
+            tracing::info!("Shutdown signal received, closing all clients");
             self_clone.close_all_clients().await;
             cancellation_token.cancel();
         };
 
-        log::info!("WebSocket server listening on port {}", ws_port);
+        tracing::info!("WebSocket server listening on port {}", ws_port);
         axum::serve(listener, router.with_state(app.clone()))
             .with_graceful_shutdown(on_shutdown)
             .await
@@ -541,13 +541,13 @@ impl TransportServiceImpl {
 
         let (r1, r2) = tokio::join!(tcp_server_handle, client_cleanup_handle);
         if let Err(e1) = r1 {
-            log::error!("TCP server task failed: {}", e1);
+            tracing::error!("TCP server task failed: {}", e1);
         }
         if let Err(e2) = r2 {
-            log::error!("Client cleanup task failed: {}", e2);
+            tracing::error!("Client cleanup task failed: {}", e2);
         }
 
-        log::info!("Transport service shut down gracefully");
+        tracing::info!("Transport service shut down gracefully");
     }
 }
 
@@ -590,24 +590,24 @@ async fn serve_tcp_server(cancellation_token: CancellationToken) {
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, tcp_port))
         .await
         .unwrap();
-    log::info!("TCP server listening on port {}", tcp_port);
+    tracing::info!("TCP server listening on port {}", tcp_port);
     let handles = Arc::new(DashMap::new());
     loop {
         let (socket, addr) = select! {
             res = listener.accept() => res.unwrap(),
             _ = cancellation_token.cancelled() => {
-                log::info!("TCP server shutting down");
+                tracing::info!("TCP server shutting down");
                 break;
             }
         };
-        log::info!("New TCP connection from {}", addr);
+        tracing::info!("New TCP connection from {}", addr);
         let conn_id = uuid::Uuid::new_v4();
         let token_clone = cancellation_token.clone();
         let handles_clone = handles.clone();
         let handle = tokio::spawn(async move {
             select! {
                 _ = token_clone.cancelled() => {
-                    log::info!("Closing TCP connection from {} due to server shutdown", addr);
+                    tracing::info!("Closing TCP connection from {} due to server shutdown", addr);
                     return;
                 }
                 _ = TRANSPORT_IMPL.get().unwrap().handle_client_tcp(socket)  => {}

@@ -5,5 +5,5 @@ version = "0.1.0"
 
 [dependencies]
 lettre         = "0.11.18"
-log            = "0.4.28"
 tak-server-app = { path = "../../tak-server-app" }
+tracing        = "0.1.44"

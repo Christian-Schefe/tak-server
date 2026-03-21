@@ -39,7 +39,7 @@ pub struct LogEmailAdapter;
 
 impl EmailPort for LogEmailAdapter {
     fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<(), SendEmailError> {
-        log::info!(
+        tracing::info!(
             "Simulated sending email to: {}, subject: {}, body: {}",
             to,
             subject,

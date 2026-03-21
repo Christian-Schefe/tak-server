@@ -87,7 +87,7 @@ impl<
                     .collect(),
             })
             .map_err(|e| {
-                log::error!("Error querying ratings: {}", e);
+                tracing::error!("Error querying ratings: {}", e);
                 GetRatingError::Internal
             })
     }
@@ -104,7 +104,7 @@ impl<
             }
             Err(RepoRetrieveError::NotFound) => Ok(None),
             Err(RepoRetrieveError::StorageError(e)) => {
-                log::error!(
+                tracing::error!(
                     "Error retrieving player rating for player {}: {}",
                     player_id,
                     e
@@ -125,7 +125,7 @@ impl<
             .get_rating_history(player_id, from, to)
             .await
             .map_err(|e| {
-                log::error!(
+                tracing::error!(
                     "Error retrieving rating history for player {}: {}",
                     player_id,
                     e

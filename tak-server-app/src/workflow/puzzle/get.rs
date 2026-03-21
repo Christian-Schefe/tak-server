@@ -36,7 +36,7 @@ impl<P: PuzzleRepository + Send + Sync + 'static> GetPuzzleUseCase for GetPuzzle
             .map_err(|e| match e {
                 RepoRetrieveError::NotFound => GetPuzzleError::NotFound,
                 RepoRetrieveError::StorageError(msg) => {
-                    log::error!("Error retrieving puzzle {}: {}", id.0, msg);
+                    tracing::error!("Error retrieving puzzle {}: {}", id.0, msg);
                     GetPuzzleError::InternalError
                 }
             })?;
@@ -48,7 +48,7 @@ impl<P: PuzzleRepository + Send + Sync + 'static> GetPuzzleUseCase for GetPuzzle
             .select_random_puzzle()
             .await
             .map_err(|RepoError::StorageError(e)| {
-                log::error!("Error selecting random puzzle: {}", e);
+                tracing::error!("Error selecting random puzzle: {}", e);
                 ()
             })
     }

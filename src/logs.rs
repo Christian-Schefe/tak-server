@@ -1,60 +1,37 @@
-use log::LevelFilter;
-use log4rs::{
-    Config,
-    append::{
-        console::{ConsoleAppender, Target},
-        rolling_file::policy::compound::{
-            CompoundPolicy, roll::fixed_window::FixedWindowRoller, trigger::size::SizeTrigger,
-        },
-    },
-    config::{Appender, Root},
-    encode::pattern::PatternEncoder,
-    filter::threshold::ThresholdFilter,
-};
+use std::env;
+use tracing_appender::non_blocking::{NonBlockingBuilder, WorkerGuard};
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::Layer;
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
-const LOG_SIZE_LIMIT: u64 = 10 * 1024 * 1024; // 10 MB
+pub fn init_logger() -> WorkerGuard {
+    let file_path = env::var("LOG_FILE_DIRECTORY").expect("LOG_FILE_DIRECTORY must be set");
+    let file_name = env::var("LOG_FILE_NAME").expect("LOG_FILE_NAME must be set");
 
-const LOG_FILE_COUNT: u32 = 3;
+    let stderr_filter = EnvFilter::new("info,sqlx=warn");
 
-pub fn init_logger() {
-    let file_path = std::env::var("LOG_FILE_PATH").expect("LOG_FILE_PATH must be set");
-    let archive_pattern =
-        std::env::var("LOG_ARCHIVE_PATTERN").expect("LOG_ARCHIVE_PATTERN must be set");
+    let stderr_layer = fmt::layer()
+        .with_ansi(true)
+        .with_writer(std::io::stderr)
+        .with_filter(stderr_filter);
 
-    let stderr_level = LevelFilter::Info;
-    let file_level = LevelFilter::Debug;
+    std::fs::create_dir_all(&file_path).expect("Failed to create log directory");
 
-    let stderr = ConsoleAppender::builder().target(Target::Stderr).build();
+    let file_appender = RollingFileAppender::new(Rotation::DAILY, file_path, file_name);
 
-    let trigger = SizeTrigger::new(LOG_SIZE_LIMIT);
-    let roller = FixedWindowRoller::builder()
-        .build(&archive_pattern, LOG_FILE_COUNT)
-        .unwrap();
-    let policy = CompoundPolicy::new(Box::new(trigger), Box::new(roller));
+    let (file_writer, guard) = NonBlockingBuilder::default().finish(file_appender);
 
-    let logfile = log4rs::append::rolling_file::RollingFileAppender::builder()
-        .encoder(Box::new(PatternEncoder::default()))
-        .build(file_path, Box::new(policy))
-        .unwrap();
+    let file_filter = EnvFilter::new("debug");
 
-    let config = Config::builder()
-        .appender(
-            Appender::builder()
-                .filter(Box::new(ThresholdFilter::new(file_level)))
-                .build("logfile", Box::new(logfile)),
-        )
-        .appender(
-            Appender::builder()
-                .filter(Box::new(ThresholdFilter::new(stderr_level)))
-                .build("stderr", Box::new(stderr)),
-        )
-        .build(
-            Root::builder()
-                .appender("logfile")
-                .appender("stderr")
-                .build(LevelFilter::Trace),
-        )
-        .unwrap();
+    let file_layer = fmt::layer()
+        .with_ansi(false)
+        .with_writer(file_writer)
+        .with_filter(file_filter);
 
-    let _handle = log4rs::init_config(config).expect("Failed to initialize logger");
+    tracing_subscriber::registry()
+        .with(stderr_layer)
+        .with(file_layer)
+        .init();
+
+    guard
 }

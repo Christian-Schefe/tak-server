@@ -169,7 +169,7 @@ impl OryAuthenticationService {
                 Ok(account)
             }
             Err(error) => {
-                log::error!("Failed to create identity: {:?}", error);
+                tracing::error!("Failed to create identity: {:?}", error);
                 Err(error.to_string())
             }
         }

@@ -86,7 +86,7 @@ impl<
             Ok(data) => data,
             Err(RepoRetrieveError::NotFound) => AccountProfile::new(None, None),
             Err(RepoRetrieveError::StorageError(e)) => {
-                log::error!(
+                tracing::error!(
                     "Failed to retrieve profile information for account {}: {}",
                     account_id,
                     e
@@ -102,7 +102,7 @@ impl<
         {
             Ok(()) => Ok(()),
             Err(RepoError::StorageError(e)) => {
-                log::error!(
+                tracing::error!(
                     "Failed to update profile information for account {}: {}",
                     account_id,
                     e
@@ -132,7 +132,7 @@ impl<
             Ok(data) => data,
             Err(RepoRetrieveError::NotFound) => AccountProfile::new(None, None),
             Err(RepoRetrieveError::StorageError(e)) => {
-                log::error!(
+                tracing::error!(
                     "Failed to retrieve profile information for account {}: {}",
                     account_id,
                     e
@@ -144,7 +144,7 @@ impl<
             .profile_picture_version
             .map(|x| x.increment())
             .unwrap_or(ProfilePictureVersion::initial());
-        log::info!(
+        tracing::info!(
             "Updating profile picture for account {} with new version {}",
             account_id,
             new_version.0
@@ -162,7 +162,7 @@ impl<
         {
             Ok(()) => (),
             Err(RepoError::StorageError(e)) => {
-                log::error!(
+                tracing::error!(
                     "Failed to update profile information for account {}: {}",
                     account_id,
                     e
@@ -170,7 +170,7 @@ impl<
                 return Err(UpdateProfileError::RepositoryError);
             }
         }
-        log::info!(
+        tracing::info!(
             "Setting new profile picture for account {} with version {}",
             account_id,
             new_version.0
@@ -183,7 +183,7 @@ impl<
         {
             Ok(()) => Ok(new_version),
             Err(RepoError::StorageError(e)) => {
-                log::error!(
+                tracing::error!(
                     "Failed to set profile picture for account {}: {}",
                     account_id,
                     e

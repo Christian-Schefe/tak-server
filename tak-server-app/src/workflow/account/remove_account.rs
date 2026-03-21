@@ -43,14 +43,14 @@ impl<
             .await
         {
             Ok(Some(player_id)) => {
-                log::info!("Removed player mapping for account_id {:?}", account_id);
+                tracing::info!("Removed player mapping for account_id {:?}", account_id);
                 match self.stats_repo.remove_player_stats(player_id).await {
                     Ok(()) => {
-                        log::info!("Removed stats for player_id {:?}", player_id);
+                        tracing::info!("Removed stats for player_id {:?}", player_id);
                         Ok(())
                     }
                     Err(RepoError::StorageError(e)) => {
-                        log::error!(
+                        tracing::error!(
                             "Failed to remove stats for player_id {:?}: {:?}",
                             player_id,
                             e
@@ -60,14 +60,14 @@ impl<
                 }
             }
             Ok(None) => {
-                log::info!(
+                tracing::info!(
                     "No player mapping found for account_id {:?}, nothing to remove",
                     account_id
                 );
                 Ok(())
             }
             Err(RepoError::StorageError(e)) => {
-                log::error!(
+                tracing::error!(
                     "Failed to remove account mapping for account_id {:?}: {:?}",
                     account_id,
                     e

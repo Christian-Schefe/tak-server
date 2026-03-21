@@ -46,7 +46,7 @@ async fn shutdown_signal() {
         _ = terminate => {},
     }
 
-    log::info!("Shutdown signal received. Preparing graceful exit...");
+    tracing::info!("Shutdown signal received. Preparing graceful exit...");
 }
 
 fn try_load_env() {
@@ -64,7 +64,7 @@ fn try_load_env() {
 #[tokio::main]
 async fn main() {
     try_load_env();
-    init_logger();
+    let _guard = init_logger();
 
     let legacy_transport_service = Arc::new(TransportServiceImpl::new());
     let ws_service = Arc::new(WsService::new());
@@ -123,7 +123,7 @@ async fn main() {
         email_adapter.clone(),
     ));
 
-    log::info!("Starting application");
+    tracing::info!("Starting application");
 
     let app_clone = app.clone();
     let auth_clone = authentication_adapter.clone();
@@ -162,14 +162,14 @@ async fn main() {
     let (r1, r2, r3) = tokio::join!(legacy_http_app, http_app, transport_app);
 
     if let Err(e) = r1 {
-        log::error!("HTTP Legacy API task failed: {}", e);
+        tracing::error!("HTTP Legacy API task failed: {}", e);
     }
 
     if let Err(e) = r2 {
-        log::error!("HTTP API task failed: {}", e);
+        tracing::error!("HTTP API task failed: {}", e);
     }
 
     if let Err(e) = r3 {
-        log::error!("Transport service task failed: {}", e);
+        tracing::error!("Transport service task failed: {}", e);
     }
 }

@@ -1,4 +1,3 @@
-use log::error;
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
     domain::{AccountId, chat::ChatConversation, moderation::ModerationFlag},
@@ -21,7 +20,7 @@ impl ProtocolV2Handler {
         target: &ChatConversation,
     ) {
         let Some(account) = self.auth.get_account(from_account_id).await else {
-            error!("Failed to retrieve account information for sending chat message");
+            tracing::error!("Failed to retrieve account information for sending chat message");
             return;
         };
         let msg = match target {

@@ -27,7 +27,7 @@ impl<R: EventRepository + Send + Sync + 'static> ListEventsUseCase for ListEvent
         match self.event_repository.get_events().await {
             Ok(events) => Ok(events),
             Err(GetEventsError::RetrievalError(e)) => {
-                log::error!("Error retrieving events: {}", e);
+                tracing::error!("Error retrieving events: {}", e);
                 Err(ListEventsError::RepositoryError)
             }
         }

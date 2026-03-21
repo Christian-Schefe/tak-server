@@ -48,7 +48,7 @@ impl<PAM: PlayerAccountMappingRepository + Send + Sync + 'static> PlayerResolver
         {
             Ok(player_id) => Ok(player_id),
             Err(e) => {
-                log::error!("Failed to resolve player id by account id: {}", e);
+                tracing::error!("Failed to resolve player id by account id: {}", e);
                 Err(ResolveError::Internal)
             }
         }
@@ -65,7 +65,7 @@ impl<PAM: PlayerAccountMappingRepository + Send + Sync + 'static> PlayerResolver
         {
             Ok(account_id) => Ok(account_id),
             Err(e) => {
-                log::error!("Failed to resolve account id by player id: {}", e);
+                tracing::error!("Failed to resolve account id by player id: {}", e);
                 Err(ResolveError::Internal)
             }
         }

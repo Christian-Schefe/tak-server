@@ -35,7 +35,7 @@ impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> DisconnectTimeoutRunn
     ) {
         loop {
             if token.is_cancelled() {
-                log::info!("Disconnect timeout cancelled for player {:?}", player_id);
+                tracing::info!("Disconnect timeout cancelled for player {:?}", player_id);
                 return;
             }
             let res = this
@@ -44,21 +44,21 @@ impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> DisconnectTimeoutRunn
                 .await;
             match res {
                 ObserveOutcome::Finished => {
-                    log::info!(
+                    tracing::info!(
                         "Player {:?} disconnect timeout processing finished",
                         player_id
                     );
                     return;
                 }
                 ObserveOutcome::Continue(delay) => {
-                    log::info!(
+                    tracing::info!(
                         "Scheduling next timeout check for player {:?} in {:?}",
                         player_id,
                         delay
                     );
                     select! {
                         _ = token.cancelled() => {
-                            log::info!("Disconnect timeout cancelled for player {:?}", player_id);
+                            tracing::info!("Disconnect timeout cancelled for player {:?}", player_id);
                             return;
                         }
                         _ = tokio::time::sleep(delay) => {}
@@ -73,7 +73,7 @@ impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> DisconnectTimeoutRunn
     for DisconnectTimeoutRunnerImpl<O>
 {
     fn start_disconnect_timeout(this: Arc<Self>, player_id: PlayerId) {
-        log::info!("Starting disconnect timeout for player {:?}", player_id);
+        tracing::info!("Starting disconnect timeout for player {:?}", player_id);
         let token = CancellationToken::new();
         let disconnected_at = Instant::now();
         if let Some(prev) = this.tasks.insert(player_id, token.clone()) {
@@ -81,7 +81,7 @@ impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> DisconnectTimeoutRunn
         }
         tokio::spawn(async move {
             Self::run(this, player_id, disconnected_at, token).await;
-            log::info!(
+            tracing::info!(
                 "Disconnect timeout task exited for player {:?} who disconnected at {:?}",
                 player_id,
                 disconnected_at
@@ -90,7 +90,7 @@ impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> DisconnectTimeoutRunn
     }
 
     fn cancel_disconnect_timeout(&self, player_id: PlayerId) {
-        log::info!("Cancelling disconnect timeout for player {:?}", player_id);
+        tracing::info!("Cancelling disconnect timeout for player {:?}", player_id);
         if let Some((_, prev)) = self.tasks.remove(&player_id) {
             prev.cancel();
         }

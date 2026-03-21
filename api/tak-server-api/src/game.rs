@@ -319,11 +319,11 @@ async fn accept_request(
             ));
         }
     };
-    log::info!(
-        "ACCEPT Player {} is accepting request {:?} in game {}",
-        player_id,
-        request_id,
-        game_id
+    tracing::info!(
+        %player_id,
+        ?request_id,
+        %game_id,
+        "ACCEPT Player is accepting request in game",
     );
     match res {
         ActionResult::Success => Ok(()),

@@ -283,7 +283,7 @@ impl MatchService for MatchServiceImpl {
             .collect();
 
         for key in keys_to_remove {
-            log::info!("Cleaning up old match {}", key);
+            tracing::info!("Cleaning up old match {}", key);
             if let Some((_, match_entry)) = self.matches.remove(&key) {
                 for game_id in match_entry.played_games {
                     self.matches_by_game.remove(&game_id);

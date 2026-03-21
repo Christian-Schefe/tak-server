@@ -8,7 +8,6 @@ async-trait           = "0.1.89"
 chrono                = "0.4.42"
 dotenvy               = "0.15.7"
 jsonwebtoken          = { version = "10.2.0", features = [ "rust_crypto" ] }
-log                   = "0.4.28"
 moka                  = { version = "0.12.10", features = [ "sync" ] }
 ory-kratos-client     = "25.4.0"
 reqwest               = { version = "0.12.28", features = [ "json" ] }
@@ -17,3 +16,4 @@ serde_json            = "1.0.143"
 tak-server-api        = { path = "../../api/tak-server-api" }
 tak-server-app        = { path = "../../tak-server-app" }
 tak-server-legacy-api = { path = "../../api/tak-server-legacy-api" }
+tracing               = "0.1.44"

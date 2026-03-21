@@ -42,7 +42,7 @@ impl<S: StatsRepository + Send + Sync + 'static> GetPlayerStatsUseCase
                 games_drawn: 0,
             },
             Err(RepoRetrieveError::StorageError(e)) => {
-                log::error!("Failed to retrieve player stats: {}", e);
+                tracing::error!("Failed to retrieve player stats: {}", e);
                 return Err(GetStatsError::Internal);
             }
         };

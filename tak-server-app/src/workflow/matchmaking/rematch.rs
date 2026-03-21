@@ -58,7 +58,7 @@ impl<
         {
             Ok(should_create) => should_create,
             Err(e) => {
-                log::error!(
+                tracing::error!(
                     "Failed to request or accept rematch for match {}: {:?}",
                     match_id,
                     e
@@ -72,7 +72,7 @@ impl<
                 .create_game_from_match(match_id)
                 .await
             {
-                log::error!("Failed to create game from match {}: {:?}", match_id, e);
+                tracing::error!("Failed to create game from match {}: {:?}", match_id, e);
                 return Err(RequestOrAcceptRematchError::FailedToCreateGame);
             }
         }

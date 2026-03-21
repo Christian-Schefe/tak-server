@@ -59,7 +59,7 @@ impl<
                 profile_picture_version: None,
             }),
             Err(RepoRetrieveError::StorageError(e)) => {
-                log::error!(
+                tracing::error!(
                     "Failed to retrieve profile information for account {}: {}",
                     account_id,
                     e
@@ -81,7 +81,7 @@ impl<
             Ok(profile_picture) => Ok(Some(profile_picture)),
             Err(RepoRetrieveError::NotFound) => Ok(None),
             Err(RepoRetrieveError::StorageError(e)) => {
-                log::error!("Failed to retrieve profile picture: {}", e);
+                tracing::error!("Failed to retrieve profile picture: {}", e);
                 Err(GetProfileError::RepositoryError)
             }
         }

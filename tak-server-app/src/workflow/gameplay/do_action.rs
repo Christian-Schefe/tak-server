@@ -148,7 +148,7 @@ impl<
         player_id: PlayerId,
         action: TakAction,
     ) -> ActionResult<DoActionError> {
-        log::debug!(
+        tracing::debug!(
             "Player {} is performing action {:?} in game {}",
             player_id,
             action,
@@ -298,7 +298,7 @@ impl<
         player_id: PlayerId,
         request_id: GameRequestId,
     ) -> ActionResult<HandleRequestError> {
-        log::info!(
+        tracing::info!(
             "Player {} is rejecting request {:?} in game {}",
             player_id,
             request_id,
@@ -337,7 +337,7 @@ impl<
         player_id: PlayerId,
         request_id: GameRequestId,
     ) -> ActionResult<HandleRequestError> {
-        log::info!(
+        tracing::info!(
             "Player {} is accepting draw request {:?} in game {}",
             player_id,
             request_id,
@@ -381,7 +381,7 @@ impl<
         player_id: PlayerId,
         request_id: GameRequestId,
     ) -> ActionResult<HandleRequestError> {
-        log::info!(
+        tracing::info!(
             "Player {} is accepting undo request {:?} in game {}",
             player_id,
             request_id,

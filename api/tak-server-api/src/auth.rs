@@ -44,10 +44,10 @@ impl FromRequestParts<AppState> for StrictAuth {
                 if acc.is_guest() || acc.is_bot() {
                     return Ok(StrictAuth { account: Some(acc) });
                 } else {
-                    log::info!("Rejected non-(guest-or-bot) JWT for strict auth: {:?}", acc);
+                    tracing::info!(?acc, "Rejected non-(guest-or-bot) JWT for strict auth");
                 }
             } else {
-                log::info!("Failed to validate JWT for strict auth");
+                tracing::info!("Failed to validate JWT for strict auth");
             }
         }
 

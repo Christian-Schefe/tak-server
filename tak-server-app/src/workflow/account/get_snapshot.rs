@@ -56,7 +56,7 @@ impl<
             Ok(account) => Some(account.username),
             Err(GetAccountError::AccountNotFound) => None,
             Err(GetAccountError::RepositoryError) => {
-                log::error!(
+                tracing::error!(
                     "Failed to retrieve account for player {}: Repository error",
                     player_id.to_string(),
                 );
@@ -73,7 +73,7 @@ impl<
                 )
             }
             Err(RepoRetrieveError::StorageError(e)) => {
-                log::error!(
+                tracing::error!(
                     "Failed to retrieve rating for player {}: {}",
                     player_id.to_string(),
                     e
