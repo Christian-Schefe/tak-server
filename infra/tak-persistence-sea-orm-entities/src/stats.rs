@@ -10,6 +10,8 @@ pub struct Model {
     pub games_won: u32,
     pub games_lost: u32,
     pub games_drawn: u32,
+    pub win_streak: u32,
+    pub longest_win_streak: u32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

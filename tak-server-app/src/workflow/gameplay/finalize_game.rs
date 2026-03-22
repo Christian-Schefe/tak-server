@@ -9,7 +9,9 @@ use crate::{
         r#match::MatchService,
         rating::{PlayerRating, RatingRepository, RatingService},
         spectator::SpectatorService,
-        stats::{GameOutcome, RatingHistoryEntry, RatingHistoryRepository, StatsRepository},
+        stats::{
+            GameOutcome, PlayerStats, RatingHistoryEntry, RatingHistoryRepository, StatsRepository,
+        },
     },
     ports::notification::{ListenerGameMessageType, ListenerMessage, ListenerNotificationPort},
     workflow::{
@@ -317,12 +319,11 @@ async fn update_stats<S: StatsRepository>(stats_repository: &Arc<S>, ended_game:
         } => (GameOutcome::Loss, GameOutcome::Win),
     };
 
+    let is_rated = ended_game.metadata.is_rated;
     if let Err(e) = stats_repository
-        .update_player_game(
-            ended_game.metadata.white_id,
-            white_outcome,
-            ended_game.metadata.is_rated,
-        )
+        .update_player_game(ended_game.metadata.white_id, move |stats| {
+            update_stats_fn(stats, white_outcome, is_rated)
+        })
         .await
     {
         tracing::error!(
@@ -333,11 +334,9 @@ async fn update_stats<S: StatsRepository>(stats_repository: &Arc<S>, ended_game:
     }
 
     if let Err(e) = stats_repository
-        .update_player_game(
-            ended_game.metadata.black_id,
-            black_outcome,
-            ended_game.metadata.is_rated,
-        )
+        .update_player_game(ended_game.metadata.black_id, move |stats| {
+            update_stats_fn(stats, black_outcome, is_rated)
+        })
         .await
     {
         tracing::error!(
@@ -346,4 +345,42 @@ async fn update_stats<S: StatsRepository>(stats_repository: &Arc<S>, ended_game:
             e
         );
     }
+}
+
+fn update_stats_fn(
+    stats: Option<PlayerStats>,
+    outcome: GameOutcome,
+    was_rated: bool,
+) -> PlayerStats {
+    let mut stats = stats.unwrap_or(PlayerStats {
+        rated_games_played: 0,
+        games_played: 0,
+        games_won: 0,
+        games_lost: 0,
+        games_drawn: 0,
+        win_streak: 0,
+        longest_win_streak: 0,
+    });
+    stats.games_played += 1;
+    if was_rated {
+        stats.rated_games_played += 1;
+    }
+    match outcome {
+        GameOutcome::Win => {
+            stats.games_won += 1;
+            stats.win_streak += 1;
+            if stats.win_streak > stats.longest_win_streak {
+                stats.longest_win_streak = stats.win_streak;
+            }
+        }
+        GameOutcome::Loss => {
+            stats.games_lost += 1;
+            stats.win_streak = 0;
+        }
+        GameOutcome::Draw => {
+            stats.games_drawn += 1;
+            stats.win_streak = 0;
+        }
+    }
+    stats
 }

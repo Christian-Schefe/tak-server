@@ -6,6 +6,7 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub player_id: Uuid,
+    #[sea_orm(indexed)]
     pub rating: f64,
     pub boost: f64,
     pub rated_games: i32,

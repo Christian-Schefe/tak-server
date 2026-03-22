@@ -341,7 +341,10 @@ pub async fn build_application<
             profile_picture_repo.clone(),
         )),
 
-        get_stats_use_case: Arc::new(GetPlayerStatsUseCaseImpl::new(stats_repository.clone())),
+        get_stats_use_case: Arc::new(GetPlayerStatsUseCaseImpl::new(
+            stats_repository.clone(),
+            rating_repository.clone(),
+        )),
 
         get_puzzle_use_case: Arc::new(GetPuzzleUseCaseImpl::new(puzzle_repository.clone())),
         solve_puzzle_use_case: Arc::new(SolvePuzzleUseCaseImpl::new(puzzle_repository.clone())),

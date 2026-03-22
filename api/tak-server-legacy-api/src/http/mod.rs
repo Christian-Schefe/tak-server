@@ -6,7 +6,6 @@ use tak_server_app::{Application, ports::authentication::AuthenticationPort};
 use crate::acl::LegacyAPIAntiCorruptionLayer;
 
 mod event;
-mod rating;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -23,11 +22,7 @@ pub async fn run(
 ) {
     let router: Router<AppState> = Router::new().nest(
         "/v1",
-        Router::new()
-            .route("/events", get(event::get_all_events))
-            .route("/ratinglist.json", get(rating::get_rating_list))
-            .route("/ratings", get(rating::get_ratings))
-            .route("/ratings/{name}", get(rating::get_rating_by_name)),
+        Router::new().route("/events", get(event::get_all_events)),
     );
 
     let port = std::env::var("TAK_LEGACY_HTTP_API_PORT")

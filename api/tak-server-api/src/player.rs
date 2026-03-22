@@ -34,17 +34,13 @@ async fn get_player_info_helper(
         .await
         .map_err(|_| ServiceError::Internal("Failed to retrieve player account".to_string()))?;
 
-    let rating = app
+    let participation_rating = match app
         .app
         .player_get_rating_use_case
         .get_rating(player_id)
-        .await;
-    let rating = match rating {
-        Ok(Some(rating_view)) => Some(RatingResponse {
-            rating: rating_view.rating,
-            participation_rating: rating_view.participation_rating,
-        }),
-        Ok(None) => None,
+        .await
+    {
+        Ok(rating) => rating,
         Err(_) => {
             return Err(ServiceError::Internal(
                 "Failed to retrieve player rating".to_string(),
@@ -57,7 +53,7 @@ async fn get_player_info_helper(
         account_id: account.account_id.to_string(),
         username: account.username,
         display_name: account.display_name,
-        rating,
+        participation_rating,
     })
 }
 
@@ -75,7 +71,7 @@ pub async fn get_player_info(
 pub async fn get_player_stats(
     State(app): State<AppState>,
     Path(player_id): Path<String>,
-) -> Result<Json<PlayerStatsInfo>, ServiceError> {
+) -> Result<Json<JsonPlayerStatsInfo>, ServiceError> {
     let player_id = PlayerId(
         Uuid::parse_str(&player_id)
             .map_err(|_| ServiceError::BadRequest("Invalid player ID".to_string()))?,
@@ -359,39 +355,50 @@ pub struct JsonRatingHistoryEntry {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RatingResponse {
-    rating: f64,
-    participation_rating: f64,
-}
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct PlayerInfo {
     pub id: String,
     pub account_id: String,
     pub username: String,
     pub display_name: String,
-    pub rating: Option<RatingResponse>,
+    pub participation_rating: Option<f64>,
 }
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PlayerStatsInfo {
+pub struct JsonPlayerStatsInfo {
+    pub ranking: Option<JsonPlayerRankingInfo>,
     pub games_played: u32,
     pub rated_games_played: u32,
     pub games_won: u32,
     pub games_lost: u32,
     pub games_drawn: u32,
+    pub win_streak: u32,
+    pub longest_win_streak: u32,
 }
 
-impl From<PlayerStatsView> for PlayerStatsInfo {
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonPlayerRankingInfo {
+    pub rating: f64,
+    pub max_rating: f64,
+    pub rank: u32,
+}
+
+impl From<PlayerStatsView> for JsonPlayerStatsInfo {
     fn from(stats: PlayerStatsView) -> Self {
-        PlayerStatsInfo {
+        JsonPlayerStatsInfo {
             games_played: stats.games_played,
             rated_games_played: stats.rated_games_played,
             games_won: stats.games_won,
             games_lost: stats.games_lost,
             games_drawn: stats.games_drawn,
+            win_streak: stats.win_streak,
+            longest_win_streak: stats.longest_win_streak,
+            ranking: stats.ranking.map(|ranking| JsonPlayerRankingInfo {
+                rating: ranking.rating,
+                max_rating: ranking.max_rating,
+                rank: ranking.ranking,
+            }),
         }
     }
 }

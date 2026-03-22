@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
 use crate::create_db_pool;
-use sea_orm::ActiveValue::Set;
-use sea_orm::QueryFilter;
-use sea_orm::prelude::Expr;
-use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, ExprTrait};
+use sea_orm::TransactionTrait;
+use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, TransactionError};
 use tak_persistence_sea_orm_entities::stats;
 use tak_server_app::domain::{
     PlayerId, RepoError, RepoRetrieveError,
-    stats::{GameOutcome, PlayerStats, StatsRepository},
+    stats::{PlayerStats, StatsRepository},
 };
 
 pub struct StatsRepositoryImpl {
@@ -22,10 +20,35 @@ impl StatsRepositoryImpl {
         let stats_cache = Arc::new(
             moka::sync::Cache::builder()
                 .max_capacity(10_000)
-                .time_to_live(std::time::Duration::from_secs(60 * 60 * 12))
+                .time_to_live(std::time::Duration::from_secs(60 * 5))
                 .build(),
         );
         Self { db, stats_cache }
+    }
+
+    fn model_to_stats(model: stats::Model) -> PlayerStats {
+        PlayerStats {
+            rated_games_played: model.rated_games_played,
+            games_played: model.games_played,
+            games_won: model.games_won,
+            games_lost: model.games_lost,
+            games_drawn: model.games_drawn,
+            win_streak: model.win_streak,
+            longest_win_streak: model.longest_win_streak,
+        }
+    }
+
+    fn stats_to_model(player_id: PlayerId, stats: &PlayerStats) -> stats::ActiveModel {
+        stats::ActiveModel {
+            player_id: sea_orm::Set(player_id.0),
+            rated_games_played: sea_orm::Set(stats.rated_games_played),
+            games_played: sea_orm::Set(stats.games_played),
+            games_won: sea_orm::Set(stats.games_won),
+            games_lost: sea_orm::Set(stats.games_lost),
+            games_drawn: sea_orm::Set(stats.games_drawn),
+            win_streak: sea_orm::Set(stats.win_streak),
+            longest_win_streak: sea_orm::Set(stats.longest_win_streak),
+        }
     }
 }
 
@@ -51,6 +74,8 @@ impl StatsRepository for StatsRepositoryImpl {
             games_won: model.games_won,
             games_lost: model.games_lost,
             games_drawn: model.games_drawn,
+            win_streak: model.win_streak,
+            longest_win_streak: model.longest_win_streak,
         };
 
         self.stats_cache.insert(player_id, player_stats.clone());
@@ -60,63 +85,48 @@ impl StatsRepository for StatsRepositoryImpl {
     async fn update_player_game(
         &self,
         player_id: PlayerId,
-        result: GameOutcome,
-        was_rated: bool,
+        calc_fn: impl FnOnce(Option<PlayerStats>) -> PlayerStats + Send + 'static,
     ) -> Result<(), RepoError> {
-        let mut query = stats::Entity::update_many().col_expr(
-            stats::Column::GamesPlayed,
-            Expr::col(stats::Column::GamesPlayed).add(1),
-        );
-        if was_rated {
-            query = query.col_expr(
-                stats::Column::RatedGamesPlayed,
-                Expr::col(stats::Column::RatedGamesPlayed).add(1),
-            );
-        }
-        match result {
-            GameOutcome::Win => {
-                query = query.col_expr(
-                    stats::Column::GamesWon,
-                    Expr::col(stats::Column::GamesWon).add(1),
-                );
-            }
-            GameOutcome::Loss => {
-                query = query.col_expr(
-                    stats::Column::GamesLost,
-                    Expr::col(stats::Column::GamesLost).add(1),
-                );
-            }
-            GameOutcome::Draw => {
-                query = query.col_expr(
-                    stats::Column::GamesDrawn,
-                    Expr::col(stats::Column::GamesDrawn).add(1),
-                );
-            }
-        }
-        match query
-            .filter(stats::Column::PlayerId.eq(player_id.0))
-            .exec(&self.db)
-            .await
-        {
-            Ok(res) => {
-                if res.rows_affected == 0 {
-                    let default_model = stats::ActiveModel {
-                        player_id: Set(player_id.0),
-                        rated_games_played: Set(if was_rated { 1 } else { 0 }),
-                        games_played: Set(1),
-                        games_won: Set(if result == GameOutcome::Win { 1 } else { 0 }),
-                        games_lost: Set(if result == GameOutcome::Loss { 1 } else { 0 }),
-                        games_drawn: Set(if result == GameOutcome::Draw { 1 } else { 0 }),
-                    };
-                    default_model
-                        .insert(&self.db)
+        let res = self
+            .db
+            .transaction::<_, (), RepoError>(|c| {
+                Box::pin(async move {
+                    let stats_model = stats::Entity::find_by_id(player_id.0)
+                        .one(c)
                         .await
                         .map_err(|e| RepoError::StorageError(e.to_string()))?;
-                }
+
+                    let stats = stats_model.map(|model| Self::model_to_stats(model));
+
+                    let has_stats = stats.is_some();
+
+                    let new_stats = calc_fn(stats);
+
+                    let active_model = Self::stats_to_model(player_id, &new_stats);
+
+                    if has_stats {
+                        active_model
+                            .update(c)
+                            .await
+                            .map_err(|e| RepoError::StorageError(e.to_string()))?;
+                    } else {
+                        active_model
+                            .insert(c)
+                            .await
+                            .map_err(|e| RepoError::StorageError(e.to_string()))?;
+                    }
+                    Ok(())
+                })
+            })
+            .await;
+
+        match res {
+            Ok(result) => {
                 self.stats_cache.invalidate(&player_id);
-                Ok(())
+                Ok(result)
             }
-            Err(e) => Err(RepoError::StorageError(e.to_string())),
+            Err(TransactionError::Transaction(e)) => Err(e),
+            Err(TransactionError::Connection(e)) => Err(RepoError::StorageError(e.to_string())),
         }
     }
 

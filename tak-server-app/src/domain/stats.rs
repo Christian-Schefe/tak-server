@@ -9,8 +9,7 @@ pub trait StatsRepository {
     async fn update_player_game(
         &self,
         player_id: PlayerId,
-        result: GameOutcome,
-        was_rated: bool,
+        calc_fn: impl FnOnce(Option<PlayerStats>) -> PlayerStats + Send + 'static,
     ) -> Result<(), RepoError>;
     async fn remove_player_stats(&self, player_id: PlayerId) -> Result<(), RepoError>;
 }
@@ -53,6 +52,8 @@ pub struct PlayerStats {
     pub games_won: u32,
     pub games_lost: u32,
     pub games_drawn: u32,
+    pub win_streak: u32,
+    pub longest_win_streak: u32,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

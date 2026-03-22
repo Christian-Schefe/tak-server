@@ -2,13 +2,13 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::create_db_pool;
 use sea_orm::{
-    ActiveModelTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryOrder, QuerySelect,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     TransactionError, TransactionTrait,
 };
 use tak_persistence_sea_orm_entities::rating;
 use tak_server_app::domain::{
-    PaginatedResponse, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError, SortOrder,
-    rating::{PlayerRating, RatingQuery, RatingRepository, RatingSortBy},
+    PlayerId, RepoError, RepoRetrieveError,
+    rating::{PlayerRating, RatingRepository},
 };
 
 pub struct RatingRepositoryImpl {
@@ -22,7 +22,7 @@ impl RatingRepositoryImpl {
         let ratings_cache = Arc::new(
             moka::sync::Cache::builder()
                 .max_capacity(10_000)
-                .time_to_live(std::time::Duration::from_secs(60 * 60))
+                .time_to_live(std::time::Duration::from_secs(60 * 5))
                 .build(),
         );
         Self { db, ratings_cache }
@@ -99,19 +99,19 @@ impl RatingRepository for RatingRepositoryImpl {
         ) -> (PlayerRating, PlayerRating, R)
         + Send
         + 'static,
-    ) -> Result<R, RepoUpdateError> {
+    ) -> Result<R, RepoError> {
         let res = self
             .db
-            .transaction::<_, R, RepoUpdateError>(|c| {
+            .transaction::<_, R, RepoError>(|c| {
                 Box::pin(async move {
                     let white_rating_model = rating::Entity::find_by_id(white.0)
                         .one(c)
                         .await
-                        .map_err(|e| RepoUpdateError::StorageError(e.to_string()))?;
+                        .map_err(|e| RepoError::StorageError(e.to_string()))?;
                     let black_rating_model = rating::Entity::find_by_id(black.0)
                         .one(c)
                         .await
-                        .map_err(|e| RepoUpdateError::StorageError(e.to_string()))?;
+                        .map_err(|e| RepoError::StorageError(e.to_string()))?;
 
                     let white_rating = white_rating_model.map(|model| Self::model_to_rating(model));
                     let black_rating = black_rating_model.map(|model| Self::model_to_rating(model));
@@ -129,24 +129,24 @@ impl RatingRepository for RatingRepositoryImpl {
                         white_active_model
                             .update(c)
                             .await
-                            .map_err(|e| RepoUpdateError::StorageError(e.to_string()))?;
+                            .map_err(|e| RepoError::StorageError(e.to_string()))?;
                     } else {
                         white_active_model
                             .insert(c)
                             .await
-                            .map_err(|e| RepoUpdateError::StorageError(e.to_string()))?;
+                            .map_err(|e| RepoError::StorageError(e.to_string()))?;
                     }
 
                     if has_black_rating {
                         black_active_model
                             .update(c)
                             .await
-                            .map_err(|e| RepoUpdateError::StorageError(e.to_string()))?;
+                            .map_err(|e| RepoError::StorageError(e.to_string()))?;
                     } else {
                         black_active_model
                             .insert(c)
                             .await
-                            .map_err(|e| RepoUpdateError::StorageError(e.to_string()))?;
+                            .map_err(|e| RepoError::StorageError(e.to_string()))?;
                     }
                     Ok(res)
                 })
@@ -160,57 +160,29 @@ impl RatingRepository for RatingRepositoryImpl {
                 Ok(result)
             }
             Err(TransactionError::Transaction(e)) => Err(e),
-            Err(TransactionError::Connection(e)) => {
-                Err(RepoUpdateError::StorageError(e.to_string()))
-            }
+            Err(TransactionError::Connection(e)) => Err(RepoError::StorageError(e.to_string())),
         }
     }
 
-    async fn query_ratings(
+    async fn get_player_ranking(
         &self,
-        query: RatingQuery,
-    ) -> Result<PaginatedResponse<PlayerRating>, RepoError> {
-        let mut db_query = rating::Entity::find();
-
-        let total_count = db_query
-            .clone()
-            .count(&self.db)
+        player_id: PlayerId,
+    ) -> Result<(u32, PlayerRating), RepoRetrieveError> {
+        let rating_model = rating::Entity::find_by_id(player_id.0)
+            .one(&self.db)
             .await
-            .map_err(|e| RepoError::StorageError(e.to_string()))?;
-
-        if let Some((order, sort_by)) = query.sort {
-            use sea_orm::Order;
-            let order_expr = match sort_by {
-                RatingSortBy::Rating => rating::Column::Rating,
-                RatingSortBy::MaxRating => rating::Column::MaxRating,
-                RatingSortBy::RatedGames => rating::Column::RatedGames,
-            };
-            db_query = match order {
-                SortOrder::Ascending => db_query.order_by(order_expr, Order::Asc),
-                SortOrder::Descending => db_query.order_by(order_expr, Order::Desc),
-            };
+            .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
+        match rating_model {
+            Some(model) => {
+                let player_rating = Self::model_to_rating(model);
+                let better_count = rating::Entity::find()
+                    .filter(rating::Column::Rating.gt(player_rating.rating))
+                    .count(&self.db)
+                    .await
+                    .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
+                Ok(((better_count + 1) as u32, player_rating))
+            }
+            None => Err(RepoRetrieveError::NotFound),
         }
-
-        if let Some(limit) = query.pagination.limit {
-            db_query = db_query.limit(limit as u64);
-        }
-        if let Some(offset) = query.pagination.offset {
-            db_query = db_query.offset(offset as u64);
-        }
-
-        let models = db_query
-            .all(&self.db)
-            .await
-            .map_err(|e| RepoError::StorageError(e.to_string()))?;
-
-        let ratings = models
-            .into_iter()
-            .map(|model| Self::model_to_rating(model))
-            .collect();
-
-        Ok(PaginatedResponse {
-            total_count: total_count as usize,
-            items: ratings,
-        })
     }
 }

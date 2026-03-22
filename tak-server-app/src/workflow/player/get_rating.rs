@@ -4,23 +4,16 @@ use chrono::{DateTime, Utc};
 
 use crate::{
     domain::{
-        PaginatedResponse, PlayerId, RepoRetrieveError,
-        rating::{RatingQuery, RatingRepository, RatingService},
+        PlayerId, RepoRetrieveError,
+        rating::{RatingRepository, RatingService},
         stats::RatingHistoryRepository,
     },
-    workflow::player::{RatedPlayerView, RatingHistoryEntryView, RatingHistoryRangeView},
+    workflow::player::{RatingHistoryEntryView, RatingHistoryRangeView},
 };
 
 #[async_trait::async_trait]
 pub trait PlayerGetRatingUseCase {
-    async fn query_ratings(
-        &self,
-        query: RatingQuery,
-    ) -> Result<PaginatedResponse<RatedPlayerView>, GetRatingError>;
-    async fn get_rating(
-        &self,
-        player_id: PlayerId,
-    ) -> Result<Option<RatedPlayerView>, GetRatingError>;
+    async fn get_rating(&self, player_id: PlayerId) -> Result<Option<f64>, GetRatingError>;
     async fn get_rating_history(
         &self,
         player_id: PlayerId,
@@ -66,41 +59,12 @@ impl<
     RS: RatingService + Send + Sync + 'static,
 > PlayerGetRatingUseCase for PlayerGetRatingUseCaseImpl<R, RH, RS>
 {
-    async fn query_ratings(
-        &self,
-        query: RatingQuery,
-    ) -> Result<PaginatedResponse<RatedPlayerView>, GetRatingError> {
-        let now = Utc::now();
-        self.rating_repository
-            .query_ratings(query)
-            .await
-            .map(|res| PaginatedResponse {
-                total_count: res.total_count,
-                items: res
-                    .items
-                    .into_iter()
-                    .map(|rating| {
-                        let participation_rating =
-                            self.rating_service.get_current_rating(&rating, now);
-                        RatedPlayerView::from(rating, participation_rating)
-                    })
-                    .collect(),
-            })
-            .map_err(|e| {
-                tracing::error!("Error querying ratings: {}", e);
-                GetRatingError::Internal
-            })
-    }
-
-    async fn get_rating(
-        &self,
-        player_id: PlayerId,
-    ) -> Result<Option<RatedPlayerView>, GetRatingError> {
+    async fn get_rating(&self, player_id: PlayerId) -> Result<Option<f64>, GetRatingError> {
         let now = Utc::now();
         match self.rating_repository.get_player_rating(player_id).await {
             Ok(rating) => {
                 let participation_rating = self.rating_service.get_current_rating(&rating, now);
-                Ok(Some(RatedPlayerView::from(rating, participation_rating)))
+                Ok(Some(participation_rating))
             }
             Err(RepoRetrieveError::NotFound) => Ok(None),
             Err(RepoRetrieveError::StorageError(e)) => {

@@ -6,7 +6,8 @@ version     = "0.1.0"
 
 [workspace]
 members = [
-    "api/tak-server-api", "api/tak-server-api-contract",
+    "api/tak-server-api",
+    "api/tak-server-api-contract",
     "api/tak-server-legacy-api",
     "infra/tak-auth-ory",
     "infra/tak-bot-registry",
@@ -20,7 +21,8 @@ members = [
     "more-concurrent-maps",
     "tak-bot-tei-bridge",
     "tak-core",
-    "tak-server-app", "tak-wasm-engine",
+    "tak-server-app",
+    "tak-wasm-engine",
 ]
 resolver = "3"
 
@@ -38,6 +40,10 @@ tak-server-api                   = { path = "./api/tak-server-api" }
 tak-server-app                   = { path = "./tak-server-app" }
 tak-server-legacy-api            = { path = "./api/tak-server-legacy-api" }
 tokio                            = { version = "1.47.1", features = [ "full" ] }
-tracing = "0.1.44"
-tracing-appender = "0.2.4"
-tracing-subscriber = "0.3.23"
+tracing                          = "0.1.44"
+tracing-appender                 = "0.2.4"
+tracing-subscriber               = "0.3.23"
+
+[profile.release-wasm]
+inherits = "release"
+lto      = true

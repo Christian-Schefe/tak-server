@@ -20,7 +20,7 @@ impl ProfileRepositoryImpl {
         let profile_cache = Arc::new(
             moka::sync::Cache::builder()
                 .max_capacity(10_000)
-                .time_to_live(std::time::Duration::from_secs(60 * 60 * 12))
+                .time_to_live(std::time::Duration::from_secs(60 * 5))
                 .build(),
         );
         Self { db, profile_cache }
