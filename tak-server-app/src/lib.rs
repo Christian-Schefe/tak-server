@@ -16,6 +16,7 @@ use crate::{
         seek::SeekServiceImpl,
         spectator::SpectatorServiceImpl,
         stats::{RatingHistoryRepository, StatsRepository},
+        tournament::{TournamentPlayerRegistrationRepository, TournamentRepository},
     },
     ports::{
         authentication::AuthenticationPort,
@@ -75,6 +76,12 @@ use crate::{
             get::{GetPuzzleUseCase, GetPuzzleUseCaseImpl},
             solve::{SolvePuzzleUseCase, SolvePuzzleUseCaseImpl},
         },
+        tournament::{
+            get::{GetTournamentUseCase, GetTournamentUseCaseImpl},
+            register::{
+                TournamentPlayerRegistrationUseCase, TournamentPlayerRegistrationUseCaseImpl,
+            },
+        },
     },
 };
 
@@ -125,6 +132,10 @@ pub struct Application {
 
     pub get_puzzle_use_case: Arc<dyn GetPuzzleUseCase + Send + Sync + 'static>,
     pub solve_puzzle_use_case: Arc<dyn SolvePuzzleUseCase + Send + Sync + 'static>,
+
+    pub get_tournaments_use_case: Arc<dyn GetTournamentUseCase + Send + Sync + 'static>,
+    pub tournament_player_registration_use_case:
+        Arc<dyn TournamentPlayerRegistrationUseCase + Send + Sync + 'static>,
 }
 
 pub async fn build_application<
@@ -143,6 +154,8 @@ pub async fn build_application<
     PZR: PuzzleRepository + Send + Sync + 'static,
     CR: ChatRepository + Send + Sync + 'static,
     RH: RatingHistoryRepository + Send + Sync + 'static,
+    TR: TournamentRepository + Send + Sync + 'static,
+    TPR: TournamentPlayerRegistrationRepository + Send + Sync + 'static,
 >(
     game_repository: Arc<G>,
     player_repository: Arc<PR>,
@@ -159,6 +172,8 @@ pub async fn build_application<
     puzzle_repository: Arc<PZR>,
     chat_repository: Arc<CR>,
     rating_history_repository: Arc<RH>,
+    tournament_repository: Arc<TR>,
+    tournament_player_registration_repository: Arc<TPR>,
 ) -> Application {
     let seek_service = Arc::new(SeekServiceImpl::new());
     let game_service = Arc::new(GameServiceImpl::new());
@@ -348,6 +363,17 @@ pub async fn build_application<
 
         get_puzzle_use_case: Arc::new(GetPuzzleUseCaseImpl::new(puzzle_repository.clone())),
         solve_puzzle_use_case: Arc::new(SolvePuzzleUseCaseImpl::new(puzzle_repository.clone())),
+
+        get_tournaments_use_case: Arc::new(GetTournamentUseCaseImpl::new(
+            tournament_repository.clone(),
+            tournament_player_registration_repository.clone(),
+        )),
+        tournament_player_registration_use_case: Arc::new(
+            TournamentPlayerRegistrationUseCaseImpl::new(
+                tournament_repository.clone(),
+                tournament_player_registration_repository.clone(),
+            ),
+        ),
     };
 
     application

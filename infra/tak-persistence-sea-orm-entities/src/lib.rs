@@ -6,3 +6,5 @@ pub mod puzzle;
 pub mod rating;
 pub mod rating_history;
 pub mod stats;
+pub mod tournament;
+pub mod tournament_player_registration;

@@ -10,6 +10,8 @@ use tak_persistence_sea_orm::{
     player_account_mapping::PlayerAccountMappingRepositoryImpl, profile::ProfileRepositoryImpl,
     puzzle::PuzzleRepositoryImpl, rating_history::RatingHistoryRepositoryImpl,
     ratings::RatingRepositoryImpl, stats::StatsRepositoryImpl,
+    tournament::TournamentRepositoryImpl,
+    tournament_player_registration::TournamentPlayerRegistrationRepositoryImpl,
 };
 use tak_player_connection::{
     AccountOnlineStatusService, PlayerConnectionDriver, PlayerConnectionService,
@@ -90,6 +92,9 @@ async fn main() {
     let puzzle_repo = Arc::new(PuzzleRepositoryImpl::new().await);
     let chat_repo = Arc::new(ChatRepositoryImpl::new().await);
     let rating_history_repo = Arc::new(RatingHistoryRepositoryImpl::new().await);
+    let tournament_repo = Arc::new(TournamentRepositoryImpl::new().await);
+    let tournament_player_registration_repo =
+        Arc::new(TournamentPlayerRegistrationRepositoryImpl::new().await);
 
     let app = Arc::new(
         build_application(
@@ -108,6 +113,8 @@ async fn main() {
             puzzle_repo,
             chat_repo,
             rating_history_repo,
+            tournament_repo,
+            tournament_player_registration_repo,
         )
         .await,
     );

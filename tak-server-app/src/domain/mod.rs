@@ -11,6 +11,7 @@ pub mod rating;
 pub mod seek;
 pub mod spectator;
 pub mod stats;
+pub mod tournament;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PlayerId(pub uuid::Uuid);
@@ -107,6 +108,21 @@ impl GameId {
 }
 
 impl std::fmt::Display for GameId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TournamentId(pub i64);
+
+impl TournamentId {
+    pub fn new(id: i64) -> Self {
+        TournamentId(id)
+    }
+}
+
+impl std::fmt::Display for TournamentId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }

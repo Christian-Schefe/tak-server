@@ -7,3 +7,4 @@ pub mod listener;
 pub mod matchmaking;
 pub mod player;
 pub mod puzzle;
+pub mod tournament;

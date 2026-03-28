@@ -20,6 +20,7 @@ pub mod game;
 pub mod player;
 pub mod puzzle;
 pub mod seek;
+pub mod tournament;
 pub mod ws;
 
 #[derive(Clone)]
@@ -89,6 +90,7 @@ pub async fn serve(
 
     let router = puzzle::register_routes(router);
     let router = chat::register_routes(router);
+    let router = tournament::register_routes(router);
 
     let port = std::env::var("TAK_HTTP_API_PORT")
         .expect("TAK_HTTP_API_PORT must be set")

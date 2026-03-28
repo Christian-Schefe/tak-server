@@ -6,8 +6,7 @@ use sea_orm::{
 };
 use serde::Deserialize;
 use tak_core::{
-    TakAction, TakAsyncTimeControl, TakBaseGameSettings, TakGameSettings, TakPlayer,
-    TakRealtimeTimeControl, TakReserve, TakTimeInfo, TakTimeSettings,
+    TakAction, TakBaseGameSettings, TakGameSettings, TakPlayer, TakReserve, TakTimeInfo,
     ptn::{action_from_ptn, action_to_ptn, game_result_from_string, game_result_to_string},
 };
 use tak_persistence_sea_orm_entities::game;
@@ -23,42 +22,10 @@ use tak_server_app::domain::{
     },
 };
 
-use crate::create_db_pool;
+use crate::{JsonTimeSettings, create_db_pool};
 
 pub struct GameRepositoryImpl {
     db: DatabaseConnection,
-}
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(
-    tag = "type",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-enum JsonTimeSettings {
-    Realtime(JsonRealtimeTimeSettings),
-    Async(JsonAsyncTimeSettings),
-}
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct JsonRealtimeTimeSettings {
-    contingent_ms: u64,
-    increment_ms: u64,
-    extra: Option<JsonRealtimeTimeExtra>,
-}
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct JsonRealtimeTimeExtra {
-    extra_time_ms: u64,
-    extra_time_move: u32,
-}
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct JsonAsyncTimeSettings {
-    increment_ms: u64,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -323,28 +290,11 @@ impl GameRepositoryImpl {
             reserve: TakReserve::new(model.pieces as u32, model.capstones as u32),
         };
 
-        let time_settings = match serde_json::from_str(&model.game_settings.to_string()) {
-            Ok(JsonTimeSettings::Realtime(json_settings)) => {
-                TakTimeSettings::Realtime(TakRealtimeTimeControl {
-                    contingent: Duration::from_millis(json_settings.contingent_ms),
-                    increment: Duration::from_millis(json_settings.increment_ms),
-                    extra: if let Some(extra) = &json_settings.extra {
-                        Some((
-                            extra.extra_time_move,
-                            Duration::from_millis(extra.extra_time_ms),
-                        ))
-                    } else {
-                        None
-                    },
-                })
-            }
-            Ok(JsonTimeSettings::Async(json_settings)) => {
-                TakTimeSettings::Async(TakAsyncTimeControl {
-                    contingent: Duration::from_millis(json_settings.increment_ms as u64),
-                })
-            }
-            Err(_) => panic!("Failed to deserialize game settings from database"),
-        };
+        let time_settings =
+            match serde_json::from_str::<JsonTimeSettings>(&model.game_settings.to_string()) {
+                Ok(settings) => settings.to_time_settings(),
+                Err(_) => panic!("Failed to deserialize game settings from database"),
+            };
         let json_events: Vec<JsonEventRecord> =
             serde_json::from_value(model.events).unwrap_or_default();
 
@@ -396,24 +346,9 @@ impl GameRepositoryImpl {
 #[async_trait::async_trait]
 impl GameRepository for GameRepositoryImpl {
     async fn save_ongoing_game(&self, game: GameRecord) -> Result<GameId, RepoError> {
-        let time_settings = match &game.metadata.settings.time_settings {
-            TakTimeSettings::Realtime(settings) => {
-                JsonTimeSettings::Realtime(JsonRealtimeTimeSettings {
-                    contingent_ms: settings.contingent.as_millis() as u64,
-                    increment_ms: settings.increment.as_millis() as u64,
-                    extra: settings.extra.as_ref().map(|(trigger_move, extra_time)| {
-                        JsonRealtimeTimeExtra {
-                            extra_time_ms: extra_time.as_millis() as u64,
-                            extra_time_move: *trigger_move,
-                        }
-                    }),
-                })
-            }
+        let time_settings =
+            JsonTimeSettings::from_time_settings(&game.metadata.settings.time_settings);
 
-            TakTimeSettings::Async(settings) => JsonTimeSettings::Async(JsonAsyncTimeSettings {
-                increment_ms: settings.contingent.as_millis() as u64,
-            }),
-        };
         let base_settings = &game.metadata.settings.base;
         let new_game = game::ActiveModel {
             id: Default::default(), // Auto-increment
