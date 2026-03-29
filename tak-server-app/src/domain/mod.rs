@@ -2,7 +2,7 @@ pub mod chat;
 pub mod event;
 pub mod game;
 pub mod game_history;
-pub mod r#match;
+pub mod matches;
 pub mod moderation;
 pub mod player;
 pub mod profile;
@@ -45,7 +45,7 @@ impl std::fmt::Display for AccountId {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct MatchId(u64);
+pub struct MatchId(pub i64);
 
 impl std::fmt::Display for MatchId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

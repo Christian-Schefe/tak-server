@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::domain::{
-    GameId, PlayerId,
+    GameId, MatchId, PlayerId,
     game::request::{GameRequest, GameRequestId, GameRequestSystem, GameRequestType},
 };
 use dashmap::DashMap;
@@ -74,6 +74,7 @@ pub struct GameMetadata {
     pub black_id: PlayerId,
     pub settings: TakGameSettings,
     pub is_rated: bool,
+    pub match_id: Option<MatchId>,
 }
 
 impl GameMetadata {
@@ -143,6 +144,7 @@ pub trait GameService {
         black_id: PlayerId,
         is_rated: bool,
         game_settings: TakGameSettings,
+        match_id: Option<MatchId>,
     ) -> GameMetadata;
     fn create_game(&self, id: GameId, metadata: GameMetadata) -> OngoingGame;
     fn get_game_by_id(&self, game_id: GameId) -> Option<OngoingGame>;
@@ -344,6 +346,7 @@ impl GameService for GameServiceImpl {
         black_id: PlayerId,
         is_rated: bool,
         game_settings: TakGameSettings,
+        match_id: Option<MatchId>,
     ) -> GameMetadata {
         GameMetadata {
             date,
@@ -351,6 +354,7 @@ impl GameService for GameServiceImpl {
             black_id,
             settings: game_settings,
             is_rated,
+            match_id,
         }
     }
     fn create_game(&self, id: GameId, metadata: GameMetadata) -> OngoingGame {

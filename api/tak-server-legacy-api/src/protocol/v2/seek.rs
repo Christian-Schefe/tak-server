@@ -12,10 +12,10 @@ use tak_core::{
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
     domain::{GameId, PlayerId, SeekId},
-    workflow::matchmaking::accept::AcceptSeekError,
+    workflow::{history::query::GameQueryError, matchmaking::accept::AcceptSeekError},
 };
 use tak_server_app::{
-    domain::{r#match::RequestRematchError, seek::CreateSeekError},
+    domain::{matches::RequestRematchError, seek::CreateSeekError},
     workflow::matchmaking::{SeekView, rematch::RequestOrAcceptRematchError},
 };
 
@@ -189,10 +189,30 @@ impl ProtocolV2Handler {
         };
         let game_id = GameId::new(game_id);
 
+        let game = match self.app.game_history_query_use_case.get_game(game_id).await {
+            Ok(Some(game)) => game,
+            Ok(None) => {
+                return V2Response::ErrorNOK(ServiceError::NotFound(
+                    "Game not found for rematch".to_string(),
+                ));
+            }
+            Err(GameQueryError::RepositoryError) => {
+                return V2Response::ErrorNOK(ServiceError::Internal(
+                    "Repository error while retrieving game history".to_string(),
+                ));
+            }
+        };
+
+        let Some(match_id) = game.metadata.match_id else {
+            return V2Response::ErrorNOK(ServiceError::BadRequest(
+                "Game is not part of a match".to_string(),
+            ));
+        };
+
         match self
             .app
             .match_rematch_use_case
-            .request_or_accept_rematch(game_id, player_id)
+            .request_or_accept_rematch(match_id, player_id)
             .await
         {
             Ok(_) => V2Response::OK,
@@ -206,6 +226,11 @@ impl ProtocolV2Handler {
             Err(RequestOrAcceptRematchError::RequestRematchError(_)) => V2Response::ErrorNOK(
                 ServiceError::BadRequest("Failed to request or accept rematch".to_string()),
             ),
+            Err(RequestOrAcceptRematchError::RepositoryError) => {
+                V2Response::ErrorNOK(ServiceError::Internal(
+                    "Repository error while requesting or accepting rematch".to_string(),
+                ))
+            }
         }
     }
 

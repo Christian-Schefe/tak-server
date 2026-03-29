@@ -26,6 +26,8 @@ pub struct Model {
     pub pieces: i32,
     pub capstones: i32,
     pub game_settings: serde_json::Value,
+
+    pub match_id: Option<i64>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

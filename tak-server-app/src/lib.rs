@@ -8,7 +8,7 @@ use crate::{
         event::EventRepository,
         game::GameServiceImpl,
         game_history::{GameHistoryServiceImpl, GameRepository},
-        r#match::MatchServiceImpl,
+        matches::{MatchRepository, RematchServiceImpl},
         moderation::{AdminAccountPolicy, HigherRoleAccountPolicy, ModeratorAccountPolicy},
         profile::{AccountProfileRepository, ProfilePictureRepository},
         puzzle::PuzzleRepository,
@@ -60,7 +60,6 @@ use crate::{
         matchmaking::{
             accept::{AcceptSeekUseCase, AcceptSeekUseCaseImpl},
             cancel::{CancelSeekUseCase, CancelSeekUseCaseImpl},
-            cleanup::MatchCleanupJob,
             create::{CreateSeekUseCase, CreateSeekUseCaseImpl},
             create_game::CreateGameFromMatchWorkflowImpl,
             get::{GetSeekUseCase, GetSeekUseCaseImpl},
@@ -156,6 +155,7 @@ pub async fn build_application<
     RH: RatingHistoryRepository + Send + Sync + 'static,
     TR: TournamentRepository + Send + Sync + 'static,
     TPR: TournamentPlayerRegistrationRepository + Send + Sync + 'static,
+    MR: MatchRepository + Send + Sync + 'static,
 >(
     game_repository: Arc<G>,
     player_repository: Arc<PR>,
@@ -174,6 +174,7 @@ pub async fn build_application<
     rating_history_repository: Arc<RH>,
     tournament_repository: Arc<TR>,
     tournament_player_registration_repository: Arc<TPR>,
+    match_repository: Arc<MR>,
 ) -> Application {
     let seek_service = Arc::new(SeekServiceImpl::new());
     let game_service = Arc::new(GameServiceImpl::new());
@@ -182,7 +183,7 @@ pub async fn build_application<
     let game_history_service = Arc::new(GameHistoryServiceImpl::new());
     let rating_service = Arc::new(RatingServiceImpl::new());
     let chat_content_policy = Arc::new(RustrictContentPolicy::new());
-    let match_service = Arc::new(MatchServiceImpl::new());
+    let rematch_service = Arc::new(RematchServiceImpl::new());
 
     let policies = ModerationPolicies {
         ban_policy: Arc::new(AdminAccountPolicy),
@@ -220,7 +221,7 @@ pub async fn build_application<
         rating_service.clone(),
         rating_repository.clone(),
         game_history_service.clone(),
-        match_service.clone(),
+        match_repository.clone(),
         notify_player_workflow.clone(),
         spectator_service.clone(),
         listener_notification_port.clone(),
@@ -240,7 +241,7 @@ pub async fn build_application<
     ));
 
     let create_game_from_match_workflow = Arc::new(CreateGameFromMatchWorkflowImpl::new(
-        match_service.clone(),
+        match_repository.clone(),
         game_history_service.clone(),
         game_repository.clone(),
         game_service.clone(),
@@ -254,21 +255,20 @@ pub async fn build_application<
         stats_repository.clone(),
     ));
 
-    let match_cleanup_job = MatchCleanupJob::new(match_service.clone());
     let guest_cleanup_job = GuestCleanupJob::new(
         authentication_service.clone(),
         remove_account_workflow.clone(),
     );
 
     let jobs = tokio::spawn(async move {
-        futures::join!(match_cleanup_job.run(), guest_cleanup_job.run());
+        futures::join!(guest_cleanup_job.run());
     });
 
     let application = Application {
         jobs,
         seek_accept_use_case: Box::new(AcceptSeekUseCaseImpl::new(
             seek_service.clone(),
-            match_service.clone(),
+            match_repository.clone(),
             listener_notification_port.clone(),
             create_game_from_match_workflow.clone(),
         )),
@@ -284,8 +284,9 @@ pub async fn build_application<
         seek_list_use_case: Box::new(ListSeeksUseCaseImpl::new(seek_service.clone())),
 
         match_rematch_use_case: Box::new(RematchUseCaseImpl::new(
-            match_service.clone(),
+            match_repository.clone(),
             create_game_from_match_workflow.clone(),
+            rematch_service.clone(),
         )),
 
         account_set_online_use_case: Box::new(SetAccountOnlineUseCaseImpl::new(

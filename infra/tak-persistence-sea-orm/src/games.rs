@@ -11,7 +11,8 @@ use tak_core::{
 };
 use tak_persistence_sea_orm_entities::game;
 use tak_server_app::domain::{
-    GameId, PaginatedResponse, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError, SortOrder,
+    GameId, MatchId, PaginatedResponse, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
+    SortOrder,
     game::{
         GameEvent, GameEventType, GameMetadata, GameOverEventType,
         request::{GameRequest, GameRequestId, GameRequestType},
@@ -320,6 +321,7 @@ impl GameRepositoryImpl {
                 base: base_settings.clone(),
                 time_settings: time_settings.clone(),
             },
+            match_id: model.match_id.map(|id| MatchId(id)),
         };
 
         GameRecord {
@@ -371,6 +373,7 @@ impl GameRepository for GameRepositoryImpl {
             game_settings: Set(serde_json::to_value(&time_settings).map_err(|e| {
                 RepoError::StorageError(format!("Failed to serialize game settings: {}", e))
             })?),
+            match_id: Set(game.metadata.match_id.map(|id| id.0)),
         };
 
         let result = new_game

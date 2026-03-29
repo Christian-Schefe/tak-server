@@ -19,18 +19,18 @@ impl TournamentRepositoryImpl {
 
     fn status_from_str(status: &str) -> Result<TournamentStatus, String> {
         match status {
-            "Upcoming" => Ok(TournamentStatus::Upcoming),
-            "Ongoing" => Ok(TournamentStatus::Ongoing),
-            "Completed" => Ok(TournamentStatus::Completed),
+            "upcoming" => Ok(TournamentStatus::Upcoming),
+            "ongoing" => Ok(TournamentStatus::Ongoing),
+            "completed" => Ok(TournamentStatus::Completed),
             other => Err(format!("Unknown tournament status: {}", other)),
         }
     }
 
     fn status_to_str(status: &TournamentStatus) -> String {
         match status {
-            TournamentStatus::Upcoming => "Upcoming".to_string(),
-            TournamentStatus::Ongoing => "Ongoing".to_string(),
-            TournamentStatus::Completed => "Completed".to_string(),
+            TournamentStatus::Upcoming => "upcoming".to_string(),
+            TournamentStatus::Ongoing => "ongoing".to_string(),
+            TournamentStatus::Completed => "completed".to_string(),
         }
     }
 
@@ -46,8 +46,8 @@ impl TournamentRepositoryImpl {
             metadata: TournamentMetadata {
                 name: model.name,
                 tournament_type: match model.tournament_type.as_str() {
-                    "Swiss" => TournamentType::Swiss,
-                    "RoundRobin" => TournamentType::RoundRobin,
+                    "swiss" => TournamentType::Swiss,
+                    "round_robin" => TournamentType::RoundRobin,
                     other => {
                         return Err(format!(
                             "Unknown tournament type '{}' for tournament {}",
@@ -71,8 +71,8 @@ impl TournamentRepositoryImpl {
         Ok(tournament::ActiveModel {
             name: sea_orm::Set(tournament.metadata.name.clone()),
             tournament_type: sea_orm::Set(match tournament.metadata.tournament_type {
-                TournamentType::Swiss => "Swiss".to_string(),
-                TournamentType::RoundRobin => "RoundRobin".to_string(),
+                TournamentType::Swiss => "swiss".to_string(),
+                TournamentType::RoundRobin => "round_robin".to_string(),
             }),
             match_settings: sea_orm::Set(
                 serde_json::to_value(&settings)

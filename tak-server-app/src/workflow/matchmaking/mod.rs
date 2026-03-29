@@ -6,7 +6,6 @@ use crate::domain::{PlayerId, SeekId, seek::Seek};
 
 pub mod accept;
 pub mod cancel;
-pub mod cleanup;
 pub mod create;
 pub mod create_game;
 pub mod get;

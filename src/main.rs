@@ -6,7 +6,7 @@ use tak_email_lettre::LettreEmailAdapter;
 use tak_events_google_sheets::NoopEventRepository;
 use tak_persistence_profile_pictures::ProfilePictureRepositoryImpl;
 use tak_persistence_sea_orm::{
-    chat::ChatRepositoryImpl, games::GameRepositoryImpl,
+    chat::ChatRepositoryImpl, games::GameRepositoryImpl, matches::MatchRepositoryImpl,
     player_account_mapping::PlayerAccountMappingRepositoryImpl, profile::ProfileRepositoryImpl,
     puzzle::PuzzleRepositoryImpl, rating_history::RatingHistoryRepositoryImpl,
     ratings::RatingRepositoryImpl, stats::StatsRepositoryImpl,
@@ -95,6 +95,7 @@ async fn main() {
     let tournament_repo = Arc::new(TournamentRepositoryImpl::new().await);
     let tournament_player_registration_repo =
         Arc::new(TournamentPlayerRegistrationRepositoryImpl::new().await);
+    let match_repo = Arc::new(MatchRepositoryImpl::new().await);
 
     let app = Arc::new(
         build_application(
@@ -115,6 +116,7 @@ async fn main() {
             rating_history_repo,
             tournament_repo,
             tournament_player_registration_repo,
+            match_repo,
         )
         .await,
     );

@@ -4,9 +4,10 @@ use tak_core::{TakGameResult, TakPlayer};
 
 use crate::{
     domain::{
+        MatchId,
         game::FinishedGame,
         game_history::{GameHistoryService, GameRatingInfo, GameRepository},
-        r#match::MatchService,
+        matches::MatchRepository,
         rating::{PlayerRating, RatingRepository, RatingService},
         spectator::SpectatorService,
         stats::{
@@ -30,7 +31,7 @@ pub struct FinalizeGameWorkflowImpl<
     R: RatingService,
     RP: RatingRepository,
     GH: GameHistoryService,
-    M: MatchService,
+    M: MatchRepository,
     NP: NotifyPlayerWorkflow,
     SPS: SpectatorService,
     L: ListenerNotificationPort,
@@ -42,7 +43,7 @@ pub struct FinalizeGameWorkflowImpl<
     rating_service: Arc<R>,
     rating_repository: Arc<RP>,
     game_history_service: Arc<GH>,
-    match_service: Arc<M>,
+    match_repository: Arc<M>,
     notify_player_workflow: Arc<NP>,
     spectator_service: Arc<SPS>,
     listener_notification_port: Arc<L>,
@@ -56,7 +57,7 @@ impl<
     R: RatingService,
     RP: RatingRepository,
     GH: GameHistoryService,
-    M: MatchService,
+    M: MatchRepository,
     NP: NotifyPlayerWorkflow,
     SPS: SpectatorService,
     L: ListenerNotificationPort,
@@ -70,7 +71,7 @@ impl<
         rating_service: Arc<R>,
         rating_repository: Arc<RP>,
         game_history_service: Arc<GH>,
-        match_service: Arc<M>,
+        match_repository: Arc<M>,
         notify_player_workflow: Arc<NP>,
         spectator_service: Arc<SPS>,
         listener_notification_port: Arc<L>,
@@ -83,13 +84,49 @@ impl<
             rating_service,
             rating_repository,
             game_history_service,
-            match_service,
+            match_repository,
             notify_player_workflow,
             spectator_service,
             listener_notification_port,
             get_account_workflow,
             stats_repository,
             rating_history_repository,
+        }
+    }
+
+    async fn handle_match(&self, match_id: MatchId, game: &FinishedGame) {
+        tracing::info!("Finalizing game {} in match {}", game.game_id, match_id);
+        let winner = match game.game.game_result() {
+            TakGameResult::Draw => None,
+            TakGameResult::Win {
+                winner: TakPlayer::White,
+                ..
+            } => Some(game.metadata.white_id),
+            TakGameResult::Win {
+                winner: TakPlayer::Black,
+                ..
+            } => Some(game.metadata.black_id),
+        };
+        let mut match_data = match self.match_repository.get_match(match_id).await {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::error!("Failed to retrieve match {}: {}", match_id, e);
+                return;
+            }
+        };
+        match_data.end_game_in_match(winner);
+        if let Err(e) = self
+            .match_repository
+            .update_match(match_id, match_data)
+            .await
+        {
+            tracing::error!("Failed to update match {}: {}", match_id, e);
+        } else {
+            tracing::info!(
+                "Match {} updated successfully after game {}",
+                match_id,
+                game.game_id
+            );
         }
     }
 }
@@ -100,7 +137,7 @@ impl<
     R: RatingService + Send + Sync + 'static,
     RP: RatingRepository + Send + Sync + 'static,
     GH: GameHistoryService + Send + Sync + 'static,
-    M: MatchService + Send + Sync + 'static,
+    M: MatchRepository + Send + Sync + 'static,
     NP: NotifyPlayerWorkflow + Send + Sync + 'static,
     SPS: SpectatorService + Send + Sync + 'static,
     L: ListenerNotificationPort + Send + Sync + 'static,
@@ -156,11 +193,8 @@ impl<
             game_id
         );
 
-        if let Some(match_id) = self.match_service.get_match_id_by_game_id(game_id) {
-            tracing::info!("Finalizing game {} in match {}", game_id, match_id);
-            if !self.match_service.end_game_in_match(match_id, game_id) {
-                tracing::error!("Failed to end game {} in match {}", game_id, match_id);
-            }
+        if let Some(match_id) = ended_game.metadata.match_id {
+            self.handle_match(match_id, &ended_game).await;
         } else {
             tracing::info!("Game {} is not part of a match", game_id);
         }

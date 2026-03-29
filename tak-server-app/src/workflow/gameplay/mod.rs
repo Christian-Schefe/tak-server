@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use tak_core::{TakFinishedGame, TakGameSettings, TakOngoingGame};
 
 use crate::domain::{
-    GameId, PlayerId,
+    GameId, MatchId, PlayerId,
     game::{FinishedGame, GameMetadata, OngoingGame, request::GameRequest},
 };
 
@@ -22,6 +22,7 @@ pub struct GameMetadataView {
     pub black_id: PlayerId,
     pub is_rated: bool,
     pub settings: TakGameSettings,
+    pub match_id: Option<MatchId>,
 }
 
 #[derive(Clone, Debug)]
@@ -48,6 +49,7 @@ impl GameMetadataView {
             black_id: game.black_id,
             is_rated: game.is_rated,
             settings: game.settings.clone(),
+            match_id: game.match_id,
         }
     }
 }

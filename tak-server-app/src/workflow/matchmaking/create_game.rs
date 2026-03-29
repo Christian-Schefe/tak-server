@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
+use tak_core::TakPlayer;
+
 use crate::{
     domain::{
-        MatchId,
+        MatchId, RepoRetrieveError,
         game::GameService,
         game_history::{GameHistoryService, GameRepository},
-        r#match::MatchService,
+        matches::MatchRepository,
     },
     ports::notification::{ListenerMessage, ListenerNotificationPort},
     processes::game_timeout_runner::GameTimeoutRunner,
@@ -28,7 +30,7 @@ pub enum CreateGameFromMatchError {
 }
 
 pub struct CreateGameFromMatchWorkflowImpl<
-    M: MatchService,
+    M: MatchRepository,
     GH: GameHistoryService,
     GR: GameRepository,
     G: GameService,
@@ -36,7 +38,7 @@ pub struct CreateGameFromMatchWorkflowImpl<
     L: ListenerNotificationPort,
     S: GetSnapshotWorkflow,
 > {
-    match_service: Arc<M>,
+    match_repo: Arc<M>,
     game_history_service: Arc<GH>,
     game_repository: Arc<GR>,
     game_service: Arc<G>,
@@ -45,7 +47,7 @@ pub struct CreateGameFromMatchWorkflowImpl<
     get_snapshot_workflow: Arc<S>,
 }
 impl<
-    M: MatchService,
+    M: MatchRepository,
     GH: GameHistoryService,
     GR: GameRepository,
     G: GameService,
@@ -55,7 +57,7 @@ impl<
 > CreateGameFromMatchWorkflowImpl<M, GH, GR, G, GT, L, S>
 {
     pub fn new(
-        match_service: Arc<M>,
+        match_repo: Arc<M>,
         game_history_service: Arc<GH>,
         game_repository: Arc<GR>,
         game_service: Arc<G>,
@@ -64,7 +66,7 @@ impl<
         get_snapshot_workflow: Arc<S>,
     ) -> Self {
         Self {
-            match_service,
+            match_repo,
             game_history_service,
             game_repository,
             game_service,
@@ -77,7 +79,7 @@ impl<
 
 #[async_trait::async_trait]
 impl<
-    M: MatchService + Send + Sync,
+    M: MatchRepository + Send + Sync,
     GH: GameHistoryService + Send + Sync,
     GR: GameRepository + Send + Sync,
     G: GameService + Send + Sync,
@@ -93,10 +95,26 @@ impl<
     ) -> Result<(), CreateGameFromMatchError> {
         let date = chrono::Utc::now();
 
-        let Some(match_entry) = self.match_service.reserve_match_in_progress(match_id) else {
-            return Err(CreateGameFromMatchError::AlreadyInProgress);
+        let mut match_entry = self
+            .match_repo
+            .get_match(match_id)
+            .await
+            .map_err(|e| match e {
+                RepoRetrieveError::NotFound => CreateGameFromMatchError::MatchNotFound,
+                RepoRetrieveError::StorageError(e) => {
+                    tracing::error!("Storage error while retrieving match {}: {}", match_id, e);
+                    CreateGameFromMatchError::RepositoryError
+                }
+            })?;
+        let player1_color = match_entry.try_begin_game().map_err(|e| {
+            tracing::error!("Failed to start game for match {}: {}", match_id, e);
+            CreateGameFromMatchError::AlreadyInProgress
+        })?;
+
+        let (white_id, black_id) = match player1_color {
+            TakPlayer::White => (match_entry.player1, match_entry.player2),
+            TakPlayer::Black => (match_entry.player2, match_entry.player1),
         };
-        let (white_id, black_id) = match_entry.get_next_matchup_colors();
 
         let snapshot_white = self
             .get_snapshot_workflow
@@ -113,6 +131,7 @@ impl<
             black_id,
             match_entry.is_rated,
             match_entry.game_settings.clone(),
+            Some(match_id),
         );
 
         let game_record = self.game_history_service.get_ongoing_game_record(
@@ -124,23 +143,17 @@ impl<
         let game_id = match self.game_repository.save_ongoing_game(game_record).await {
             Ok(id) => id,
             Err(e) => {
-                tracing::error!(
-                    "Failed to save ongoing game for match {}: {}",
-                    match_entry.id,
-                    e
-                );
+                tracing::error!("Failed to save ongoing game for match {}: {}", match_id, e);
                 return Err(CreateGameFromMatchError::RepositoryError);
             }
         };
 
-        if !self
-            .match_service
-            .start_game_in_match(match_entry.id, game_id)
-        {
+        if let Err(e) = self.match_repo.update_match(match_id, match_entry).await {
             tracing::error!(
-                "Failed to start game {} in match {}",
+                "Failed to start game {} in match {}: {}",
                 game_id,
-                match_entry.id
+                match_id,
+                e
             );
             return Err(CreateGameFromMatchError::MatchNotFound);
         }

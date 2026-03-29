@@ -1,4 +1,4 @@
-use tak_core::TakGameSettings;
+use tak_core::{TakGameSettings, TakPlayer};
 
 use crate::domain::{PlayerId, RepoError, RepoRetrieveError, TournamentId};
 
@@ -26,6 +26,51 @@ pub enum TournamentStatus {
 pub enum TournamentType {
     Swiss,
     RoundRobin,
+}
+
+impl TournamentType {
+    pub fn generate_pairings(
+        &self,
+        players: &[PlayerId],
+        round_index: usize,
+    ) -> Vec<(PlayerId, PlayerId, TakPlayer)> {
+        match self {
+            TournamentType::Swiss => todo!(),
+            TournamentType::RoundRobin => Self::generate_round_robin_pairings(players, round_index),
+        }
+    }
+
+    fn generate_round_robin_pairings(
+        players: &[PlayerId],
+        round_index: usize,
+    ) -> Vec<(PlayerId, PlayerId, TakPlayer)> {
+        let mut players: Vec<Option<PlayerId>> = players.iter().map(|x| Some(*x)).collect();
+        if players.len() % 2 != 0 {
+            players.push(None);
+        }
+        let n = players.len();
+        let color = if round_index % 2 == 0 {
+            TakPlayer::White
+        } else {
+            TakPlayer::Black
+        };
+
+        // Rotate players except the first one
+        let rotation = round_index % (n - 1);
+        players[1..].rotate_right(rotation);
+
+        let mut pairings = Vec::new();
+
+        for i in 0..(n / 2) {
+            let p1 = players[i];
+            let p2 = players[n - 1 - i];
+            if let (Some(p1), Some(p2)) = (p1, p2) {
+                pairings.push((p1, p2, color));
+            }
+        }
+
+        pairings
+    }
 }
 
 #[async_trait::async_trait]
