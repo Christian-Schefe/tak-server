@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use tak_core::TakPlayer;
+
 use crate::{
     domain::{
         PlayerId, SeekId,
@@ -82,10 +84,18 @@ impl<
         };
         self.notification_port.notify_all(&message);
 
+        let initial_color = seek.color.unwrap_or_else(|| {
+            if rand::random::<bool>() {
+                TakPlayer::White
+            } else {
+                TakPlayer::Black
+            }
+        });
+
         let match_data = Match::new(
             seek.creator_id,
             player,
-            seek.color,
+            initial_color,
             seek.game_settings.clone(),
             MatchMode::Unlimited,
             seek.is_rated,

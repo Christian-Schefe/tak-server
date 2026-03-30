@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use crate::domain::{
     PlayerId, RepoRetrieveError, TournamentId,
-    tournament::{TournamentPlayerRegistrationRepository, TournamentRepository, TournamentStatus},
+    tournament::{
+        TournamentPlayer, TournamentPlayerRepository, TournamentRepository, TournamentStatus,
+    },
 };
 
 #[async_trait::async_trait]
@@ -21,22 +23,19 @@ pub trait TournamentPlayerRegistrationUseCase {
 
 pub struct TournamentPlayerRegistrationUseCaseImpl<
     TR: TournamentRepository,
-    TPR: TournamentPlayerRegistrationRepository,
+    TPR: TournamentPlayerRepository,
 > {
     tournament_repository: Arc<TR>,
-    tournament_player_registration_repository: Arc<TPR>,
+    tournament_player_repository: Arc<TPR>,
 }
 
-impl<TR: TournamentRepository, TPR: TournamentPlayerRegistrationRepository>
+impl<TR: TournamentRepository, TPR: TournamentPlayerRepository>
     TournamentPlayerRegistrationUseCaseImpl<TR, TPR>
 {
-    pub fn new(
-        tournament_repository: Arc<TR>,
-        tournament_player_registration_repository: Arc<TPR>,
-    ) -> Self {
+    pub fn new(tournament_repository: Arc<TR>, tournament_player_repository: Arc<TPR>) -> Self {
         Self {
             tournament_repository,
-            tournament_player_registration_repository,
+            tournament_player_repository,
         }
     }
 }
@@ -44,7 +43,7 @@ impl<TR: TournamentRepository, TPR: TournamentPlayerRegistrationRepository>
 #[async_trait::async_trait]
 impl<
     TR: TournamentRepository + Send + Sync + 'static,
-    TPR: TournamentPlayerRegistrationRepository + Send + Sync + 'static,
+    TPR: TournamentPlayerRepository + Send + Sync + 'static,
 > TournamentPlayerRegistrationUseCase for TournamentPlayerRegistrationUseCaseImpl<TR, TPR>
 {
     #[tracing::instrument(skip(self))]
@@ -78,8 +77,8 @@ impl<
             return Err(());
         };
         if let Err(e) = self
-            .tournament_player_registration_repository
-            .register_player(tournament_id, player_id)
+            .tournament_player_repository
+            .create_tournament_player(tournament_id, TournamentPlayer::new(player_id))
             .await
         {
             tracing::error!(
@@ -125,8 +124,8 @@ impl<
             return Err(());
         };
         if let Err(e) = self
-            .tournament_player_registration_repository
-            .unregister_player(tournament_id, player_id)
+            .tournament_player_repository
+            .remove_tournament_player(tournament_id, player_id)
             .await
         {
             tracing::error!(

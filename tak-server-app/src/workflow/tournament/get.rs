@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     domain::{
         RepoError, RepoRetrieveError, TournamentId,
-        tournament::{TournamentPlayerRegistrationRepository, TournamentRepository},
+        tournament::{TournamentPlayerRepository, TournamentRepository},
     },
     workflow::tournament::{TournamentDetailView, TournamentView},
 };
@@ -17,21 +17,16 @@ pub trait GetTournamentUseCase {
     ) -> Result<Option<TournamentDetailView>, ()>;
 }
 
-pub struct GetTournamentUseCaseImpl<
-    TR: TournamentRepository,
-    TPR: TournamentPlayerRegistrationRepository,
-> {
+pub struct GetTournamentUseCaseImpl<TR: TournamentRepository, TPR: TournamentPlayerRepository> {
     tournament_repository: Arc<TR>,
-    player_registration_repository: Arc<TPR>,
+    tournament_player_repository: Arc<TPR>,
 }
 
-impl<TR: TournamentRepository, TPR: TournamentPlayerRegistrationRepository>
-    GetTournamentUseCaseImpl<TR, TPR>
-{
-    pub fn new(tournament_repository: Arc<TR>, player_registration_repository: Arc<TPR>) -> Self {
+impl<TR: TournamentRepository, TPR: TournamentPlayerRepository> GetTournamentUseCaseImpl<TR, TPR> {
+    pub fn new(tournament_repository: Arc<TR>, tournament_player_repository: Arc<TPR>) -> Self {
         Self {
             tournament_repository,
-            player_registration_repository,
+            tournament_player_repository,
         }
     }
 }
@@ -39,7 +34,7 @@ impl<TR: TournamentRepository, TPR: TournamentPlayerRegistrationRepository>
 #[async_trait::async_trait]
 impl<
     TR: TournamentRepository + Send + Sync + 'static,
-    TPR: TournamentPlayerRegistrationRepository + Send + Sync + 'static,
+    TPR: TournamentPlayerRepository + Send + Sync + 'static,
 > GetTournamentUseCase for GetTournamentUseCaseImpl<TR, TPR>
 {
     #[tracing::instrument(skip(self))]
@@ -63,14 +58,14 @@ impl<
     ) -> Result<Option<TournamentDetailView>, ()> {
         match futures::join!(
             self.tournament_repository.get_tournament(tournament_id),
-            self.player_registration_repository
-                .get_registered_players(tournament_id)
+            self.tournament_player_repository
+                .get_tournament_players(tournament_id)
         ) {
-            (Ok(tournament), Ok(registered_players)) => {
+            (Ok(tournament), Ok(tournament_players)) => {
                 Ok(Some(TournamentDetailView::from_tournament(
                     tournament_id,
                     tournament,
-                    registered_players,
+                    tournament_players,
                 )))
             }
             (Err(RepoRetrieveError::NotFound), _) => Ok(None),

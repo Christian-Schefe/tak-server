@@ -7,8 +7,8 @@ use crate::{
         TournamentId,
         matches::{Match, MatchMode, MatchRepository, MatchStatus, MatchTournamentInfo},
         tournament::{
-            Tournament, TournamentMetadata, TournamentPlayerRegistrationRepository,
-            TournamentRepository, TournamentStatus, TournamentType,
+            Tournament, TournamentFormat, TournamentMetadata, TournamentPlayerRepository,
+            TournamentRepository, TournamentStatus,
         },
     },
     workflow::matchmaking::create_game::CreateGameFromMatchWorkflow,
@@ -19,7 +19,7 @@ pub trait HostTournamentUseCase {
     async fn create_tournament(
         &self,
         name: String,
-        tournament_type: TournamentType,
+        tournament_format: TournamentFormat,
         match_settings: TakGameSettings,
     ) -> Result<TournamentId, ()>;
     async fn begin_tournament(&self, tournament_id: TournamentId) -> Result<(), ()>;
@@ -29,32 +29,32 @@ pub trait HostTournamentUseCase {
 pub struct HostTournamentUseCaseImpl<
     TR: TournamentRepository,
     M: MatchRepository,
-    TPR: TournamentPlayerRegistrationRepository,
+    TPR: TournamentPlayerRepository,
     C: CreateGameFromMatchWorkflow,
 > {
     tournament_repository: Arc<TR>,
     match_repository: Arc<M>,
-    tournament_player_registration_repository: Arc<TPR>,
+    tournament_player_repository: Arc<TPR>,
     create_game_workflow: Arc<C>,
 }
 
 impl<
     TR: TournamentRepository,
     M: MatchRepository,
-    TPR: TournamentPlayerRegistrationRepository,
+    TPR: TournamentPlayerRepository,
     C: CreateGameFromMatchWorkflow,
 > HostTournamentUseCaseImpl<TR, M, TPR, C>
 {
     pub fn new(
         tournament_repository: Arc<TR>,
         match_repository: Arc<M>,
-        tournament_player_registration_repository: Arc<TPR>,
+        tournament_player_repository: Arc<TPR>,
         create_game_workflow: Arc<C>,
     ) -> Self {
         Self {
             tournament_repository,
             match_repository,
-            tournament_player_registration_repository,
+            tournament_player_repository,
             create_game_workflow,
         }
     }
@@ -64,7 +64,7 @@ impl<
 impl<
     TR: TournamentRepository + Send + Sync + 'static,
     M: MatchRepository + Send + Sync + 'static,
-    TPR: TournamentPlayerRegistrationRepository + Send + Sync + 'static,
+    TPR: TournamentPlayerRepository + Send + Sync + 'static,
     C: CreateGameFromMatchWorkflow + Send + Sync + 'static,
 > HostTournamentUseCase for HostTournamentUseCaseImpl<TR, M, TPR, C>
 {
@@ -72,13 +72,13 @@ impl<
     async fn create_tournament(
         &self,
         name: String,
-        tournament_type: TournamentType,
+        tournament_format: TournamentFormat,
         match_settings: TakGameSettings,
     ) -> Result<TournamentId, ()> {
         let tournament = Tournament {
             metadata: TournamentMetadata {
                 name,
-                tournament_type,
+                tournament_format,
                 match_settings,
             },
             status: TournamentStatus::Upcoming,
@@ -185,8 +185,8 @@ impl<
             return Err(());
         }
         let all_players = self
-            .tournament_player_registration_repository
-            .get_registered_players(tournament_id)
+            .tournament_player_repository
+            .get_tournament_players(tournament_id)
             .await
             .map_err(|e| {
                 tracing::error!(
@@ -211,15 +211,32 @@ impl<
 
         let pairings = tournament
             .metadata
-            .tournament_type
+            .tournament_format
             .generate_pairings(&all_players, round_index as usize);
 
-        let create_match_futures = pairings.into_iter().enumerate().map(
+        let bye_futures = pairings.byes.into_iter().map(|player_id| async move {
+            if let Err(e) = self
+                .tournament_player_repository
+                .increase_player_score(tournament_id, player_id, 1)
+                .await
+            {
+                tracing::error!(
+                    %player_id,
+                    %tournament_id,
+                    "Failed to update tournament player score: {:?}",
+                    e
+                );
+                return Err(());
+            }
+            Ok(())
+        });
+
+        let pairing_futures = pairings.pairings.into_iter().enumerate().map(
             |(round_match_number, (player1, player2, color))| {
                 let match_data = Match::new(
                     player1,
                     player2,
-                    Some(color),
+                    color,
                     tournament.metadata.match_settings.clone(),
                     MatchMode::FixedGames(1),
                     true,
@@ -251,20 +268,16 @@ impl<
                                 match_id,
                                 e
                             );
-                        })
+                        })?;
+                    Ok(())
                 }
             },
         );
-        if let Err(_) = futures::future::join_all(create_match_futures)
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>()
-        {
-            tracing::error!(
-                "Failed to create all matches for tournament {} round {}",
-                tournament_id,
-                round_index
-            );
+        let (bye_results, pairing_results) = futures::join!(
+            futures::future::join_all(bye_futures),
+            futures::future::join_all(pairing_futures)
+        );
+        if bye_results.iter().any(|r| r.is_err()) || pairing_results.iter().any(|r| r.is_err()) {
             return Err(());
         }
         Ok(())

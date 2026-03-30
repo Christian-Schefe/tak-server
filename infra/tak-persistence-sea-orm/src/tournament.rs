@@ -3,12 +3,42 @@ use sea_orm::{DatabaseConnection, EntityTrait};
 use tak_persistence_sea_orm_entities::tournament;
 use tak_server_app::domain::TournamentId;
 use tak_server_app::domain::tournament::{
-    Tournament, TournamentMetadata, TournamentRepository, TournamentStatus, TournamentType,
+    Tournament, TournamentFormat, TournamentMetadata, TournamentRepository, TournamentStatus,
 };
 use tak_server_app::domain::{RepoError, RepoRetrieveError};
 
 pub struct TournamentRepositoryImpl {
     db: DatabaseConnection,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+enum JsonTournamentFormat {
+    Swiss { rounds: u32 },
+    RoundRobin,
+}
+
+impl JsonTournamentFormat {
+    fn to_tournament_type(&self) -> TournamentFormat {
+        match self {
+            JsonTournamentFormat::Swiss { rounds } => TournamentFormat::Swiss {
+                rounds: *rounds as usize,
+            },
+            JsonTournamentFormat::RoundRobin => TournamentFormat::RoundRobin,
+        }
+    }
+    fn from_tournament_type(tournament_type: &TournamentFormat) -> Self {
+        match tournament_type {
+            TournamentFormat::Swiss { rounds } => JsonTournamentFormat::Swiss {
+                rounds: *rounds as u32,
+            },
+            TournamentFormat::RoundRobin => JsonTournamentFormat::RoundRobin,
+        }
+    }
 }
 
 impl TournamentRepositoryImpl {
@@ -42,19 +72,18 @@ impl TournamentRepositoryImpl {
                     model.tournament_id, e
                 )
             })?;
+        let tournament_format_settings =
+            serde_json::from_value::<JsonTournamentFormat>(model.tournament_format_settings)
+                .map_err(|e| {
+                    format!(
+                        "Failed to deserialize tournament format settings for tournament {}: {}",
+                        model.tournament_id, e
+                    )
+                })?;
         Ok(Tournament {
             metadata: TournamentMetadata {
                 name: model.name,
-                tournament_type: match model.tournament_type.as_str() {
-                    "swiss" => TournamentType::Swiss,
-                    "round_robin" => TournamentType::RoundRobin,
-                    other => {
-                        return Err(format!(
-                            "Unknown tournament type '{}' for tournament {}",
-                            other, model.tournament_id
-                        ));
-                    }
-                },
+                tournament_format: tournament_format_settings.to_tournament_type(),
                 match_settings: settings.to_game_settings(),
             },
             status: Self::status_from_str(&model.status).map_err(|e| {
@@ -70,10 +99,12 @@ impl TournamentRepositoryImpl {
         let settings = JsonGameSettings::from_game_settings(&tournament.metadata.match_settings);
         Ok(tournament::ActiveModel {
             name: sea_orm::Set(tournament.metadata.name.clone()),
-            tournament_type: sea_orm::Set(match tournament.metadata.tournament_type {
-                TournamentType::Swiss => "swiss".to_string(),
-                TournamentType::RoundRobin => "round_robin".to_string(),
-            }),
+            tournament_format_settings: sea_orm::Set(
+                serde_json::to_value(&JsonTournamentFormat::from_tournament_type(
+                    &tournament.metadata.tournament_format,
+                ))
+                .map_err(|e| format!("Failed to serialize tournament format settings: {}", e))?,
+            ),
             match_settings: sea_orm::Set(
                 serde_json::to_value(&settings)
                     .map_err(|e| format!("Failed to serialize match settings: {}", e))?,

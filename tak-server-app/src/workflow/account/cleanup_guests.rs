@@ -27,7 +27,11 @@ impl<
         loop {
             let removed_guests = self.auth_port.clean_up_guest_accounts().await;
             for account_id in removed_guests {
-                if let Err(e) = self.remove_account_workflow.remove_account(&account_id).await {
+                if let Err(e) = self
+                    .remove_account_workflow
+                    .remove_account(&account_id)
+                    .await
+                {
                     tracing::error!("Failed to remove guest account {}: {:?}", account_id, e);
                 }
             }

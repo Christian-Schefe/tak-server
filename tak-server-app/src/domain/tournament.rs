@@ -5,7 +5,7 @@ use crate::domain::{PlayerId, RepoError, RepoRetrieveError, TournamentId};
 #[derive(Clone, Debug)]
 pub struct TournamentMetadata {
     pub name: String,
-    pub tournament_type: TournamentType,
+    pub tournament_format: TournamentFormat,
     pub match_settings: TakGameSettings,
 }
 
@@ -16,6 +16,21 @@ pub struct Tournament {
 }
 
 #[derive(Clone, Debug)]
+pub struct TournamentPlayer {
+    pub player_id: PlayerId,
+    pub score: u32,
+}
+
+impl TournamentPlayer {
+    pub fn new(player_id: PlayerId) -> Self {
+        Self {
+            player_id,
+            score: 0,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum TournamentStatus {
     Upcoming,
     Ongoing,
@@ -23,28 +38,50 @@ pub enum TournamentStatus {
 }
 
 #[derive(Clone, Debug)]
-pub enum TournamentType {
-    Swiss,
+pub enum TournamentFormat {
+    Swiss { rounds: usize },
     RoundRobin,
 }
 
-impl TournamentType {
+pub struct RoundPairing {
+    pub pairings: Vec<(PlayerId, PlayerId, TakPlayer)>,
+    pub byes: Vec<PlayerId>,
+}
+
+impl TournamentFormat {
     pub fn generate_pairings(
         &self,
-        players: &[PlayerId],
+        players: &[TournamentPlayer],
         round_index: usize,
-    ) -> Vec<(PlayerId, PlayerId, TakPlayer)> {
+    ) -> RoundPairing {
         match self {
-            TournamentType::Swiss => todo!(),
-            TournamentType::RoundRobin => Self::generate_round_robin_pairings(players, round_index),
+            TournamentFormat::Swiss { .. } => todo!(),
+            TournamentFormat::RoundRobin => {
+                Self::generate_round_robin_pairings(players, round_index)
+            }
+        }
+    }
+
+    pub fn is_finished(&self, players: &[TournamentPlayer], round_index: usize) -> bool {
+        match self {
+            TournamentFormat::Swiss { rounds } => round_index >= *rounds,
+            TournamentFormat::RoundRobin => {
+                let total_rounds = if players.len() % 2 == 0 {
+                    players.len() - 1
+                } else {
+                    players.len()
+                };
+                round_index >= total_rounds
+            }
         }
     }
 
     fn generate_round_robin_pairings(
-        players: &[PlayerId],
+        players: &[TournamentPlayer],
         round_index: usize,
-    ) -> Vec<(PlayerId, PlayerId, TakPlayer)> {
-        let mut players: Vec<Option<PlayerId>> = players.iter().map(|x| Some(*x)).collect();
+    ) -> RoundPairing {
+        let mut players: Vec<Option<PlayerId>> =
+            players.iter().map(|tp| Some(tp.player_id)).collect();
         if players.len() % 2 != 0 {
             players.push(None);
         }
@@ -61,15 +98,20 @@ impl TournamentType {
 
         let mut pairings = Vec::new();
 
+        let mut byes = Vec::new();
+
         for i in 0..(n / 2) {
             let p1 = players[i];
             let p2 = players[n - 1 - i];
-            if let (Some(p1), Some(p2)) = (p1, p2) {
-                pairings.push((p1, p2, color));
+            match (p1, p2) {
+                (Some(p1), Some(p2)) => pairings.push((p1, p2, color)),
+                (Some(p1), None) => byes.push(p1),
+                (None, Some(p2)) => byes.push(p2),
+                (None, None) => {}
             }
         }
 
-        pairings
+        RoundPairing { pairings, byes }
     }
 }
 
@@ -89,17 +131,23 @@ pub trait TournamentRepository {
 }
 
 #[async_trait::async_trait]
-pub trait TournamentPlayerRegistrationRepository {
-    async fn get_registered_players(
+pub trait TournamentPlayerRepository {
+    async fn get_tournament_players(
         &self,
         tournament_id: TournamentId,
-    ) -> Result<Vec<PlayerId>, RepoError>;
-    async fn register_player(
+    ) -> Result<Vec<TournamentPlayer>, RepoError>;
+    async fn create_tournament_player(
+        &self,
+        tournament_id: TournamentId,
+        player: TournamentPlayer,
+    ) -> Result<(), RepoError>;
+    async fn increase_player_score(
         &self,
         tournament_id: TournamentId,
         player_id: PlayerId,
+        score_increase: u32,
     ) -> Result<(), RepoError>;
-    async fn unregister_player(
+    async fn remove_tournament_player(
         &self,
         tournament_id: TournamentId,
         player_id: PlayerId,

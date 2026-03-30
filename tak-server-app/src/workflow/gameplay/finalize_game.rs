@@ -7,7 +7,7 @@ use crate::{
         MatchId,
         game::FinishedGame,
         game_history::{GameHistoryService, GameRatingInfo, GameRepository},
-        matches::MatchRepository,
+        matches::{MatchRepository, MatchStatus},
         rating::{PlayerRating, RatingRepository, RatingService},
         spectator::SpectatorService,
         stats::{
@@ -18,6 +18,7 @@ use crate::{
     workflow::{
         account::get_account::GetAccountWorkflow, gameplay::FinishedGameView,
         player::notify_player::NotifyPlayerWorkflow,
+        tournament::tournament_match::TournamentMatchWorkflow,
     },
 };
 
@@ -38,6 +39,7 @@ pub struct FinalizeGameWorkflowImpl<
     A: GetAccountWorkflow,
     S: StatsRepository,
     RH: RatingHistoryRepository,
+    TM: TournamentMatchWorkflow,
 > {
     game_repository: Arc<G>,
     rating_service: Arc<R>,
@@ -50,6 +52,7 @@ pub struct FinalizeGameWorkflowImpl<
     get_account_workflow: Arc<A>,
     stats_repository: Arc<S>,
     rating_history_repository: Arc<RH>,
+    tournament_match_workflow: Arc<TM>,
 }
 
 impl<
@@ -64,7 +67,8 @@ impl<
     A: GetAccountWorkflow,
     S: StatsRepository,
     RH: RatingHistoryRepository,
-> FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, A, S, RH>
+    TM: TournamentMatchWorkflow,
+> FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, A, S, RH, TM>
 {
     pub fn new(
         game_repository: Arc<G>,
@@ -78,6 +82,7 @@ impl<
         get_account_workflow: Arc<A>,
         stats_repository: Arc<S>,
         rating_history_repository: Arc<RH>,
+        tournament_match_workflow: Arc<TM>,
     ) -> Self {
         Self {
             game_repository,
@@ -91,6 +96,7 @@ impl<
             get_account_workflow,
             stats_repository,
             rating_history_repository,
+            tournament_match_workflow,
         }
     }
 
@@ -115,9 +121,10 @@ impl<
             }
         };
         match_data.end_game_in_match(winner);
+
         if let Err(e) = self
             .match_repository
-            .update_match(match_id, match_data)
+            .update_match(match_id, match_data.clone())
             .await
         {
             tracing::error!("Failed to update match {}: {}", match_id, e);
@@ -127,6 +134,12 @@ impl<
                 match_id,
                 game.game_id
             );
+        }
+
+        if let MatchStatus::Completed = match_data.status {
+            self.tournament_match_workflow
+                .handle_completed_match(match_data)
+                .await;
         }
     }
 }
@@ -144,7 +157,8 @@ impl<
     A: GetAccountWorkflow + Send + Sync + 'static,
     S: StatsRepository + Send + Sync + 'static,
     RH: RatingHistoryRepository + Send + Sync + 'static,
-> FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, A, S, RH>
+    TM: TournamentMatchWorkflow + Send + Sync + 'static,
+> FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, A, S, RH, TM>
 {
     #[tracing::instrument(skip(self, ended_game), fields(game_id = %ended_game.game_id))]
     async fn finalize_game(&self, ended_game: FinishedGame) {

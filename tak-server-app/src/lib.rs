@@ -16,7 +16,7 @@ use crate::{
         seek::SeekServiceImpl,
         spectator::SpectatorServiceImpl,
         stats::{RatingHistoryRepository, StatsRepository},
-        tournament::{TournamentPlayerRegistrationRepository, TournamentRepository},
+        tournament::{TournamentPlayerRepository, TournamentRepository},
     },
     ports::{
         authentication::AuthenticationPort,
@@ -80,6 +80,7 @@ use crate::{
             register::{
                 TournamentPlayerRegistrationUseCase, TournamentPlayerRegistrationUseCaseImpl,
             },
+            tournament_match::TournamentMatchWorkflowImpl,
         },
     },
 };
@@ -154,7 +155,7 @@ pub async fn build_application<
     CR: ChatRepository + Send + Sync + 'static,
     RH: RatingHistoryRepository + Send + Sync + 'static,
     TR: TournamentRepository + Send + Sync + 'static,
-    TPR: TournamentPlayerRegistrationRepository + Send + Sync + 'static,
+    TPR: TournamentPlayerRepository + Send + Sync + 'static,
     MR: MatchRepository + Send + Sync + 'static,
 >(
     game_repository: Arc<G>,
@@ -216,6 +217,10 @@ pub async fn build_application<
         player_resolver_service.clone(),
     ));
 
+    let tournament_match_workflow = Arc::new(TournamentMatchWorkflowImpl::new(
+        tournament_player_registration_repository.clone(),
+    ));
+
     let finalize_game_workflow = Arc::new(FinalizeGameWorkflowImpl::new(
         game_repository.clone(),
         rating_service.clone(),
@@ -228,6 +233,7 @@ pub async fn build_application<
         get_account_workflow.clone(),
         stats_repository.clone(),
         rating_history_repository.clone(),
+        tournament_match_workflow.clone(),
     ));
     let observe_game_timeout_use_case = Arc::new(ObserveGameTimeoutUseCaseImpl::new(
         game_service.clone(),

@@ -49,19 +49,12 @@ impl Match {
     pub fn new(
         player1: PlayerId,
         player2: PlayerId,
-        initial_color: Option<TakPlayer>,
+        initial_color: TakPlayer,
         game_settings: TakGameSettings,
         match_mode: MatchMode,
         is_rated: bool,
         tournament_id: Option<MatchTournamentInfo>,
     ) -> Self {
-        let initial_color = initial_color.unwrap_or_else(|| {
-            if rand::random::<bool>() {
-                TakPlayer::White
-            } else {
-                TakPlayer::Black
-            }
-        });
         Self {
             player1,
             player2,
@@ -76,6 +69,22 @@ impl Match {
             tournament_info: tournament_id,
         }
     }
+
+    pub fn get_winner(&self) -> Option<PlayerId> {
+        match self.status {
+            MatchStatus::Completed => {
+                if self.half_score_player1 > self.half_score_player2 {
+                    Some(self.player1)
+                } else if self.half_score_player2 > self.half_score_player1 {
+                    Some(self.player2)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
     pub fn end_game_in_match(&mut self, winner: Option<PlayerId>) {
         self.games_played += 1;
         match winner {

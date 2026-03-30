@@ -4,7 +4,7 @@ use axum::{
 };
 use tak_server_api_contract::game::GameSettingsInfo;
 use tak_server_app::{
-    domain::{TournamentId, tournament::TournamentType},
+    domain::{TournamentId, tournament::TournamentFormat},
     services::player_resolver::ResolveError,
     workflow::tournament::TournamentMetadataView,
 };
@@ -31,12 +31,7 @@ pub fn register_routes(router: axum::Router<AppState>) -> axum::Router<AppState>
 pub async fn get_tournaments(
     State(app): State<AppState>,
 ) -> Result<Json<Vec<JsonTournamentMetadata>>, ServiceError> {
-    match app
-        .app
-        .get_tournaments_use_case
-        .get_tournaments()
-        .await
-    {
+    match app.app.get_tournaments_use_case.get_tournaments().await {
         Ok(tournaments) => Ok(Json(
             tournaments
                 .into_iter()
@@ -139,13 +134,17 @@ pub struct JsonTournamentMetadata {
     pub id: i64,
     pub name: String,
     pub match_settings: GameSettingsInfo,
-    pub tournament_type: JsonTournamentType,
+    pub tournament_format: JsonTournamentType,
 }
 
 #[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum JsonTournamentType {
-    Swiss,
+    Swiss { rounds: u32 },
     RoundRobin,
 }
 
@@ -155,9 +154,11 @@ impl JsonTournamentMetadata {
             id: tournament.tournament_id.0,
             name: tournament.name.to_string(),
             match_settings: GameSettingsInfo::from_game_settings(&tournament.match_settings),
-            tournament_type: match tournament.tournament_type {
-                TournamentType::Swiss => JsonTournamentType::Swiss,
-                TournamentType::RoundRobin => JsonTournamentType::RoundRobin,
+            tournament_format: match tournament.tournament_format {
+                TournamentFormat::Swiss { rounds } => JsonTournamentType::Swiss {
+                    rounds: rounds as u32,
+                },
+                TournamentFormat::RoundRobin => JsonTournamentType::RoundRobin,
             },
         }
     }

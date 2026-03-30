@@ -24,7 +24,9 @@ impl EmailPort for LettreEmailAdapter {
     fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<(), SendEmailError> {
         let email = Message::builder()
             .from(self.from.clone())
-            .to(Mailbox::from_str(to).map_err(|e| SendEmailError::InvalidToAddress(format!("Failed to parse address: {}", e)))?)
+            .to(Mailbox::from_str(to).map_err(|e| {
+                SendEmailError::InvalidToAddress(format!("Failed to parse address: {}", e))
+            })?)
             .subject(subject)
             .body(body.to_string())
             .map_err(|e| SendEmailError::SendEmailError(format!("Failed to build email: {}", e)))?;
