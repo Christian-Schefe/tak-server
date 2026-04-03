@@ -15,7 +15,10 @@ use tak_server_app::{
         game_history::{GamePlayerFilter, GameQuery, GameSortBy},
         profile::ProfilePictureFileType,
     },
-    workflow::{account::AccountProfileView, player::PlayerStatsView},
+    workflow::{
+        account::{AccountProfileView, get_account::GetAccountError},
+        player::{PlayerStatsView, get_rating::GetRatingError},
+    },
 };
 use uuid::Uuid;
 
@@ -27,12 +30,17 @@ async fn get_player_info_helper(
     app: &AppState,
     player_id: PlayerId,
 ) -> Result<PlayerInfo, ServiceError> {
-    let account = app
-        .app
-        .get_account_workflow
-        .get_account(player_id)
-        .await
-        .map_err(|_| ServiceError::Internal("Failed to retrieve player account".to_string()))?;
+    let account = match app.app.get_account_workflow.get_account(player_id).await {
+        Ok(account) => account,
+        Err(GetAccountError::AccountNotFound) => {
+            return Err(ServiceError::NotFound("Player not found".to_string()));
+        }
+        Err(GetAccountError::RepositoryError) => {
+            return Err(ServiceError::Internal(
+                "Failed to retrieve player account".to_string(),
+            ));
+        }
+    };
 
     let participation_rating = match app
         .app
@@ -41,7 +49,7 @@ async fn get_player_info_helper(
         .await
     {
         Ok(rating) => rating,
-        Err(_) => {
+        Err(GetRatingError::Internal) => {
             return Err(ServiceError::Internal(
                 "Failed to retrieve player rating".to_string(),
             ));
