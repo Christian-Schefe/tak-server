@@ -30,15 +30,12 @@ impl tei::Platform for WasmPlatform {
     }
 }
 
-pub fn run<Out: Fn(&str)>(output_callback: &'static Out) -> async_channel::Sender<String> {
+pub fn run<Out: Fn(&str) + 'static>(output_callback: Out) -> async_channel::Sender<String> {
     let (sender, receiver) = async_channel::unbounded();
 
-    spawn_local(tei::tei::<_, WasmPlatform>(
-        false,
-        false,
-        receiver,
-        output_callback,
-    ));
+    spawn_local(async move {
+        tei::tei::<_, WasmPlatform>(false, false, receiver, &output_callback).await
+    });
 
     sender
 }

@@ -1,6 +1,6 @@
 use std::{
-    cell::RefCell,
     collections::{HashMap, VecDeque},
+    sync::OnceLock,
 };
 
 use tak_core::{
@@ -9,6 +9,7 @@ use tak_core::{
 };
 use tak_server_api_contract::game::GameSettingsInfoBase;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::spawn_local;
 use web_sys::DedicatedWorkerGlobalScope;
 
 use crate::tei::run;
@@ -16,27 +17,33 @@ use crate::tei::run;
 mod tei;
 
 thread_local! {
-static ENGINE: RefCell<Option<Engine>> = RefCell::new(None);
+static ENGINE: OnceLock<async_channel::Sender<Input>> = OnceLock::new();
 }
 
 #[wasm_bindgen]
 pub fn initialize() {
     console_error_panic_hook::set_once();
+    let (input_sender, input_receiver) = async_channel::unbounded();
+    if !ENGINE.with(|x| {
+        let mut did_init = false;
+        x.get_or_init(|| {
+            did_init = true;
+            input_sender
+        });
+        did_init
+    }) {
+        return;
+    }
+    spawn_local(run_engine(input_receiver));
     send_output(Output::Loaded);
-    let engine = Engine::new();
-    ENGINE.with(|x| {
-        *x.borrow_mut() = Some(engine);
-    });
-    ENGINE.with(|x| {
-        x.borrow_mut()
-            .as_mut()
-            .expect("Should be initialized")
-            .send_tei("tei".to_string());
-    });
 }
 
 pub fn console_error(message: &str) {
     web_sys::console::error_1(&JsValue::from_str(message));
+}
+
+pub fn console_log(message: &str) {
+    web_sys::console::log_1(&JsValue::from_str(message));
 }
 
 pub struct Engine {
@@ -47,22 +54,54 @@ pub struct Engine {
     current_variations: HashMap<usize, Variation>,
 }
 
-fn handle_output(output: &str) {
-    ENGINE.with(|x| {
-        x.borrow_mut()
-            .as_mut()
-            .expect("Should be initialized")
-            .handle_output(output);
-    });
+async fn run_engine(recv: async_channel::Receiver<Input>) {
+    let mut engine = Engine::new();
+    engine.send_tei("tei".to_string());
+    while let Ok(input) = recv.recv().await {
+        match input {
+            Input::SearchPosition { settings, tps } => {
+                engine.search_position(settings, tps);
+            }
+            Input::StopSearching => {
+                engine.stop_searching();
+            }
+            Input::HandleOutput { output } => {
+                engine.handle_output(&output);
+            }
+        }
+    }
 }
 
 #[wasm_bindgen]
 pub fn search_position(settings: String, tps: String) {
+    let settings = match serde_json::from_str::<GameSettingsInfoBase>(&settings) {
+        Ok(settings) => settings,
+        Err(e) => {
+            console_error(&format!("Failed to parse game settings: {}", e));
+            return;
+        }
+    };
     ENGINE.with(|x| {
-        x.borrow_mut()
-            .as_mut()
-            .expect("Should be initialized")
-            .search_position(settings, tps);
+        let Some(sender) = x.get() else {
+            console_error("Engine not initialized");
+            return;
+        };
+        if let Err(e) = sender.try_send(Input::SearchPosition { settings, tps }) {
+            console_error(&format!("Failed to send search position message: {}", e));
+        }
+    });
+}
+
+#[wasm_bindgen]
+pub fn stop_searching() {
+    ENGINE.with(|x| {
+        let Some(sender) = x.get() else {
+            console_error("Engine not initialized");
+            return;
+        };
+        if let Err(e) = sender.try_send(Input::StopSearching) {
+            console_error(&format!("Failed to send stop searching message: {}", e));
+        }
     });
 }
 
@@ -75,6 +114,20 @@ pub fn is_settings_supported(settings: String) -> bool {
     }
 }
 
+fn handle_output(output: &str) {
+    ENGINE.with(|x| {
+        let Some(sender) = x.get() else {
+            console_error("Engine not initialized");
+            return;
+        };
+        if let Err(e) = sender.try_send(Input::HandleOutput {
+            output: output.to_string(),
+        }) {
+            console_error(&format!("Failed to send handle output message: {}", e));
+        }
+    });
+}
+
 #[derive(Clone)]
 pub struct EngineSearch {
     settings: GameSettingsInfoBase,
@@ -84,7 +137,7 @@ pub struct EngineSearch {
 
 impl Engine {
     pub fn new() -> Engine {
-        let sender = run(&handle_output);
+        let sender = run(handle_output);
         Engine {
             sender,
             search_queue: VecDeque::new(),
@@ -169,7 +222,7 @@ impl Engine {
         }
     }
 
-    fn search_position(&mut self, settings: String, tps: String) {
+    fn search_position(&mut self, settings: GameSettingsInfoBase, tps: String) {
         self.stop_searching();
 
         let tps_words = tps.split_whitespace().collect::<Vec<_>>();
@@ -181,11 +234,6 @@ impl Engine {
                 console_error(&format!("Invalid player: {}", player));
                 return;
             }
-        };
-
-        let Ok(settings) = serde_json::from_str::<GameSettingsInfoBase>(&settings) else {
-            console_error(&format!("Failed to parse game settings: {}", settings));
-            return;
         };
 
         if !Self::are_settings_supported(&settings.to_base_settings()) {
@@ -242,6 +290,23 @@ impl Engine {
             && (settings.board_size >= 4 && settings.board_size <= 6)
             && TakReserve::from_size(settings.board_size).is_some_and(|x| x == settings.reserve)
     }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum Input {
+    SearchPosition {
+        settings: GameSettingsInfoBase,
+        tps: String,
+    },
+    StopSearching,
+    HandleOutput {
+        output: String,
+    },
 }
 
 #[derive(serde::Serialize)]
