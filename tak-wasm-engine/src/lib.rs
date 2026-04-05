@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, VecDeque},
-    sync::OnceLock,
-};
+use std::{collections::HashMap, sync::OnceLock};
 
 use tak_core::{
     TakBaseGameSettings, TakPlayer, TakReserve,
@@ -48,7 +45,7 @@ pub fn console_log(message: &str) {
 
 pub struct Engine {
     sender: async_channel::Sender<String>,
-    search_queue: VecDeque<EngineSearch>,
+    search_queue: Option<EngineSearch>,
     current_search: Option<EngineSearch>,
     is_stopping: bool,
     current_variations: HashMap<usize, Variation>,
@@ -140,7 +137,7 @@ impl Engine {
         let sender = run(handle_output);
         Engine {
             sender,
-            search_queue: VecDeque::new(),
+            search_queue: None,
             current_search: None,
             current_variations: HashMap::new(),
             is_stopping: false,
@@ -223,8 +220,6 @@ impl Engine {
     }
 
     fn search_position(&mut self, settings: GameSettingsInfoBase, tps: String) {
-        self.stop_searching();
-
         let tps_words = tps.split_whitespace().collect::<Vec<_>>();
 
         let player = match *tps_words.get(1).unwrap_or(&"") {
@@ -241,19 +236,21 @@ impl Engine {
             return;
         }
 
-        self.search_queue.push_back(EngineSearch {
+        self.search_queue = Some(EngineSearch {
             settings,
             tps,
             player,
         });
         if self.current_search.is_none() {
             self.start_next_search();
+        } else {
+            self.stop_searching();
         }
     }
 
     fn start_next_search(&mut self) {
         self.is_stopping = false;
-        self.current_search = if let Some(next_search) = self.search_queue.pop_front() {
+        self.current_search = if let Some(next_search) = self.search_queue.take() {
             self.send_tei(format!("teinewgame {}", next_search.settings.board_size));
             self.send_tei(format!(
                 "setoption name HalfKomi value {}",
