@@ -11,12 +11,12 @@ use tak_core::{
 };
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
-    domain::{GameId, PlayerId, SeekId},
-    workflow::{history::query::GameQueryError, matchmaking::accept::AcceptSeekError},
+    domain::seek::CreateSeekError,
+    workflow::matchmaking::{SeekView, rematch::RematchError},
 };
 use tak_server_app::{
-    domain::{matches::RequestRematchError, seek::CreateSeekError},
-    workflow::matchmaking::{SeekView, rematch::RequestOrAcceptRematchError},
+    domain::{GameId, PlayerId, SeekId},
+    workflow::{history::query::GameQueryError, matchmaking::accept::AcceptSeekError},
 };
 
 impl ProtocolV2Handler {
@@ -216,17 +216,10 @@ impl ProtocolV2Handler {
             .await
         {
             Ok(_) => V2Response::OK,
-            Err(RequestOrAcceptRematchError::FailedToCreateGame) => V2Response::ErrorNOK(
-                ServiceError::BadRequest("Failed to create game".to_string()),
-            ),
-            Err(RequestOrAcceptRematchError::MatchNotFound)
-            | Err(RequestOrAcceptRematchError::RequestRematchError(
-                RequestRematchError::MatchNotFound,
-            )) => V2Response::ErrorNOK(ServiceError::NotFound("Match not found".to_string())),
-            Err(RequestOrAcceptRematchError::RequestRematchError(_)) => V2Response::ErrorNOK(
-                ServiceError::BadRequest("Failed to request or accept rematch".to_string()),
-            ),
-            Err(RequestOrAcceptRematchError::RepositoryError) => {
+            Err(RematchError::MatchNotFound) => {
+                V2Response::ErrorNOK(ServiceError::NotFound("Match not found".to_string()))
+            }
+            Err(RematchError::Internal) => {
                 V2Response::ErrorNOK(ServiceError::Internal(
                     "Repository error while requesting or accepting rematch".to_string(),
                 ))

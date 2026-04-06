@@ -17,6 +17,7 @@ pub use ws::WsService;
 mod auth;
 pub mod chat;
 pub mod game;
+pub mod matches;
 pub mod player;
 pub mod puzzle;
 pub mod seek;
@@ -91,6 +92,7 @@ pub async fn serve(
     let router = puzzle::register_routes(router);
     let router = chat::register_routes(router);
     let router = tournament::register_routes(router);
+    let router = matches::register_routes(router);
 
     let port = std::env::var("TAK_HTTP_API_PORT")
         .expect("TAK_HTTP_API_PORT must be set")

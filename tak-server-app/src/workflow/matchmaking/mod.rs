@@ -35,3 +35,8 @@ impl<T: Borrow<Seek>> From<T> for SeekView {
         }
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct RematchStatus {
+    pub rematch_requested_by: Option<PlayerId>,
+}

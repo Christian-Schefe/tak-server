@@ -43,6 +43,7 @@ tokio                            = { version = "1.47.1", features = [ "full" ] }
 tracing                          = "0.1.44"
 tracing-appender                 = "0.2.4"
 tracing-subscriber               = "0.3.23"
+tracing-tree = "0.4.1"
 
 [profile.release-wasm]
 inherits = "release"

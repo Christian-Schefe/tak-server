@@ -185,6 +185,7 @@ impl Orchestrator {
                     this.engine_service.remove_game(game_id).await;
                 }
                 ServerMessage::ChatMessage { .. } => {}
+                ServerMessage::MatchEvent { .. } => {}
             }
         }
     }

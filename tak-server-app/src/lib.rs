@@ -293,6 +293,7 @@ pub async fn build_application<
             match_repository.clone(),
             create_game_from_match_workflow.clone(),
             rematch_service.clone(),
+            notify_player_workflow.clone(),
         )),
 
         account_set_online_use_case: Box::new(SetAccountOnlineUseCaseImpl::new(

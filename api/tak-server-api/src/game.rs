@@ -66,6 +66,7 @@ pub async fn get_game_status(
         let time_info = ongoing_game.game.get_time_info(Instant::now());
         return Ok(Json(GameStatus {
             id: ongoing_game.id.0,
+            match_id: ongoing_game.metadata.match_id.map(|id| id.0),
             player_ids: ForPlayer {
                 white: ongoing_game.metadata.white_id.to_string(),
                 black: ongoing_game.metadata.black_id.to_string(),
@@ -98,6 +99,7 @@ pub async fn get_game_status(
             let time_info = ended_game.reconstruct_time_info();
             Ok(Json(GameStatus {
                 id: game_id.0,
+                match_id: ended_game.metadata.match_id.map(|id| id.0),
                 player_ids: ForPlayer {
                     white: ended_game.metadata.white_id.to_string(),
                     black: ended_game.metadata.black_id.to_string(),

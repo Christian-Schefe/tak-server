@@ -16,6 +16,7 @@ pub struct RequestResponse {
 #[serde(rename_all = "camelCase")]
 pub struct GameStatus {
     pub id: i64,
+    pub match_id: Option<i64>,
     pub player_ids: ForPlayer<String>,
     pub is_rated: bool,
     pub game_settings: GameSettingsInfo,

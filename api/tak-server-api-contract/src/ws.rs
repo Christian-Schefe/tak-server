@@ -76,6 +76,22 @@ pub enum ServerMessage {
         message: JsonChatMessage,
         conversation: JsonChatConversation,
     },
+    MatchEvent {
+        match_id: i64,
+        #[serde(flatten)]
+        event_type: ServerMatchEventType,
+    },
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(
+    tag = "eventType",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum ServerMatchEventType {
+    MatchRematchRequestAdded { from_player_id: String },
+    MatchRematchRequestRemoved {},
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]

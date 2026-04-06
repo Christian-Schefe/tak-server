@@ -18,12 +18,12 @@ use tak_server_api_contract::{
     game::{ForPlayer, JsonGameRequestType},
     ws::{
         ClientMessage, ClientMessageWrapper, JsonChatConversation, JsonChatMessage,
-        ServerGameEventType, ServerMessage,
+        ServerGameEventType, ServerMatchEventType, ServerMessage,
     },
 };
 use tak_server_app::{
     domain::{AccountId, GameId, PlayerId, chat::ChatConversation, game::request::GameRequestType},
-    ports::notification::{ListenerGameMessageType, ListenerMessage},
+    ports::notification::{ListenerGameMessageType, ListenerMatchEventType, ListenerMessage},
     workflow::{
         chat::message::ChatSendMessageError,
         gameplay::{
@@ -477,9 +477,23 @@ fn from_listener_message(message: ListenerMessage) -> MessageTransformation {
                 conversation,
             })
         }
+        ListenerMessage::MatchEvent {
+            match_id,
+            event_type,
+        } => MessageTransformation::Transform(ServerMessage::MatchEvent {
+            match_id: match_id.0,
+            event_type: match event_type {
+                ListenerMatchEventType::MatchRematchRequestAdded {
+                    requesting_player_id,
+                } => ServerMatchEventType::MatchRematchRequestAdded {
+                    from_player_id: requesting_player_id.to_string(),
+                },
+                ListenerMatchEventType::MatchRematchRequestRemoved => {
+                    ServerMatchEventType::MatchRematchRequestRemoved {}
+                }
+            },
+        }),
         ListenerMessage::AccountsOnline { .. } => MessageTransformation::Ignore,
-        ListenerMessage::GameRematchRequested { .. } => MessageTransformation::Ignore,
-        ListenerMessage::GameRematchRequestRetracted { .. } => MessageTransformation::Ignore,
         ListenerMessage::ServerAlert { .. } => MessageTransformation::Ignore,
     }
 }

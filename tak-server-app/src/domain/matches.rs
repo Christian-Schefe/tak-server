@@ -60,7 +60,7 @@ impl Match {
             player2,
             initial_color,
             game_settings,
-            status: MatchStatus::Waiting,
+            status: MatchStatus::Initial,
             match_mode,
             games_played: 0,
             half_score_player1: 0,
@@ -116,7 +116,7 @@ impl Match {
 
     pub fn try_begin_game(&mut self) -> Result<TakPlayer, String> {
         match self.status {
-            MatchStatus::Waiting => {
+            MatchStatus::Initial | MatchStatus::Waiting => {
                 self.status = MatchStatus::InProgress;
                 let player1_color = if self.games_played % 2 == 0 {
                     self.initial_color
@@ -133,36 +133,16 @@ impl Match {
 
 #[derive(Clone, Debug)]
 pub enum MatchStatus {
+    Initial,
     Waiting,
     InProgress,
     Completed,
 }
 
 pub trait RematchService {
-    fn request_or_accept_rematch(
-        &self,
-        match_id: MatchId,
-        player: PlayerId,
-    ) -> Result<bool, RequestRematchError>;
-    fn retract_rematch_request(
-        &self,
-        match_id: MatchId,
-        player: PlayerId,
-    ) -> Result<(), RetractRematchError>;
-}
-
-#[derive(Debug)]
-pub enum RequestRematchError {
-    MatchNotFound,
-    InvalidPlayer,
-    GameInProgress,
-}
-
-#[derive(Debug)]
-pub enum RetractRematchError {
-    MatchNotFound,
-    NoRematchRequested,
-    GameInProgress,
+    fn get_rematch_status(&self, match_id: MatchId) -> Option<PlayerId>;
+    fn request_or_accept_rematch(&self, match_id: MatchId, player: PlayerId) -> bool;
+    fn retract_rematch_request(&self, match_id: MatchId, player: PlayerId) -> bool;
 }
 
 pub struct RematchServiceImpl {
@@ -178,43 +158,41 @@ impl RematchServiceImpl {
 }
 
 impl RematchService for RematchServiceImpl {
-    fn request_or_accept_rematch(
-        &self,
-        match_id: MatchId,
-        player: PlayerId,
-    ) -> Result<bool, RequestRematchError> {
+    fn get_rematch_status(&self, match_id: MatchId) -> Option<PlayerId> {
+        self.rematch_requests
+            .get(&match_id)
+            .map(|entry| *entry.value())
+    }
+
+    fn request_or_accept_rematch(&self, match_id: MatchId, player: PlayerId) -> bool {
         let request = self.rematch_requests.get(&match_id);
         if let Some(existing_request) = &request {
             if *existing_request.value() == player {
-                Ok(false)
+                false
             } else {
                 drop(request);
                 self.rematch_requests.remove(&match_id);
-                Ok(true)
+                true
             }
         } else {
             drop(request);
             self.rematch_requests.insert(match_id, player);
-            Ok(false)
+            false
         }
     }
 
-    fn retract_rematch_request(
-        &self,
-        match_id: MatchId,
-        player: PlayerId,
-    ) -> Result<(), RetractRematchError> {
+    fn retract_rematch_request(&self, match_id: MatchId, player: PlayerId) -> bool {
         let request = self.rematch_requests.get(&match_id);
         if let Some(existing_request) = &request {
             if *existing_request.value() == player {
                 drop(request);
                 self.rematch_requests.remove(&match_id);
-                Ok(())
+                true
             } else {
-                Err(RetractRematchError::NoRematchRequested)
+                false
             }
         } else {
-            Err(RetractRematchError::NoRematchRequested)
+            false
         }
     }
 }

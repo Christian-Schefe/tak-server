@@ -257,8 +257,7 @@ impl ProtocolV2Handler {
                 )
                 .await;
             }
-            ListenerMessage::GameRematchRequested { .. } => {} //legacy api does not support rematch messages
-            ListenerMessage::GameRematchRequestRetracted { .. } => {} //legacy api does not support rematch messages
+            ListenerMessage::MatchEvent { .. } => {} //legacy api does not support rematch messages
             ListenerMessage::ServerAlert { message } => match message {
                 ServerAlertMessage::Shutdown => {
                     self.send_to(
