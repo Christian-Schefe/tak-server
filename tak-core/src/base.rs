@@ -154,7 +154,7 @@ impl TakOngoingBaseGame {
         true
     }
 
-    pub fn check_game_over(
+    fn check_game_over(
         &self,
         board_hash: String,
         moved_player: TakPlayer,

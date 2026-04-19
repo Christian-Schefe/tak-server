@@ -217,7 +217,7 @@ impl TakBoard {
                 if self.is_road_square(&neighbor, player) {
                     let index = (neighbor.y * self.size as i32 + neighbor.x) as usize;
                     if !visited[index] {
-                        queue.push_back(neighbor.clone());
+                        queue.push_back(neighbor);
                         visited[index] = true;
                     }
                 }

@@ -175,8 +175,8 @@ impl TakOngoingGame {
                 winner: player.opponent(),
                 reason: TakWinReason::Default,
             };
-            self.stop_clock(now, player);
-            MaybeTimeout::Timeout(TakFinishedGame::new(self, game_result, now))
+            let finished_game = self.set_game_over(now, game_result);
+            MaybeTimeout::Timeout(finished_game)
         } else {
             MaybeTimeout::Result(())
         }
