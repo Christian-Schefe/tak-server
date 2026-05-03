@@ -166,7 +166,7 @@ async fn handle_client_message(
         ClientMessage::Authenticate { token } => {
             let account_id = authenticate_ws_token(app, &token).await?;
             app.connection_driver
-                .add_connection(&account_id, connection_id)
+                .associate_connection(&account_id, connection_id)
                 .await;
             tracing::info!(
                 "WS connection {} associated with account {}",

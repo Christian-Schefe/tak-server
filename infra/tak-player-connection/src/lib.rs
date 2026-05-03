@@ -56,11 +56,18 @@ impl PlayerConnectionDriver {
         Self { app, inner }
     }
 
-    pub async fn add_connection(
+    pub async fn associate_connection(
         &self,
         account_id: &AccountId,
         connection_id: ConnectionId,
     ) -> bool {
+        if let Some(prev_account_id) = self.get_account_id(&connection_id) {
+            if &prev_account_id == account_id {
+                return true;
+            } else {
+                self.remove_connection(&connection_id).await;
+            }
+        }
         let set_online = {
             let mut registry = self.inner.registry.write();
             if registry.connection_to_listener.contains_key(&connection_id) {

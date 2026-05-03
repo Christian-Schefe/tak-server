@@ -319,7 +319,7 @@ impl TransportServiceImpl {
             .get()
             .unwrap()
             .connection_driver
-            .add_connection(&account_id, id)
+            .associate_connection(&account_id, id)
             .await
         {
             return Err("Already logged in".into());
