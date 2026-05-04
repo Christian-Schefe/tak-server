@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use clap::{Parser, command};
+use clap::Parser;
 
 use crate::{
     game::GameService, orchestrator::Orchestrator, seek::SeekService, server_api::ServerApiImpl,
