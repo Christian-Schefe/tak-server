@@ -65,6 +65,12 @@ impl PlayerConnectionDriver {
             if &prev_account_id == account_id {
                 return true;
             } else {
+                tracing::info!(
+                    "Connection {} is already associated with account {}. Reassociating with account {}.",
+                    connection_id,
+                    prev_account_id,
+                    account_id
+                );
                 self.remove_connection(&connection_id).await;
             }
         }
