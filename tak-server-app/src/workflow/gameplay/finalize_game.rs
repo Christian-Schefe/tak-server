@@ -169,7 +169,7 @@ impl<
             event_type: ListenerGameMessageType::GameOver {
                 game_result: ended_game.game.game_result().clone(),
             },
-            time_info: ended_game.get_time_info(),
+            time_info: ended_game.game.get_time_info(),
         };
 
         self.notify_player_workflow

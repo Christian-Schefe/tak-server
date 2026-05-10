@@ -131,9 +131,6 @@ impl FinishedGame {
             events: game.events.clone(),
         }
     }
-    pub fn get_time_info(&self) -> TakTimeInfo {
-        self.game.get_time_info()
-    }
 }
 
 pub trait GameService {
@@ -595,7 +592,7 @@ impl GameService for GameServiceImpl {
             },
             |game_entry, _, res| match res {
                 Some((request, finished_game)) => {
-                    let time_info = game_entry.game.get_time_info(now);
+                    let time_info = finished_game.get_time_info();
                     game_entry.events.push(GameEvent::new(
                         GameEventType::RequestAccepted { request_id },
                         time_info.clone(),
@@ -670,12 +667,12 @@ impl GameService for GameServiceImpl {
         self.with_game_might_end(game_id, |game_entry| {
             match game_entry.game.check_timeout(now) {
                 MaybeTimeout::Timeout(finished_game) => {
-                    let finished_game = FinishedGame::new(game_entry, finished_game);
                     let time_info = finished_game.get_time_info();
                     game_entry.events.push(GameEvent::new(
                         GameEventType::GameOver(GameOverEventType::Timeout),
                         time_info,
                     ));
+                    let finished_game = FinishedGame::new(game_entry, finished_game);
                     (
                         GameControl::Remove,
                         CheckTimeoutResult::TimedOut(finished_game),

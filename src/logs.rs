@@ -13,7 +13,7 @@ pub fn init_logger() -> WorkerGuard {
 
     let stderr_layer = tracing_subscriber::fmt::layer()
         .with_ansi(true)
-        .with_span_events(FmtSpan::ACTIVE)
+        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
         .with_writer(std::io::stderr)
         .with_filter(stderr_filter);
 
@@ -27,7 +27,7 @@ pub fn init_logger() -> WorkerGuard {
 
     let file_layer = tracing_subscriber::fmt::layer()
         .with_ansi(false)
-        .with_span_events(FmtSpan::ACTIVE)
+        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
         .with_writer(file_writer)
         .with_filter(file_filter);
 

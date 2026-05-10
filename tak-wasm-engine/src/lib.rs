@@ -32,7 +32,6 @@ pub fn initialize() {
         return;
     }
     spawn_local(run_engine(input_receiver));
-    send_output(Output::Loaded);
 }
 
 pub fn console_error(message: &str) {
@@ -45,32 +44,40 @@ pub fn console_log(message: &str) {
 
 pub struct Engine {
     sender: async_channel::Sender<String>,
-    search_queue: Option<EngineSearch>,
-    current_search: Option<EngineSearch>,
-    is_stopping: bool,
+    player: TakPlayer,
     current_variations: HashMap<usize, Variation>,
 }
 
 async fn run_engine(recv: async_channel::Receiver<Input>) {
-    let mut engine = Engine::new();
-    engine.send_tei("tei".to_string());
+    let mut engine = Option::<(String, Engine)>::None;
     while let Ok(input) = recv.recv().await {
         match input {
-            Input::SearchPosition { settings, tps } => {
-                engine.search_position(settings, tps);
+            Input::SearchPosition { key, settings, tps } => {
+                if let Some((_, engine)) = engine.take() {
+                    engine.stop_searching();
+                }
+                if let Some(new_engine) = Engine::new(key.clone(), settings, tps) {
+                    engine = Some((key.clone(), new_engine));
+                }
             }
             Input::StopSearching => {
-                engine.stop_searching();
+                if let Some((_, engine)) = engine.take() {
+                    engine.stop_searching();
+                }
             }
-            Input::HandleOutput { output } => {
-                engine.handle_output(&output);
+            Input::HandleOutput { key, output } => {
+                if let Some((engine_key, engine)) = engine.as_mut()
+                    && engine_key == &key
+                {
+                    engine.handle_output(&output);
+                }
             }
         }
     }
 }
 
 #[wasm_bindgen]
-pub fn search_position(settings: String, tps: String) {
+pub fn search_position(key: String, settings: String, tps: String) {
     let settings = match serde_json::from_str::<GameSettingsInfoBase>(&settings) {
         Ok(settings) => settings,
         Err(e) => {
@@ -83,7 +90,7 @@ pub fn search_position(settings: String, tps: String) {
             console_error("Engine not initialized");
             return;
         };
-        if let Err(e) = sender.try_send(Input::SearchPosition { settings, tps }) {
+        if let Err(e) = sender.try_send(Input::SearchPosition { key, settings, tps }) {
             console_error(&format!("Failed to send search position message: {}", e));
         }
     });
@@ -111,13 +118,14 @@ pub fn is_settings_supported(settings: String) -> bool {
     }
 }
 
-fn handle_output(output: &str) {
+fn handle_output(key: String, output: &str) {
     ENGINE.with(|x| {
         let Some(sender) = x.get() else {
             console_error("Engine not initialized");
             return;
         };
         if let Err(e) = sender.try_send(Input::HandleOutput {
+            key: key.clone(),
             output: output.to_string(),
         }) {
             console_error(&format!("Failed to send handle output message: {}", e));
@@ -125,34 +133,47 @@ fn handle_output(output: &str) {
     });
 }
 
-#[derive(Clone)]
-pub struct EngineSearch {
-    settings: GameSettingsInfoBase,
-    tps: String,
-    player: TakPlayer,
-}
-
 impl Engine {
-    pub fn new() -> Engine {
-        let sender = run(handle_output);
-        Engine {
-            sender,
-            search_queue: None,
-            current_search: None,
-            current_variations: HashMap::new(),
-            is_stopping: false,
+    pub fn new(key: String, settings: GameSettingsInfoBase, tps: String) -> Option<Engine> {
+        let tps_words = tps.split_whitespace().collect::<Vec<_>>();
+
+        let player = match *tps_words.get(1).unwrap_or(&"") {
+            "1" => TakPlayer::White,
+            "2" => TakPlayer::Black,
+            player => {
+                console_error(&format!("Invalid player: {}", player));
+                return None;
+            }
+        };
+
+        if !Self::are_settings_supported(&settings.to_base_settings()) {
+            console_error(&format!("Unsupported game settings"));
+            return None;
         }
+
+        let key_clone = key.clone();
+        let sender = run(move |output| handle_output(key_clone.clone(), output));
+
+        let mut engine = Engine {
+            sender,
+            player,
+            current_variations: HashMap::new(),
+        };
+        engine.send_tei("tei".to_string());
+        engine.send_tei(format!("teinewgame {}", settings.board_size));
+        engine.send_tei(format!(
+            "setoption name HalfKomi value {}",
+            settings.half_komi
+        ));
+        engine.send_tei(format!("setoption name MultiPV value {}", 3));
+        engine.send_tei(format!("position tps {}", tps));
+        engine.send_tei("go infinite".to_string());
+        Some(engine)
     }
 
     fn handle_output(&mut self, output: &str) {
-        let Some(current_search) = &self.current_search else {
-            return;
-        };
-        if output.starts_with("bestmove") {
-            self.start_next_search();
-        } else if output.starts_with("info") {
-            if let Some((variation_index, variation)) =
-                Self::handle_eval_info(current_search, output)
+        if output.starts_with("info") {
+            if let Some((variation_index, variation)) = Self::handle_eval_info(self.player, output)
             {
                 self.current_variations.insert(variation_index, variation);
                 self.send_changed_variations();
@@ -160,7 +181,7 @@ impl Engine {
         }
     }
 
-    fn handle_eval_info(search: &EngineSearch, output: &str) -> Option<(usize, Variation)> {
+    fn handle_eval_info(player: TakPlayer, output: &str) -> Option<(usize, Variation)> {
         let words = output.split_whitespace().collect::<Vec<_>>();
         let Some(score) = words
             .iter()
@@ -198,7 +219,7 @@ impl Engine {
 
         let variation = Variation {
             moves: pv.clone().unwrap_or_default(),
-            evaluation: if search.player == TakPlayer::White {
+            evaluation: if player == TakPlayer::White {
                 score
             } else {
                 -score
@@ -219,58 +240,8 @@ impl Engine {
         }
     }
 
-    fn search_position(&mut self, settings: GameSettingsInfoBase, tps: String) {
-        let tps_words = tps.split_whitespace().collect::<Vec<_>>();
-
-        let player = match *tps_words.get(1).unwrap_or(&"") {
-            "1" => TakPlayer::White,
-            "2" => TakPlayer::Black,
-            player => {
-                console_error(&format!("Invalid player: {}", player));
-                return;
-            }
-        };
-
-        if !Self::are_settings_supported(&settings.to_base_settings()) {
-            console_error(&format!("Unsupported game settings"));
-            return;
-        }
-
-        self.search_queue = Some(EngineSearch {
-            settings,
-            tps,
-            player,
-        });
-        if self.current_search.is_none() {
-            self.start_next_search();
-        } else {
-            self.stop_searching();
-        }
-    }
-
-    fn start_next_search(&mut self) {
-        self.is_stopping = false;
-        self.current_search = if let Some(next_search) = self.search_queue.take() {
-            self.send_tei(format!("teinewgame {}", next_search.settings.board_size));
-            self.send_tei(format!(
-                "setoption name HalfKomi value {}",
-                next_search.settings.half_komi
-            ));
-            self.send_tei(format!("setoption name MultiPV value {}", 3));
-            self.send_tei(format!("position tps {}", next_search.tps));
-            self.send_tei("go infinite".to_string());
-            Some(next_search)
-        } else {
-            None
-        };
-        self.current_variations.clear();
-    }
-
-    fn stop_searching(&mut self) {
-        if self.current_search.is_some() && !self.is_stopping {
-            self.send_tei("stop".to_string());
-            self.is_stopping = true;
-        }
+    fn stop_searching(mut self) {
+        self.send_tei("stop".to_string());
     }
 
     fn send_tei(&mut self, input: String) {
@@ -297,11 +268,13 @@ impl Engine {
 )]
 pub enum Input {
     SearchPosition {
+        key: String,
         settings: GameSettingsInfoBase,
         tps: String,
     },
     StopSearching,
     HandleOutput {
+        key: String,
         output: String,
     },
 }
@@ -313,7 +286,6 @@ pub enum Input {
     rename_all_fields = "camelCase"
 )]
 pub enum Output {
-    Loaded,
     Evaluation {
         #[serde(flatten)]
         evaluation: Evaluation,
