@@ -173,15 +173,14 @@ impl Engine {
 
     fn handle_output(&mut self, output: &str) {
         if output.starts_with("info") {
-            if let Some((variation_index, variation)) = Self::handle_eval_info(self.player, output)
-            {
+            if let Some((variation_index, variation)) = self.handle_eval_info(output) {
                 self.current_variations.insert(variation_index, variation);
                 self.send_changed_variations();
             }
         }
     }
 
-    fn handle_eval_info(player: TakPlayer, output: &str) -> Option<(usize, Variation)> {
+    fn handle_eval_info(&self, output: &str) -> Option<(usize, Variation)> {
         let words = output.split_whitespace().collect::<Vec<_>>();
         let Some(score) = words
             .iter()
@@ -219,7 +218,7 @@ impl Engine {
 
         let variation = Variation {
             moves: pv.clone().unwrap_or_default(),
-            evaluation: if player == TakPlayer::White {
+            evaluation: if self.player == TakPlayer::White {
                 score
             } else {
                 -score
@@ -230,12 +229,21 @@ impl Engine {
 
     fn send_changed_variations(&mut self) {
         if !self.current_variations.is_empty() {
-            let mut variations = self.current_variations.iter().collect::<Vec<_>>();
-            variations.sort_by_key(|(index, _)| *index);
+            let mut variations = self
+                .current_variations
+                .values()
+                .cloned()
+                .collect::<Vec<_>>();
+            match self.player {
+                TakPlayer::White => {
+                    variations.sort_by(|a, b| b.evaluation.total_cmp(&a.evaluation))
+                }
+                TakPlayer::Black => {
+                    variations.sort_by(|a, b| a.evaluation.total_cmp(&b.evaluation))
+                }
+            }
             send_output(Output::Evaluation {
-                evaluation: Evaluation {
-                    variations: variations.into_iter().map(|(_, v)| v.clone()).collect(),
-                },
+                evaluation: Evaluation { variations },
             });
         }
     }
