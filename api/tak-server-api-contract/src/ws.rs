@@ -72,7 +72,6 @@ pub enum ServerMessage {
         game_id: i64,
     },
     ChatMessage {
-        #[serde(flatten)]
         message: JsonChatMessage,
         conversation: JsonChatConversation,
     },

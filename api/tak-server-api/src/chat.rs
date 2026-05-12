@@ -16,16 +16,24 @@ pub fn register_routes(router: axum::Router<AppState>) -> axum::Router<AppState>
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MessagesQuery {
-    pub before: Option<i64>,
+    pub cursor: Option<i64>,
     pub limit: usize,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonChatMessagePage {
+    pub messages: Vec<JsonChatMessage>,
+    pub next_cursor: Option<i64>,
 }
 
 pub async fn get_chat_messages(
     State(app): State<AppState>,
     Path(conversation_id): Path<String>,
     Query(messages_query): Query<MessagesQuery>,
-) -> Result<Json<Vec<JsonChatMessage>>, ServiceError> {
+) -> Result<Json<JsonChatMessagePage>, ServiceError> {
     let parts = conversation_id
         .split(':')
         .filter(|s| !s.is_empty())
@@ -73,20 +81,24 @@ pub async fn get_chat_messages(
         .chat_message_use_case
         .get_messages(
             &conversation,
-            messages_query.before.map(|v| ChatMessageId(v)),
+            messages_query.cursor.map(|v| ChatMessageId(v)),
             messages_query.limit,
         )
         .await
         .map_err(|_| ServiceError::Internal("Failed to retrieve chat messages".to_string()))?;
+    let next_cursor = messages.last().map(|x| x.id.0);
 
-    let messages = messages
-        .into_iter()
-        .map(|msg| JsonChatMessage {
-            message_id: msg.id.0,
-            sender: msg.sender.to_string(),
-            message: msg.message,
-            timestamp: msg.date,
-        })
-        .collect();
-    Ok(Json(messages))
+    let page = JsonChatMessagePage {
+        messages: messages
+            .into_iter()
+            .map(|msg| JsonChatMessage {
+                message_id: msg.id.0,
+                sender: msg.sender.to_string(),
+                message: msg.message,
+                timestamp: msg.date,
+            })
+            .collect(),
+        next_cursor,
+    };
+    Ok(Json(page))
 }

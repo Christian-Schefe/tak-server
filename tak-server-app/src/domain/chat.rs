@@ -16,7 +16,7 @@ pub trait ChatRepository {
     async fn get_messages(
         &self,
         conversation: &ChatConversation,
-        before: Option<ChatMessageId>,
+        cursor: Option<ChatMessageId>,
         limit: usize,
     ) -> Result<Vec<(ChatMessageId, ChatMessage)>, RepoError>;
 }
