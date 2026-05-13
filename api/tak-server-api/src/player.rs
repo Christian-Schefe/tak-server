@@ -122,7 +122,7 @@ pub async fn get_player_by_account_id(
         ));
     };
     let Some(account) = app.auth.get_account(&account_id).await else {
-        return Err(ServiceError::NotFound("Player not found".to_string()));
+        return Err(ServiceError::NotFound("Account not found".to_string()));
     };
 
     let player_id = app
@@ -145,7 +145,7 @@ pub async fn get_account_profile(
         ));
     };
     let Some(account) = app.auth.get_account(&account_id).await else {
-        return Err(ServiceError::NotFound("Player not found".to_string()));
+        return Err(ServiceError::NotFound("Account not found".to_string()));
     };
     let profile = app
         .app
@@ -196,7 +196,7 @@ pub async fn get_profile_picture(
         ));
     };
     let Some(account) = app.auth.get_account(&account_id).await else {
-        return Err(ServiceError::NotFound("Player not found".to_string()));
+        return Err(ServiceError::NotFound("Account not found".to_string()));
     };
     let profile_picture = app
         .app
