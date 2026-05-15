@@ -43,6 +43,7 @@ pub fn console_log(message: &str) {
 }
 
 pub struct Engine {
+    key: String,
     sender: async_channel::Sender<String>,
     player: TakPlayer,
     current_variations: HashMap<usize, Variation>,
@@ -155,6 +156,7 @@ impl Engine {
         let sender = run(move |output| handle_output(key_clone.clone(), output));
 
         let mut engine = Engine {
+            key,
             sender,
             player,
             current_variations: HashMap::new(),
@@ -243,6 +245,7 @@ impl Engine {
                 }
             }
             send_output(Output::Evaluation {
+                key: self.key.clone(),
                 evaluation: Evaluation { variations },
             });
         }
@@ -295,6 +298,7 @@ pub enum Input {
 )]
 pub enum Output {
     Evaluation {
+        key: String,
         #[serde(flatten)]
         evaluation: Evaluation,
     },
