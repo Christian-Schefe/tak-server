@@ -1,85 +1,105 @@
-use std::{collections::HashMap, time::Duration};
+use std::time::Duration;
 
 use tak_core::TakPlayer;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct GameRequestId(pub u64);
+#[derive(Clone, Debug)]
+pub enum GameRequest {
+    Draw(bool),
+    Undo(bool),
+    MoreTime(Option<Duration>),
+}
 
 #[derive(Clone, Debug)]
 pub enum GameRequestType {
     Draw,
     Undo,
-    MoreTime(Duration),
+    MoreTime,
 }
 
 #[derive(Clone, Debug)]
-pub struct GameRequest {
-    pub id: GameRequestId,
-    pub player: TakPlayer,
-    pub request_type: GameRequestType,
+pub struct GameRequests {
+    pub draw_offered: bool,
+    pub undo_requested: bool,
+    pub more_time_offered: Option<Duration>,
 }
 
 #[derive(Clone, Debug)]
 pub struct GameRequestSystem {
-    pub requests: HashMap<GameRequestId, GameRequest>,
-    next_request_id: u64,
+    pub white_requests: GameRequests,
+    pub black_requests: GameRequests,
 }
 
 impl GameRequestSystem {
     pub fn new() -> Self {
         GameRequestSystem {
-            requests: HashMap::new(),
-            next_request_id: 0,
+            white_requests: GameRequests {
+                draw_offered: false,
+                undo_requested: false,
+                more_time_offered: None,
+            },
+            black_requests: GameRequests {
+                draw_offered: false,
+                undo_requested: false,
+                more_time_offered: None,
+            },
         }
     }
 
-    pub fn get_request(&self, request_id: GameRequestId) -> Option<GameRequest> {
-        self.requests.get(&request_id).cloned()
-    }
-
-    pub fn get_all_requests(&self) -> Vec<GameRequest> {
-        self.requests.values().cloned().collect()
-    }
-
-    pub fn add_request(
-        &mut self,
-        player: TakPlayer,
-        request: GameRequestType,
-    ) -> Option<GameRequest> {
-        if self.requests.iter().any(|(_, r)| {
-            r.player == player
-                && match (&r.request_type, &request) {
-                    (GameRequestType::Draw, GameRequestType::Draw) => true,
-                    (GameRequestType::Undo, GameRequestType::Undo) => true,
-                    (GameRequestType::MoreTime(_), GameRequestType::MoreTime(_)) => true,
-                    _ => false,
+    pub fn set_request(&mut self, player: TakPlayer, request: GameRequest) -> Option<GameRequest> {
+        let requests = match player {
+            TakPlayer::White => &mut self.white_requests,
+            TakPlayer::Black => &mut self.black_requests,
+        };
+        match request {
+            GameRequest::Draw(offer) => {
+                if requests.draw_offered == offer {
+                    return None;
                 }
-        }) {
-            None
-        } else {
-            let id = GameRequestId(self.next_request_id);
-            let request = GameRequest {
-                id,
-                player,
-                request_type: request,
-            };
-            self.requests.insert(id, request.clone());
-            self.next_request_id += 1;
-            Some(request)
-        }
-    }
-
-    pub fn take_request_if(
-        &mut self,
-        request_id: GameRequestId,
-        predicate: impl Fn(&GameRequest) -> bool,
-    ) -> Option<GameRequest> {
-        if let Some(request) = self.requests.get(&request_id) {
-            if predicate(request) {
-                let request = self.requests.remove(&request_id).unwrap();
-                return Some(request);
+                requests.draw_offered = offer;
+            }
+            GameRequest::Undo(request) => {
+                if requests.undo_requested == request {
+                    return None;
+                }
+                requests.undo_requested = request;
+            }
+            GameRequest::MoreTime(duration) => {
+                if requests.more_time_offered == duration {
+                    return None;
+                }
+                requests.more_time_offered = duration;
             }
         }
-        None
+
+        Some(request)
+    }
+
+    pub fn consume_request(
+        &mut self,
+        player: TakPlayer,
+        request_type: GameRequestType,
+    ) -> GameRequest {
+        let requests = match player {
+            TakPlayer::White => &mut self.white_requests,
+            TakPlayer::Black => &mut self.black_requests,
+        };
+        let result = match request_type {
+            GameRequestType::Draw => {
+                let result = GameRequest::Draw(requests.draw_offered);
+                requests.draw_offered = false;
+                result
+            }
+            GameRequestType::Undo => {
+                let result = GameRequest::Undo(requests.undo_requested);
+                requests.undo_requested = false;
+                result
+            }
+            GameRequestType::MoreTime => {
+                let result = GameRequest::MoreTime(requests.more_time_offered);
+                requests.more_time_offered = None;
+                result
+            }
+        };
+        result
     }
 }

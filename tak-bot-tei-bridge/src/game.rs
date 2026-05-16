@@ -4,7 +4,7 @@ use std::{
 };
 
 use tak_core::{TakBaseGameSettings, TakOngoingBaseGame, TakPlayer};
-use tak_server_api_contract::game::GameStatus;
+use tak_server_api_contract::game::JsonGameStatus;
 
 pub struct GameService {
     games: Arc<Mutex<HashMap<i64, (TakPlayer, TakOngoingBaseGame)>>>,
@@ -21,7 +21,7 @@ impl GameService {
         &self,
         game_id: i64,
         player: TakPlayer,
-        status: &GameStatus,
+        status: &JsonGameStatus,
     ) -> Option<(TakPlayer, TakOngoingBaseGame)> {
         let mut game = TakOngoingBaseGame::new(status.game_settings.to_game_settings().base);
         for action in &status.actions {

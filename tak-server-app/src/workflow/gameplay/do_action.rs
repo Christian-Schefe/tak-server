@@ -7,7 +7,7 @@ use crate::{
         GameId, PlayerId,
         game::{
             DoActionResult, FinishedGame, GamePlayerActionResult, GameService,
-            request::{GameRequest, GameRequestId, GameRequestType},
+            request::{GameRequest, GameRequestType},
         },
     },
     ports::notification::{ListenerGameMessageType, ListenerMessage},
@@ -24,41 +24,17 @@ pub trait DoActionUseCase {
         player_id: PlayerId,
         action: TakAction,
     ) -> ActionResult<DoActionError>;
-    fn get_request(&self, game_id: GameId, request_id: GameRequestId) -> Option<GameRequest>;
-    fn get_requests_of_player(
+    async fn set_request(
         &self,
         game_id: GameId,
         player_id: PlayerId,
-    ) -> Option<Vec<GameRequest>>;
-    async fn add_request(
+        request: GameRequest,
+    ) -> Result<(), PlayerActionError>;
+    async fn accept_request(
         &self,
         game_id: GameId,
         player_id: PlayerId,
         request_type: GameRequestType,
-    ) -> ActionResult<AddRequestError>;
-    async fn retract_request(
-        &self,
-        game_id: GameId,
-        player_id: PlayerId,
-        request_id: GameRequestId,
-    ) -> ActionResult<HandleRequestError>;
-    async fn reject_request(
-        &self,
-        game_id: GameId,
-        player_id: PlayerId,
-        request_id: GameRequestId,
-    ) -> ActionResult<HandleRequestError>;
-    async fn accept_draw_request(
-        &self,
-        game_id: GameId,
-        player_id: PlayerId,
-        request_id: GameRequestId,
-    ) -> ActionResult<HandleRequestError>;
-    async fn accept_undo_request(
-        &self,
-        game_id: GameId,
-        player_id: PlayerId,
-        request_id: GameRequestId,
     ) -> ActionResult<HandleRequestError>;
     async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), PlayerActionError>;
 }
@@ -80,11 +56,6 @@ pub enum ActionResult<R> {
 pub enum DoActionError {
     InvalidAction(tak_core::InvalidActionReason),
     NotPlayersTurn,
-}
-
-#[derive(Debug)]
-pub enum AddRequestError {
-    AlreadyRequested,
 }
 
 #[derive(Debug)]
@@ -202,227 +173,138 @@ impl<
         ActionResult::Success
     }
 
-    fn get_request(&self, game_id: GameId, request_id: GameRequestId) -> Option<GameRequest> {
-        let game = self.game_service.get_game_by_id(game_id)?;
-        game.requests.get_request(request_id)
-    }
-
-    fn get_requests_of_player(
+    async fn set_request(
         &self,
         game_id: GameId,
         player_id: PlayerId,
-    ) -> Option<Vec<GameRequest>> {
-        let game = self.game_service.get_game_by_id(game_id)?;
-        let player = game.metadata.get_player(player_id)?;
-        Some(
-            game.requests
-                .get_all_requests()
-                .into_iter()
-                .filter(|r| r.player == player)
-                .collect(),
-        )
-    }
-
-    async fn add_request(
-        &self,
-        game_id: GameId,
-        player_id: PlayerId,
-        request_type: GameRequestType,
-    ) -> ActionResult<AddRequestError> {
+        request: GameRequest,
+    ) -> Result<(), PlayerActionError> {
         let now = Instant::now();
         match self
-            .handle_game_action_result(self.game_service.add_request(
+            .handle_game_action_result(self.game_service.set_request(
                 game_id,
                 player_id,
-                request_type,
+                request.clone(),
                 now,
             ))
             .await
         {
-            Err(e) => return ActionResult::NotPossible(e),
-            Ok(Err(())) => {
-                return ActionResult::ActionError(AddRequestError::AlreadyRequested);
-            }
-            Ok(Ok((request, time_info))) => {
+            Err(e) => Err(e),
+            Ok(None) => Ok(()),
+            Ok(Some((request, time_info))) => {
                 let msg = ListenerMessage::GameEvent {
                     game_id,
-                    event_type: ListenerGameMessageType::GameRequestAdded {
-                        requesting_player_id: player_id,
-                        request,
-                    },
+                    event_type: ListenerGameMessageType::GameRequestChanged { request },
                     time_info,
                 };
                 self.notify_player_workflow
                     .notify_players_and_observers(game_id, &msg)
                     .await;
-                ActionResult::Success
+                Ok(())
             }
         }
     }
 
-    async fn retract_request(
+    async fn accept_request(
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        request_id: GameRequestId,
-    ) -> ActionResult<HandleRequestError> {
-        let now = Instant::now();
-        match self
-            .handle_game_action_result(
-                self.game_service
-                    .retract_request(game_id, player_id, request_id, now),
-            )
-            .await
-        {
-            Err(e) => return ActionResult::NotPossible(e),
-            Ok(Ok((request, time_info))) => {
-                let msg = ListenerMessage::GameEvent {
-                    game_id,
-                    event_type: ListenerGameMessageType::GameRequestRetracted {
-                        retracting_player_id: player_id,
-                        request,
-                    },
-                    time_info,
-                };
-                self.notify_player_workflow
-                    .notify_players_and_observers(game_id, &msg)
-                    .await;
-                ActionResult::Success
-            }
-            Ok(Err(())) => ActionResult::ActionError(HandleRequestError::RequestNotFound),
-        }
-    }
-    async fn reject_request(
-        &self,
-        game_id: GameId,
-        player_id: PlayerId,
-        request_id: GameRequestId,
+        request_type: GameRequestType,
     ) -> ActionResult<HandleRequestError> {
         tracing::info!(
-            "Player {} is rejecting request {:?} in game {}",
+            "Player {} is accepting request of type {:?} in game {}",
             player_id,
-            request_id,
+            request_type,
             game_id
         );
         let now = Instant::now();
-        match self
-            .handle_game_action_result(
-                self.game_service
-                    .reject_request(game_id, player_id, request_id, now),
-            )
-            .await
-        {
-            Err(e) => return ActionResult::NotPossible(e),
-            Ok(Ok((request, time_info))) => {
-                let msg = ListenerMessage::GameEvent {
-                    game_id,
-                    event_type: ListenerGameMessageType::GameRequestRejected {
-                        rejecting_player_id: player_id,
-                        request,
-                    },
-                    time_info,
-                };
-                self.notify_player_workflow
-                    .notify_players_and_observers(game_id, &msg)
-                    .await;
-                ActionResult::Success
-            }
-            Ok(Err(())) => ActionResult::ActionError(HandleRequestError::RequestNotFound),
-        }
-    }
-
-    async fn accept_draw_request(
-        &self,
-        game_id: GameId,
-        player_id: PlayerId,
-        request_id: GameRequestId,
-    ) -> ActionResult<HandleRequestError> {
-        tracing::info!(
-            "Player {} is accepting draw request {:?} in game {}",
-            player_id,
-            request_id,
-            game_id
-        );
-        let now = Instant::now();
-        match self
-            .handle_game_action_result(
-                self.game_service
-                    .accept_draw_request(game_id, player_id, request_id, now),
-            )
-            .await
-        {
-            Err(e) => ActionResult::NotPossible(e),
-            Ok(Ok((request, time_info, ended_game))) => {
-                let request_msg = ListenerMessage::GameEvent {
-                    game_id,
-                    event_type: ListenerGameMessageType::GameRequestAccepted {
-                        accepting_player_id: player_id,
-                        request,
-                    },
-                    time_info,
-                };
-                self.notify_player_workflow
-                    .notify_players_and_observers_of_game(
-                        ended_game.game_id,
-                        &ended_game.metadata,
-                        &request_msg,
+        match request_type {
+            GameRequestType::Draw => {
+                match self
+                    .handle_game_action_result(
+                        self.game_service
+                            .accept_draw_request(game_id, player_id, now),
                     )
-                    .await;
-                self.handle_ended_game(ended_game).await;
-                ActionResult::Success
-            }
-            Ok(Err(())) => ActionResult::ActionError(HandleRequestError::RequestNotFound),
-        }
-    }
-
-    async fn accept_undo_request(
-        &self,
-        game_id: GameId,
-        player_id: PlayerId,
-        request_id: GameRequestId,
-    ) -> ActionResult<HandleRequestError> {
-        tracing::info!(
-            "Player {} is accepting undo request {:?} in game {}",
-            player_id,
-            request_id,
-            game_id
-        );
-        let now = Instant::now();
-        match self
-            .handle_game_action_result(
-                self.game_service
-                    .accept_undo_request(game_id, player_id, request_id, now),
-            )
-            .await
-        {
-            Err(e) => ActionResult::NotPossible(e),
-            Ok(Ok((request, time_info, undo_record))) => {
-                let request_msg = ListenerMessage::GameEvent {
-                    game_id,
-                    event_type: ListenerGameMessageType::GameRequestAccepted {
-                        accepting_player_id: player_id,
-                        request,
-                    },
-                    time_info,
-                };
-                self.notify_player_workflow
-                    .notify_players_and_observers(game_id, &request_msg)
-                    .await;
-                if let Some(undo_record) = undo_record {
-                    let msg = ListenerMessage::GameEvent {
-                        game_id,
-                        event_type: ListenerGameMessageType::GameActionUndone {
-                            ply_index: undo_record.ply_index,
-                        },
-                        time_info: undo_record.time_info,
-                    };
-                    self.notify_player_workflow
-                        .notify_players_and_observers(game_id, &msg)
-                        .await;
+                    .await
+                {
+                    Err(e) => ActionResult::NotPossible(e),
+                    Ok(Some((request, time_info, ended_game))) => {
+                        let request_msg = ListenerMessage::GameEvent {
+                            game_id,
+                            event_type: ListenerGameMessageType::GameRequestChanged { request },
+                            time_info,
+                        };
+                        self.notify_player_workflow
+                            .notify_players_and_observers_of_game(
+                                ended_game.game_id,
+                                &ended_game.metadata,
+                                &request_msg,
+                            )
+                            .await;
+                        self.handle_ended_game(ended_game).await;
+                        ActionResult::Success
+                    }
+                    Ok(None) => ActionResult::ActionError(HandleRequestError::RequestNotFound),
                 }
-                ActionResult::Success
             }
-            Ok(Err(())) => ActionResult::ActionError(HandleRequestError::RequestNotFound),
+            GameRequestType::Undo => {
+                match self
+                    .handle_game_action_result(
+                        self.game_service
+                            .accept_undo_request(game_id, player_id, now),
+                    )
+                    .await
+                {
+                    Err(e) => ActionResult::NotPossible(e),
+                    Ok(Some((request, time_info, undo_record))) => {
+                        let request_msg = ListenerMessage::GameEvent {
+                            game_id,
+                            event_type: ListenerGameMessageType::GameRequestChanged { request },
+                            time_info: time_info.clone(),
+                        };
+                        self.notify_player_workflow
+                            .notify_players_and_observers(game_id, &request_msg)
+                            .await;
+                        if let Some(undo_record) = undo_record {
+                            let msg = ListenerMessage::GameEvent {
+                                game_id,
+                                event_type: ListenerGameMessageType::GameActionUndone {
+                                    ply_index: undo_record.ply_index,
+                                },
+                                time_info: time_info,
+                            };
+                            self.notify_player_workflow
+                                .notify_players_and_observers(game_id, &msg)
+                                .await;
+                        }
+                        ActionResult::Success
+                    }
+                    Ok(None) => ActionResult::ActionError(HandleRequestError::RequestNotFound),
+                }
+            }
+            GameRequestType::MoreTime => {
+                match self
+                    .handle_game_action_result(
+                        self.game_service
+                            .accept_more_time_request(game_id, player_id, now),
+                    )
+                    .await
+                {
+                    Err(e) => ActionResult::NotPossible(e),
+                    Ok(Some((request, time_info))) => {
+                        let request_msg = ListenerMessage::GameEvent {
+                            game_id,
+                            event_type: ListenerGameMessageType::GameRequestChanged { request },
+                            time_info,
+                        };
+                        self.notify_player_workflow
+                            .notify_players_and_observers(game_id, &request_msg)
+                            .await;
+                        ActionResult::Success
+                    }
+                    Ok(None) => ActionResult::ActionError(HandleRequestError::RequestNotFound),
+                }
+            }
         }
     }
 

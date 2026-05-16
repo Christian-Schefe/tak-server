@@ -13,10 +13,7 @@ use tak_persistence_sea_orm_entities::game;
 use tak_server_app::domain::{
     GameId, MatchId, PaginatedResponse, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
     SortOrder,
-    game::{
-        GameEvent, GameEventType, GameMetadata, GameOverEventType,
-        request::{GameRequest, GameRequestId, GameRequestType},
-    },
+    game::{GameEvent, GameEventType, GameMetadata, GameOverEventType, request::GameRequest},
     game_history::{
         DateSelector, GameFinishedUpdate, GameIdSelector, GamePlayerFilter, GameQuery,
         GameRatingInfo, GameRecord, GameRepository, GameSortBy, PlayerSnapshot,
@@ -52,19 +49,9 @@ enum JsonEventRecordType {
         )]
         action: TakAction,
     },
-    RequestAdded {
-        request_id: u64,
-        request_type: JsonRequestType,
+    RequestSet {
+        request_type: JsonRequest,
         request_player: JsonTakPlayer,
-    },
-    RequestRetracted {
-        request_id: u64,
-    },
-    RequestRejected {
-        request_id: u64,
-    },
-    RequestAccepted {
-        request_id: u64,
     },
     ActionUndone,
     TimeGiven {
@@ -112,27 +99,15 @@ impl JsonEventRecordType {
     fn from_game_event(event: GameEventType) -> Self {
         match event {
             GameEventType::Action { action } => JsonEventRecordType::Action { action },
-            GameEventType::RequestAdded { request } => JsonEventRecordType::RequestAdded {
-                request_id: request.id.0,
-                request_type: match request.request_type {
-                    GameRequestType::Draw => JsonRequestType::Draw,
-                    GameRequestType::Undo => JsonRequestType::Undo,
-                    GameRequestType::MoreTime(duration) => JsonRequestType::MoreTime {
-                        amount_ms: duration.as_millis() as u64,
+            GameEventType::RequestSet { request, player } => JsonEventRecordType::RequestSet {
+                request_type: match request {
+                    GameRequest::Draw(offer) => JsonRequest::Draw { offer },
+                    GameRequest::Undo(request) => JsonRequest::Undo { request },
+                    GameRequest::MoreTime(duration) => JsonRequest::MoreTime {
+                        amount_ms: duration.map(|d| d.as_millis() as u64),
                     },
                 },
-                request_player: JsonTakPlayer::from_tak_player(request.player),
-            },
-            GameEventType::RequestRetracted { request_id } => {
-                JsonEventRecordType::RequestRetracted {
-                    request_id: request_id.0,
-                }
-            }
-            GameEventType::RequestRejected { request_id } => JsonEventRecordType::RequestRejected {
-                request_id: request_id.0,
-            },
-            GameEventType::RequestAccepted { request_id } => JsonEventRecordType::RequestAccepted {
-                request_id: request_id.0,
+                request_player: JsonTakPlayer::from_tak_player(player),
             },
             GameEventType::ActionUndone => JsonEventRecordType::ActionUndone,
             GameEventType::GameOver(game_over_type) => JsonEventRecordType::GameOver {
@@ -156,33 +131,18 @@ impl JsonEventRecordType {
             JsonEventRecordType::Action { action } => GameEventType::Action {
                 action: action.clone(),
             },
-            JsonEventRecordType::RequestAdded {
-                request_id,
+            JsonEventRecordType::RequestSet {
                 request_type,
                 request_player,
-            } => GameEventType::RequestAdded {
-                request: GameRequest {
-                    id: GameRequestId(*request_id),
-                    request_type: match request_type {
-                        JsonRequestType::Draw => GameRequestType::Draw,
-                        JsonRequestType::Undo => GameRequestType::Undo,
-                        JsonRequestType::MoreTime { amount_ms } => {
-                            GameRequestType::MoreTime(Duration::from_millis(*amount_ms))
-                        }
-                    },
-                    player: request_player.to_tak_player(),
+            } => GameEventType::RequestSet {
+                request: match request_type {
+                    JsonRequest::Draw { offer } => GameRequest::Draw(*offer),
+                    JsonRequest::Undo { request } => GameRequest::Undo(*request),
+                    JsonRequest::MoreTime { amount_ms } => {
+                        GameRequest::MoreTime(amount_ms.as_ref().map(|x| Duration::from_millis(*x)))
+                    }
                 },
-            },
-            JsonEventRecordType::RequestRetracted { request_id } => {
-                GameEventType::RequestRetracted {
-                    request_id: GameRequestId(*request_id),
-                }
-            }
-            JsonEventRecordType::RequestRejected { request_id } => GameEventType::RequestRejected {
-                request_id: GameRequestId(*request_id),
-            },
-            JsonEventRecordType::RequestAccepted { request_id } => GameEventType::RequestAccepted {
-                request_id: GameRequestId(*request_id),
+                player: request_player.to_tak_player(),
             },
             JsonEventRecordType::ActionUndone => GameEventType::ActionUndone,
             JsonEventRecordType::TimeGiven { player, amount_ms } => GameEventType::TimeGiven {
@@ -208,10 +168,10 @@ impl JsonEventRecordType {
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
-enum JsonRequestType {
-    Draw,
-    Undo,
-    MoreTime { amount_ms: u64 },
+enum JsonRequest {
+    Draw { offer: bool },
+    Undo { request: bool },
+    MoreTime { amount_ms: Option<u64> },
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

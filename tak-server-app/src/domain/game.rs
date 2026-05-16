@@ -5,7 +5,7 @@ use std::{
 
 use crate::domain::{
     GameId, MatchId, PlayerId,
-    game::request::{GameRequest, GameRequestId, GameRequestSystem, GameRequestType},
+    game::request::{GameRequest, GameRequestSystem, GameRequestType},
 };
 use dashmap::DashMap;
 use tak_core::{
@@ -37,19 +37,10 @@ pub enum GameEventType {
     Action {
         action: TakAction,
     },
-    RequestAdded {
+    RequestSet {
+        player: TakPlayer,
         request: GameRequest,
     },
-    RequestRetracted {
-        request_id: GameRequestId,
-    },
-    RequestRejected {
-        request_id: GameRequestId,
-    },
-    RequestAccepted {
-        request_id: GameRequestId,
-    },
-
     ActionUndone,
     TimeGiven {
         player: TakPlayer,
@@ -87,6 +78,12 @@ impl GameMetadata {
             None
         }
     }
+    pub fn get_player_id(&self, player: TakPlayer) -> PlayerId {
+        match player {
+            TakPlayer::White => self.white_id,
+            TakPlayer::Black => self.black_id,
+        }
+    }
 
     pub fn get_player(&self, id: PlayerId) -> Option<TakPlayer> {
         if id == self.white_id {
@@ -97,6 +94,12 @@ impl GameMetadata {
             None
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct PlayerGameRequest {
+    pub player_id: PlayerId,
+    pub request: GameRequest,
 }
 
 #[derive(Clone, Debug)]
@@ -167,42 +170,33 @@ pub trait GameService {
         player: PlayerId,
         now: Instant,
     ) -> GamePlayerActionResult<FinishedGame>;
-    fn add_request(
+    fn set_request(
         &self,
         game_id: GameId,
         player: PlayerId,
-        request: GameRequestType,
+        request: GameRequest,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo), ()>>;
-    fn retract_request(
-        &self,
-        game_id: GameId,
-        player: PlayerId,
-        request_id: GameRequestId,
-        now: Instant,
-    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo), ()>>;
-    fn reject_request(
-        &self,
-        game_id: GameId,
-        player: PlayerId,
-        request_id: GameRequestId,
-        now: Instant,
-    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo), ()>>;
-
+    ) -> GamePlayerActionResult<Option<(PlayerGameRequest, TakTimeInfo)>>;
     fn accept_draw_request(
         &self,
         game_id: GameId,
         player: PlayerId,
-        request_id: GameRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo, FinishedGame), ()>>;
+    ) -> GamePlayerActionResult<Option<(PlayerGameRequest, TakTimeInfo, FinishedGame)>>;
     fn accept_undo_request(
         &self,
         game_id: GameId,
         player: PlayerId,
-        request_id: GameRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo, Option<GameUndoActionRecord>), ()>>;
+    ) -> GamePlayerActionResult<
+        Option<(PlayerGameRequest, TakTimeInfo, Option<GameUndoActionRecord>)>,
+    >;
+    fn accept_more_time_request(
+        &self,
+        game_id: GameId,
+        player: PlayerId,
+        now: Instant,
+    ) -> GamePlayerActionResult<Option<(PlayerGameRequest, TakTimeInfo)>>;
 }
 
 #[derive(Clone, Debug)]
@@ -225,15 +219,11 @@ impl GameActionRecord {
 #[derive(Clone, Debug)]
 pub struct GameUndoActionRecord {
     pub ply_index: usize,
-    pub time_info: TakTimeInfo,
 }
 
 impl GameUndoActionRecord {
-    pub fn new(ply_index: usize, time_info: TakTimeInfo) -> Self {
-        Self {
-            ply_index,
-            time_info,
-        }
+    pub fn new(ply_index: usize) -> Self {
+        Self { ply_index }
     }
 }
 
@@ -464,13 +454,13 @@ impl GameService for GameServiceImpl {
         )
     }
 
-    fn add_request(
+    fn set_request(
         &self,
         game_id: GameId,
         player: PlayerId,
-        request_type: GameRequestType,
+        request: GameRequest,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo), ()>> {
+    ) -> GamePlayerActionResult<Option<(PlayerGameRequest, TakTimeInfo)>> {
         self.game_player_action(
             game_id,
             player,
@@ -479,132 +469,83 @@ impl GameService for GameServiceImpl {
                 MaybeTimeout::Result(()) => Ok(MaybeTimeout::Result(
                     game_entry
                         .requests
-                        .add_request(current_player, request_type),
+                        .set_request(current_player, request.clone()),
                 )),
             },
-            |game_entry, _, res| match res {
+            |game_entry, current_player, res| match res {
                 Some(request) => {
                     let time_info = game_entry.game.get_time_info(now);
                     game_entry.events.push(GameEvent::new(
-                        GameEventType::RequestAdded {
+                        GameEventType::RequestSet {
                             request: request.clone(),
+                            player: current_player,
                         },
                         time_info.clone(),
                     ));
-                    (GameControl::Keep, Ok((request, time_info)))
+                    (
+                        GameControl::Keep,
+                        Some((
+                            PlayerGameRequest {
+                                player_id: player,
+                                request,
+                            },
+                            time_info,
+                        )),
+                    )
                 }
-                None => (GameControl::Keep, Err(())),
+                None => (GameControl::Keep, None),
             },
         )
     }
 
-    fn retract_request(
-        &self,
-        game_id: GameId,
-        player: PlayerId,
-        request_id: GameRequestId,
-        now: Instant,
-    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo), ()>> {
-        self.game_player_action(
-            game_id,
-            player,
-            |game_entry, current_player| match game_entry.game.check_timeout(now) {
-                MaybeTimeout::Timeout(game) => Ok(MaybeTimeout::Timeout(game)),
-                MaybeTimeout::Result(()) => Ok(MaybeTimeout::Result(
-                    game_entry
-                        .requests
-                        .take_request_if(request_id, |p| p.player == current_player),
-                )),
-            },
-            |game_entry, _, res| match res {
-                Some(request) => {
-                    let time_info = game_entry.game.get_time_info(now);
-                    game_entry.events.push(GameEvent::new(
-                        GameEventType::RequestRetracted { request_id },
-                        time_info.clone(),
-                    ));
-                    (GameControl::Keep, Ok((request, time_info)))
-                }
-                None => (GameControl::Keep, Err(())),
-            },
-        )
-    }
-    fn reject_request(
-        &self,
-        game_id: GameId,
-        player: PlayerId,
-        request_id: GameRequestId,
-        now: Instant,
-    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo), ()>> {
-        self.game_player_action(
-            game_id,
-            player,
-            |game_entry, current_player| match game_entry.game.check_timeout(now) {
-                MaybeTimeout::Timeout(game) => Ok(MaybeTimeout::Timeout(game)),
-                MaybeTimeout::Result(()) => Ok(MaybeTimeout::Result(
-                    game_entry
-                        .requests
-                        .take_request_if(request_id, |p| p.player != current_player),
-                )),
-            },
-            |game_entry, _, res| match res {
-                Some(request) => {
-                    let time_info = game_entry.game.get_time_info(now);
-                    game_entry.events.push(GameEvent::new(
-                        GameEventType::RequestRejected { request_id },
-                        time_info.clone(),
-                    ));
-                    (GameControl::Keep, Ok((request, time_info)))
-                }
-                None => (GameControl::Keep, Err(())),
-            },
-        )
-    }
     fn accept_draw_request(
         &self,
         game_id: GameId,
         player: PlayerId,
-        request_id: GameRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo, FinishedGame), ()>> {
+    ) -> GamePlayerActionResult<Option<(PlayerGameRequest, TakTimeInfo, FinishedGame)>> {
         self.game_player_action(
             game_id,
             player,
             |game_entry, current_player| match game_entry.game.check_timeout(now) {
                 MaybeTimeout::Timeout(game) => Ok(MaybeTimeout::Timeout(game)),
                 MaybeTimeout::Result(()) => Ok(MaybeTimeout::Result(
-                    if let Some(request) =
-                        game_entry.requests.take_request_if(request_id, |request| {
-                            request.player != current_player
-                                && matches!(request.request_type, GameRequestType::Draw)
-                        })
+                    match game_entry
+                        .requests
+                        .consume_request(current_player.opponent(), GameRequestType::Draw)
                     {
-                        match game_entry.game.agree_draw(now) {
+                        GameRequest::Draw(true) => match game_entry.game.agree_draw(now) {
                             MaybeTimeout::Timeout(finished_game) => {
                                 return Ok(MaybeTimeout::Timeout(finished_game));
                             }
-                            MaybeTimeout::Result(finished_game) => Some((request, finished_game)),
-                        }
-                    } else {
-                        None
+                            MaybeTimeout::Result(finished_game) => Some(finished_game),
+                        },
+                        _ => None,
                     },
                 )),
             },
-            |game_entry, _, res| match res {
-                Some((request, finished_game)) => {
+            |game_entry, current_player, res| match res {
+                Some(finished_game) => {
                     let time_info = finished_game.get_time_info();
-                    game_entry.events.push(GameEvent::new(
-                        GameEventType::RequestAccepted { request_id },
-                        time_info.clone(),
-                    ));
                     game_entry.events.push(GameEvent::new(
                         GameEventType::GameOver(GameOverEventType::DrawAgreement),
                         time_info.clone(),
                     ));
                     let finished_game = FinishedGame::new(game_entry, finished_game);
-                    (GameControl::Remove, Ok((request, time_info, finished_game)))
+                    let opponent_id = game_entry.metadata.get_player_id(current_player.opponent());
+                    (
+                        GameControl::Remove,
+                        Some((
+                            PlayerGameRequest {
+                                player_id: opponent_id,
+                                request: GameRequest::Draw(false),
+                            },
+                            time_info,
+                            finished_game,
+                        )),
+                    )
                 }
-                None => (GameControl::Keep, Err(())),
+                None => (GameControl::Keep, None),
             },
         )
     }
@@ -612,53 +553,109 @@ impl GameService for GameServiceImpl {
         &self,
         game_id: GameId,
         player: PlayerId,
-        request_id: GameRequestId,
         now: Instant,
-    ) -> GamePlayerActionResult<Result<(GameRequest, TakTimeInfo, Option<GameUndoActionRecord>), ()>>
-    {
+    ) -> GamePlayerActionResult<
+        Option<(PlayerGameRequest, TakTimeInfo, Option<GameUndoActionRecord>)>,
+    > {
         self.game_player_action(
             game_id,
             player,
             |game_entry, current_player| match game_entry.game.check_timeout(now) {
                 MaybeTimeout::Timeout(game) => Ok(MaybeTimeout::Timeout(game)),
                 MaybeTimeout::Result(()) => Ok(MaybeTimeout::Result(
-                    if let Some(request) =
-                        game_entry.requests.take_request_if(request_id, |request| {
-                            request.player != current_player
-                                && matches!(request.request_type, GameRequestType::Undo)
-                        })
+                    match game_entry
+                        .requests
+                        .consume_request(current_player.opponent(), GameRequestType::Undo)
                     {
-                        match game_entry.game.undo_action(now) {
+                        GameRequest::Undo(true) => match game_entry.game.undo_action(now) {
                             MaybeTimeout::Timeout(finished_game) => {
                                 return Ok(MaybeTimeout::Timeout(finished_game));
                             }
-                            MaybeTimeout::Result(did_undo) => Some((request, did_undo)),
-                        }
-                    } else {
-                        None
+                            MaybeTimeout::Result(did_undo) => Some(did_undo),
+                        },
+                        _ => None,
                     },
                 )),
             },
-            |game_entry, _, res| match res {
-                Some((request, did_undo)) => {
+            |game_entry, current_player, res| match res {
+                Some(did_undo) => {
                     let time_info = game_entry.game.get_time_info(now);
-                    game_entry.events.push(GameEvent::new(
-                        GameEventType::RequestAccepted { request_id },
-                        time_info.clone(),
-                    ));
+
                     let undo_record = if did_undo {
                         let ply_index = game_entry.game.action_history().len();
                         game_entry.events.push(GameEvent::new(
                             GameEventType::ActionUndone,
                             time_info.clone(),
                         ));
-                        Some(GameUndoActionRecord::new(ply_index, time_info.clone()))
+                        Some(GameUndoActionRecord::new(ply_index))
                     } else {
                         None
                     };
-                    (GameControl::Keep, Ok((request, time_info, undo_record)))
+                    let opponent_id = game_entry.metadata.get_player_id(current_player.opponent());
+                    (
+                        GameControl::Keep,
+                        Some((
+                            PlayerGameRequest {
+                                player_id: opponent_id,
+                                request: GameRequest::Undo(false),
+                            },
+                            time_info,
+                            undo_record,
+                        )),
+                    )
                 }
-                None => (GameControl::Keep, Err(())),
+                None => (GameControl::Keep, None),
+            },
+        )
+    }
+
+    fn accept_more_time_request(
+        &self,
+        game_id: GameId,
+        player: PlayerId,
+        now: Instant,
+    ) -> GamePlayerActionResult<Option<(PlayerGameRequest, TakTimeInfo)>> {
+        self.game_player_action(
+            game_id,
+            player,
+            |game_entry, current_player| match game_entry.game.check_timeout(now) {
+                MaybeTimeout::Timeout(game) => Ok(MaybeTimeout::Timeout(game)),
+                MaybeTimeout::Result(()) => Ok(MaybeTimeout::Result(
+                    match game_entry
+                        .requests
+                        .consume_request(current_player.opponent(), GameRequestType::MoreTime)
+                    {
+                        GameRequest::MoreTime(Some(duration)) => {
+                            match game_entry
+                                .game
+                                .give_time_to_player(current_player, duration, now)
+                            {
+                                MaybeTimeout::Timeout(finished_game) => {
+                                    return Ok(MaybeTimeout::Timeout(finished_game));
+                                }
+                                MaybeTimeout::Result(()) => Some(()),
+                            }
+                        }
+                        _ => None,
+                    },
+                )),
+            },
+            |game_entry, current_player, res| match res {
+                Some(()) => {
+                    let time_info = game_entry.game.get_time_info(now);
+                    let opponent_id = game_entry.metadata.get_player_id(current_player.opponent());
+                    (
+                        GameControl::Keep,
+                        Some((
+                            PlayerGameRequest {
+                                player_id: opponent_id,
+                                request: GameRequest::MoreTime(None),
+                            },
+                            time_info,
+                        )),
+                    )
+                }
+                None => (GameControl::Keep, None),
             },
         )
     }

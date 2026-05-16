@@ -3,7 +3,7 @@ use tak_core::{TakAction, TakGameResult, TakTimeInfo};
 use crate::{
     domain::{
         AccountId, GameId, ListenerId, MatchId, PlayerId, chat::ChatConversation,
-        game::request::GameRequest,
+        game::PlayerGameRequest,
     },
     workflow::{
         chat::ChatMessageView,
@@ -79,21 +79,8 @@ pub enum ListenerGameMessageType {
     GameActionUndone {
         ply_index: usize,
     },
-    GameRequestAdded {
-        requesting_player_id: PlayerId,
-        request: GameRequest,
-    },
-    GameRequestRetracted {
-        retracting_player_id: PlayerId,
-        request: GameRequest,
-    },
-    GameRequestRejected {
-        rejecting_player_id: PlayerId,
-        request: GameRequest,
-    },
-    GameRequestAccepted {
-        accepting_player_id: PlayerId,
-        request: GameRequest,
+    GameRequestChanged {
+        request: PlayerGameRequest,
     },
 }
 

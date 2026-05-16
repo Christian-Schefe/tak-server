@@ -6,15 +6,9 @@ use tak_core::{
     TakTimeSettings,
 };
 
-#[derive(serde::Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct RequestResponse {
-    pub accept: bool,
-}
-
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct GameStatus {
+pub struct JsonGameStatus {
     pub id: i64,
     pub match_id: Option<i64>,
     pub player_ids: ForPlayer<String>,
@@ -27,10 +21,22 @@ pub struct GameStatus {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct GameRequest {
-    pub id: u64,
-    pub from_player_id: String,
-    pub request_type: JsonGameRequestType,
+pub struct JsonGameRequests {
+    pub draw_offered: bool,
+    pub undo_requested: bool,
+    pub more_time_offered: Option<u64>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(
+    rename_all = "camelCase",
+    tag = "type",
+    rename_all_fields = "camelCase"
+)]
+pub enum JsonGameRequest {
+    Draw { offer: bool },
+    Undo { request: bool },
+    MoreTime { amount_ms: Option<u64> },
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -42,6 +48,7 @@ pub struct GameRequest {
 pub enum JsonGameRequestType {
     Draw,
     Undo,
+    MoreTime,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -51,8 +58,13 @@ pub enum JsonGameRequestType {
     rename_all_fields = "camelCase"
 )]
 pub enum GameStatusType {
-    Ongoing { requests: Vec<GameRequest> },
-    Ended { result: String },
+    Ongoing {
+        white_requests: JsonGameRequests,
+        black_requests: JsonGameRequests,
+    },
+    Ended {
+        result: String,
+    },
     Aborted,
 }
 

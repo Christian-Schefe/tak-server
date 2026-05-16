@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Instant};
 use dashmap::DashMap;
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
-    domain::{AccountId, GameId, PlayerId, game::request::GameRequestType},
+    domain::{AccountId, GameId, PlayerId, game::request::GameRequest},
     ports::notification::{ListenerGameMessageType, ListenerMessage, ServerAlertMessage},
 };
 
@@ -205,40 +205,19 @@ impl ProtocolV2Handler {
                     );
                     self.send_undo_message(id, *game_id);
                 }
-                ListenerGameMessageType::GameRequestAdded {
-                    requesting_player_id,
-                    request,
-                } => {
-                    if self.is_opponent_in_game(*requesting_player_id, player_id, *game_id) {
-                        match request.request_type {
-                            GameRequestType::Draw => {
-                                self.send_draw_offer_message(id, *game_id, true);
+                ListenerGameMessageType::GameRequestChanged { request } => {
+                    if self.is_opponent_in_game(request.player_id, player_id, *game_id) {
+                        match request.request {
+                            GameRequest::Draw(offer) => {
+                                self.send_draw_offer_message(id, *game_id, offer);
                             }
-                            GameRequestType::Undo => {
-                                self.send_undo_request_message(id, *game_id, true);
+                            GameRequest::Undo(request) => {
+                                self.send_undo_request_message(id, *game_id, request);
                             }
-                            _ => {}
+                            GameRequest::MoreTime(_) => {}
                         }
                     }
                 }
-                ListenerGameMessageType::GameRequestRetracted {
-                    retracting_player_id,
-                    request,
-                } => {
-                    if self.is_opponent_in_game(*retracting_player_id, player_id, *game_id) {
-                        match request.request_type {
-                            GameRequestType::Draw => {
-                                self.send_draw_offer_message(id, *game_id, false);
-                            }
-                            GameRequestType::Undo => {
-                                self.send_undo_request_message(id, *game_id, false);
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-                ListenerGameMessageType::GameRequestRejected { .. } => {} // legacy api does not support request rejections
-                ListenerGameMessageType::GameRequestAccepted { .. } => {} // legacy api does not support request acceptances
             },
 
             ListenerMessage::AccountsOnline { accounts: players } => {

@@ -5,7 +5,7 @@ use tak_core::{TakPlayer, TakReserve};
 use tak_server_api_contract::{
     auth::IdentityInfo,
     game::{
-        GameSettingsInfo, GameSettingsInfoBase, GameStatus, JsonGameMetadata, JsonTimeSettings,
+        GameSettingsInfo, GameSettingsInfoBase, JsonGameMetadata, JsonGameStatus, JsonTimeSettings,
     },
     seek::{CreateSeekPayload, SeekInfo},
     ws::{ClientMessage, ServerGameEventType, ServerMessage},
@@ -19,7 +19,7 @@ use crate::{engine::EngineService, game::GameService, seek::SeekService};
 pub trait ServerApi {
     async fn send_message(&self, message: ClientMessage) -> Result<(), String>;
     async fn load_games(&self) -> Result<Vec<JsonGameMetadata>, String>;
-    async fn load_game(&self, id: i64) -> Result<GameStatus, String>;
+    async fn load_game(&self, id: i64) -> Result<JsonGameStatus, String>;
     async fn create_seek(&self, seek: CreateSeekPayload) -> Result<SeekInfo, String>;
 }
 
@@ -157,8 +157,7 @@ impl Orchestrator {
                         }
                     }
                     ServerGameEventType::GameEnded { .. } => {}
-                    ServerGameEventType::GameRequestAdded { .. } => {}
-                    ServerGameEventType::GameRequestRemoved { .. } => {}
+                    ServerGameEventType::GameRequestChanged { .. } => {}
                 },
                 ServerMessage::GameStarted { game } => {
                     let Some(player) = this.get_player_color(&game) else {

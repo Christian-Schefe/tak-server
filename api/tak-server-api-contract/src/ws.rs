@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::{
-    game::{ForPlayer, JsonGameMetadata, JsonGameRequestType},
+    game::{ForPlayer, JsonGameMetadata, JsonGameRequest},
     seek::SeekInfo,
 };
 
@@ -120,13 +120,9 @@ pub enum ServerGameEventType {
     GameEnded {
         result: String,
     },
-    GameRequestAdded {
-        request_id: u64,
-        request_type: JsonGameRequestType,
-        from_player_id: String,
-    },
-    GameRequestRemoved {
-        request_id: u64,
+    GameRequestChanged {
+        player_id: String,
+        request: JsonGameRequest,
     },
 }
 

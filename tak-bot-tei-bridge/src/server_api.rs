@@ -5,7 +5,7 @@ use std::{
 };
 use tak_server_api_contract::{
     auth::IdentityInfo,
-    game::{GameStatus, JsonGameMetadata},
+    game::{JsonGameStatus, JsonGameMetadata},
     seek::{CreateSeekPayload, SeekInfo},
     ws::{ClientMessage, ClientMessageWrapper, ServerMessage},
 };
@@ -289,7 +289,7 @@ impl ServerApi for ServerApiImpl {
         self.get_request("/games").await
     }
 
-    async fn load_game(&self, id: i64) -> Result<GameStatus, String> {
+    async fn load_game(&self, id: i64) -> Result<JsonGameStatus, String> {
         self.get_request(&format!("/games/{}", id)).await
     }
 

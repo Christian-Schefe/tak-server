@@ -15,14 +15,14 @@ use futures::{
 use tak_core::ptn::{action_from_ptn, action_to_ptn, game_result_to_string};
 use tak_player_connection::{ConnectionId, PlayerSimpleConnectionPort};
 use tak_server_api_contract::{
-    game::{ForPlayer, JsonGameRequestType},
+    game::{ForPlayer, JsonGameRequest},
     ws::{
         ClientMessage, ClientMessageWrapper, JsonChatConversation, JsonChatMessage,
         ServerGameEventType, ServerMatchEventType, ServerMessage,
     },
 };
 use tak_server_app::{
-    domain::{AccountId, GameId, PlayerId, chat::ChatConversation, game::request::GameRequestType},
+    domain::{AccountId, GameId, PlayerId, chat::ChatConversation, game::request::GameRequest},
     ports::notification::{ListenerGameMessageType, ListenerMatchEventType, ListenerMessage},
     workflow::{
         chat::message::ChatSendMessageError,
@@ -375,39 +375,18 @@ fn from_listener_game_event_type(
         ListenerGameMessageType::GameActionUndone { ply_index } => {
             ServerGameEventType::GameActionUndone { ply_index }
         }
-        ListenerGameMessageType::GameRequestAdded {
-            requesting_player_id,
-            request,
-        } => {
-            let request_type = match request.request_type {
-                GameRequestType::Draw => JsonGameRequestType::Draw,
-                GameRequestType::Undo => JsonGameRequestType::Undo,
-                GameRequestType::MoreTime(_) => return None,
-            };
-            ServerGameEventType::GameRequestAdded {
-                request_id: request.id.0,
-                request_type,
-                from_player_id: requesting_player_id.0.to_string(),
+        ListenerGameMessageType::GameRequestChanged { request } => {
+            ServerGameEventType::GameRequestChanged {
+                player_id: request.player_id.0.to_string(),
+                request: match request.request {
+                    GameRequest::Draw(offer) => JsonGameRequest::Draw { offer },
+                    GameRequest::Undo(request) => JsonGameRequest::Undo { request },
+                    GameRequest::MoreTime(duration) => JsonGameRequest::MoreTime {
+                        amount_ms: duration.map(|d| d.as_millis() as u64),
+                    },
+                },
             }
         }
-        ListenerGameMessageType::GameRequestRetracted {
-            retracting_player_id: _,
-            request,
-        } => ServerGameEventType::GameRequestRemoved {
-            request_id: request.id.0,
-        },
-        ListenerGameMessageType::GameRequestRejected {
-            rejecting_player_id: _,
-            request,
-        } => ServerGameEventType::GameRequestRemoved {
-            request_id: request.id.0,
-        },
-        ListenerGameMessageType::GameRequestAccepted {
-            accepting_player_id: _,
-            request,
-        } => ServerGameEventType::GameRequestRemoved {
-            request_id: request.id.0,
-        },
     };
     Some(res)
 }

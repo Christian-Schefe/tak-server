@@ -10,9 +10,12 @@ use crate::{
 use tak_core::{TakAction, TakDir, TakGameResult, TakPos, TakVariant, ptn::game_result_to_string};
 use tak_player_connection::ConnectionId;
 use tak_server_app::{
-    domain::{GameId, PlayerId, game::request::GameRequestType},
+    domain::{
+        GameId, PlayerId,
+        game::request::{GameRequest, GameRequestType},
+    },
     workflow::gameplay::do_action::{
-        ActionResult, AddRequestError, DoActionError, HandleRequestError, PlayerActionError,
+        ActionResult, DoActionError, HandleRequestError, PlayerActionError,
     },
 };
 
@@ -102,19 +105,6 @@ impl ProtocolV2Handler {
             ));
         };
 
-        let Some(game) = self.app.game_get_ongoing_use_case.get_game(game_id) else {
-            return V2Response::ErrorNOK(ServiceError::NotFound("Game not found".to_string()));
-        };
-        let opponent_id = if game.metadata.white_id == player_id {
-            game.metadata.black_id
-        } else if game.metadata.black_id == player_id {
-            game.metadata.white_id
-        } else {
-            return V2Response::ErrorNOK(ServiceError::BadRequest(
-                "You are not a player in this game".to_string(),
-            ));
-        };
-
         match parts[1] {
             "P" => {
                 self.connection_that_did_last_move
@@ -149,7 +139,7 @@ impl ProtocolV2Handler {
             },
             "OfferDraw" => {
                 return self
-                    .add_or_accept_request(game_id, player_id, opponent_id, GameRequestType::Draw)
+                    .add_or_accept_request(game_id, player_id, GameRequestType::Draw)
                     .await;
             }
             "RemoveDraw" => {
@@ -159,7 +149,7 @@ impl ProtocolV2Handler {
             }
             "RequestUndo" => {
                 return self
-                    .add_or_accept_request(game_id, player_id, opponent_id, GameRequestType::Undo)
+                    .add_or_accept_request(game_id, player_id, GameRequestType::Undo)
                     .await;
             }
             "RemoveUndo" => {
@@ -363,70 +353,38 @@ impl ProtocolV2Handler {
         &self,
         game_id: GameId,
         player_id: PlayerId,
-        opponent_id: PlayerId,
         request_type: GameRequestType,
     ) -> V2Response {
-        let requests = self
+        match self
             .app
             .game_do_action_use_case
-            .get_requests_of_player(game_id, opponent_id);
-        if let Some(request_id) = requests.and_then(|reqs| {
-            reqs.into_iter()
-                .find_map(|r| match (&request_type, &r.request_type) {
-                    (GameRequestType::Draw, GameRequestType::Draw) => Some(r.id),
-                    (GameRequestType::Undo, GameRequestType::Undo) => Some(r.id),
-                    _ => None,
-                })
-        }) {
-            let res = match &request_type {
-                GameRequestType::Draw => {
-                    self.app
-                        .game_do_action_use_case
-                        .accept_draw_request(game_id, player_id, request_id)
-                        .await
-                }
-                GameRequestType::Undo => {
-                    self.app
-                        .game_do_action_use_case
-                        .accept_undo_request(game_id, player_id, request_id)
-                        .await
-                }
-                _ => {
-                    return V2Response::ErrorNOK(ServiceError::BadRequest(
-                        "Invalid request type".to_string(),
-                    ));
-                }
-            };
-            match res {
-                ActionResult::Success => {}
-                ActionResult::NotPossible(e) => return player_action_error(e),
-                ActionResult::ActionError(HandleRequestError::RequestNotFound) => {
-                    let err_str = format!("Error: Request not found");
-                    return V2Response::ErrorMessage(
-                        ServiceError::NotFound("Request not found".to_string()),
-                        err_str,
-                    );
-                }
+            .accept_request(game_id, player_id, request_type.clone())
+            .await
+        {
+            ActionResult::Success => {
+                return V2Response::OK;
             }
-        } else {
-            match self
-                .app
-                .game_do_action_use_case
-                .add_request(game_id, player_id, request_type)
-                .await
-            {
-                ActionResult::Success => {}
-                ActionResult::NotPossible(e) => return player_action_error(e),
-                ActionResult::ActionError(AddRequestError::AlreadyRequested) => {
-                    let err_str = format!("Error: Already requested");
-                    return V2Response::ErrorMessage(
-                        ServiceError::NotFound("Already requested".to_string()),
-                        err_str,
-                    );
-                }
+            ActionResult::NotPossible(e) => return player_action_error(e),
+            ActionResult::ActionError(HandleRequestError::RequestNotFound) => {
+                // Add request instead
             }
         }
-        V2Response::OK
+
+        let request = match request_type {
+            GameRequestType::Draw => GameRequest::Draw(true),
+            GameRequestType::Undo => GameRequest::Undo(true),
+            GameRequestType::MoreTime => GameRequest::MoreTime(Some(Duration::from_secs(30))),
+        };
+
+        match self
+            .app
+            .game_do_action_use_case
+            .set_request(game_id, player_id, request)
+            .await
+        {
+            Ok(()) => V2Response::OK,
+            Err(e) => player_action_error(e),
+        }
     }
 
     async fn retract_request(
@@ -435,39 +393,19 @@ impl ProtocolV2Handler {
         player_id: PlayerId,
         request_type: GameRequestType,
     ) -> V2Response {
-        let requests = self
-            .app
-            .game_do_action_use_case
-            .get_requests_of_player(game_id, player_id);
-        let Some(request_id) = requests.and_then(|reqs| {
-            reqs.into_iter()
-                .find_map(|r| match (&request_type, &r.request_type) {
-                    (GameRequestType::Draw, GameRequestType::Draw) => Some(r.id),
-                    (GameRequestType::Undo, GameRequestType::Undo) => Some(r.id),
-                    _ => None,
-                })
-        }) else {
-            let err_str = format!("Error: No request to remove");
-            return V2Response::ErrorMessage(
-                ServiceError::NotFound("No request to remove".to_string()),
-                err_str,
-            );
+        let request = match request_type {
+            GameRequestType::Draw => GameRequest::Draw(false),
+            GameRequestType::Undo => GameRequest::Undo(false),
+            GameRequestType::MoreTime => GameRequest::MoreTime(None),
         };
         match self
             .app
             .game_do_action_use_case
-            .retract_request(game_id, player_id, request_id)
+            .set_request(game_id, player_id, request)
             .await
         {
-            ActionResult::Success => V2Response::OK,
-            ActionResult::ActionError(HandleRequestError::RequestNotFound) => {
-                let err_str = format!("Error: Request not found");
-                return V2Response::ErrorMessage(
-                    ServiceError::NotFound("Request not found".to_string()),
-                    err_str,
-                );
-            }
-            ActionResult::NotPossible(e) => return player_action_error(e),
+            Ok(()) => V2Response::OK,
+            Err(e) => player_action_error(e),
         }
     }
 }
