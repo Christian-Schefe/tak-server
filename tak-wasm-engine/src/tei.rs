@@ -1,16 +1,8 @@
 use gloo_timers::future::TimeoutFuture;
 use tiltak::tei;
-use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::WorkerGlobalScope;
 
-fn performance_now() -> f64 {
-    js_sys::global()
-        .unchecked_into::<WorkerGlobalScope>()
-        .performance()
-        .expect("should have performance")
-        .now()
-}
+use crate::performance_now;
 
 struct WasmPlatform;
 

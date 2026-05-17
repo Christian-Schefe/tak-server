@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::OnceLock};
+use std::{cell::RefCell, collections::HashMap, sync::OnceLock};
 
 use tak_core::{
     TakBaseGameSettings, TakPlayer, TakReserve,
@@ -6,32 +6,22 @@ use tak_core::{
 };
 use tak_server_api_contract::game::GameSettingsInfoBase;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::spawn_local;
-use web_sys::DedicatedWorkerGlobalScope;
+use web_sys::{DedicatedWorkerGlobalScope, WorkerGlobalScope};
 
 use crate::tei::run;
 
 mod tei;
 
 thread_local! {
-static ENGINE: OnceLock<async_channel::Sender<Input>> = OnceLock::new();
+static ENGINE: OnceLock<RefCell<Option::<(String, Engine)>>> = OnceLock::new();
 }
 
 #[wasm_bindgen]
 pub fn initialize() {
     console_error_panic_hook::set_once();
-    let (input_sender, input_receiver) = async_channel::unbounded();
-    if !ENGINE.with(|x| {
-        let mut did_init = false;
-        x.get_or_init(|| {
-            did_init = true;
-            input_sender
-        });
-        did_init
-    }) {
-        return;
-    }
-    spawn_local(run_engine(input_receiver));
+    ENGINE.with(|x| {
+        x.get_or_init(|| RefCell::new(None));
+    });
 }
 
 pub fn console_error(message: &str) {
@@ -47,34 +37,7 @@ pub struct Engine {
     sender: async_channel::Sender<String>,
     player: TakPlayer,
     current_variations: HashMap<usize, Variation>,
-}
-
-async fn run_engine(recv: async_channel::Receiver<Input>) {
-    let mut engine = Option::<(String, Engine)>::None;
-    while let Ok(input) = recv.recv().await {
-        match input {
-            Input::SearchPosition { key, settings, tps } => {
-                if let Some((_, engine)) = engine.take() {
-                    engine.stop_searching();
-                }
-                if let Some(new_engine) = Engine::new(key.clone(), settings, tps) {
-                    engine = Some((key.clone(), new_engine));
-                }
-            }
-            Input::StopSearching => {
-                if let Some((_, engine)) = engine.take() {
-                    engine.stop_searching();
-                }
-            }
-            Input::HandleOutput { key, output } => {
-                if let Some((engine_key, engine)) = engine.as_mut()
-                    && engine_key == &key
-                {
-                    engine.handle_output(&output);
-                }
-            }
-        }
-    }
+    last_sent_variations_timestamp: Option<f64>,
 }
 
 #[wasm_bindgen]
@@ -87,12 +50,16 @@ pub fn search_position(key: String, settings: String, tps: String) {
         }
     };
     ENGINE.with(|x| {
-        let Some(sender) = x.get() else {
+        let Some(cell) = x.get() else {
             console_error("Engine not initialized");
             return;
         };
-        if let Err(e) = sender.try_send(Input::SearchPosition { key, settings, tps }) {
-            console_error(&format!("Failed to send search position message: {}", e));
+        let mut engine = cell.borrow_mut();
+        if let Some((_, old_engine)) = engine.take() {
+            old_engine.stop_searching();
+        }
+        if let Some(new_engine) = Engine::new(key.clone(), settings, tps) {
+            *engine = Some((key.clone(), new_engine));
         }
     });
 }
@@ -100,12 +67,16 @@ pub fn search_position(key: String, settings: String, tps: String) {
 #[wasm_bindgen]
 pub fn stop_searching() {
     ENGINE.with(|x| {
-        let Some(sender) = x.get() else {
+        let Some(cell) = x.get() else {
             console_error("Engine not initialized");
             return;
         };
-        if let Err(e) = sender.try_send(Input::StopSearching) {
-            console_error(&format!("Failed to send stop searching message: {}", e));
+        let Ok(mut engine) = cell.try_borrow_mut() else {
+            console_error("Engine is currently borrowed");
+            return;
+        };
+        if let Some((_, old_engine)) = engine.take() {
+            old_engine.stop_searching();
         }
     });
 }
@@ -121,15 +92,15 @@ pub fn is_settings_supported(settings: String) -> bool {
 
 fn handle_output(key: String, output: &str) {
     ENGINE.with(|x| {
-        let Some(sender) = x.get() else {
+        let Some(cell) = x.get() else {
             console_error("Engine not initialized");
             return;
         };
-        if let Err(e) = sender.try_send(Input::HandleOutput {
-            key: key.clone(),
-            output: output.to_string(),
-        }) {
-            console_error(&format!("Failed to send handle output message: {}", e));
+        let mut engine = cell.borrow_mut();
+        if let Some((engine_key, engine)) = engine.as_mut()
+            && engine_key == &key
+        {
+            engine.handle_output(output);
         }
     });
 }
@@ -160,6 +131,7 @@ impl Engine {
             sender,
             player,
             current_variations: HashMap::new(),
+            last_sent_variations_timestamp: None,
         };
         engine.send_tei("tei".to_string());
         engine.send_tei(format!("teinewgame {}", settings.board_size));
@@ -177,8 +149,21 @@ impl Engine {
         if output.starts_with("info") {
             if let Some((variation_index, variation)) = self.handle_eval_info(output) {
                 self.current_variations.insert(variation_index, variation);
-                self.send_changed_variations();
+                self.maybe_send_variations();
             }
+        }
+    }
+
+    fn maybe_send_variations(&mut self) {
+        let now = performance_now();
+        if let Some(last_timestamp) = &mut self.last_sent_variations_timestamp {
+            if now - *last_timestamp < 50.0 {
+                return;
+            }
+        }
+        self.last_sent_variations_timestamp = Some(now);
+        if let Some(evaluation) = self.get_evaluation_output() {
+            send_output(Output::Evaluation { evaluation });
         }
     }
 
@@ -229,7 +214,7 @@ impl Engine {
         Some((multipv_index.unwrap_or(0), variation))
     }
 
-    fn send_changed_variations(&mut self) {
+    fn get_evaluation_output(&self) -> Option<Evaluation> {
         if !self.current_variations.is_empty() {
             let mut variations = self
                 .current_variations
@@ -244,10 +229,9 @@ impl Engine {
                     variations.sort_by(|a, b| a.evaluation.total_cmp(&b.evaluation))
                 }
             }
-            send_output(Output::Evaluation {
-                key: self.key.clone(),
-                evaluation: Evaluation { variations },
-            });
+            Some(Evaluation::new(self.key.clone(), variations))
+        } else {
+            None
         }
     }
 
@@ -271,43 +255,26 @@ impl Engine {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(
-    tag = "type",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-pub enum Input {
-    SearchPosition {
-        key: String,
-        settings: GameSettingsInfoBase,
-        tps: String,
-    },
-    StopSearching,
-    HandleOutput {
-        key: String,
-        output: String,
-    },
-}
-
-#[derive(serde::Serialize)]
-#[serde(
-    tag = "type",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
 pub enum Output {
-    Evaluation {
-        key: String,
-        #[serde(flatten)]
-        evaluation: Evaluation,
-    },
+    Evaluation { evaluation: Evaluation },
 }
 
 #[derive(serde::Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Evaluation {
+    r#type: String,
+    pub key: String,
     pub variations: Vec<Variation>,
+}
+
+impl Evaluation {
+    pub fn new(key: String, variations: Vec<Variation>) -> Self {
+        Self {
+            r#type: "evaluation".to_string(),
+            key,
+            variations,
+        }
+    }
 }
 
 #[derive(serde::Serialize, Clone, Debug)]
@@ -323,7 +290,20 @@ fn worker_scope() -> DedicatedWorkerGlobalScope {
 
 fn send_output(output: Output) {
     let scope = worker_scope();
-    scope
-        .post_message(&JsValue::from_str(&serde_json::to_string(&output).unwrap()))
-        .unwrap();
+    if let Err(_) = scope.post_message(
+        &serde_wasm_bindgen::to_value(match &output {
+            Output::Evaluation { evaluation } => evaluation,
+        })
+        .expect("Failed to serialize output"),
+    ) {
+        console_error("Failed to post message");
+    }
+}
+
+fn performance_now() -> f64 {
+    js_sys::global()
+        .unchecked_into::<WorkerGlobalScope>()
+        .performance()
+        .expect("should have performance")
+        .now()
 }
