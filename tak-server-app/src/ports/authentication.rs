@@ -48,6 +48,10 @@ impl Account {
         matches!(self.account_type, AccountType::Bot)
     }
 
+    pub fn is_admin(&self) -> bool {
+        matches!(self.role, AccountRole::Admin)
+    }
+
     pub fn is_guest(&self) -> bool {
         matches!(self.account_type, AccountType::Guest)
     }

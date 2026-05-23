@@ -107,6 +107,17 @@ impl GameId {
     }
 }
 
+impl TryFrom<String> for GameId {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value
+            .parse::<i64>()
+            .map(GameId)
+            .map_err(|e| format!("Failed to parse GameId from string: {}", e))
+    }
+}
+
 impl std::fmt::Display for GameId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)

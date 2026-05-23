@@ -13,12 +13,18 @@ pub trait TournamentPlayerRegistrationUseCase {
         &self,
         tournament_id: TournamentId,
         player_id: PlayerId,
-    ) -> Result<(), ()>;
+    ) -> Result<(), TournamentRegistrationError>;
     async fn unregister_player_from_tournament(
         &self,
         tournament_id: TournamentId,
         player_id: PlayerId,
-    ) -> Result<(), ()>;
+    ) -> Result<(), TournamentRegistrationError>;
+}
+
+pub enum TournamentRegistrationError {
+    TournamentNotFound,
+    TournamentNotUpcoming,
+    StorageError,
 }
 
 pub struct TournamentPlayerRegistrationUseCaseImpl<
@@ -51,21 +57,23 @@ impl<
         &self,
         tournament_id: TournamentId,
         player_id: PlayerId,
-    ) -> Result<(), ()> {
+    ) -> Result<(), TournamentRegistrationError> {
         let tournament = match self
             .tournament_repository
             .get_tournament(tournament_id)
             .await
         {
             Ok(tournament) => Ok(tournament),
-            Err(RepoRetrieveError::NotFound) => Err(()),
+            Err(RepoRetrieveError::NotFound) => {
+                Err(TournamentRegistrationError::TournamentNotFound)
+            }
             Err(RepoRetrieveError::StorageError(e)) => {
                 tracing::error!(
                     "Failed to get tournament with id {}: {:?}",
                     tournament_id,
                     e
                 );
-                Err(())
+                Err(TournamentRegistrationError::StorageError)
             }
         }?;
         let TournamentStatus::Upcoming = tournament.status else {
@@ -74,7 +82,7 @@ impl<
                 player_id,
                 tournament_id
             );
-            return Err(());
+            return Err(TournamentRegistrationError::TournamentNotUpcoming);
         };
         if let Err(e) = self
             .tournament_player_repository
@@ -87,7 +95,7 @@ impl<
                 tournament_id,
                 e
             );
-            Err(())
+            Err(TournamentRegistrationError::StorageError)
         } else {
             Ok(())
         }
@@ -98,21 +106,23 @@ impl<
         &self,
         tournament_id: TournamentId,
         player_id: PlayerId,
-    ) -> Result<(), ()> {
+    ) -> Result<(), TournamentRegistrationError> {
         let tournament = match self
             .tournament_repository
             .get_tournament(tournament_id)
             .await
         {
             Ok(tournament) => Ok(tournament),
-            Err(RepoRetrieveError::NotFound) => return Ok(()),
+            Err(RepoRetrieveError::NotFound) => {
+                return Err(TournamentRegistrationError::TournamentNotFound);
+            }
             Err(RepoRetrieveError::StorageError(e)) => {
                 tracing::error!(
                     "Failed to get tournament with id {}: {:?}",
                     tournament_id,
                     e
                 );
-                Err(())
+                Err(TournamentRegistrationError::StorageError)
             }
         }?;
         let TournamentStatus::Upcoming = tournament.status else {
@@ -121,7 +131,7 @@ impl<
                 player_id,
                 tournament_id
             );
-            return Err(());
+            return Err(TournamentRegistrationError::TournamentNotUpcoming);
         };
         if let Err(e) = self
             .tournament_player_repository
@@ -134,7 +144,7 @@ impl<
                 tournament_id,
                 e
             );
-            Err(())
+            Err(TournamentRegistrationError::StorageError)
         } else {
             Ok(())
         }

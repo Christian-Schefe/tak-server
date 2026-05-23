@@ -12,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 
 pub struct EngineService {
     bot_executable: String,
-    engine_connections: Arc<Mutex<HashMap<i64, EngineConnection>>>,
+    engine_connections: Arc<Mutex<HashMap<String, EngineConnection>>>,
 }
 
 impl EngineService {
@@ -23,7 +23,7 @@ impl EngineService {
         }
     }
 
-    pub async fn new_game(&self, game_id: i64, settings: TakBaseGameSettings) {
+    pub async fn new_game(&self, game_id: String, settings: TakBaseGameSettings) {
         let mut connection = EngineConnection::new(&self.bot_executable).await;
         connection.initialize(settings).await;
         self.engine_connections
@@ -32,7 +32,7 @@ impl EngineService {
             .insert(game_id, connection);
     }
 
-    pub async fn remove_game(&self, game_id: i64) {
+    pub async fn remove_game(&self, game_id: String) {
         let res = { self.engine_connections.lock().unwrap().remove(&game_id) };
         if let Some(connection) = res {
             connection.shutdown().await;
@@ -41,7 +41,7 @@ impl EngineService {
 
     pub async fn search_move(
         &self,
-        game_id: i64,
+        game_id: String,
         game: &TakOngoingBaseGame,
         time_limit_ms: u64,
     ) -> Option<String> {

@@ -212,6 +212,11 @@ async fn handle_authenticated_client_message(
             "Already authenticated".to_string(),
         )),
         ClientMessage::GameAction { game_id, action } => {
+            let Ok(game_id) = GameId::try_from(game_id) else {
+                return Err(ServiceError::BadRequest(
+                    "Invalid game ID format".to_string(),
+                ));
+            };
             tracing::info!("Received GameAction for game {}: {}", game_id, action);
             let Some(action) = action_from_ptn(&action) else {
                 return Err(ServiceError::BadRequest(
@@ -221,7 +226,7 @@ async fn handle_authenticated_client_message(
             match app
                 .app
                 .game_do_action_use_case
-                .do_action(GameId(game_id), player_id, action)
+                .do_action(game_id, player_id, action)
                 .await
             {
                 ActionResult::Success => Ok(()),
@@ -291,10 +296,15 @@ async fn handle_authenticated_client_message(
         }
         ClientMessage::SpectateGame { game_id, spectate } => {
             tracing::info!("Received SpectateGame for game {}: {}", game_id, spectate);
+            let Ok(game_id) = GameId::try_from(game_id) else {
+                return Err(ServiceError::BadRequest(
+                    "Invalid game ID format".to_string(),
+                ));
+            };
             if spectate {
                 app.app
                     .game_observe_use_case
-                    .observe_game(GameId(game_id), connection_id.0)
+                    .observe_game(game_id, connection_id.0)
                     .map_err(|e| match e {
                         ObserveGameError::GameNotFound => {
                             ServiceError::NotFound("Game not found".to_string())
@@ -303,7 +313,7 @@ async fn handle_authenticated_client_message(
             } else {
                 app.app
                     .game_observe_use_case
-                    .unobserve_game(GameId(game_id), connection_id.0);
+                    .unobserve_game(game_id, connection_id.0);
             }
             Ok(())
         }
@@ -404,7 +414,9 @@ fn from_listener_message(message: ListenerMessage) -> MessageTransformation {
             })
         }
         ListenerMessage::SeekCanceled { seek } | ListenerMessage::SeekAccepted { seek } => {
-            MessageTransformation::Transform(ServerMessage::SeekRemoved { seek_id: seek.id.0 })
+            MessageTransformation::Transform(ServerMessage::SeekRemoved {
+                seek_id: seek.id.to_string(),
+            })
         }
         ListenerMessage::GameEvent {
             game_id,
@@ -414,7 +426,7 @@ fn from_listener_message(message: ListenerMessage) -> MessageTransformation {
             MessageTransformation::Ignore,
             |event| {
                 MessageTransformation::Transform(ServerMessage::GameEvent {
-                    game_id: game_id.0,
+                    game_id: game_id.to_string(),
                     event_type: event,
                     time_info: ForPlayer {
                         white: time_info.white_remaining.as_millis() as u64,
@@ -429,7 +441,9 @@ fn from_listener_message(message: ListenerMessage) -> MessageTransformation {
             })
         }
         ListenerMessage::GameEnded { game } => {
-            MessageTransformation::Transform(ServerMessage::GameEnded { game_id: game.id.0 })
+            MessageTransformation::Transform(ServerMessage::GameEnded {
+                game_id: game.id.to_string(),
+            })
         }
 
         ListenerMessage::ChatMessage {
@@ -460,7 +474,7 @@ fn from_listener_message(message: ListenerMessage) -> MessageTransformation {
             match_id,
             event_type,
         } => MessageTransformation::Transform(ServerMessage::MatchEvent {
-            match_id: match_id.0,
+            match_id: match_id.to_string(),
             event_type: match event_type {
                 ListenerMatchEventType::MatchRematchRequestAdded {
                     requesting_player_id,

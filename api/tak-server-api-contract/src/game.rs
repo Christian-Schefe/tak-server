@@ -9,8 +9,8 @@ use tak_core::{
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonGameStatus {
-    pub id: i64,
-    pub match_id: Option<i64>,
+    pub id: String,
+    pub match_id: Option<String>,
     pub player_ids: ForPlayer<String>,
     pub is_rated: bool,
     pub game_settings: GameSettingsInfo,
@@ -78,7 +78,7 @@ pub struct ForPlayer<R> {
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonGameMetadata {
-    pub id: i64,
+    pub id: String,
     #[serde(with = "chrono::serde::ts_milliseconds")]
     pub date: DateTime<Utc>,
     pub player_ids: ForPlayer<String>,

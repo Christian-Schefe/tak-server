@@ -4,7 +4,9 @@ use tak_core::TakGameSettings;
 
 use crate::domain::{
     PlayerId, TournamentId,
-    tournament::{Tournament, TournamentFormat, TournamentMetadata, TournamentPlayer},
+    tournament::{
+        Tournament, TournamentFormat, TournamentMetadata, TournamentPlayer, TournamentStatus,
+    },
 };
 
 pub mod get;
@@ -23,11 +25,12 @@ pub struct TournamentMetadataView {
 #[derive(Clone, Debug)]
 pub struct TournamentView {
     pub metadata: TournamentMetadataView,
+    pub status: TournamentStatus,
 }
 
 #[derive(Clone, Debug)]
 pub struct TournamentDetailView {
-    pub metadata: TournamentMetadataView,
+    pub tournament: TournamentView,
     pub player_scores: HashMap<PlayerId, u32>,
 }
 
@@ -46,6 +49,7 @@ impl TournamentView {
     pub fn from_tournament(tournament_id: TournamentId, tournament: Tournament) -> Self {
         Self {
             metadata: TournamentMetadataView::from_metadata(tournament_id, tournament.metadata),
+            status: tournament.status,
         }
     }
 }
@@ -57,7 +61,7 @@ impl TournamentDetailView {
         tournament_players: Vec<TournamentPlayer>,
     ) -> Self {
         Self {
-            metadata: TournamentMetadataView::from_metadata(tournament_id, tournament.metadata),
+            tournament: TournamentView::from_tournament(tournament_id, tournament),
             player_scores: tournament_players
                 .into_iter()
                 .map(|tp| (tp.player_id, tp.score))

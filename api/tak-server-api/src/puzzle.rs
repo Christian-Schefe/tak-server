@@ -112,19 +112,19 @@ pub async fn get_random_puzzle(
         .select_random_puzzle()
         .await
         .map_err(|_| ServiceError::Internal("Failed to select random puzzle".to_string()))?;
-    Ok(Json(PuzzleSelection { id: puzzle_id.0 }))
+    Ok(Json(PuzzleSelection { id: puzzle_id.to_string() }))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PuzzleSelection {
-    pub id: i64,
+    pub id: String,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonPuzzle {
-    pub id: i64,
+    pub id: String,
     pub actions: Vec<String>,
     pub game_settings: GameSettingsInfoBase,
 }
@@ -132,7 +132,7 @@ pub struct JsonPuzzle {
 impl JsonPuzzle {
     pub fn from(puzzle: PuzzleView) -> Self {
         Self {
-            id: puzzle.id.0,
+            id: puzzle.id.to_string(),
             actions: puzzle.position.iter().map(|a| action_to_ptn(a)).collect(),
             game_settings: GameSettingsInfoBase::from_base_settings(&puzzle.game_settings),
         }

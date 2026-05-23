@@ -17,7 +17,7 @@ pub enum ClientMessage {
         token: String,
     },
     GameAction {
-        game_id: i64,
+        game_id: String,
         action: String,
     },
     ChatMessage {
@@ -25,7 +25,7 @@ pub enum ClientMessage {
         conversation: JsonChatConversation,
     },
     SpectateGame {
-        game_id: i64,
+        game_id: String,
         spectate: bool,
     },
 }
@@ -57,10 +57,10 @@ pub enum ServerMessage {
         seek: SeekInfo,
     },
     SeekRemoved {
-        seek_id: u64,
+        seek_id: String,
     },
     GameEvent {
-        game_id: i64,
+        game_id: String,
         #[serde(flatten)]
         event_type: ServerGameEventType,
         time_info: ForPlayer<u64>,
@@ -69,14 +69,14 @@ pub enum ServerMessage {
         game: JsonGameMetadata,
     },
     GameEnded {
-        game_id: i64,
+        game_id: String,
     },
     ChatMessage {
         message: JsonChatMessage,
         conversation: JsonChatConversation,
     },
     MatchEvent {
-        match_id: i64,
+        match_id: String,
         #[serde(flatten)]
         event_type: ServerMatchEventType,
     },

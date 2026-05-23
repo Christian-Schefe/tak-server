@@ -77,6 +77,7 @@ use crate::{
         },
         tournament::{
             get::{GetTournamentUseCase, GetTournamentUseCaseImpl},
+            host::{HostTournamentUseCase, HostTournamentUseCaseImpl},
             register::{
                 TournamentPlayerRegistrationUseCase, TournamentPlayerRegistrationUseCaseImpl,
             },
@@ -136,6 +137,7 @@ pub struct Application {
     pub get_tournaments_use_case: Arc<dyn GetTournamentUseCase + Send + Sync + 'static>,
     pub tournament_player_registration_use_case:
         Arc<dyn TournamentPlayerRegistrationUseCase + Send + Sync + 'static>,
+    pub host_tournament_use_case: Arc<dyn HostTournamentUseCase + Send + Sync + 'static>,
 }
 
 pub async fn build_application<
@@ -382,6 +384,12 @@ pub async fn build_application<
                 tournament_player_registration_repository.clone(),
             ),
         ),
+        host_tournament_use_case: Arc::new(HostTournamentUseCaseImpl::new(
+            tournament_repository.clone(),
+            match_repository.clone(),
+            tournament_player_registration_repository.clone(),
+            create_game_from_match_workflow.clone(),
+        )),
     };
 
     application

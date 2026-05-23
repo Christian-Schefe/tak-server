@@ -4,9 +4,14 @@ use axum::{
 };
 use tak_server_api_contract::game::GameSettingsInfo;
 use tak_server_app::{
-    domain::{TournamentId, tournament::TournamentFormat},
+    domain::{
+        TournamentId,
+        tournament::{TournamentFormat, TournamentStatus},
+    },
     services::player_resolver::ResolveError,
-    workflow::tournament::TournamentMetadataView,
+    workflow::tournament::{
+        TournamentDetailView, TournamentView, register::TournamentRegistrationError,
+    },
 };
 
 use crate::{AppState, ServiceError, auth::Auth};
@@ -14,6 +19,7 @@ use crate::{AppState, ServiceError, auth::Auth};
 pub fn register_routes(router: axum::Router<AppState>) -> axum::Router<AppState> {
     router
         .route("/tournaments", axum::routing::get(get_tournaments))
+        .route("/tournaments", axum::routing::post(create_tournament))
         .route(
             "/tournaments/{tournament_id}",
             axum::routing::get(get_tournament),
@@ -30,12 +36,12 @@ pub fn register_routes(router: axum::Router<AppState>) -> axum::Router<AppState>
 
 pub async fn get_tournaments(
     State(app): State<AppState>,
-) -> Result<Json<Vec<JsonTournamentMetadata>>, ServiceError> {
+) -> Result<Json<Vec<JsonTournament>>, ServiceError> {
     match app.app.get_tournaments_use_case.get_tournaments().await {
         Ok(tournaments) => Ok(Json(
             tournaments
                 .into_iter()
-                .map(|t| JsonTournamentMetadata::from(&t.metadata))
+                .map(|t| JsonTournament::from(&t))
                 .collect(),
         )),
         Err(_) => Err(ServiceError::Internal(
@@ -47,7 +53,7 @@ pub async fn get_tournaments(
 pub async fn get_tournament(
     State(app): State<AppState>,
     Path(tournament_id): Path<String>,
-) -> Result<Json<JsonTournamentMetadata>, ServiceError> {
+) -> Result<Json<JsonTournamentDetail>, ServiceError> {
     let tournament_id = TournamentId(
         tournament_id
             .parse()
@@ -67,7 +73,7 @@ pub async fn get_tournament(
             ));
         }
     };
-    Ok(Json(JsonTournamentMetadata::from(&tournament.metadata)))
+    Ok(Json(JsonTournamentDetail::from(&tournament)))
 }
 
 pub async fn register_player_to_tournament(
@@ -95,7 +101,17 @@ pub async fn register_player_to_tournament(
         .tournament_player_registration_use_case
         .register_player_in_tournament(tournament_id, player_id)
         .await
-        .map_err(|_| ServiceError::Internal("Failed to register player in tournament".to_string()))
+        .map_err(|e| match e {
+            TournamentRegistrationError::TournamentNotFound => {
+                ServiceError::NotFound("Tournament not found".to_string())
+            }
+            TournamentRegistrationError::TournamentNotUpcoming => ServiceError::BadRequest(
+                "Tournament is not upcoming, registration is closed".to_string(),
+            ),
+            TournamentRegistrationError::StorageError => {
+                ServiceError::Internal("Failed to register player in tournament".to_string())
+            }
+        })
 }
 
 pub async fn unregister_player_from_tournament(
@@ -123,21 +139,116 @@ pub async fn unregister_player_from_tournament(
         .tournament_player_registration_use_case
         .unregister_player_from_tournament(tournament_id, player_id)
         .await
-        .map_err(|_| {
-            ServiceError::Internal("Failed to unregister player from tournament".to_string())
+        .map_err(|e| match e {
+            TournamentRegistrationError::TournamentNotFound => {
+                ServiceError::NotFound("Tournament not found".to_string())
+            }
+            TournamentRegistrationError::TournamentNotUpcoming => ServiceError::BadRequest(
+                "Tournament is not upcoming, registration is closed".to_string(),
+            ),
+            TournamentRegistrationError::StorageError => {
+                ServiceError::Internal("Failed to unregister player from tournament".to_string())
+            }
         })
 }
 
-#[derive(serde::Serialize)]
+pub async fn create_tournament(
+    auth: Auth,
+    State(app): State<AppState>,
+    Json(payload): Json<CreateTournamentRequest>,
+) -> Result<(), ServiceError> {
+    //if !auth.account.is_admin() {
+    //    return Err(ServiceError::Unauthorized(
+    //        "Only admins can create tournaments".to_string(),
+    //    ));
+    //}
+    match app
+        .app
+        .host_tournament_use_case
+        .create_tournament(
+            payload.name,
+            match payload.tournament_format {
+                JsonTournamentType::Swiss { rounds } => TournamentFormat::Swiss {
+                    rounds: rounds as usize,
+                },
+                JsonTournamentType::RoundRobin => TournamentFormat::RoundRobin,
+            },
+            payload.match_settings.to_game_settings(),
+        )
+        .await
+    {
+        Ok(_) => {}
+        Err(_) => {
+            return Err(ServiceError::Internal(
+                "Failed to create tournament".to_string(),
+            ));
+        }
+    };
+    Ok(())
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonTournamentMetadata {
-    pub id: i64,
+pub struct CreateTournamentRequest {
+    pub name: String,
+    pub tournament_format: JsonTournamentType,
+    pub match_settings: GameSettingsInfo,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonTournamentDetail {
+    #[serde(flatten)]
+    pub metadata: JsonTournament,
+    pub player_scores: Vec<JsonTournamentPlayer>,
+}
+
+impl JsonTournamentDetail {
+    pub fn from(tournament: &TournamentDetailView) -> Self {
+        Self {
+            metadata: JsonTournament::from(&tournament.tournament),
+            player_scores: tournament
+                .player_scores
+                .iter()
+                .map(|(player_id, score)| JsonTournamentPlayer {
+                    id: player_id.to_string(),
+                    score: *score,
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonTournamentPlayer {
+    pub id: String,
+    pub score: u32,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonTournament {
+    pub id: String,
     pub name: String,
     pub match_settings: GameSettingsInfo,
     pub tournament_format: JsonTournamentType,
+    pub status: JsonTournamentStatus,
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum JsonTournamentStatus {
+    Upcoming,
+    Ongoing,
+    Completed,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
 #[serde(
     tag = "type",
     rename_all = "camelCase",
@@ -148,17 +259,24 @@ pub enum JsonTournamentType {
     RoundRobin,
 }
 
-impl JsonTournamentMetadata {
-    pub fn from(tournament: &TournamentMetadataView) -> Self {
+impl JsonTournament {
+    pub fn from(tournament: &TournamentView) -> Self {
         Self {
-            id: tournament.tournament_id.0,
-            name: tournament.name.to_string(),
-            match_settings: GameSettingsInfo::from_game_settings(&tournament.match_settings),
-            tournament_format: match tournament.tournament_format {
+            id: tournament.metadata.tournament_id.0.to_string(),
+            name: tournament.metadata.name.to_string(),
+            match_settings: GameSettingsInfo::from_game_settings(
+                &tournament.metadata.match_settings,
+            ),
+            tournament_format: match tournament.metadata.tournament_format {
                 TournamentFormat::Swiss { rounds } => JsonTournamentType::Swiss {
                     rounds: rounds as u32,
                 },
                 TournamentFormat::RoundRobin => JsonTournamentType::RoundRobin,
+            },
+            status: match tournament.status {
+                TournamentStatus::Upcoming => JsonTournamentStatus::Upcoming,
+                TournamentStatus::Ongoing => JsonTournamentStatus::Ongoing,
+                TournamentStatus::Completed => JsonTournamentStatus::Completed,
             },
         }
     }

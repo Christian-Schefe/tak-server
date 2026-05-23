@@ -4,7 +4,7 @@ use std::{
 };
 
 pub struct SeekService {
-    seeks: Arc<Mutex<HashSet<u64>>>,
+    seeks: Arc<Mutex<HashSet<String>>>,
 }
 
 impl SeekService {
@@ -14,11 +14,11 @@ impl SeekService {
         }
     }
 
-    pub fn begin_seek(&self, seek_id: u64) {
+    pub fn begin_seek(&self, seek_id: String) {
         self.seeks.lock().unwrap().insert(seek_id);
     }
 
-    pub fn end_seek(&self, seek_id: u64) -> bool {
+    pub fn end_seek(&self, seek_id: String) -> bool {
         self.seeks.lock().unwrap().remove(&seek_id)
     }
 }

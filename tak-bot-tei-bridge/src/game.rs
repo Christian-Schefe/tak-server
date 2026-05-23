@@ -7,7 +7,7 @@ use tak_core::{TakBaseGameSettings, TakOngoingBaseGame, TakPlayer};
 use tak_server_api_contract::game::JsonGameStatus;
 
 pub struct GameService {
-    games: Arc<Mutex<HashMap<i64, (TakPlayer, TakOngoingBaseGame)>>>,
+    games: Arc<Mutex<HashMap<String, (TakPlayer, TakOngoingBaseGame)>>>,
 }
 
 impl GameService {
@@ -19,7 +19,7 @@ impl GameService {
 
     pub fn load_game(
         &self,
-        game_id: i64,
+        game_id: String,
         player: TakPlayer,
         status: &JsonGameStatus,
     ) -> Option<(TakPlayer, TakOngoingBaseGame)> {
@@ -33,7 +33,7 @@ impl GameService {
         self.games
             .lock()
             .unwrap()
-            .insert(game_id, (player, game.clone()));
+            .insert(game_id.to_string(), (player, game.clone()));
         if game.current_player != player {
             return None;
         }
@@ -42,7 +42,7 @@ impl GameService {
 
     pub fn begin_game(
         &self,
-        game_id: i64,
+        game_id: String,
         player: TakPlayer,
         settings: TakBaseGameSettings,
     ) -> Option<(TakPlayer, TakOngoingBaseGame)> {
@@ -57,13 +57,13 @@ impl GameService {
         Some((player, game))
     }
 
-    pub fn end_game(&self, game_id: i64) {
+    pub fn end_game(&self, game_id: String) {
         self.games.lock().unwrap().remove(&game_id);
     }
 
     pub fn do_action(
         &self,
-        game_id: i64,
+        game_id: String,
         ptn_move: &str,
         ply_index: usize,
     ) -> Option<(TakPlayer, TakOngoingBaseGame)> {
@@ -85,7 +85,7 @@ impl GameService {
 
     pub fn undo_action(
         &self,
-        game_id: i64,
+        game_id: String,
         ply_index: usize,
     ) -> Option<(TakPlayer, TakOngoingBaseGame)> {
         let mut games = self.games.lock().unwrap();

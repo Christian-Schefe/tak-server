@@ -149,7 +149,7 @@ pub async fn accept_seek(
 
 pub fn from_seek_view(seek: SeekView) -> SeekInfo {
     SeekInfo {
-        id: seek.id.0 as u64,
+        id: seek.id.to_string(),
         creator_id: seek.creator_id.to_string(),
         opponent_id: seek.opponent_id.map(|id| id.to_string()),
         color: match seek.color {

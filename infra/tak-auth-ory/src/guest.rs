@@ -78,6 +78,13 @@ impl GuestRegistry {
         guest.account
     }
 
+    pub fn update_guest_last_access(&self, account_id: &AccountId) {
+        let mut registry = self.inner.write().unwrap();
+        if let Some(guest) = registry.guest_accounts.get_mut(account_id) {
+            guest.last_access = std::time::Instant::now();
+        }
+    }
+
     pub fn get_by_username(&self, username: &str) -> Option<Account> {
         let registry = self.inner.read().unwrap();
         if let Some(account_id) = registry.guest_usernames.get(username) {

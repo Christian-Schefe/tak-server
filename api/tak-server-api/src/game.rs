@@ -64,8 +64,8 @@ pub async fn get_game_status(
 
         let time_info = ongoing_game.game.get_time_info(Instant::now());
         return Ok(Json(JsonGameStatus {
-            id: ongoing_game.id.0,
-            match_id: ongoing_game.metadata.match_id.map(|id| id.0),
+            id: ongoing_game.id.to_string(),
+            match_id: ongoing_game.metadata.match_id.map(|id| id.to_string()),
             player_ids: ForPlayer {
                 white: ongoing_game.metadata.white_id.to_string(),
                 black: ongoing_game.metadata.black_id.to_string(),
@@ -100,8 +100,8 @@ pub async fn get_game_status(
 
             let time_info = ended_game.reconstruct_time_info();
             Ok(Json(JsonGameStatus {
-                id: game_id.0,
-                match_id: ended_game.metadata.match_id.map(|id| id.0),
+                id: game_id.to_string(),
+                match_id: ended_game.metadata.match_id.map(|id| id.to_string()),
                 player_ids: ForPlayer {
                     white: ended_game.metadata.white_id.to_string(),
                     black: ended_game.metadata.black_id.to_string(),
@@ -122,7 +122,7 @@ pub async fn get_game_status(
         }
         Ok(None) => Err(ServiceError::NotFound(format!(
             "Game with id {} not found",
-            game_id.0
+            game_id
         ))),
         Err(GameQueryError::RepositoryError) => Err(ServiceError::Internal(
             "Failed to retrieve game record".to_string(),
@@ -153,7 +153,7 @@ pub async fn resign_game(
         .await
         .map_err(|e| match e {
             PlayerActionError::GameNotFound => {
-                ServiceError::NotFound(format!("Game with id {} not found", game_id.0))
+                ServiceError::NotFound(format!("Game with id {} not found", game_id))
             }
             PlayerActionError::NotAPlayerInGame => {
                 ServiceError::Forbidden("You are not a player in this game".to_string())
@@ -196,7 +196,7 @@ pub async fn set_request(
         Err(e) => match e {
             PlayerActionError::GameNotFound => Err(ServiceError::NotFound(format!(
                 "Game with id {} not found",
-                game_id.0
+                game_id
             ))),
             PlayerActionError::NotAPlayerInGame => Err(ServiceError::Forbidden(
                 "You are not a player in this game".to_string(),
@@ -246,7 +246,7 @@ pub async fn accept_request(
         ActionResult::NotPossible(e) => match e {
             PlayerActionError::GameNotFound => Err(ServiceError::NotFound(format!(
                 "Game with id {} not found",
-                game_id.0
+                game_id
             ))),
             PlayerActionError::NotAPlayerInGame => Err(ServiceError::Forbidden(
                 "You are not a player in this game".to_string(),
@@ -260,7 +260,7 @@ pub async fn accept_request(
 
 pub fn from_metadata_view(game_id: GameId, view: &GameMetadataView) -> JsonGameMetadata {
     JsonGameMetadata {
-        id: game_id.0,
+        id: game_id.to_string(),
         date: view.date,
         player_ids: ForPlayer {
             white: view.white_id.to_string(),

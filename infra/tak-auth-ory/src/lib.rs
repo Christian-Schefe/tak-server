@@ -109,7 +109,12 @@ impl ApiAuthPort for AuthenticationService {
 
     fn validate_account_jwt(&self, token: &str) -> Option<AccountId> {
         if let Ok(claims) = jwt::Claims::from_token(token) {
-            AccountId::from_string(claims.sub)
+            if let Some(acc_id) = AccountId::from_string(claims.sub) {
+                self.guest_registry.update_guest_last_access(&acc_id);
+                Some(acc_id)
+            } else {
+                None
+            }
         } else {
             None
         }
