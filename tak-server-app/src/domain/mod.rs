@@ -21,6 +21,17 @@ impl std::fmt::Display for PlayerId {
         write!(f, "{}", self.0.as_hyphenated())
     }
 }
+impl TryFrom<String> for PlayerId {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&value) {
+            Ok(PlayerId(uuid))
+        } else {
+            Err(format!("Failed to parse PlayerId from string: {}", value))
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AccountId(pub uuid::Uuid);
@@ -29,11 +40,16 @@ impl AccountId {
     pub fn new() -> Self {
         AccountId(uuid::Uuid::new_v4())
     }
-    pub fn from_string(s: String) -> Option<Self> {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&s) {
-            Some(AccountId(uuid))
+}
+
+impl TryFrom<String> for AccountId {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&value) {
+            Ok(AccountId(uuid))
         } else {
-            None
+            Err(format!("Failed to parse AccountId from string: {}", value))
         }
     }
 }
@@ -50,6 +66,17 @@ pub struct MatchId(pub i64);
 impl std::fmt::Display for MatchId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl TryFrom<String> for MatchId {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value
+            .parse::<i64>()
+            .map(MatchId)
+            .map_err(|e| format!("Failed to parse MatchId from string: {}", e))
     }
 }
 

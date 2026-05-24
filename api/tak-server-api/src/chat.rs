@@ -61,10 +61,10 @@ pub async fn get_chat_messages(
                 ));
             }
             let account_ids = UnorderedPair(
-                AccountId::from_string(parts[1].to_string()).ok_or_else(|| {
+                AccountId::try_from(parts[1].to_string()).map_err(|_| {
                     ServiceError::BadRequest("Invalid account ID in conversation ID".to_string())
                 })?,
-                AccountId::from_string(parts[2].to_string()).ok_or_else(|| {
+                AccountId::try_from(parts[2].to_string()).map_err(|_| {
                     ServiceError::BadRequest("Invalid account ID in conversation ID".to_string())
                 })?,
             );

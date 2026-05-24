@@ -2,16 +2,13 @@ use std::sync::Arc;
 
 use tak_core::TakGameSettings;
 
-use crate::{
-    domain::{
-        TournamentId,
-        matches::{Match, MatchMode, MatchRepository, MatchStatus, MatchTournamentInfo},
-        tournament::{
-            Tournament, TournamentFormat, TournamentMetadata, TournamentPlayerRepository,
-            TournamentRepository, TournamentStatus,
-        },
+use crate::domain::{
+    RepoRetrieveError, TournamentId,
+    matches::{Match, MatchMode, MatchRepository, MatchStatus, MatchTournamentInfo},
+    tournament::{
+        Tournament, TournamentFormat, TournamentMetadata, TournamentPlayerRepository,
+        TournamentRepository, TournamentRound, TournamentRoundRepository, TournamentStatus,
     },
-    workflow::matchmaking::create_game::CreateGameFromMatchWorkflow,
 };
 
 #[async_trait::async_trait]
@@ -30,32 +27,32 @@ pub struct HostTournamentUseCaseImpl<
     TR: TournamentRepository,
     M: MatchRepository,
     TPR: TournamentPlayerRepository,
-    C: CreateGameFromMatchWorkflow,
+    TRR: TournamentRoundRepository,
 > {
     tournament_repository: Arc<TR>,
     match_repository: Arc<M>,
     tournament_player_repository: Arc<TPR>,
-    create_game_workflow: Arc<C>,
+    tournament_round_repository: Arc<TRR>,
 }
 
 impl<
     TR: TournamentRepository,
     M: MatchRepository,
     TPR: TournamentPlayerRepository,
-    C: CreateGameFromMatchWorkflow,
-> HostTournamentUseCaseImpl<TR, M, TPR, C>
+    TRR: TournamentRoundRepository,
+> HostTournamentUseCaseImpl<TR, M, TPR, TRR>
 {
     pub fn new(
         tournament_repository: Arc<TR>,
         match_repository: Arc<M>,
         tournament_player_repository: Arc<TPR>,
-        create_game_workflow: Arc<C>,
+        tournament_round_repository: Arc<TRR>,
     ) -> Self {
         Self {
             tournament_repository,
             match_repository,
             tournament_player_repository,
-            create_game_workflow,
+            tournament_round_repository,
         }
     }
 }
@@ -65,8 +62,8 @@ impl<
     TR: TournamentRepository + Send + Sync + 'static,
     M: MatchRepository + Send + Sync + 'static,
     TPR: TournamentPlayerRepository + Send + Sync + 'static,
-    C: CreateGameFromMatchWorkflow + Send + Sync + 'static,
-> HostTournamentUseCase for HostTournamentUseCaseImpl<TR, M, TPR, C>
+    TRR: TournamentRoundRepository + Send + Sync + 'static,
+> HostTournamentUseCase for HostTournamentUseCaseImpl<TR, M, TPR, TRR>
 {
     #[tracing::instrument(skip(self))]
     async fn create_tournament(
@@ -132,6 +129,14 @@ impl<
             );
             return Err(());
         }
+
+        if let Err(()) = self.start_next_round(tournament_id).await {
+            tracing::error!(
+                "Failed to start first round of tournament {} after beginning it",
+                tournament_id
+            );
+            return Err(());
+        }
         Ok(())
     }
 
@@ -152,20 +157,21 @@ impl<
                 return Err(());
             }
         };
-        if let TournamentStatus::Completed = tournament.status {
+        let TournamentStatus::Ongoing = tournament.status else {
             tracing::warn!(
-                "Attempted to start next round of tournament {} which is already completed",
+                "Attempted to start next round of tournament {} which is not in Ongoing status",
                 tournament_id
             );
             return Err(());
-        }
-        let all_tournament_matches = match self
-            .match_repository
-            .get_matches_of_tournament(tournament_id)
+        };
+        let round = match self
+            .tournament_round_repository
+            .get_current_tournament_round(tournament_id)
             .await
         {
-            Ok(matches) => matches,
-            Err(e) => {
+            Ok(res) => Some(res),
+            Err(RepoRetrieveError::NotFound) => None, // No rounds exist yet, so we'll start the first round
+            Err(RepoRetrieveError::StorageError(e)) => {
                 tracing::error!(
                     "Failed to retrieve matches for tournament {}: {:?}",
                     tournament_id,
@@ -174,15 +180,36 @@ impl<
                 return Err(());
             }
         };
-        if all_tournament_matches
-            .iter()
-            .any(|(_, match_entry)| !matches!(match_entry.status, MatchStatus::Completed))
-        {
-            tracing::warn!(
-                "Attempted to start next round of tournament {} but not all matches from the current round are finished",
-                tournament_id
-            );
-            return Err(());
+        if let Some((_, round)) = &round {
+            let round_match_futures = round
+                .matches
+                .iter()
+                .map(|match_id| self.match_repository.get_match(*match_id));
+            let round_matches = match futures::future::join_all(round_match_futures)
+                .await
+                .into_iter()
+                .collect::<Result<Vec<_>, _>>()
+            {
+                Ok(matches) => matches,
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to retrieve match details for tournament {}: {:?}",
+                        tournament_id,
+                        e
+                    );
+                    return Err(());
+                }
+            };
+            if round_matches
+                .iter()
+                .any(|match_entry| !matches!(match_entry.status, MatchStatus::Completed))
+            {
+                tracing::warn!(
+                    "Attempted to start next round of tournament {} but not all matches from the current round are finished",
+                    tournament_id
+                );
+                return Err(());
+            }
         }
         let all_players = self
             .tournament_player_repository
@@ -196,23 +223,12 @@ impl<
                 );
             })?;
 
-        let round_index = all_tournament_matches
-            .iter()
-            .map(|(_, match_entry)| {
-                match_entry
-                    .tournament_info
-                    .as_ref()
-                    .map(|info| info.round)
-                    .unwrap_or(0)
-            })
-            .max()
-            .unwrap_or(0)
-            + 1;
+        let next_round_index = round.map(|(index, _)| index + 1).unwrap_or(0);
 
         let pairings = tournament
             .metadata
             .tournament_format
-            .generate_pairings(&all_players, round_index as usize);
+            .generate_pairings(&all_players, next_round_index);
 
         let bye_futures = pairings.byes.into_iter().map(|player_id| async move {
             if let Err(e) = self
@@ -228,7 +244,7 @@ impl<
                 );
                 return Err(());
             }
-            Ok(())
+            Ok(player_id)
         });
 
         let pairing_futures = pairings.pairings.into_iter().enumerate().map(
@@ -242,7 +258,7 @@ impl<
                     true,
                     Some(MatchTournamentInfo {
                         tournament_id,
-                        round: round_index,
+                        round: next_round_index as u32,
                         round_match_number: round_match_number as u32,
                     }),
                 );
@@ -253,23 +269,19 @@ impl<
                             tracing::error!(
                                 "Failed to create match for tournament {} round {}: {:?}",
                                 tournament_id,
-                                round_index,
+                                next_round_index,
                                 e
                             );
                             return Err(());
                         }
                     };
-                    self.create_game_workflow
-                        .create_game_from_match(match_id)
-                        .await
-                        .map_err(move |e| {
-                            tracing::error!(
-                                "Failed to create game from match {}: {:?}",
-                                match_id,
-                                e
-                            );
-                        })?;
-                    Ok(())
+                    tracing::info!(
+                        "Created match {} for tournament {} round {}",
+                        match_id,
+                        tournament_id,
+                        next_round_index
+                    );
+                    Ok(match_id)
                 }
             },
         );
@@ -277,7 +289,40 @@ impl<
             futures::future::join_all(bye_futures),
             futures::future::join_all(pairing_futures)
         );
-        if bye_results.iter().any(|r| r.is_err()) || pairing_results.iter().any(|r| r.is_err()) {
+        let byes = match bye_results.into_iter().collect::<Result<Vec<_>, _>>() {
+            Ok(bye_player_ids) => bye_player_ids,
+            Err(_) => {
+                tracing::error!(
+                    "Failed to process byes for tournament {} round {}",
+                    tournament_id,
+                    next_round_index
+                );
+                return Err(());
+            }
+        };
+        let pairing_match_ids = match pairing_results.into_iter().collect::<Result<Vec<_>, _>>() {
+            Ok(match_ids) => match_ids,
+            Err(_) => {
+                tracing::error!(
+                    "Failed to create matches for tournament {} round {}",
+                    tournament_id,
+                    next_round_index
+                );
+                return Err(());
+            }
+        };
+        let round = TournamentRound::new(pairing_match_ids, byes);
+        if let Err(e) = self
+            .tournament_round_repository
+            .create_tournament_round(tournament_id, next_round_index, round)
+            .await
+        {
+            tracing::error!(
+                "Failed to create tournament round for tournament {} round {}: {:?}",
+                tournament_id,
+                next_round_index,
+                e
+            );
             return Err(());
         }
         Ok(())

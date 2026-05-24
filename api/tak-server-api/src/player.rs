@@ -116,7 +116,7 @@ pub async fn get_player_by_account_id(
     State(app): State<AppState>,
     Path(account_id): Path<String>,
 ) -> Result<Json<PlayerInfo>, ServiceError> {
-    let Some(account_id) = AccountId::from_string(account_id) else {
+    let Ok(account_id) = AccountId::try_from(account_id) else {
         return Err(ServiceError::BadRequest(
             "Invalid account ID format".to_string(),
         ));
@@ -139,7 +139,7 @@ pub async fn get_account_profile(
     State(app): State<AppState>,
     Path(account_id): Path<String>,
 ) -> Result<Json<PlayerProfileInfo>, ServiceError> {
-    let Some(account_id) = AccountId::from_string(account_id) else {
+    let Ok(account_id) = AccountId::try_from(account_id) else {
         return Err(ServiceError::BadRequest(
             "Invalid account ID format".to_string(),
         ));
@@ -190,7 +190,7 @@ pub async fn get_profile_picture(
     Path(account_id): Path<String>,
     Query(_version_query): Query<VersionQuery>,
 ) -> Result<Response, ServiceError> {
-    let Some(account_id) = AccountId::from_string(account_id) else {
+    let Ok(account_id) = AccountId::try_from(account_id) else {
         return Err(ServiceError::BadRequest(
             "Invalid account ID format".to_string(),
         ));

@@ -1,6 +1,6 @@
 use crate::{JsonGameSettings, create_db_pool};
 use sea_orm::ActiveValue::Set;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{DatabaseConnection, EntityTrait};
 use tak_core::TakPlayer;
 use tak_persistence_sea_orm_entities::matches;
 use tak_server_app::domain::matches::{
@@ -170,39 +170,6 @@ impl MatchRepository for MatchRepositoryImpl {
             Err(e) => Err(RepoRetrieveError::StorageError(format!(
                 "Failed to query match from database: {}",
                 e
-            ))),
-        }
-    }
-
-    async fn get_matches_of_tournament(
-        &self,
-        tournament_id: TournamentId,
-    ) -> Result<Vec<(MatchId, Match)>, RepoError> {
-        match matches::Entity::find()
-            .filter(matches::Column::TournamentId.eq(tournament_id.0))
-            .all(&self.db)
-            .await
-        {
-            Ok(models) => {
-                let mut matches = Vec::new();
-                for model in models {
-                    match Self::model_to_match(model) {
-                        Ok(match_data) => matches.push(match_data),
-                        Err(e) => {
-                            tracing::error!(
-                                "Failed to convert match model to domain object for tournament {}: {}",
-                                tournament_id,
-                                e
-                            );
-                            continue;
-                        }
-                    }
-                }
-                Ok(matches)
-            }
-            Err(e) => Err(RepoError::StorageError(format!(
-                "Failed to query matches of tournament {} from database: {}",
-                tournament_id, e
             ))),
         }
     }

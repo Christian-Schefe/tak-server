@@ -104,7 +104,7 @@ pub async fn get_bot_certificate(
             "Admin role required".to_string(),
         ));
     }
-    let Some(target_account_id) = AccountId::from_string(req.target_account_id.clone()) else {
+    let Ok(target_account_id) = AccountId::try_from(req.target_account_id.clone()) else {
         return Err(ServiceError::BadRequest(
             "Invalid target account ID format".to_string(),
         ));

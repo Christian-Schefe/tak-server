@@ -273,7 +273,7 @@ impl OryAuthenticationService {
             moderation_flags
         };
 
-        let account_id = AccountId::from_string(identity.id.clone())?;
+        let account_id = AccountId::try_from(identity.id.clone()).ok()?;
 
         let account = Account::new(
             account_id,

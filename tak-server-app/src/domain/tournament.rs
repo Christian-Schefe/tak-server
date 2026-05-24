@@ -1,6 +1,6 @@
 use tak_core::{TakGameSettings, TakPlayer};
 
-use crate::domain::{PlayerId, RepoError, RepoRetrieveError, TournamentId};
+use crate::domain::{MatchId, PlayerId, RepoError, RepoRetrieveError, TournamentId};
 
 #[derive(Clone, Debug)]
 pub struct TournamentMetadata {
@@ -13,6 +13,17 @@ pub struct TournamentMetadata {
 pub struct Tournament {
     pub metadata: TournamentMetadata,
     pub status: TournamentStatus,
+}
+
+pub struct TournamentRound {
+    pub matches: Vec<MatchId>,
+    pub byes: Vec<PlayerId>,
+}
+
+impl TournamentRound {
+    pub fn new(matches: Vec<MatchId>, byes: Vec<PlayerId>) -> Self {
+        Self { matches, byes }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -127,6 +138,24 @@ pub trait TournamentRepository {
         &self,
         tournament_id: TournamentId,
         status: TournamentStatus,
+    ) -> Result<(), RepoError>;
+}
+
+#[async_trait::async_trait]
+pub trait TournamentRoundRepository {
+    async fn get_current_tournament_round(
+        &self,
+        tournament_id: TournamentId,
+    ) -> Result<(usize, TournamentRound), RepoRetrieveError>;
+    async fn get_tournament_rounds(
+        &self,
+        tournament_id: TournamentId,
+    ) -> Result<Vec<TournamentRound>, RepoError>;
+    async fn create_tournament_round(
+        &self,
+        tournament_id: TournamentId,
+        round_index: usize,
+        tournament_round: TournamentRound,
     ) -> Result<(), RepoError>;
 }
 

@@ -6,12 +6,19 @@ use tak_email_lettre::LettreEmailAdapter;
 use tak_events_google_sheets::NoopEventRepository;
 use tak_persistence_profile_pictures::ProfilePictureRepositoryImpl;
 use tak_persistence_sea_orm::{
-    chat::ChatRepositoryImpl, games::GameRepositoryImpl, matches::MatchRepositoryImpl,
-    player_account_mapping::PlayerAccountMappingRepositoryImpl, profile::ProfileRepositoryImpl,
-    puzzle::PuzzleRepositoryImpl, rating_history::RatingHistoryRepositoryImpl,
-    ratings::RatingRepositoryImpl, stats::StatsRepositoryImpl,
-    tournament::TournamentRepositoryImpl,
-    tournament_player_registration::TournamentPlayerRegistrationRepositoryImpl,
+    chat::ChatRepositoryImpl,
+    games::GameRepositoryImpl,
+    matches::MatchRepositoryImpl,
+    player_account_mapping::PlayerAccountMappingRepositoryImpl,
+    profile::ProfileRepositoryImpl,
+    puzzle::PuzzleRepositoryImpl,
+    rating_history::RatingHistoryRepositoryImpl,
+    ratings::RatingRepositoryImpl,
+    stats::StatsRepositoryImpl,
+    tournament::{
+        TournamentPlayerRegistrationRepositoryImpl, TournamentRepositoryImpl,
+        TournamentRoundRepositoryImpl,
+    },
 };
 use tak_player_connection::{
     AccountOnlineStatusService, PlayerConnectionDriver, PlayerConnectionService,
@@ -96,6 +103,7 @@ async fn main() {
     let tournament_player_registration_repo =
         Arc::new(TournamentPlayerRegistrationRepositoryImpl::new().await);
     let match_repo = Arc::new(MatchRepositoryImpl::new().await);
+    let tournament_round_repo = Arc::new(TournamentRoundRepositoryImpl::new().await);
 
     let app = Arc::new(
         build_application(
@@ -117,6 +125,7 @@ async fn main() {
             tournament_repo,
             tournament_player_registration_repo,
             match_repo,
+            tournament_round_repo,
         )
         .await,
     );

@@ -261,12 +261,12 @@ async fn handle_authenticated_client_message(
                     account_id1,
                     account_id2,
                 } => {
-                    let Some(account_id1) = AccountId::from_string(account_id1) else {
+                    let Ok(account_id1) = AccountId::try_from(account_id1) else {
                         return Err(ServiceError::BadRequest(
                             "Invalid account ID format in private conversation".to_string(),
                         ));
                     };
-                    let Some(account_id2) = AccountId::from_string(account_id2) else {
+                    let Ok(account_id2) = AccountId::try_from(account_id2) else {
                         return Err(ServiceError::BadRequest(
                             "Invalid account ID format in private conversation".to_string(),
                         ));

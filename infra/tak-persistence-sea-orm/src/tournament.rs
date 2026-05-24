@@ -1,10 +1,13 @@
 use crate::{JsonGameSettings, create_db_pool};
-use sea_orm::{DatabaseConnection, EntityTrait};
-use tak_persistence_sea_orm_entities::tournament;
-use tak_server_app::domain::TournamentId;
-use tak_server_app::domain::tournament::{
-    Tournament, TournamentFormat, TournamentMetadata, TournamentRepository, TournamentStatus,
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, ExprTrait, QueryFilter, QueryOrder};
+use tak_persistence_sea_orm_entities::{
+    tournament, tournament_player_registration, tournament_round,
 };
+use tak_server_app::domain::tournament::{
+    Tournament, TournamentFormat, TournamentMetadata, TournamentPlayer, TournamentPlayerRepository,
+    TournamentRepository, TournamentRound, TournamentRoundRepository, TournamentStatus,
+};
+use tak_server_app::domain::{MatchId, PlayerId, TournamentId};
 use tak_server_app::domain::{RepoError, RepoRetrieveError};
 
 pub struct TournamentRepositoryImpl {
@@ -195,5 +198,270 @@ impl TournamentRepository for TournamentRepositoryImpl {
                 ))
             })?;
         Ok(())
+    }
+}
+
+pub struct TournamentPlayerRegistrationRepositoryImpl {
+    db: DatabaseConnection,
+}
+
+impl TournamentPlayerRegistrationRepositoryImpl {
+    pub async fn new() -> Self {
+        let db = create_db_pool().await;
+        Self { db }
+    }
+}
+
+#[async_trait::async_trait]
+impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
+    async fn get_tournament_players(
+        &self,
+        tournament_id: TournamentId,
+    ) -> Result<Vec<TournamentPlayer>, RepoError> {
+        let registration_models = tournament_player_registration::Entity::find()
+            .filter(tournament_player_registration::Column::TournamentId.eq(tournament_id.0))
+            .all(&self.db)
+            .await
+            .map_err(|e| {
+                RepoError::StorageError(format!(
+                    "Failed to retrieve player registrations for tournament {}: {}",
+                    tournament_id.0, e
+                ))
+            })?;
+
+        let player_ids = registration_models
+            .into_iter()
+            .map(|m| TournamentPlayer {
+                player_id: PlayerId(m.player_id),
+                score: m.score as u32,
+            })
+            .collect();
+
+        Ok(player_ids)
+    }
+
+    async fn create_tournament_player(
+        &self,
+        tournament_id: TournamentId,
+        player: TournamentPlayer,
+    ) -> Result<(), RepoError> {
+        let model = tournament_player_registration::ActiveModel {
+            tournament_id: sea_orm::Set(tournament_id.0),
+            player_id: sea_orm::Set(player.player_id.0),
+            score: sea_orm::Set(player.score as i32),
+        };
+        match tournament_player_registration::Entity::insert(model)
+            .on_conflict_do_nothing()
+            .exec(&self.db)
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(e) => Err(RepoError::StorageError(format!(
+                "Failed to register player to tournament: {}",
+                e
+            ))),
+        }
+    }
+    async fn remove_tournament_player(
+        &self,
+        tournament_id: TournamentId,
+        player_id: PlayerId,
+    ) -> Result<(), RepoError> {
+        let model = tournament_player_registration::ActiveModel {
+            tournament_id: sea_orm::Set(tournament_id.0),
+            player_id: sea_orm::Set(player_id.0),
+            ..Default::default()
+        };
+        match tournament_player_registration::Entity::delete(model)
+            .exec(&self.db)
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(e) => Err(RepoError::StorageError(format!(
+                "Failed to unregister player from tournament: {}",
+                e
+            ))),
+        }
+    }
+    async fn increase_player_score(
+        &self,
+        tournament_id: TournamentId,
+        player_id: PlayerId,
+        score_increase: u32,
+    ) -> Result<(), RepoError> {
+        tournament_player_registration::Entity::update_many()
+            .col_expr(
+                tournament_player_registration::Column::Score,
+                sea_orm::sea_query::Expr::col(tournament_player_registration::Column::Score)
+                    .add(score_increase as i32),
+            )
+            .filter(tournament_player_registration::Column::TournamentId.eq(tournament_id.0))
+            .filter(tournament_player_registration::Column::PlayerId.eq(player_id.0))
+            .exec(&self.db)
+            .await
+            .map_err(|e| {
+                RepoError::StorageError(format!(
+                    "Failed to increase player score in tournament: {}",
+                    e
+                ))
+            })?;
+        Ok(())
+    }
+}
+
+pub struct TournamentRoundRepositoryImpl {
+    db: DatabaseConnection,
+}
+
+impl TournamentRoundRepositoryImpl {
+    pub async fn new() -> Self {
+        let db = create_db_pool().await;
+        Self { db }
+    }
+
+    fn round_to_model(
+        tournament_id: TournamentId,
+        round_index: usize,
+        tournament_round: &TournamentRound,
+    ) -> Result<tournament_round::ActiveModel, String> {
+        let json_round = JsonTournamentRound {
+            byes: tournament_round
+                .byes
+                .iter()
+                .map(|p| p.to_string())
+                .collect(),
+            matches: tournament_round
+                .matches
+                .iter()
+                .map(|m| m.to_string())
+                .collect(),
+        };
+        Ok(tournament_round::ActiveModel {
+            tournament_id: sea_orm::Set(tournament_id.0),
+            round_index: sea_orm::Set(round_index as i64),
+            data: sea_orm::Set(
+                serde_json::to_value(&json_round)
+                    .map_err(|e| format!("Failed to serialize tournament round: {}", e))?,
+            ),
+        })
+    }
+
+    fn round_from_model(model: tournament_round::Model) -> Result<TournamentRound, String> {
+        let json_round =
+            serde_json::from_value::<JsonTournamentRound>(model.data).map_err(|e| {
+                format!(
+                    "Failed to deserialize tournament round data for tournament {} round {}: {}",
+                    model.tournament_id, model.round_index, e
+                )
+            })?;
+        Ok(TournamentRound {
+            byes: json_round
+                .byes
+                .into_iter()
+                .map(|s| {
+                    PlayerId::try_from(s).map_err(|e| {
+                        format!(
+                            "Failed to parse player ID from bye in tournament {} round {}: {}",
+                            model.tournament_id, model.round_index, e
+                        )
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+            matches: json_round
+                .matches
+                .into_iter()
+                .map(|s| {
+                    MatchId::try_from(s).map_err(|e| {
+                        format!(
+                            "Failed to parse match ID from tournament {} round {}: {}",
+                            model.tournament_id, model.round_index, e
+                        )
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+        })
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JsonTournamentRound {
+    byes: Vec<String>,
+    matches: Vec<String>,
+}
+
+#[async_trait::async_trait]
+impl TournamentRoundRepository for TournamentRoundRepositoryImpl {
+    async fn get_current_tournament_round(
+        &self,
+        tournament_id: TournamentId,
+    ) -> Result<(usize, TournamentRound), RepoRetrieveError> {
+        let round_model = tournament_round::Entity::find()
+            .filter(tournament_round::Column::TournamentId.eq(tournament_id.0))
+            .order_by_desc(tournament_round::Column::RoundIndex)
+            .one(&self.db)
+            .await
+            .map_err(|e| {
+                RepoRetrieveError::StorageError(format!(
+                    "Failed to retrieve current tournament round for tournament {}: {}",
+                    tournament_id.0, e
+                ))
+            })?
+            .ok_or(RepoRetrieveError::NotFound)?;
+        let round_index = round_model.round_index as usize;
+        let tournament_round = Self::round_from_model(round_model).map_err(|e| {
+            RepoRetrieveError::StorageError(format!(
+                "Failed to convert tournament round model to domain object: {}",
+                e
+            ))
+        })?;
+        Ok((round_index, tournament_round))
+    }
+    async fn get_tournament_rounds(
+        &self,
+        tournament_id: TournamentId,
+    ) -> Result<Vec<TournamentRound>, RepoError> {
+        let round_models = tournament_round::Entity::find()
+            .filter(tournament_round::Column::TournamentId.eq(tournament_id.0))
+            .all(&self.db)
+            .await
+            .map_err(|e| {
+                RepoError::StorageError(format!(
+                    "Failed to retrieve tournament rounds for tournament {}: {}",
+                    tournament_id.0, e
+                ))
+            })?;
+        round_models
+            .into_iter()
+            .map(|model| {
+                Self::round_from_model(model).map_err(|e| {
+                    RepoError::StorageError(format!(
+                        "Failed to convert tournament round model to domain object: {}",
+                        e
+                    ))
+                })
+            })
+            .collect()
+    }
+    async fn create_tournament_round(
+        &self,
+        tournament_id: TournamentId,
+        round_index: usize,
+        tournament_round: TournamentRound,
+    ) -> Result<(), RepoError> {
+        let model =
+            Self::round_to_model(tournament_id, round_index, &tournament_round).map_err(|e| {
+                RepoError::StorageError(format!(
+                    "Failed to convert tournament round to model: {}",
+                    e
+                ))
+            })?;
+        match tournament_round::Entity::insert(model).exec(&self.db).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(RepoError::StorageError(format!(
+                "Failed to create tournament round: {}",
+                e
+            ))),
+        }
     }
 }

@@ -3,9 +3,10 @@ use std::collections::HashMap;
 use tak_core::TakGameSettings;
 
 use crate::domain::{
-    PlayerId, TournamentId,
+    MatchId, PlayerId, TournamentId,
     tournament::{
-        Tournament, TournamentFormat, TournamentMetadata, TournamentPlayer, TournamentStatus,
+        Tournament, TournamentFormat, TournamentMetadata, TournamentPlayer, TournamentRound,
+        TournamentStatus,
     },
 };
 
@@ -32,6 +33,13 @@ pub struct TournamentView {
 pub struct TournamentDetailView {
     pub tournament: TournamentView,
     pub player_scores: HashMap<PlayerId, u32>,
+    pub rounds: Vec<TournamentRoundView>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TournamentRoundView {
+    pub matches: Vec<MatchId>,
+    pub byes: Vec<PlayerId>,
 }
 
 impl TournamentMetadataView {
@@ -59,6 +67,7 @@ impl TournamentDetailView {
         tournament_id: TournamentId,
         tournament: Tournament,
         tournament_players: Vec<TournamentPlayer>,
+        rounds: Vec<TournamentRound>,
     ) -> Self {
         Self {
             tournament: TournamentView::from_tournament(tournament_id, tournament),
@@ -66,6 +75,19 @@ impl TournamentDetailView {
                 .into_iter()
                 .map(|tp| (tp.player_id, tp.score))
                 .collect(),
+            rounds: rounds
+                .into_iter()
+                .map(TournamentRoundView::from_tournament_round)
+                .collect(),
+        }
+    }
+}
+
+impl TournamentRoundView {
+    pub fn from_tournament_round(tournament_round: TournamentRound) -> Self {
+        Self {
+            matches: tournament_round.matches,
+            byes: tournament_round.byes,
         }
     }
 }

@@ -16,7 +16,7 @@ use crate::{
         seek::SeekServiceImpl,
         spectator::SpectatorServiceImpl,
         stats::{RatingHistoryRepository, StatsRepository},
-        tournament::{TournamentPlayerRepository, TournamentRepository},
+        tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
     },
     ports::{
         authentication::AuthenticationPort,
@@ -62,7 +62,7 @@ use crate::{
             cancel::{CancelSeekUseCase, CancelSeekUseCaseImpl},
             create::{CreateSeekUseCase, CreateSeekUseCaseImpl},
             create_game::CreateGameFromMatchWorkflowImpl,
-            get::{GetSeekUseCase, GetSeekUseCaseImpl},
+            get::{GetMatchUseCase, GetMatchUseCaseImpl, GetSeekUseCase, GetSeekUseCaseImpl},
             list::{ListSeeksUseCase, ListSeeksUseCaseImpl},
             rematch::{RematchUseCase, RematchUseCaseImpl},
         },
@@ -138,6 +138,8 @@ pub struct Application {
     pub tournament_player_registration_use_case:
         Arc<dyn TournamentPlayerRegistrationUseCase + Send + Sync + 'static>,
     pub host_tournament_use_case: Arc<dyn HostTournamentUseCase + Send + Sync + 'static>,
+
+    pub match_get_use_case: Box<dyn GetMatchUseCase + Send + Sync + 'static>,
 }
 
 pub async fn build_application<
@@ -159,6 +161,7 @@ pub async fn build_application<
     TR: TournamentRepository + Send + Sync + 'static,
     TPR: TournamentPlayerRepository + Send + Sync + 'static,
     MR: MatchRepository + Send + Sync + 'static,
+    TRR: TournamentRoundRepository + Send + Sync + 'static,
 >(
     game_repository: Arc<G>,
     player_repository: Arc<PR>,
@@ -178,6 +181,7 @@ pub async fn build_application<
     tournament_repository: Arc<TR>,
     tournament_player_registration_repository: Arc<TPR>,
     match_repository: Arc<MR>,
+    tournament_round_repository: Arc<TRR>,
 ) -> Application {
     let seek_service = Arc::new(SeekServiceImpl::new());
     let game_service = Arc::new(GameServiceImpl::new());
@@ -377,6 +381,7 @@ pub async fn build_application<
         get_tournaments_use_case: Arc::new(GetTournamentUseCaseImpl::new(
             tournament_repository.clone(),
             tournament_player_registration_repository.clone(),
+            tournament_round_repository.clone(),
         )),
         tournament_player_registration_use_case: Arc::new(
             TournamentPlayerRegistrationUseCaseImpl::new(
@@ -388,8 +393,10 @@ pub async fn build_application<
             tournament_repository.clone(),
             match_repository.clone(),
             tournament_player_registration_repository.clone(),
-            create_game_from_match_workflow.clone(),
+            tournament_round_repository.clone(),
         )),
+
+        match_get_use_case: Box::new(GetMatchUseCaseImpl::new(match_repository.clone())),
     };
 
     application
