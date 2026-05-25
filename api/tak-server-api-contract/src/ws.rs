@@ -89,8 +89,7 @@ pub enum ServerMessage {
     rename_all_fields = "camelCase"
 )]
 pub enum ServerMatchEventType {
-    MatchRematchRequestAdded { from_player_id: String },
-    MatchRematchRequestRemoved {},
+    ReadinessChanged { player_id: Option<String> },
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]

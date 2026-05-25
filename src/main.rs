@@ -25,7 +25,6 @@ use tak_player_connection::{
 };
 use tak_server_api::WsService;
 use tak_server_app::build_application;
-use tak_server_legacy_api::{acl::LegacyAPIAntiCorruptionLayer, client::TransportServiceImpl};
 
 use crate::{compose::ComposedListenerNotificationService, logs::init_logger};
 
@@ -74,8 +73,6 @@ fn try_load_env() {
 async fn main() {
     try_load_env();
     let _guard = init_logger();
-
-    let legacy_transport_service = Arc::new(TransportServiceImpl::new());
     let ws_service = Arc::new(WsService::new());
 
     let game_repo = Arc::new(GameRepositoryImpl::new().await);
@@ -85,10 +82,8 @@ async fn main() {
     let event_repo = Arc::new(NoopEventRepository);
     let stats_repo = Arc::new(StatsRepositoryImpl::new().await);
     let email_adapter = Arc::new(LettreEmailAdapter::new());
-    let player_connection_adapter = Arc::new(PlayerConnectionService::new(vec![
-        legacy_transport_service.clone(),
-        ws_service.clone(),
-    ]));
+    let player_connection_adapter =
+        Arc::new(PlayerConnectionService::new(vec![ws_service.clone()]));
     let listener_notification_adapter = Arc::new(ComposedListenerNotificationService::new(vec![
         player_connection_adapter.clone(), //for now only one adapter
     ]));
@@ -135,59 +130,14 @@ async fn main() {
         player_connection_adapter.clone(),
     ));
 
-    let acl = Arc::new(LegacyAPIAntiCorruptionLayer::new(
-        app.clone(),
-        authentication_adapter.clone(),
-        email_adapter.clone(),
-    ));
-
     tracing::info!("Starting application");
 
-    let app_clone = app.clone();
-    let auth_clone = authentication_adapter.clone();
-    let acl_clone = acl.clone();
-    let legacy_http_app = tokio::spawn(async move {
-        tak_server_legacy_api::http::run(app_clone, auth_clone, acl_clone, shutdown_signal()).await;
-    });
-
-    let app_clone = app.clone();
-    let auth_clone = authentication_adapter.clone();
-    let connection_driver_clone = connection_driver.clone();
-    let http_app = tokio::spawn(async move {
-        tak_server_api::serve(
-            app_clone,
-            auth_clone,
-            ws_service,
-            connection_driver_clone,
-            shutdown_signal(),
-        )
-        .await;
-    });
-
-    let transport_app = tokio::spawn(async move {
-        TransportServiceImpl::run(
-            legacy_transport_service,
-            app,
-            authentication_adapter.clone(),
-            acl,
-            connection_driver,
-            listener_notification_adapter.clone(),
-            shutdown_signal(),
-        )
-        .await;
-    });
-
-    let (r1, r2, r3) = tokio::join!(legacy_http_app, http_app, transport_app);
-
-    if let Err(e) = r1 {
-        tracing::error!("HTTP Legacy API task failed: {}", e);
-    }
-
-    if let Err(e) = r2 {
-        tracing::error!("HTTP API task failed: {}", e);
-    }
-
-    if let Err(e) = r3 {
-        tracing::error!("Transport service task failed: {}", e);
-    }
+    tak_server_api::serve(
+        app,
+        authentication_adapter,
+        ws_service,
+        connection_driver,
+        shutdown_signal(),
+    )
+    .await;
 }

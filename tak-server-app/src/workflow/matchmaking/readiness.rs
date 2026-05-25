@@ -3,64 +3,64 @@ use std::sync::Arc;
 use crate::{
     domain::{
         MatchId, PlayerId, RepoRetrieveError,
-        matches::{Match, MatchRepository, MatchStatus, RematchService},
+        matches::{Match, MatchReadinessService, MatchRepository, MatchStatus},
     },
     ports::notification::{ListenerMatchEventType, ListenerMessage},
     workflow::{
-        matchmaking::{RematchStatus, create_game::CreateGameFromMatchWorkflow},
+        matchmaking::{MatchReadinessStatus, create_game::CreateGameFromMatchWorkflow},
         player::notify_player::NotifyPlayerWorkflow,
     },
 };
 
 #[async_trait::async_trait]
-pub trait RematchUseCase {
-    fn get_rematch_status(&self, match_id: MatchId) -> RematchStatus;
-    async fn request_or_accept_rematch(
+pub trait MatchReadinessUseCase {
+    fn get_readiness_status(&self, match_id: MatchId) -> MatchReadinessStatus;
+    async fn set_player_ready(
         &self,
         match_id: MatchId,
         player: PlayerId,
-    ) -> Result<(), RematchError>;
-    async fn retract_rematch_request(
+    ) -> Result<(), MatchReadinessError>;
+    async fn set_player_not_ready(
         &self,
         match_id: MatchId,
         player: PlayerId,
-    ) -> Result<(), RematchError>;
+    ) -> Result<(), MatchReadinessError>;
 }
 
-pub struct RematchUseCaseImpl<
+pub struct MatchReadinessUseCaseImpl<
     M: MatchRepository,
     C: CreateGameFromMatchWorkflow,
-    RS: RematchService,
+    RS: MatchReadinessService,
     L: NotifyPlayerWorkflow,
 > {
     match_repo: Arc<M>,
     create_game_workflow: Arc<C>,
-    rematch_service: Arc<RS>,
+    match_readiness_service: Arc<RS>,
     notification_port: Arc<L>,
 }
 
 impl<
     M: MatchRepository,
     C: CreateGameFromMatchWorkflow,
-    RS: RematchService,
+    RS: MatchReadinessService,
     L: NotifyPlayerWorkflow,
-> RematchUseCaseImpl<M, C, RS, L>
+> MatchReadinessUseCaseImpl<M, C, RS, L>
 {
     pub fn new(
         match_repo: Arc<M>,
         create_game_workflow: Arc<C>,
-        rematch_service: Arc<RS>,
+        match_readiness_service: Arc<RS>,
         notification_port: Arc<L>,
     ) -> Self {
         Self {
             match_repo,
             create_game_workflow,
-            rematch_service,
+            match_readiness_service,
             notification_port,
         }
     }
 
-    async fn get_match(&self, match_id: MatchId) -> Result<Match, RematchError> {
+    async fn get_match(&self, match_id: MatchId) -> Result<Match, MatchReadinessError> {
         let match_entry = self
             .match_repo
             .get_match(match_id)
@@ -68,7 +68,7 @@ impl<
             .map_err(|e| match e {
                 RepoRetrieveError::NotFound => {
                     tracing::error!("Match not found for match ID {}: {}", match_id, e);
-                    RematchError::MatchNotFound
+                    MatchReadinessError::MatchNotFound
                 }
                 RepoRetrieveError::StorageError(err) => {
                     tracing::error!(
@@ -76,7 +76,7 @@ impl<
                         match_id,
                         err
                     );
-                    RematchError::Internal
+                    MatchReadinessError::Internal
                 }
             })?;
         Ok(match_entry)
@@ -84,7 +84,7 @@ impl<
 }
 
 #[derive(Debug)]
-pub enum RematchError {
+pub enum MatchReadinessError {
     MatchNotFound,
     Internal,
 }
@@ -93,22 +93,22 @@ pub enum RematchError {
 impl<
     M: MatchRepository + Send + Sync + 'static,
     C: CreateGameFromMatchWorkflow + Send + Sync + 'static,
-    RS: RematchService + Send + Sync + 'static,
+    RS: MatchReadinessService + Send + Sync + 'static,
     L: NotifyPlayerWorkflow + Send + Sync + 'static,
-> RematchUseCase for RematchUseCaseImpl<M, C, RS, L>
+> MatchReadinessUseCase for MatchReadinessUseCaseImpl<M, C, RS, L>
 {
-    fn get_rematch_status(&self, match_id: MatchId) -> RematchStatus {
-        RematchStatus {
-            rematch_requested_by: self.rematch_service.get_rematch_status(match_id),
+    fn get_readiness_status(&self, match_id: MatchId) -> MatchReadinessStatus {
+        MatchReadinessStatus {
+            player_ready: self.match_readiness_service.get_readiness_status(match_id),
         }
     }
 
     #[tracing::instrument(skip(self), ret, err(Debug))]
-    async fn request_or_accept_rematch(
+    async fn set_player_ready(
         &self,
         match_id: MatchId,
         player: PlayerId,
-    ) -> Result<(), RematchError> {
+    ) -> Result<(), MatchReadinessError> {
         let match_entry = self.get_match(match_id).await?;
         if match_entry.player1 != player && match_entry.player2 != player {
             tracing::error!(
@@ -116,19 +116,19 @@ impl<
                 player,
                 match_id
             );
-            return Err(RematchError::MatchNotFound);
+            return Err(MatchReadinessError::MatchNotFound);
         }
         let MatchStatus::Waiting = match_entry.status else {
             tracing::error!(
-                "Match {} is not in a state that allows rematches. Current status: {:?}",
+                "Match {} is not in a state that allows readiness. Current status: {:?}",
                 match_id,
                 match_entry.status
             );
-            return Err(RematchError::MatchNotFound);
+            return Err(MatchReadinessError::MatchNotFound);
         };
         let should_create_game = self
-            .rematch_service
-            .request_or_accept_rematch(match_id, player);
+            .match_readiness_service
+            .set_player_ready(match_id, player);
         if should_create_game {
             if let Err(e) = self
                 .create_game_workflow
@@ -136,13 +136,13 @@ impl<
                 .await
             {
                 tracing::error!("Failed to create game from match {}: {:?}", match_id, e);
-                return Err(RematchError::Internal);
+                return Err(MatchReadinessError::Internal);
             }
         } else {
             let msg = ListenerMessage::MatchEvent {
                 match_id,
-                event_type: ListenerMatchEventType::MatchRematchRequestAdded {
-                    requesting_player_id: player,
+                event_type: ListenerMatchEventType::MatchReadinessChanged {
+                    player_id: Some(player),
                 },
             };
 
@@ -154,11 +154,11 @@ impl<
     }
 
     #[tracing::instrument(skip(self), ret, err(Debug))]
-    async fn retract_rematch_request(
+    async fn set_player_not_ready(
         &self,
         match_id: MatchId,
         player: PlayerId,
-    ) -> Result<(), RematchError> {
+    ) -> Result<(), MatchReadinessError> {
         let match_entry = self.get_match(match_id).await?;
         if match_entry.player1 != player && match_entry.player2 != player {
             tracing::error!(
@@ -166,23 +166,23 @@ impl<
                 player,
                 match_id
             );
-            return Err(RematchError::MatchNotFound);
+            return Err(MatchReadinessError::MatchNotFound);
         }
         let MatchStatus::Waiting = match_entry.status else {
             tracing::error!(
-                "Match {} is not in a state that allows retracting rematch requests. Current status: {:?}",
+                "Match {} is not in a state that allows retracting readiness. Current status: {:?}",
                 match_id,
                 match_entry.status
             );
-            return Err(RematchError::Internal);
+            return Err(MatchReadinessError::Internal);
         };
         let did_remove = self
-            .rematch_service
-            .retract_rematch_request(match_id, player);
+            .match_readiness_service
+            .set_player_not_ready(match_id, player);
         if did_remove {
             let msg = ListenerMessage::MatchEvent {
                 match_id,
-                event_type: ListenerMatchEventType::MatchRematchRequestRemoved,
+                event_type: ListenerMatchEventType::MatchReadinessChanged { player_id: None },
             };
             self.notification_port
                 .notify_players(&[match_entry.player1, match_entry.player2], &msg)

@@ -10,7 +10,7 @@ pub mod create;
 pub mod create_game;
 pub mod get;
 pub mod list;
-pub mod rematch;
+pub mod readiness;
 
 #[derive(Clone, Debug)]
 pub struct SeekView {
@@ -37,6 +37,6 @@ impl<T: Borrow<Seek>> From<T> for SeekView {
 }
 
 #[derive(Clone, Debug)]
-pub struct RematchStatus {
-    pub rematch_requested_by: Option<PlayerId>,
+pub struct MatchReadinessStatus {
+    pub player_ready: Option<PlayerId>,
 }

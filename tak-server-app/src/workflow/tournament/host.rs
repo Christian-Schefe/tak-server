@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tak_core::TakGameSettings;
 
 use crate::domain::{
-    RepoRetrieveError, TournamentId,
+    RepoError, TournamentId,
     matches::{Match, MatchMode, MatchRepository, MatchStatus, MatchTournamentInfo},
     tournament::{
         Tournament, TournamentFormat, TournamentMetadata, TournamentPlayerRepository,
@@ -164,14 +164,13 @@ impl<
             );
             return Err(());
         };
-        let round = match self
+        let rounds = match self
             .tournament_round_repository
-            .get_current_tournament_round(tournament_id)
+            .get_tournament_rounds(tournament_id)
             .await
         {
-            Ok(res) => Some(res),
-            Err(RepoRetrieveError::NotFound) => None, // No rounds exist yet, so we'll start the first round
-            Err(RepoRetrieveError::StorageError(e)) => {
+            Ok(res) => res,
+            Err(RepoError::StorageError(e)) => {
                 tracing::error!(
                     "Failed to retrieve matches for tournament {}: {:?}",
                     tournament_id,
@@ -180,36 +179,26 @@ impl<
                 return Err(());
             }
         };
-        if let Some((_, round)) = &round {
-            let round_match_futures = round
-                .matches
-                .iter()
-                .map(|match_id| self.match_repository.get_match(*match_id));
-            let round_matches = match futures::future::join_all(round_match_futures)
-                .await
-                .into_iter()
-                .collect::<Result<Vec<_>, _>>()
-            {
-                Ok(matches) => matches,
-                Err(e) => {
-                    tracing::error!(
-                        "Failed to retrieve match details for tournament {}: {:?}",
-                        tournament_id,
-                        e
-                    );
-                    return Err(());
-                }
-            };
-            if round_matches
-                .iter()
-                .any(|match_entry| !matches!(match_entry.status, MatchStatus::Completed))
-            {
-                tracing::warn!(
-                    "Attempted to start next round of tournament {} but not all matches from the current round are finished",
-                    tournament_id
+        let tournament_matches = self
+            .match_repository
+            .get_matches_of_tournament(tournament_id)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    "Failed to retrieve matches for tournament {}: {:?}",
+                    tournament_id,
+                    e
                 );
-                return Err(());
-            }
+            })?;
+        if tournament_matches
+            .iter()
+            .any(|(_, match_entry)| !matches!(match_entry.status, MatchStatus::Completed))
+        {
+            tracing::warn!(
+                "Attempted to start next round of tournament {} but not all matches from the current round are finished",
+                tournament_id
+            );
+            return Err(());
         }
         let all_players = self
             .tournament_player_repository
@@ -223,12 +212,43 @@ impl<
                 );
             })?;
 
-        let next_round_index = round.map(|(index, _)| index + 1).unwrap_or(0);
+        let next_round_index = rounds.len();
 
-        let pairings = tournament
+        if tournament
             .metadata
             .tournament_format
-            .generate_pairings(&all_players, next_round_index);
+            .is_finished(&all_players, next_round_index)
+        {
+            tracing::info!(
+                "Tournament {} has finished after round {}",
+                tournament_id,
+                next_round_index - 1
+            );
+            if let Err(e) = self
+                .tournament_repository
+                .set_tournament_status(tournament_id, TournamentStatus::Completed)
+                .await
+            {
+                tracing::error!(
+                    "Failed to set tournament {} status to Completed: {:?}",
+                    tournament_id,
+                    e
+                );
+                return Err(());
+            }
+            return Ok(());
+        }
+
+        let previous_matches = tournament_matches
+            .into_iter()
+            .map(|(_, match_entry)| match_entry)
+            .collect::<Vec<_>>();
+
+        let pairings = tournament.metadata.tournament_format.generate_pairings(
+            &all_players,
+            &previous_matches,
+            next_round_index,
+        );
 
         let bye_futures = pairings.byes.into_iter().map(|player_id| async move {
             if let Err(e) = self

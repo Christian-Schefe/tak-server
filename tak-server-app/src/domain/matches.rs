@@ -10,6 +10,10 @@ pub trait MatchRepository {
     async fn create_match(&self, new_match: Match) -> Result<MatchId, RepoError>;
     async fn get_match(&self, match_id: MatchId) -> Result<Match, RepoRetrieveError>;
     async fn update_match(&self, match_id: MatchId, updated_match: Match) -> Result<(), RepoError>;
+    async fn get_matches_of_tournament(
+        &self,
+        tournament_id: TournamentId,
+    ) -> Result<Vec<(MatchId, Match)>, RepoError>;
 }
 
 #[derive(Clone, Debug)]
@@ -56,7 +60,7 @@ impl Match {
             player2,
             initial_color,
             game_settings,
-            status: MatchStatus::Initial,
+            status: MatchStatus::Waiting,
             match_mode,
             games_played: 0,
             half_score_player1: 0,
@@ -112,7 +116,7 @@ impl Match {
 
     pub fn try_begin_game(&mut self) -> Result<TakPlayer, String> {
         match self.status {
-            MatchStatus::Initial | MatchStatus::Waiting => {
+            MatchStatus::Waiting => {
                 self.status = MatchStatus::InProgress;
                 let player1_color = if self.games_played % 2 == 0 {
                     self.initial_color
@@ -129,60 +133,59 @@ impl Match {
 
 #[derive(Clone, Debug)]
 pub enum MatchStatus {
-    Initial,
     Waiting,
     InProgress,
     Completed,
 }
 
-pub trait RematchService {
-    fn get_rematch_status(&self, match_id: MatchId) -> Option<PlayerId>;
-    fn request_or_accept_rematch(&self, match_id: MatchId, player: PlayerId) -> bool;
-    fn retract_rematch_request(&self, match_id: MatchId, player: PlayerId) -> bool;
+pub trait MatchReadinessService {
+    fn get_readiness_status(&self, match_id: MatchId) -> Option<PlayerId>;
+    fn set_player_ready(&self, match_id: MatchId, player: PlayerId) -> bool;
+    fn set_player_not_ready(&self, match_id: MatchId, player: PlayerId) -> bool;
 }
 
-pub struct RematchServiceImpl {
-    rematch_requests: Arc<DashMap<MatchId, PlayerId>>,
+pub struct MatchReadinessServiceImpl {
+    match_readiness: Arc<DashMap<MatchId, PlayerId>>,
 }
 
-impl RematchServiceImpl {
+impl MatchReadinessServiceImpl {
     pub fn new() -> Self {
         Self {
-            rematch_requests: Arc::new(DashMap::new()),
+            match_readiness: Arc::new(DashMap::new()),
         }
     }
 }
 
-impl RematchService for RematchServiceImpl {
-    fn get_rematch_status(&self, match_id: MatchId) -> Option<PlayerId> {
-        self.rematch_requests
+impl MatchReadinessService for MatchReadinessServiceImpl {
+    fn get_readiness_status(&self, match_id: MatchId) -> Option<PlayerId> {
+        self.match_readiness
             .get(&match_id)
             .map(|entry| *entry.value())
     }
 
-    fn request_or_accept_rematch(&self, match_id: MatchId, player: PlayerId) -> bool {
-        let request = self.rematch_requests.get(&match_id);
-        if let Some(existing_request) = &request {
-            if *existing_request.value() == player {
+    fn set_player_ready(&self, match_id: MatchId, player: PlayerId) -> bool {
+        let request = self.match_readiness.get(&match_id);
+        if let Some(already_ready) = &request {
+            if *already_ready.value() == player {
                 false
             } else {
                 drop(request);
-                self.rematch_requests.remove(&match_id);
+                self.match_readiness.remove(&match_id);
                 true
             }
         } else {
             drop(request);
-            self.rematch_requests.insert(match_id, player);
+            self.match_readiness.insert(match_id, player);
             false
         }
     }
 
-    fn retract_rematch_request(&self, match_id: MatchId, player: PlayerId) -> bool {
-        let request = self.rematch_requests.get(&match_id);
-        if let Some(existing_request) = &request {
-            if *existing_request.value() == player {
+    fn set_player_not_ready(&self, match_id: MatchId, player: PlayerId) -> bool {
+        let request = self.match_readiness.get(&match_id);
+        if let Some(already_ready) = &request {
+            if *already_ready.value() == player {
                 drop(request);
-                self.rematch_requests.remove(&match_id);
+                self.match_readiness.remove(&match_id);
                 true
             } else {
                 false

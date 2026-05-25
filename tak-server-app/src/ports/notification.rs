@@ -62,8 +62,7 @@ pub enum ListenerMessage {
 
 #[derive(Clone, Debug)]
 pub enum ListenerMatchEventType {
-    MatchRematchRequestAdded { requesting_player_id: PlayerId },
-    MatchRematchRequestRemoved,
+    MatchReadinessChanged { player_id: Option<PlayerId> },
 }
 
 #[derive(Clone, Debug)]

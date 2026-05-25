@@ -94,7 +94,7 @@ async fn receive_ws(
             Ok(axum::extract::ws::Message::Text(text)) => {
                 match serde_json::from_str::<ClientMessageWrapper>(&text) {
                     Ok(msg) => {
-                        tracing::info!("Received WS message from {}: {:?}", connection_id, msg);
+                        tracing::debug!("Received WS message from {}: {:?}", connection_id, msg);
                         let response = if let Err(e) =
                             handle_client_message(&app, msg.message, connection_id).await
                         {
@@ -122,10 +122,10 @@ async fn receive_ws(
                 }
             }
             Ok(axum::extract::ws::Message::Binary(bin)) => {
-                tracing::info!("Received WS binary message: {:?}", bin);
+                tracing::debug!("Received WS binary message: {:?}", bin);
             }
             Ok(axum::extract::ws::Message::Close(frame)) => {
-                tracing::info!("WS connection closed: {:?}", frame);
+                tracing::debug!("WS connection closed: {:?}", frame);
                 break;
             }
             Err(e) => {
@@ -476,13 +476,10 @@ fn from_listener_message(message: ListenerMessage) -> MessageTransformation {
         } => MessageTransformation::Transform(ServerMessage::MatchEvent {
             match_id: match_id.to_string(),
             event_type: match event_type {
-                ListenerMatchEventType::MatchRematchRequestAdded {
-                    requesting_player_id,
-                } => ServerMatchEventType::MatchRematchRequestAdded {
-                    from_player_id: requesting_player_id.to_string(),
-                },
-                ListenerMatchEventType::MatchRematchRequestRemoved => {
-                    ServerMatchEventType::MatchRematchRequestRemoved {}
+                ListenerMatchEventType::MatchReadinessChanged { player_id } => {
+                    ServerMatchEventType::ReadinessChanged {
+                        player_id: player_id.map(|id| id.to_string()),
+                    }
                 }
             },
         }),

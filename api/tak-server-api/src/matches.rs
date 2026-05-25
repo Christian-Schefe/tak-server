@@ -2,14 +2,14 @@ use axum::{
     Json,
     extract::{Path, State},
 };
-use tak_server_api_contract::{game::GameSettingsInfo, matches::RematchStatus};
+use tak_server_api_contract::{game::GameSettingsInfo, matches::MatchReadinessStatus};
 use tak_server_app::{
     domain::{
         MatchId,
         matches::{Match, MatchStatus},
     },
     services::player_resolver::ResolveError,
-    workflow::matchmaking::{get::GetMatchError, rematch::RematchError},
+    workflow::matchmaking::{get::GetMatchError, readiness::MatchReadinessError},
 };
 
 use crate::{AppState, ServiceError, auth::Auth};
@@ -18,16 +18,16 @@ pub fn register_routes(router: axum::Router<AppState>) -> axum::Router<AppState>
     router
         .route("/matches/{match_id}", axum::routing::get(get_match))
         .route(
-            "/matches/{match_id}/rematch",
-            axum::routing::get(get_rematch_status),
+            "/matches/{match_id}/readiness",
+            axum::routing::get(get_match_readiness_status),
         )
         .route(
-            "/matches/{match_id}/rematch",
-            axum::routing::post(request_rematch),
+            "/matches/{match_id}/readiness",
+            axum::routing::post(set_player_ready),
         )
         .route(
-            "/matches/{match_id}/rematch",
-            axum::routing::delete(retract_rematch_request),
+            "/matches/{match_id}/readiness",
+            axum::routing::delete(set_player_not_ready),
         )
 }
 
@@ -68,7 +68,7 @@ pub struct JsonMatch {
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum JsonMatchStatus {
-    Initial,
+    Waiting,
     InProgress,
     Completed,
 }
@@ -76,8 +76,8 @@ pub enum JsonMatchStatus {
 impl JsonMatchStatus {
     pub fn from_match_status(status: &MatchStatus) -> Self {
         match status {
-            MatchStatus::Initial => JsonMatchStatus::Initial,
-            MatchStatus::Waiting | MatchStatus::InProgress => JsonMatchStatus::InProgress,
+            MatchStatus::Waiting => JsonMatchStatus::Waiting,
+            MatchStatus::InProgress => JsonMatchStatus::InProgress,
             MatchStatus::Completed => JsonMatchStatus::Completed,
         }
     }
@@ -97,7 +97,7 @@ impl JsonMatch {
     }
 }
 
-pub async fn request_rematch(
+pub async fn set_player_ready(
     auth: Auth,
     State(app): State<AppState>,
     Path(match_id): Path<String>,
@@ -120,72 +120,79 @@ pub async fn request_rematch(
     );
     if let Err(e) = app
         .app
-        .match_rematch_use_case
-        .request_or_accept_rematch(match_id, player_id)
+        .match_readiness_use_case
+        .set_player_ready(match_id, player_id)
         .await
     {
         match e {
-            RematchError::Internal => {
-                Err(ServiceError::BadRequest("Failed to accept rematch".into()))
-            }
-            RematchError::MatchNotFound => Err(ServiceError::NotFound("Match not found".into())),
-        }
-    } else {
-        Ok(Json(()))
-    }
-}
-
-pub async fn retract_rematch_request(
-    auth: Auth,
-    State(app): State<AppState>,
-    Path(match_id): Path<String>,
-) -> Result<Json<()>, ServiceError> {
-    let player_id = app
-        .app
-        .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account.account_id)
-        .await
-        .map_err(|ResolveError::Internal| {
-            ServiceError::Internal(format!(
-                "Failed to resolve player id for account {}",
-                auth.account.account_id
-            ))
-        })?;
-    let match_id = MatchId(
-        match_id
-            .parse::<i64>()
-            .map_err(|_| ServiceError::BadRequest(format!("Invalid match ID: {}", match_id)))?,
-    );
-    if let Err(e) = app
-        .app
-        .match_rematch_use_case
-        .retract_rematch_request(match_id, player_id)
-        .await
-    {
-        match e {
-            RematchError::Internal => Err(ServiceError::Internal(
-                "Failed to retract rematch request".into(),
+            MatchReadinessError::Internal => Err(ServiceError::BadRequest(
+                "Failed to set match readiness".into(),
             )),
-            RematchError::MatchNotFound => Err(ServiceError::NotFound("Match not found".into())),
+            MatchReadinessError::MatchNotFound => {
+                Err(ServiceError::NotFound("Match not found".into()))
+            }
         }
     } else {
         Ok(Json(()))
     }
 }
 
-pub async fn get_rematch_status(
+pub async fn set_player_not_ready(
+    auth: Auth,
     State(app): State<AppState>,
     Path(match_id): Path<String>,
-) -> Result<Json<RematchStatus>, ServiceError> {
+) -> Result<Json<()>, ServiceError> {
+    let player_id = app
+        .app
+        .player_resolver_service
+        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .await
+        .map_err(|ResolveError::Internal| {
+            ServiceError::Internal(format!(
+                "Failed to resolve player id for account {}",
+                auth.account.account_id
+            ))
+        })?;
     let match_id = MatchId(
         match_id
             .parse::<i64>()
             .map_err(|_| ServiceError::BadRequest(format!("Invalid match ID: {}", match_id)))?,
     );
-    let rematch_status = app.app.match_rematch_use_case.get_rematch_status(match_id);
-    Ok(Json(RematchStatus {
-        rematch_requested_by: rematch_status
-            .rematch_requested_by
+    if let Err(e) = app
+        .app
+        .match_readiness_use_case
+        .set_player_not_ready(match_id, player_id)
+        .await
+    {
+        match e {
+            MatchReadinessError::Internal => Err(ServiceError::Internal(
+                "Failed to set match readiness".into(),
+            )),
+            MatchReadinessError::MatchNotFound => {
+                Err(ServiceError::NotFound("Match not found".into()))
+            }
+        }
+    } else {
+        Ok(Json(()))
+    }
+}
+
+pub async fn get_match_readiness_status(
+    State(app): State<AppState>,
+    Path(match_id): Path<String>,
+) -> Result<Json<MatchReadinessStatus>, ServiceError> {
+    let match_id = MatchId(
+        match_id
+            .parse::<i64>()
+            .map_err(|_| ServiceError::BadRequest(format!("Invalid match ID: {}", match_id)))?,
+    );
+    let match_readiness_status = app
+        .app
+        .match_readiness_use_case
+        .get_readiness_status(match_id);
+    Ok(Json(MatchReadinessStatus {
+        ready_player: match_readiness_status
+            .player_ready
             .map(|player_id| player_id.to_string()),
     }))
 }

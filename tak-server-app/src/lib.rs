@@ -8,7 +8,7 @@ use crate::{
         event::EventRepository,
         game::GameServiceImpl,
         game_history::{GameHistoryServiceImpl, GameRepository},
-        matches::{MatchRepository, RematchServiceImpl},
+        matches::{MatchReadinessServiceImpl, MatchRepository},
         moderation::{AdminAccountPolicy, HigherRoleAccountPolicy, ModeratorAccountPolicy},
         profile::{AccountProfileRepository, ProfilePictureRepository},
         puzzle::PuzzleRepository,
@@ -64,7 +64,7 @@ use crate::{
             create_game::CreateGameFromMatchWorkflowImpl,
             get::{GetMatchUseCase, GetMatchUseCaseImpl, GetSeekUseCase, GetSeekUseCaseImpl},
             list::{ListSeeksUseCase, ListSeeksUseCaseImpl},
-            rematch::{RematchUseCase, RematchUseCaseImpl},
+            readiness::{MatchReadinessUseCase, MatchReadinessUseCaseImpl},
         },
         player::{
             get_rating::{PlayerGetRatingUseCase, PlayerGetRatingUseCaseImpl},
@@ -100,7 +100,7 @@ pub struct Application {
     pub seek_create_use_case: Box<dyn CreateSeekUseCase + Send + Sync + 'static>,
     pub seek_get_use_case: Box<dyn GetSeekUseCase + Send + Sync + 'static>,
     pub seek_list_use_case: Box<dyn ListSeeksUseCase + Send + Sync + 'static>,
-    pub match_rematch_use_case: Box<dyn RematchUseCase + Send + Sync + 'static>,
+    pub match_readiness_use_case: Box<dyn MatchReadinessUseCase + Send + Sync + 'static>,
 
     pub account_set_online_use_case: Box<dyn SetAccountOnlineUseCase + Send + Sync + 'static>,
     pub account_get_online_use_case: Box<dyn GetOnlineAccountsUseCase + Send + Sync + 'static>,
@@ -190,7 +190,7 @@ pub async fn build_application<
     let game_history_service = Arc::new(GameHistoryServiceImpl::new());
     let rating_service = Arc::new(RatingServiceImpl::new());
     let chat_content_policy = Arc::new(RustrictContentPolicy::new());
-    let rematch_service = Arc::new(RematchServiceImpl::new());
+    let match_readiness_service = Arc::new(MatchReadinessServiceImpl::new());
 
     let policies = ModerationPolicies {
         ban_policy: Arc::new(AdminAccountPolicy),
@@ -295,10 +295,10 @@ pub async fn build_application<
         seek_get_use_case: Box::new(GetSeekUseCaseImpl::new(seek_service.clone())),
         seek_list_use_case: Box::new(ListSeeksUseCaseImpl::new(seek_service.clone())),
 
-        match_rematch_use_case: Box::new(RematchUseCaseImpl::new(
+        match_readiness_use_case: Box::new(MatchReadinessUseCaseImpl::new(
             match_repository.clone(),
             create_game_from_match_workflow.clone(),
-            rematch_service.clone(),
+            match_readiness_service.clone(),
             notify_player_workflow.clone(),
         )),
 

@@ -433,19 +433,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0e050f626429857a27ddccb31e0aca21356bfa709c04041aefddac081a8f068a"
 
 [[package]]
-name = "bcrypt"
-version = "0.17.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "abaf6da45c74385272ddf00e1ac074c7d8a6c1a1dda376902bd6a427522a8b2c"
-dependencies = [
- "base64 0.22.1",
- "blowfish",
- "getrandom 0.3.4",
- "subtle",
- "zeroize",
-]
-
-[[package]]
 name = "bigdecimal"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -508,16 +495,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
 dependencies = [
  "generic-array",
-]
-
-[[package]]
-name = "blowfish"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e412e2cd0f2b2d93e02543ceae7917b3c70331573df19ee046bcbc35e45e87d7"
-dependencies = [
- "byteorder",
- "cipher",
 ]
 
 [[package]]
@@ -659,16 +636,6 @@ checksum = "8eebd66744a15ded14960ab4ccdbfb51ad3b81f51f3f04a80adac98c985396c9"
 dependencies = [
  "hashbrown 0.14.5",
  "stacker",
-]
-
-[[package]]
-name = "cipher"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "773f3b9af64447d2ce9850330c473515014aa235e6a783b02db81ff39e4a3dad"
-dependencies = [
- "crypto-common",
- "inout",
 ]
 
 [[package]]
@@ -2235,15 +2202,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "inout"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "879f10e63c20629ecabbb64a8010319738c66a5cd0c29b02d63d272b03751d01"
-dependencies = [
- "generic-array",
-]
-
-[[package]]
 name = "interpolate_name"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2974,15 +2932,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "passwords"
-version = "3.1.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11407193a7c2bd14ec6b0ec3394da6fdcf7a4d5dcbc8c3cc38dfb17802c8d59c"
-dependencies = [
- "random-pick",
-]
-
-[[package]]
 name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3420,15 +3369,6 @@ checksum = "32cb0b9bc82b0a0876c2dd994a7e7a2683d3e7390ca40e6886785ef0c7e3ee31"
 dependencies = [
  "num-traits",
  "rand 0.8.5",
-]
-
-[[package]]
-name = "random-pick"
-version = "1.2.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "593d142cfebb4f8a2f3c97862b2381d711faa98a30f2497df441ac51580a1edf"
-dependencies = [
- "rand 0.9.2",
 ]
 
 [[package]]
@@ -4855,7 +4795,6 @@ dependencies = [
  "serde_json",
  "tak-server-api",
  "tak-server-app",
- "tak-server-legacy-api",
  "tracing",
 ]
 
@@ -4994,7 +4933,6 @@ dependencies = [
  "tak-player-connection",
  "tak-server-api",
  "tak-server-app",
- "tak-server-legacy-api",
  "tokio",
  "tracing",
  "tracing-appender",
@@ -5051,29 +4989,6 @@ dependencies = [
  "rand 0.9.2",
  "rustrict",
  "tak-core",
- "tokio",
- "tokio-util",
- "tracing",
- "unordered-pair",
- "uuid",
-]
-
-[[package]]
-name = "tak-server-legacy-api"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "axum",
- "bcrypt",
- "dashmap",
- "futures",
- "futures-util",
- "passwords",
- "serde",
- "serde_json",
- "tak-core",
- "tak-player-connection",
- "tak-server-app",
  "tokio",
  "tokio-util",
  "tracing",

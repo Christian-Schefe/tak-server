@@ -1,5 +1,5 @@
 use crate::{JsonGameSettings, create_db_pool};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, ExprTrait, QueryFilter, QueryOrder};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, ExprTrait, QueryFilter};
 use tak_persistence_sea_orm_entities::{
     tournament, tournament_player_registration, tournament_round,
 };
@@ -392,31 +392,6 @@ struct JsonTournamentRound {
 
 #[async_trait::async_trait]
 impl TournamentRoundRepository for TournamentRoundRepositoryImpl {
-    async fn get_current_tournament_round(
-        &self,
-        tournament_id: TournamentId,
-    ) -> Result<(usize, TournamentRound), RepoRetrieveError> {
-        let round_model = tournament_round::Entity::find()
-            .filter(tournament_round::Column::TournamentId.eq(tournament_id.0))
-            .order_by_desc(tournament_round::Column::RoundIndex)
-            .one(&self.db)
-            .await
-            .map_err(|e| {
-                RepoRetrieveError::StorageError(format!(
-                    "Failed to retrieve current tournament round for tournament {}: {}",
-                    tournament_id.0, e
-                ))
-            })?
-            .ok_or(RepoRetrieveError::NotFound)?;
-        let round_index = round_model.round_index as usize;
-        let tournament_round = Self::round_from_model(round_model).map_err(|e| {
-            RepoRetrieveError::StorageError(format!(
-                "Failed to convert tournament round model to domain object: {}",
-                e
-            ))
-        })?;
-        Ok((round_index, tournament_round))
-    }
     async fn get_tournament_rounds(
         &self,
         tournament_id: TournamentId,

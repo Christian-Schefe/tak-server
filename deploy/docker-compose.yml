@@ -27,8 +27,6 @@ services:
     environment:
       - SITE_ADDRESS=${SITE_ADDRESS}
       - TAK_HTTP_API_PORT=${TAK_HTTP_API_PORT}
-      - TAK_LEGACY_HTTP_API_PORT=${TAK_LEGACY_HTTP_API_PORT}
-      - TAK_WS_PORT=${TAK_WS_PORT}
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -86,15 +84,9 @@ services:
     image: tak-server:latest
     restart: unless-stopped
     ports:
-      - '${TAK_TCP_PORT}:${TAK_TCP_PORT}'
       - '${TAK_HTTP_API_PORT}:${TAK_HTTP_API_PORT}'
-      - '${TAK_LEGACY_HTTP_API_PORT}:${TAK_LEGACY_HTTP_API_PORT}'
-      - '${TAK_WS_PORT}:${TAK_WS_PORT}'
     environment:
-      - TAK_WS_PORT=${TAK_WS_PORT}
-      - TAK_TCP_PORT=${TAK_TCP_PORT}
       - TAK_HTTP_API_PORT=${TAK_HTTP_API_PORT}
-      - TAK_LEGACY_HTTP_API_PORT=${TAK_LEGACY_HTTP_API_PORT}
       - TAK_HOST=${TAK_HOST}
       - TAK_ORY_KRATOS_PUBLIC_URL=${TAK_ORY_KRATOS_PUBLIC_URL}
       - TAK_ORY_KRATOS_ADMIN_URL=${TAK_ORY_KRATOS_ADMIN_URL}

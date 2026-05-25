@@ -8,13 +8,7 @@
         reverse_proxy kratos:4433
     }
     handle_path /api/* {
-        reverse_proxy host.docker.internal:{$TAK_LEGACY_HTTP_API_PORT}
-    }
-    handle_path /api2/* {
         reverse_proxy host.docker.internal:{$TAK_HTTP_API_PORT}
-    }
-    handle_path /ws {
-        reverse_proxy host.docker.internal:{$TAK_WS_PORT}
     }
     handle {
         try_files {path} /index.html

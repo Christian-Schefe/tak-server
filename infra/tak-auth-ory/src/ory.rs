@@ -3,13 +3,10 @@ use std::sync::Arc;
 use ory_kratos_client::{
     apis::{
         configuration::Configuration,
-        frontend_api::{to_session, update_login_flow},
-        identity_api::{create_identity, get_identity, list_identities, patch_identity},
+        frontend_api::to_session,
+        identity_api::{get_identity, list_identities, patch_identity},
     },
-    models::{
-        self, SuccessfulNativeLogin, UpdateLoginFlowWithPasswordMethod,
-        UpdateSettingsFlowWithPasswordMethod,
-    },
+    models,
 };
 use tak_server_app::{
     domain::{
@@ -18,8 +15,6 @@ use tak_server_app::{
     },
     ports::authentication::{Account, AccountType},
 };
-
-mod api;
 
 pub struct OryAuthenticationService {
     public_config: Arc<Configuration>,
@@ -60,35 +55,6 @@ struct OryAdminMetadata {
     account_type: OryAccountType,
 }
 
-async fn do_login_flow(
-    config: &Configuration,
-    identifier: &str,
-    password: &str,
-) -> Result<SuccessfulNativeLogin, String> {
-    let flow_id =
-        api::create_native_login_flow(config, None, None, None, None, None, None, None, None)
-            .await
-            .map_err(|e| e.to_string())?;
-
-    let res = update_login_flow(
-        config,
-        &flow_id,
-        models::UpdateLoginFlowBody::Password(Box::new(UpdateLoginFlowWithPasswordMethod {
-            csrf_token: None,
-            identifier: identifier.to_string(),
-            method: "password".to_string(),
-            password: password.to_string(),
-            password_identifier: None,
-            transient_payload: None,
-        })),
-        None,
-        None,
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-    Ok(res)
-}
-
 impl OryAuthenticationService {
     pub fn new() -> Self {
         let kratos_public_base_url = std::env::var("TAK_ORY_KRATOS_PUBLIC_URL")
@@ -119,106 +85,6 @@ impl OryAuthenticationService {
                 let identity = session.identity?;
                 Self::identity_to_account(*identity)
             })
-    }
-
-    pub async fn create_account(
-        &self,
-        username: &str,
-        email: &str,
-        password_hash: &str,
-    ) -> Result<Account, String> {
-        let identity = models::CreateIdentityBody {
-            credentials: Some(Box::new(models::IdentityWithCredentials {
-                oidc: None,
-                password: Some(Box::new(models::IdentityWithCredentialsPassword {
-                    config: Some(Box::new(models::IdentityWithCredentialsPasswordConfig {
-                        hashed_password: Some(password_hash.to_string()),
-                        password: None,
-                        use_password_migration_hook: None,
-                    })),
-                })),
-                saml: None,
-            })),
-            external_id: None,
-            metadata_admin: Some(Some(
-                serde_json::to_value(OryAdminMetadata {
-                    role: OryAccountRole::User,
-                    banned: false,
-                    silenced: false,
-                    account_type: OryAccountType::Player,
-                })
-                .unwrap(),
-            )),
-            metadata_public: None,
-            organization_id: None,
-            recovery_addresses: None,
-            schema_id: "default".to_string(),
-            state: None,
-            traits: serde_json::json!({
-                "username": username,
-                "email": email,
-                "display_name": username,
-            }),
-            verifiable_addresses: None,
-        };
-
-        match create_identity(self.admin_config.as_ref(), Some(identity)).await {
-            Ok(response) => {
-                let account = Self::identity_to_account(response)
-                    .ok_or("Failed to convert identity".to_string())?;
-                Ok(account)
-            }
-            Err(error) => {
-                tracing::error!("Failed to create identity: {:?}", error);
-                Err(error.to_string())
-            }
-        }
-    }
-
-    pub async fn login_username_password(
-        &self,
-        username: &str,
-        password: &str,
-    ) -> Result<Account, String> {
-        let res = do_login_flow(&self.public_config, username, password).await?;
-        let identity = res
-            .session
-            .identity
-            .ok_or("No identity in session".to_string())?;
-        Self::identity_to_account(*identity).ok_or("Failed to convert identity".to_string())
-    }
-
-    pub async fn change_password(
-        &self,
-        username: &str,
-        old_password: &str,
-        new_password: &str,
-    ) -> Result<(), String> {
-        let login_res = do_login_flow(&self.public_config, username, old_password).await?;
-
-        let flow_id = api::create_native_settings_flow(
-            &self.public_config,
-            login_res.session_token.as_deref(),
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-        api::update_settings_flow(
-            &self.public_config,
-            &flow_id,
-            models::UpdateSettingsFlowBody::Password(Box::new(
-                UpdateSettingsFlowWithPasswordMethod {
-                    csrf_token: None,
-                    method: "password".to_string(),
-                    password: new_password.to_string(),
-                    transient_payload: None,
-                },
-            )),
-            login_res.session_token.as_deref(),
-            None,
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-        Ok(())
     }
 
     pub async fn find_by_username(&self, username: &str) -> Option<Account> {

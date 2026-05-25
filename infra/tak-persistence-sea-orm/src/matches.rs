@@ -1,6 +1,6 @@
 use crate::{JsonGameSettings, create_db_pool};
 use sea_orm::ActiveValue::Set;
-use sea_orm::{DatabaseConnection, EntityTrait};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use tak_core::TakPlayer;
 use tak_persistence_sea_orm_entities::matches;
 use tak_server_app::domain::matches::{
@@ -63,7 +63,6 @@ impl MatchRepositoryImpl {
                     })?
                     .to_game_settings(),
                 status: match model.status.as_str() {
-                    "initial" => Ok(MatchStatus::Initial),
                     "waiting" => Ok(MatchStatus::Waiting),
                     "in_progress" => Ok(MatchStatus::InProgress),
                     "completed" => Ok(MatchStatus::Completed),
@@ -112,7 +111,6 @@ impl MatchRepositoryImpl {
             ))
             .map_err(|e| format!("Failed to serialize game settings for database: {}", e))?),
             status: Set(match match_entry.status {
-                MatchStatus::Initial => "initial".to_string(),
                 MatchStatus::Waiting => "waiting".to_string(),
                 MatchStatus::InProgress => "in_progress".to_string(),
                 MatchStatus::Completed => "completed".to_string(),
@@ -182,6 +180,29 @@ impl MatchRepository for MatchRepositoryImpl {
             Ok(_) => Ok(()),
             Err(e) => Err(RepoError::StorageError(format!(
                 "Failed to update match in database: {}",
+                e
+            ))),
+        }
+    }
+
+    async fn get_matches_of_tournament(
+        &self,
+        tournament_id: TournamentId,
+    ) -> Result<Vec<(MatchId, Match)>, RepoError> {
+        match matches::Entity::find()
+            .filter(matches::Column::TournamentId.eq(tournament_id.0))
+            .all(&self.db)
+            .await
+        {
+            Ok(models) => models
+                .into_iter()
+                .map(Self::model_to_match)
+                .collect::<Result<Vec<_>, String>>()
+                .map_err(|e| {
+                    RepoError::StorageError(format!("Failed to convert model to match: {}", e))
+                }),
+            Err(e) => Err(RepoError::StorageError(format!(
+                "Failed to query matches from database: {}",
                 e
             ))),
         }

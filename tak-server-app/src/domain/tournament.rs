@@ -1,6 +1,10 @@
+use std::collections::HashSet;
+
 use tak_core::{TakGameSettings, TakPlayer};
 
-use crate::domain::{MatchId, PlayerId, RepoError, RepoRetrieveError, TournamentId};
+use crate::domain::{
+    MatchId, PlayerId, RepoError, RepoRetrieveError, TournamentId, matches::Match,
+};
 
 #[derive(Clone, Debug)]
 pub struct TournamentMetadata {
@@ -63,10 +67,13 @@ impl TournamentFormat {
     pub fn generate_pairings(
         &self,
         players: &[TournamentPlayer],
+        previous_pairings: &[Match],
         round_index: usize,
     ) -> RoundPairing {
         match self {
-            TournamentFormat::Swiss { .. } => todo!(),
+            TournamentFormat::Swiss { .. } => {
+                Self::generate_swiss_pairings(players, previous_pairings, round_index)
+            }
             TournamentFormat::RoundRobin => {
                 Self::generate_round_robin_pairings(players, round_index)
             }
@@ -85,6 +92,95 @@ impl TournamentFormat {
                 round_index >= total_rounds
             }
         }
+    }
+
+    fn generate_swiss_pairings(
+        players: &[TournamentPlayer],
+        previous_pairings: &[Match],
+        round_index: usize,
+    ) -> RoundPairing {
+        fn normalize_pair(a: PlayerId, b: PlayerId) -> (PlayerId, PlayerId) {
+            if a.0 < b.0 { (a, b) } else { (b, a) }
+        }
+
+        let previous_pairings_set = previous_pairings
+            .iter()
+            .map(|m| normalize_pair(m.player1, m.player2))
+            .collect::<HashSet<_>>();
+
+        let mut sorted = players.to_vec();
+
+        // Highest score first
+        sorted.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap()
+                .then_with(|| a.player_id.0.cmp(&b.player_id.0))
+        });
+
+        let mut pairings = Vec::new();
+        let mut byes = Vec::new();
+
+        let mut used = vec![false; sorted.len()];
+
+        // Bye handling
+        if sorted.len() % 2 != 0 {
+            // Give bye to the lowest-ranked player
+            let bye_player = sorted.last().unwrap().player_id;
+            byes.push(bye_player);
+
+            used[sorted.len() - 1] = true;
+        }
+
+        for i in 0..sorted.len() {
+            if used[i] {
+                continue;
+            }
+
+            let p1 = sorted[i].player_id;
+
+            // Find next valid opponent
+            let mut opponent_index = None;
+
+            for j in (i + 1)..sorted.len() {
+                if used[j] {
+                    continue;
+                }
+
+                let p2 = sorted[j].player_id;
+
+                let pair_key = normalize_pair(p1, p2);
+
+                // Prefer opponents not already played
+                if !previous_pairings_set.contains(&pair_key) {
+                    opponent_index = Some(j);
+                    break;
+                }
+
+                // Fallback if no better option exists
+                if opponent_index.is_none() {
+                    opponent_index = Some(j);
+                }
+            }
+
+            if let Some(j) = opponent_index {
+                used[i] = true;
+                used[j] = true;
+
+                let p2 = sorted[j].player_id;
+
+                // Alternate colors by round + board index
+                let color = if (pairings.len() + round_index) % 2 == 0 {
+                    TakPlayer::White
+                } else {
+                    TakPlayer::Black
+                };
+
+                pairings.push((p1, p2, color));
+            }
+        }
+
+        RoundPairing { pairings, byes }
     }
 
     fn generate_round_robin_pairings(
@@ -143,10 +239,6 @@ pub trait TournamentRepository {
 
 #[async_trait::async_trait]
 pub trait TournamentRoundRepository {
-    async fn get_current_tournament_round(
-        &self,
-        tournament_id: TournamentId,
-    ) -> Result<(usize, TournamentRound), RepoRetrieveError>;
     async fn get_tournament_rounds(
         &self,
         tournament_id: TournamentId,

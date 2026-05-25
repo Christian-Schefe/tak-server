@@ -8,7 +8,6 @@ use tak_server_app::{
     },
     ports::authentication::{Account, AuthenticationPort},
 };
-use tak_server_legacy_api::acl::LegacyApiAuthPort;
 
 use crate::{
     bot::{BotRegistry, BotRepository},
@@ -19,7 +18,7 @@ use crate::{
 pub mod bot;
 mod guest;
 pub mod jwt;
-pub mod ory;
+mod ory;
 
 pub struct AuthenticationService {
     guest_registry: Arc<GuestRegistry>,
@@ -122,49 +121,6 @@ impl ApiAuthPort for AuthenticationService {
 
     async fn get_account_by_username(&self, username: &str) -> Option<Account> {
         self.find_by_username(username).await
-    }
-}
-
-#[async_trait::async_trait]
-impl LegacyApiAuthPort for AuthenticationService {
-    async fn get_or_create_guest_account(&self, token: &str) -> Account {
-        self.guest_registry.get_or_create_guest(Some(token))
-    }
-
-    async fn find_by_username(&self, username: &str) -> Option<Account> {
-        self.find_by_username(username).await
-    }
-
-    async fn create_account(
-        &self,
-        username: &str,
-        email: &str,
-        password_hash: &str,
-    ) -> Result<Account, String> {
-        self.ory_service
-            .create_account(username, email, password_hash)
-            .await
-    }
-
-    async fn login_username_password(
-        &self,
-        username: &str,
-        password: &str,
-    ) -> Result<Account, String> {
-        self.ory_service
-            .login_username_password(username, password)
-            .await
-    }
-
-    async fn change_password(
-        &self,
-        username: &str,
-        old_password: &str,
-        new_password: &str,
-    ) -> Result<(), String> {
-        self.ory_service
-            .change_password(username, old_password, new_password)
-            .await
     }
 }
 
