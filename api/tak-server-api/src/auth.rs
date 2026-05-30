@@ -38,9 +38,7 @@ impl FromRequestParts<AppState> for StrictAuth {
         if let Ok(TypedHeader(Authorization(bearer))) =
             parts.extract::<TypedHeader<Authorization<Bearer>>>().await
         {
-            if let Some(acc_id) = app.auth.validate_account_jwt(bearer.token())
-                && let Some(acc) = app.auth.get_account(&acc_id).await
-            {
+            if let Some(acc) = app.auth.validate_account_jwt(bearer.token()).await {
                 if acc.is_guest() || acc.is_bot() {
                     return Ok(StrictAuth { account: Some(acc) });
                 } else {
@@ -69,9 +67,7 @@ impl FromRequestParts<AppState> for Auth {
         if let Ok(TypedHeader(Authorization(bearer))) =
             parts.extract::<TypedHeader<Authorization<Bearer>>>().await
         {
-            if let Some(acc_id) = app.auth.validate_account_jwt(bearer.token())
-                && let Some(acc) = app.auth.get_account(&acc_id).await
-            {
+            if let Some(acc) = app.auth.validate_account_jwt(bearer.token()).await {
                 return Ok(Auth { account: acc });
             }
         }
@@ -134,10 +130,10 @@ pub struct GetBotCertificateRequest {
 #[async_trait::async_trait]
 pub trait ApiAuthPort: AuthenticationPort {
     async fn get_account_by_kratos_cookie(&self, token: &str) -> Option<Account>;
-    fn create_guest(&self) -> Account;
+    async fn create_guest(&self) -> Option<Account>;
 
     fn generate_account_jwt(&self, id: &AccountId, duration: Duration) -> String;
-    fn validate_account_jwt(&self, token: &str) -> Option<AccountId>;
+    async fn validate_account_jwt(&self, token: &str) -> Option<Account>;
 
     async fn get_account_by_username(&self, username: &str) -> Option<Account>;
 }

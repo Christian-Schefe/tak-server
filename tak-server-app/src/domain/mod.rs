@@ -245,35 +245,3 @@ impl std::fmt::Display for RepoRetrieveError {
         }
     }
 }
-
-#[derive(Debug)]
-pub enum RepoCreateError {
-    Conflict,
-    StorageError(String),
-}
-
-impl std::fmt::Display for RepoCreateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RepoCreateError::Conflict => write!(f, "Resource conflict"),
-            RepoCreateError::StorageError(e) => write!(f, "Storage error: {}", e),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum RepoUpdateError {
-    NotFound,
-    Conflict,
-    StorageError(String),
-}
-
-impl std::fmt::Display for RepoUpdateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RepoUpdateError::NotFound => write!(f, "Resource not found"),
-            RepoUpdateError::Conflict => write!(f, "Resource conflict"),
-            RepoUpdateError::StorageError(e) => write!(f, "Storage error: {}", e),
-        }
-    }
-}

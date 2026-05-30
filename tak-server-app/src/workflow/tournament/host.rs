@@ -21,6 +21,7 @@ pub trait HostTournamentUseCase {
     ) -> Result<TournamentId, ()>;
     async fn begin_tournament(&self, tournament_id: TournamentId) -> Result<(), ()>;
     async fn start_next_round(&self, tournament_id: TournamentId) -> Result<(), ()>;
+    async fn finish_tournament(&self, tournament_id: TournamentId) -> Result<(), ()>;
 }
 
 pub struct HostTournamentUseCaseImpl<
@@ -164,21 +165,6 @@ impl<
             );
             return Err(());
         };
-        let rounds = match self
-            .tournament_round_repository
-            .get_tournament_rounds(tournament_id)
-            .await
-        {
-            Ok(res) => res,
-            Err(RepoError::StorageError(e)) => {
-                tracing::error!(
-                    "Failed to retrieve matches for tournament {}: {:?}",
-                    tournament_id,
-                    e
-                );
-                return Err(());
-            }
-        };
         let tournament_matches = self
             .match_repository
             .get_matches_of_tournament(tournament_id)
@@ -212,6 +198,21 @@ impl<
                 );
             })?;
 
+        let rounds = match self
+            .tournament_round_repository
+            .get_tournament_rounds(tournament_id)
+            .await
+        {
+            Ok(res) => res,
+            Err(RepoError::StorageError(e)) => {
+                tracing::error!(
+                    "Failed to retrieve matches for tournament {}: {:?}",
+                    tournament_id,
+                    e
+                );
+                return Err(());
+            }
+        };
         let next_round_index = rounds.len();
 
         if tournament
@@ -219,24 +220,11 @@ impl<
             .tournament_format
             .is_finished(&all_players, next_round_index)
         {
-            tracing::info!(
-                "Tournament {} has finished after round {}",
-                tournament_id,
-                next_round_index - 1
+            tracing::error!(
+                "Attempted to start next round of tournament {} but tournament format indicates the tournament is already finished",
+                tournament_id
             );
-            if let Err(e) = self
-                .tournament_repository
-                .set_tournament_status(tournament_id, TournamentStatus::Completed)
-                .await
-            {
-                tracing::error!(
-                    "Failed to set tournament {} status to Completed: {:?}",
-                    tournament_id,
-                    e
-                );
-                return Err(());
-            }
-            return Ok(());
+            return Err(());
         }
 
         let previous_matches = tournament_matches
@@ -341,6 +329,68 @@ impl<
                 "Failed to create tournament round for tournament {} round {}: {:?}",
                 tournament_id,
                 next_round_index,
+                e
+            );
+            return Err(());
+        }
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn finish_tournament(&self, tournament_id: TournamentId) -> Result<(), ()> {
+        let tournament = match self
+            .tournament_repository
+            .get_tournament(tournament_id)
+            .await
+        {
+            Ok(tournament) => tournament,
+            Err(e) => {
+                tracing::error!(
+                    "Failed to get tournament with id {}: {:?}",
+                    tournament_id,
+                    e
+                );
+                return Err(());
+            }
+        };
+        let TournamentStatus::Ongoing = tournament.status else {
+            tracing::warn!(
+                "Attempted to finish tournament {} which is not in Ongoing status",
+                tournament_id
+            );
+            return Err(());
+        };
+        let tournament_matches = self
+            .match_repository
+            .get_matches_of_tournament(tournament_id)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    "Failed to retrieve matches for tournament {}: {:?}",
+                    tournament_id,
+                    e
+                );
+            })?;
+
+        if tournament_matches
+            .iter()
+            .any(|(_, match_entry)| !matches!(match_entry.status, MatchStatus::Completed))
+        {
+            tracing::warn!(
+                "Attempted to finish tournament {} but not all matches are finished",
+                tournament_id
+            );
+            return Err(());
+        }
+
+        if let Err(e) = self
+            .tournament_repository
+            .set_tournament_status(tournament_id, TournamentStatus::Completed)
+            .await
+        {
+            tracing::error!(
+                "Failed to set tournament {} status to Completed: {:?}",
+                tournament_id,
                 e
             );
             return Err(());

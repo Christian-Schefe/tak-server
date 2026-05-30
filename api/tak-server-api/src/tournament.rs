@@ -30,6 +30,10 @@ pub fn register_routes(router: axum::Router<AppState>) -> axum::Router<AppState>
             axum::routing::post(start_tournament),
         )
         .route(
+            "/tournaments/{tournament_id}/finish",
+            axum::routing::post(finish_tournament),
+        )
+        .route(
             "/tournaments/{tournament_id}/players",
             axum::routing::post(register_player_to_tournament),
         )
@@ -217,6 +221,37 @@ pub async fn start_tournament(
         Err(_) => {
             return Err(ServiceError::Internal(
                 "Failed to start tournament".to_string(),
+            ));
+        }
+    };
+    Ok(())
+}
+
+pub async fn finish_tournament(
+    //auth: Auth,
+    State(app): State<AppState>,
+    Path(tournament_id): Path<String>,
+) -> Result<(), ServiceError> {
+    //if !auth.account.is_admin() {
+    //    return Err(ServiceError::Unauthorized(
+    //        "Only admins can finish tournaments".to_string(),
+    //    ));
+    //}
+    let tournament_id = TournamentId(
+        tournament_id
+            .parse()
+            .map_err(|_| ServiceError::BadRequest("Invalid tournament ID".to_string()))?,
+    );
+    match app
+        .app
+        .host_tournament_use_case
+        .finish_tournament(tournament_id)
+        .await
+    {
+        Ok(_) => {}
+        Err(_) => {
+            return Err(ServiceError::Internal(
+                "Failed to finish tournament".to_string(),
             ));
         }
     };

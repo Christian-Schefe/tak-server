@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use tokio::task::JoinHandle;
-
 use crate::{
     domain::{
         chat::{ChatRepository, ChatRoomServiceImpl, RustrictContentPolicy},
@@ -32,13 +30,11 @@ use crate::{
     services::player_resolver::{PlayerResolverService, PlayerResolverServiceImpl},
     workflow::{
         account::{
-            cleanup_guests::GuestCleanupJob,
             get_account::{GetAccountWorkflow, GetAccountWorkflowImpl},
             get_online::{GetOnlineAccountsUseCase, GetOnlineAccountsUseCaseImpl},
             get_profile::{GetProfileUseCase, GetProfileUseCaseImpl},
             get_snapshot::{GetSnapshotWorkflow, GetSnapshotWorkflowImpl},
             moderate::{ModeratePlayerUseCase, ModeratePlayerUseCaseImpl, ModerationPolicies},
-            remove_account::RemoveAccountWorkflowImpl,
             set_online::{SetAccountOnlineUseCase, SetAccountOnlineUseCaseImpl},
             update_profile::{UpdateProfileUseCase, UpdateProfileUseCaseImpl},
         },
@@ -93,8 +89,6 @@ pub mod services;
 pub mod workflow;
 
 pub struct Application {
-    pub jobs: JoinHandle<()>,
-
     pub seek_accept_use_case: Box<dyn AcceptSeekUseCase + Send + Sync + 'static>,
     pub seek_cancel_use_case: Box<dyn CancelSeekUseCase + Send + Sync + 'static>,
     pub seek_create_use_case: Box<dyn CreateSeekUseCase + Send + Sync + 'static>,
@@ -262,22 +256,7 @@ pub async fn build_application<
         get_snapshot_workflow.clone(),
     ));
 
-    let remove_account_workflow = Arc::new(RemoveAccountWorkflowImpl::new(
-        player_repository.clone(),
-        stats_repository.clone(),
-    ));
-
-    let guest_cleanup_job = GuestCleanupJob::new(
-        authentication_service.clone(),
-        remove_account_workflow.clone(),
-    );
-
-    let jobs = tokio::spawn(async move {
-        futures::join!(guest_cleanup_job.run());
-    });
-
     let application = Application {
-        jobs,
         seek_accept_use_case: Box::new(AcceptSeekUseCaseImpl::new(
             seek_service.clone(),
             match_repository.clone(),
@@ -308,6 +287,9 @@ pub async fn build_application<
             seek_service.clone(),
             player_resolver_service.clone(),
             player_disconnect_timeout_scheduler.clone(),
+            match_readiness_service.clone(),
+            match_repository.clone(),
+            notify_player_workflow.clone(),
         )),
         account_get_online_use_case: Box::new(GetOnlineAccountsUseCaseImpl::new(
             account_online_status_port.clone(),

@@ -2,13 +2,11 @@ use country_code_enum::CountryCode;
 
 use crate::domain::profile::{AccountProfile, ProfilePictureVersion};
 
-pub mod cleanup_guests;
 pub mod get_account;
 pub mod get_online;
 pub mod get_profile;
 pub mod get_snapshot;
 pub mod moderate;
-pub mod remove_account;
 pub mod set_online;
 pub mod update_profile;
 

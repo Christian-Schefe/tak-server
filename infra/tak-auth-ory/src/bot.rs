@@ -60,7 +60,7 @@ impl BotRegistry {
             account_id.clone(),
             AccountType::Bot,
             AccountRole::User,
-            ModerationFlags::new(),
+            ModerationFlags::empty(),
             username.to_string(),
             display_name.to_string(),
             None,

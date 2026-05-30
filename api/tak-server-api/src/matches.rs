@@ -2,21 +2,31 @@ use axum::{
     Json,
     extract::{Path, State},
 };
-use tak_server_api_contract::{game::GameSettingsInfo, matches::MatchReadinessStatus};
+use tak_server_api_contract::{
+    game::{GameSettingsInfo, JsonEndedGameInfo},
+    matches::MatchReadinessStatus,
+};
 use tak_server_app::{
     domain::{
         MatchId,
         matches::{Match, MatchStatus},
     },
     services::player_resolver::ResolveError,
-    workflow::matchmaking::{get::GetMatchError, readiness::MatchReadinessError},
+    workflow::{
+        history::query::GameQueryError,
+        matchmaking::{get::GetMatchError, readiness::MatchReadinessError},
+    },
 };
 
-use crate::{AppState, ServiceError, auth::Auth};
+use crate::{AppState, ServiceError, auth::Auth, game::from_game_record};
 
 pub fn register_routes(router: axum::Router<AppState>) -> axum::Router<AppState> {
     router
         .route("/matches/{match_id}", axum::routing::get(get_match))
+        .route(
+            "/matches/{match_id}/games",
+            axum::routing::get(get_match_games),
+        )
         .route(
             "/matches/{match_id}/readiness",
             axum::routing::get(get_match_readiness_status),
@@ -195,4 +205,27 @@ pub async fn get_match_readiness_status(
             .player_ready
             .map(|player_id| player_id.to_string()),
     }))
+}
+
+pub async fn get_match_games(
+    State(app): State<AppState>,
+    Path(match_id): Path<String>,
+) -> Result<Json<Vec<JsonEndedGameInfo>>, ServiceError> {
+    let match_id = MatchId(
+        match_id
+            .parse::<i64>()
+            .map_err(|_| ServiceError::BadRequest(format!("Invalid match ID: {}", match_id)))?,
+    );
+    match app
+        .app
+        .game_history_query_use_case
+        .get_games_of_match(match_id)
+        .await
+    {
+        Ok(games) => Ok(Json(games.iter().map(|x| from_game_record(x)).collect())),
+        Err(GameQueryError::RepositoryError) => Err(ServiceError::Internal(format!(
+            "Failed to retrieve games of match {}",
+            match_id
+        ))),
+    }
 }

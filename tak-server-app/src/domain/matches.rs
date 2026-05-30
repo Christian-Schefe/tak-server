@@ -142,6 +142,7 @@ pub trait MatchReadinessService {
     fn get_readiness_status(&self, match_id: MatchId) -> Option<PlayerId>;
     fn set_player_ready(&self, match_id: MatchId, player: PlayerId) -> bool;
     fn set_player_not_ready(&self, match_id: MatchId, player: PlayerId) -> bool;
+    fn set_player_not_ready_everywhere(&self, player: PlayerId) -> Vec<MatchId>;
 }
 
 pub struct MatchReadinessServiceImpl {
@@ -193,5 +194,18 @@ impl MatchReadinessService for MatchReadinessServiceImpl {
         } else {
             false
         }
+    }
+
+    fn set_player_not_ready_everywhere(&self, player: PlayerId) -> Vec<MatchId> {
+        let mut match_ids = Vec::new();
+        self.match_readiness.retain(|match_id, ready_player| {
+            if *ready_player == player {
+                match_ids.push(*match_id);
+                false
+            } else {
+                true
+            }
+        });
+        match_ids
     }
 }

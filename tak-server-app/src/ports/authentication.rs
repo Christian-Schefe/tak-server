@@ -5,7 +5,6 @@ use crate::domain::{
 
 #[async_trait::async_trait]
 pub trait AuthenticationPort {
-    async fn clean_up_guest_accounts(&self) -> Vec<AccountId>;
     async fn get_account(&self, account_id: &AccountId) -> Option<Account>;
     async fn set_role(&self, account_id: &AccountId, role: AccountRole) -> Result<(), ()>;
     async fn add_flag(&self, account_id: &AccountId, flag: ModerationFlag) -> Result<(), ()>;

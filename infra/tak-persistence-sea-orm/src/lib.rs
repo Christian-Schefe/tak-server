@@ -8,9 +8,11 @@ use tak_core::{
     TakTimeSettings,
 };
 use tak_persistence_sea_orm_migrations::Migrator;
+use tak_server_app::domain::RepoRetrieveError;
 
 pub mod chat;
 pub mod games;
+pub mod guest;
 pub mod matches;
 pub mod player_account_mapping;
 pub mod profile;
@@ -73,6 +75,7 @@ pub async fn create_db_pool() -> DatabaseConnection {
                 .register(tak_persistence_sea_orm_entities::tournament::Entity)
                 .register(tak_persistence_sea_orm_entities::matches::Entity)
                 .register(tak_persistence_sea_orm_entities::tournament_round::Entity)
+                .register(tak_persistence_sea_orm_entities::guest::Entity)
                 .sync(&db)
                 .await
                 .expect("Failed to apply entity sync");
@@ -86,6 +89,15 @@ pub async fn create_db_pool() -> DatabaseConnection {
         })
         .await
         .clone()
+}
+
+pub fn db_error_to_repo_retrieve_error(e: sea_orm::DbErr) -> RepoRetrieveError {
+    match e {
+        sea_orm::DbErr::RecordNotFound(_) | sea_orm::DbErr::RecordNotUpdated => {
+            RepoRetrieveError::NotFound
+        }
+        e => RepoRetrieveError::StorageError(e.to_string()),
+    }
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

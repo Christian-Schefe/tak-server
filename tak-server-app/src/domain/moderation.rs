@@ -18,11 +18,15 @@ pub struct ModerationFlags {
 }
 
 impl ModerationFlags {
-    pub fn new() -> Self {
+    pub fn empty() -> Self {
         Self {
             banned: false,
             silenced: false,
         }
+    }
+
+    pub fn new(banned: bool, silenced: bool) -> Self {
+        Self { banned, silenced }
     }
 
     pub fn set_flag(&mut self, flag: ModerationFlag) {

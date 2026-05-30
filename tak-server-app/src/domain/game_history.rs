@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use tak_core::{TakGameResult, TakPlayer};
 
 use crate::domain::{
-    GameId, PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
+    GameId, MatchId, PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError,
     SortOrder,
     game::{FinishedGame, GameEvent, GameMetadata},
 };
@@ -88,12 +88,16 @@ pub trait GameRepository {
         &self,
         game_id: GameId,
         update: GameFinishedUpdate,
-    ) -> Result<(), RepoUpdateError>;
+    ) -> Result<(), RepoRetrieveError>;
     async fn get_game_record(&self, game_id: GameId) -> Result<GameRecord, RepoRetrieveError>;
     async fn query_games(
         &self,
         query: GameQuery,
     ) -> Result<PaginatedResponse<(GameId, GameRecord)>, RepoError>;
+    async fn get_games_of_match(
+        &self,
+        match_id: MatchId,
+    ) -> Result<Vec<(GameId, GameRecord)>, RepoError>;
 }
 
 pub trait GameHistoryService {

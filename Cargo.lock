@@ -4878,6 +4878,7 @@ dependencies = [
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "tak-auth-ory",
  "tak-core",
  "tak-persistence-sea-orm-entities",
  "tak-persistence-sea-orm-migrations",

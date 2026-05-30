@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use tak_auth_ory::{AuthenticationService, jwt};
 use tak_bot_registry::FileBotRepository;
+use tak_persistence_sea_orm::guest::GuestRepositoryImpl;
 use tak_server_app::ports::authentication::AuthenticationPort;
 
 #[derive(Parser)]
@@ -37,7 +38,8 @@ async fn main() {
     }
 
     let bot_repository = Arc::new(FileBotRepository::new());
-    let auth_service = Arc::new(AuthenticationService::new(bot_repository));
+    let guest_repository = Arc::new(GuestRepositoryImpl::new().await);
+    let auth_service = Arc::new(AuthenticationService::new(bot_repository, guest_repository));
 
     match cli.command {
         Commands::SetAdmin { username } => {

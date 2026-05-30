@@ -129,7 +129,7 @@ impl OryAuthenticationService {
             OryAccountRole::Admin => AccountRole::Admin,
         };
         let flags = {
-            let mut moderation_flags = ModerationFlags::new();
+            let mut moderation_flags = ModerationFlags::empty();
             if metadata.banned {
                 moderation_flags.set_flag(ModerationFlag::Banned);
             }

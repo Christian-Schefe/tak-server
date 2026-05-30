@@ -123,7 +123,18 @@ async fn who_am_i(
             "Bots must use bot account".to_string(),
         ));
     }
-    let account = auth.account.unwrap_or_else(|| app.auth.create_guest());
+    let account = if let Some(account) = auth.account {
+        account
+    } else {
+        match app.auth.create_guest().await {
+            Some(guest_account) => guest_account,
+            None => {
+                return Err(ServiceError::Internal(
+                    "Failed to create guest account".to_string(),
+                ));
+            }
+        }
+    };
     let player_id = app
         .app
         .player_resolver_service

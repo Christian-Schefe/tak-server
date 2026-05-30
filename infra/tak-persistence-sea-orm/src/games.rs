@@ -11,8 +11,7 @@ use tak_core::{
 };
 use tak_persistence_sea_orm_entities::game;
 use tak_server_app::domain::{
-    GameId, MatchId, PaginatedResponse, PlayerId, RepoError, RepoRetrieveError, RepoUpdateError,
-    SortOrder,
+    GameId, MatchId, PaginatedResponse, PlayerId, RepoError, RepoRetrieveError, SortOrder,
     game::{GameEvent, GameEventType, GameMetadata, GameOverEventType, request::GameRequest},
     game_history::{
         DateSelector, GameFinishedUpdate, GameIdSelector, GamePlayerFilter, GameQuery,
@@ -20,7 +19,7 @@ use tak_server_app::domain::{
     },
 };
 
-use crate::{JsonTimeSettings, create_db_pool};
+use crate::{JsonTimeSettings, create_db_pool, db_error_to_repo_retrieve_error};
 
 pub struct GameRepositoryImpl {
     db: DatabaseConnection,
@@ -218,21 +217,6 @@ impl GameRepositoryImpl {
         Self { db }
     }
 
-    fn db_error_to_repo_error(e: sea_orm::DbErr) -> RepoUpdateError {
-        match e {
-            sea_orm::DbErr::RecordNotFound(_) | sea_orm::DbErr::RecordNotUpdated => {
-                RepoUpdateError::NotFound
-            }
-            e => match e.sql_err() {
-                Some(
-                    sea_orm::SqlErr::UniqueConstraintViolation(_)
-                    | sea_orm::SqlErr::ForeignKeyConstraintViolation(_),
-                ) => RepoUpdateError::Conflict,
-                _ => RepoUpdateError::StorageError(e.to_string()),
-            },
-        }
-    }
-
     fn model_to_game(model: game::Model) -> GameRecord {
         let rating_info = if let Some(rating_change_white) = model.rating_change_white
             && let Some(rating_change_black) = model.rating_change_black
@@ -348,7 +332,7 @@ impl GameRepository for GameRepositoryImpl {
         &self,
         game_id: GameId,
         update: GameFinishedUpdate,
-    ) -> Result<(), RepoUpdateError> {
+    ) -> Result<(), RepoRetrieveError> {
         let events = update
             .events
             .iter()
@@ -359,7 +343,7 @@ impl GameRepository for GameRepositoryImpl {
             })
             .collect::<Vec<_>>();
         let events = serde_json::to_value(&events)
-            .map_err(|e| RepoUpdateError::StorageError(e.to_string()))?;
+            .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
 
         let result_val = game_result_to_string(&update.result);
 
@@ -382,7 +366,7 @@ impl GameRepository for GameRepositoryImpl {
         model
             .update(&self.db)
             .await
-            .map_err(Self::db_error_to_repo_error)?;
+            .map_err(|e| db_error_to_repo_retrieve_error(e))?;
 
         Ok(())
     }
@@ -534,5 +518,25 @@ impl GameRepository for GameRepositoryImpl {
             total_count: total_count as usize,
             items: results,
         })
+    }
+
+    async fn get_games_of_match(
+        &self,
+        match_id: MatchId,
+    ) -> Result<Vec<(GameId, GameRecord)>, RepoError> {
+        let models = game::Entity::find()
+            .filter(game::Column::MatchId.eq(match_id.0))
+            .all(&self.db)
+            .await
+            .map_err(|e| RepoError::StorageError(e.to_string()))?;
+
+        let mut results = Vec::new();
+        for model in models {
+            let game_id = GameId(model.id);
+            let game_record = Self::model_to_game(model);
+            results.push((game_id, game_record));
+        }
+
+        Ok(results)
     }
 }

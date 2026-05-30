@@ -11,17 +11,17 @@ use tak_server_app::{
 
 use crate::{
     bot::{BotRegistry, BotRepository},
-    guest::GuestRegistry,
+    guest::{GuestRepository, GuestService},
     ory::OryAuthenticationService,
 };
 
 pub mod bot;
-mod guest;
+pub mod guest;
 pub mod jwt;
 mod ory;
 
 pub struct AuthenticationService {
-    guest_registry: Arc<GuestRegistry>,
+    guest_service: Arc<GuestService>,
     bot_registry: Arc<BotRegistry>,
     ory_service: Arc<OryAuthenticationService>,
     account_cache: Arc<moka::sync::Cache<AccountId, Account>>,
@@ -29,9 +29,12 @@ pub struct AuthenticationService {
 }
 
 impl AuthenticationService {
-    pub fn new<R: BotRepository>(bot_repository: Arc<R>) -> Self {
+    pub fn new<R: BotRepository, G: GuestRepository + Send + Sync + 'static>(
+        bot_repository: Arc<R>,
+        guest_repository: Arc<G>,
+    ) -> Self {
         Self {
-            guest_registry: Arc::new(GuestRegistry::new()),
+            guest_service: Arc::new(GuestService::new(guest_repository)),
             bot_registry: Arc::new(BotRegistry::new(bot_repository)),
             ory_service: Arc::new(OryAuthenticationService::new()),
             account_cache: Arc::new(
@@ -53,7 +56,7 @@ impl AuthenticationService {
         if let Some(cached_account) = self.username_cache.get(username) {
             return Some(cached_account);
         }
-        let acc = if let Some(guest_account) = self.guest_registry.get_by_username(username) {
+        let acc = if let Some(guest_account) = self.guest_service.get_by_username(username).await {
             Some(guest_account)
         } else if let Some(bot_account) = self.bot_registry.get_by_username(username) {
             Some(bot_account)
@@ -75,8 +78,9 @@ impl AuthenticationService {
         F: AsyncFnOnce() -> Result<(), ()>,
     {
         if self
-            .guest_registry
+            .guest_service
             .update_guest(&account_id, update_fn)
+            .await
             .is_none()
         {
             if self
@@ -98,22 +102,17 @@ impl ApiAuthPort for AuthenticationService {
         self.ory_service.get_account_by_cookie(token).await
     }
 
-    fn create_guest(&self) -> Account {
-        self.guest_registry.get_or_create_guest(None)
+    async fn create_guest(&self) -> Option<Account> {
+        self.guest_service.create_guest().await
     }
 
     fn generate_account_jwt(&self, id: &AccountId, duration: Duration) -> String {
         jwt::generate_jwt(id, duration)
     }
 
-    fn validate_account_jwt(&self, token: &str) -> Option<AccountId> {
+    async fn validate_account_jwt(&self, token: &str) -> Option<Account> {
         if let Ok(claims) = jwt::Claims::from_token(token) {
-            if let Ok(acc_id) = AccountId::try_from(claims.sub) {
-                self.guest_registry.update_guest_last_access(&acc_id);
-                Some(acc_id)
-            } else {
-                None
-            }
+            self.get_account(&AccountId::try_from(claims.sub).ok()?).await
         } else {
             None
         }
@@ -126,21 +125,18 @@ impl ApiAuthPort for AuthenticationService {
 
 #[async_trait::async_trait]
 impl AuthenticationPort for AuthenticationService {
-    async fn clean_up_guest_accounts(&self) -> Vec<AccountId> {
-        self.guest_registry.clean_up_guest_accounts()
-    }
-
     async fn get_account(&self, account_id: &AccountId) -> Option<Account> {
         if let Some(cached_account) = self.account_cache.get(account_id) {
             return Some(cached_account);
         }
-        let account = if let Some(guest_account) = self.guest_registry.get_by_id(account_id) {
-            guest_account
-        } else if let Some(bot_account) = self.bot_registry.get_by_id(account_id) {
-            bot_account
-        } else {
-            self.ory_service.get_account(account_id).await?
-        };
+        let account =
+            if let Some(guest_account) = self.guest_service.get_by_account_id(account_id).await {
+                guest_account
+            } else if let Some(bot_account) = self.bot_registry.get_by_id(account_id) {
+                bot_account
+            } else {
+                self.ory_service.get_account(account_id).await?
+            };
         self.account_cache
             .insert(account_id.clone(), account.clone());
         Some(account)

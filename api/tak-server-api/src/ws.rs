@@ -75,7 +75,7 @@ pub async fn ws_handler(ws: WebSocketUpgrade, State(app): State<AppState>) -> Re
 
         app.ws.remove_connection(conn_id);
         app.connection_driver.remove_connection(&conn_id).await;
-        tracing::info!("WebSocket connection {} handler finished", conn_id);
+        tracing::debug!("WebSocket connection {} handler finished", conn_id);
     })
 }
 
@@ -321,10 +321,10 @@ async fn handle_authenticated_client_message(
 }
 
 async fn authenticate_ws_token(app: &AppState, token: &str) -> Result<AccountId, ServiceError> {
-    let account_id = app.auth.validate_account_jwt(token).ok_or_else(|| {
+    let account = app.auth.validate_account_jwt(token).await.ok_or_else(|| {
         ServiceError::Unauthorized("Invalid or expired authentication token".to_string())
     })?;
-    Ok(account_id)
+    Ok(account.account_id)
 }
 
 struct ConnectionEntry {

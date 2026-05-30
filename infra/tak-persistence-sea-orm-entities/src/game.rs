@@ -27,6 +27,7 @@ pub struct Model {
     pub capstones: i32,
     pub game_settings: serde_json::Value,
 
+    #[sea_orm(indexed)]
     pub match_id: Option<i64>,
 }
 
