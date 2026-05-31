@@ -212,7 +212,7 @@ impl ServerApiImpl {
     }
 
     pub async fn who_am_i(&self) -> Result<IdentityInfo, String> {
-        self.get_request("/whoami?bot=true").await
+        self.get_request("/whoami?preventGuest=true").await
     }
 
     async fn get_request<T: serde::de::DeserializeOwned>(

@@ -108,8 +108,9 @@ pub async fn serve(
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WhoAmIQueryParams {
-    pub bot: Option<bool>,
+    pub prevent_guest: Option<bool>,
 }
 
 async fn who_am_i(
@@ -118,9 +119,11 @@ async fn who_am_i(
     Query(params): Query<WhoAmIQueryParams>,
 ) -> Result<Json<IdentityInfo>, ServiceError> {
     let new_guest = auth.account.is_none();
-    if params.bot.is_some_and(|x| x) && auth.account.as_ref().is_none_or(|acc| !acc.is_bot()) {
+    if let Some(true) = params.prevent_guest
+        && auth.account.as_ref().is_none_or(|acc| acc.is_guest())
+    {
         return Err(ServiceError::Unauthorized(
-            "Bots must use bot account".to_string(),
+            "Guest accounts are not allowed".to_string(),
         ));
     }
     let account = if let Some(account) = auth.account {

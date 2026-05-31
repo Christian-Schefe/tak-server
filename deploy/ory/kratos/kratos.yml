@@ -11,6 +11,9 @@ serve:
     port: 4434
     base_url: set_by_env_variable
 
+session:
+  lifespan: 30d
+
 selfservice:
   default_browser_return_url: set_by_env_variable
 

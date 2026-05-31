@@ -4862,6 +4862,7 @@ dependencies = [
  "tak-server-app",
  "tokio",
  "tokio-util",
+ "tracing",
 ]
 
 [[package]]
