@@ -271,7 +271,7 @@ pub struct CreateTournamentRequest {
 pub struct JsonTournamentDetail {
     #[serde(flatten)]
     pub tournament: JsonTournament,
-    pub player_scores: Vec<JsonTournamentPlayer>,
+    pub players: Vec<JsonTournamentPlayer>,
     pub rounds: Vec<JsonTournamentRound>,
 }
 
@@ -286,12 +286,12 @@ impl JsonTournamentDetail {
     pub fn from(tournament: &TournamentDetailView) -> Self {
         Self {
             tournament: JsonTournament::from(&tournament.tournament),
-            player_scores: tournament
-                .player_scores
+            players: tournament
+                .player_half_scores
                 .iter()
-                .map(|(player_id, score)| JsonTournamentPlayer {
+                .map(|(player_id, half_score)| JsonTournamentPlayer {
                     id: player_id.to_string(),
-                    score: *score,
+                    half_score: *half_score,
                 })
                 .collect(),
             rounds: tournament
@@ -310,7 +310,7 @@ impl JsonTournamentDetail {
 #[serde(rename_all = "camelCase")]
 pub struct JsonTournamentPlayer {
     pub id: String,
-    pub score: u32,
+    pub half_score: u32,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

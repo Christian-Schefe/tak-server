@@ -32,7 +32,7 @@ pub struct TournamentView {
 #[derive(Clone, Debug)]
 pub struct TournamentDetailView {
     pub tournament: TournamentView,
-    pub player_scores: HashMap<PlayerId, u32>,
+    pub player_half_scores: HashMap<PlayerId, u32>,
     pub rounds: Vec<TournamentRoundView>,
 }
 
@@ -71,9 +71,9 @@ impl TournamentDetailView {
     ) -> Self {
         Self {
             tournament: TournamentView::from_tournament(tournament_id, tournament),
-            player_scores: tournament_players
+            player_half_scores: tournament_players
                 .into_iter()
-                .map(|tp| (tp.player_id, tp.score))
+                .map(|tp| (tp.player_id, tp.half_score))
                 .collect(),
             rounds: rounds
                 .into_iter()

@@ -80,6 +80,9 @@ pub enum ServerMessage {
         #[serde(flatten)]
         event_type: ServerMatchEventType,
     },
+    AccountsOnline {
+        account_ids: Vec<String>,
+    },
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]

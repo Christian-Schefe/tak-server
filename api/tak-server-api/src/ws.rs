@@ -357,20 +357,15 @@ impl WsService {
 impl PlayerSimpleConnectionPort for WsService {
     fn notify_connection(&self, connection_id: ConnectionId, message: &ListenerMessage) {
         if let Some(entry) = self.connections.get(&connection_id) {
-            match from_listener_message(message.clone()) {
-                MessageTransformation::Transform(server_msg) => {
-                    let _ = entry.sender.send(server_msg);
-                }
-                MessageTransformation::Ignore => {}
+            if let Some(server_msg) = from_listener_message(message.clone()) {
+                let _ = entry.sender.send(server_msg);
             }
         }
     }
 }
 
-fn from_listener_game_event_type(
-    event_type: ListenerGameMessageType,
-) -> Option<ServerGameEventType> {
-    let res = match event_type {
+fn from_listener_game_event_type(event_type: ListenerGameMessageType) -> ServerGameEventType {
+    match event_type {
         ListenerGameMessageType::GameOver { game_result } => ServerGameEventType::GameEnded {
             result: game_result_to_string(&game_result),
         },
@@ -397,24 +392,16 @@ fn from_listener_game_event_type(
                 },
             }
         }
-    };
-    Some(res)
+    }
 }
 
-enum MessageTransformation {
-    Ignore,
-    Transform(ServerMessage),
-}
-
-fn from_listener_message(message: ListenerMessage) -> MessageTransformation {
+fn from_listener_message(message: ListenerMessage) -> Option<ServerMessage> {
     match message {
-        ListenerMessage::SeekCreated { seek } => {
-            MessageTransformation::Transform(ServerMessage::SeekCreated {
-                seek: from_seek_view(seek),
-            })
-        }
+        ListenerMessage::SeekCreated { seek } => Some(ServerMessage::SeekCreated {
+            seek: from_seek_view(seek),
+        }),
         ListenerMessage::SeekCanceled { seek } | ListenerMessage::SeekAccepted { seek } => {
-            MessageTransformation::Transform(ServerMessage::SeekRemoved {
+            Some(ServerMessage::SeekRemoved {
                 seek_id: seek.id.to_string(),
             })
         }
@@ -422,29 +409,20 @@ fn from_listener_message(message: ListenerMessage) -> MessageTransformation {
             game_id,
             event_type,
             time_info,
-        } => from_listener_game_event_type(event_type).map_or(
-            MessageTransformation::Ignore,
-            |event| {
-                MessageTransformation::Transform(ServerMessage::GameEvent {
-                    game_id: game_id.to_string(),
-                    event_type: event,
-                    time_info: ForPlayer {
-                        white: time_info.white_remaining.as_millis() as u64,
-                        black: time_info.black_remaining.as_millis() as u64,
-                    },
-                })
+        } => Some(ServerMessage::GameEvent {
+            game_id: game_id.to_string(),
+            event_type: from_listener_game_event_type(event_type),
+            time_info: ForPlayer {
+                white: time_info.white_remaining.as_millis() as u64,
+                black: time_info.black_remaining.as_millis() as u64,
             },
-        ),
-        ListenerMessage::GameStarted { game } => {
-            MessageTransformation::Transform(ServerMessage::GameStarted {
-                game: from_metadata_view(game.id, &game.metadata),
-            })
-        }
-        ListenerMessage::GameEnded { game } => {
-            MessageTransformation::Transform(ServerMessage::GameEnded {
-                game_id: game.id.to_string(),
-            })
-        }
+        }),
+        ListenerMessage::GameStarted { game } => Some(ServerMessage::GameStarted {
+            game: from_metadata_view(game.id, &game.metadata),
+        }),
+        ListenerMessage::GameEnded { game } => Some(ServerMessage::GameEnded {
+            game_id: game.id.to_string(),
+        }),
 
         ListenerMessage::ChatMessage {
             message,
@@ -460,7 +438,7 @@ fn from_listener_message(message: ListenerMessage) -> MessageTransformation {
                     account_id2: members.1.to_string(),
                 },
             };
-            MessageTransformation::Transform(ServerMessage::ChatMessage {
+            Some(ServerMessage::ChatMessage {
                 message: JsonChatMessage {
                     message_id: message.id.0,
                     sender: message.sender.to_string(),
@@ -473,7 +451,7 @@ fn from_listener_message(message: ListenerMessage) -> MessageTransformation {
         ListenerMessage::MatchEvent {
             match_id,
             event_type,
-        } => MessageTransformation::Transform(ServerMessage::MatchEvent {
+        } => Some(ServerMessage::MatchEvent {
             match_id: match_id.to_string(),
             event_type: match event_type {
                 ListenerMatchEventType::MatchReadinessChanged { player_id } => {
@@ -483,7 +461,9 @@ fn from_listener_message(message: ListenerMessage) -> MessageTransformation {
                 }
             },
         }),
-        ListenerMessage::AccountsOnline { .. } => MessageTransformation::Ignore,
-        ListenerMessage::ServerAlert { .. } => MessageTransformation::Ignore,
+        ListenerMessage::AccountsOnline { accounts } => Some(ServerMessage::AccountsOnline {
+            account_ids: accounts.into_iter().map(|a| a.to_string()).collect(),
+        }),
+        ListenerMessage::ServerAlert { .. } => None,
     }
 }

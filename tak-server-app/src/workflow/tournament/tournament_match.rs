@@ -32,12 +32,41 @@ impl<TPR: TournamentPlayerRepository + Send + Sync + 'static> TournamentMatchWor
         if let Some(winner_id) = winner {
             if let Err(e) = self
                 .tournament_player_repository
-                .increase_player_score(tournament_info.tournament_id, winner_id, 1)
+                .increase_player_score(tournament_info.tournament_id, winner_id, 2)
                 .await
             {
                 tracing::error!(
                     "Failed to update tournament player score for player {:?} in tournament {:?}: {:?}",
                     winner_id,
+                    tournament_info.tournament_id,
+                    e
+                );
+            }
+        } else {
+            let (player1_res, player2_res) = futures::join!(
+                self.tournament_player_repository.increase_player_score(
+                    tournament_info.tournament_id,
+                    match_entry.player1,
+                    1,
+                ),
+                self.tournament_player_repository.increase_player_score(
+                    tournament_info.tournament_id,
+                    match_entry.player2,
+                    1,
+                ),
+            );
+            if let Err(e) = player1_res {
+                tracing::error!(
+                    "Failed to update tournament player score for player {:?} in tournament {:?}: {:?}",
+                    match_entry.player1,
+                    tournament_info.tournament_id,
+                    e
+                );
+            }
+            if let Err(e) = player2_res {
+                tracing::error!(
+                    "Failed to update tournament player score for player {:?} in tournament {:?}: {:?}",
+                    match_entry.player2,
                     tournament_info.tournament_id,
                     e
                 );

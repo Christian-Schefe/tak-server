@@ -14,6 +14,7 @@ use crate::auth::StrictAuth;
 pub use auth::ApiAuthPort;
 pub use ws::WsService;
 
+pub mod account;
 mod auth;
 pub mod chat;
 pub mod game;
@@ -88,6 +89,7 @@ pub async fn serve(
     let router = chat::register_routes(router);
     let router = tournament::register_routes(router);
     let router = matches::register_routes(router);
+    let router = account::register_routes(router);
 
     let port = std::env::var("TAK_HTTP_API_PORT")
         .expect("TAK_HTTP_API_PORT must be set")

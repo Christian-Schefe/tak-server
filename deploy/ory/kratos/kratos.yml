@@ -12,7 +12,7 @@ serve:
     base_url: set_by_env_variable
 
 session:
-  lifespan: 30d
+  lifespan: 720h
 
 selfservice:
   default_browser_return_url: set_by_env_variable

@@ -89,6 +89,7 @@ impl<
     NP: NotifyPlayerWorkflow + Send + Sync + 'static,
 > SetAccountOnlineUseCase for SetAccountOnlineUseCaseImpl<P, L, S, R, D, M, MR, NP>
 {
+    #[tracing::instrument(skip(self))]
     async fn set_online(&self, account_id: &AccountId) {
         if let Some(accounts) = self
             .account_online_status_port
@@ -114,6 +115,7 @@ impl<
         };
     }
 
+    #[tracing::instrument(skip(self))]
     async fn set_offline(&self, account_id: &AccountId) {
         if let Some(accounts) = self
             .account_online_status_port

@@ -241,7 +241,7 @@ impl<
         let bye_futures = pairings.byes.into_iter().map(|player_id| async move {
             if let Err(e) = self
                 .tournament_player_repository
-                .increase_player_score(tournament_id, player_id, 1)
+                .increase_player_score(tournament_id, player_id, 2)
                 .await
             {
                 tracing::error!(

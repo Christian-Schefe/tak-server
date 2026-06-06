@@ -33,14 +33,14 @@ impl TournamentRound {
 #[derive(Clone, Debug)]
 pub struct TournamentPlayer {
     pub player_id: PlayerId,
-    pub score: u32,
+    pub half_score: u32,
 }
 
 impl TournamentPlayer {
     pub fn new(player_id: PlayerId) -> Self {
         Self {
             player_id,
-            score: 0,
+            half_score: 0,
         }
     }
 }
@@ -112,8 +112,8 @@ impl TournamentFormat {
 
         // Highest score first
         sorted.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
+            b.half_score
+                .partial_cmp(&a.half_score)
                 .unwrap()
                 .then_with(|| a.player_id.0.cmp(&b.player_id.0))
         });

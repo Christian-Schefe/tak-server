@@ -233,7 +233,7 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
             .into_iter()
             .map(|m| TournamentPlayer {
                 player_id: PlayerId(m.player_id),
-                score: m.score as u32,
+                half_score: m.half_score as u32,
             })
             .collect();
 
@@ -248,7 +248,7 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
         let model = tournament_player_registration::ActiveModel {
             tournament_id: sea_orm::Set(tournament_id.0),
             player_id: sea_orm::Set(player.player_id.0),
-            score: sea_orm::Set(player.score as i32),
+            half_score: sea_orm::Set(player.half_score as i32),
         };
         match tournament_player_registration::Entity::insert(model)
             .on_conflict_do_nothing()
@@ -291,8 +291,8 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
     ) -> Result<(), RepoError> {
         tournament_player_registration::Entity::update_many()
             .col_expr(
-                tournament_player_registration::Column::Score,
-                sea_orm::sea_query::Expr::col(tournament_player_registration::Column::Score)
+                tournament_player_registration::Column::HalfScore,
+                sea_orm::sea_query::Expr::col(tournament_player_registration::Column::HalfScore)
                     .add(score_increase as i32),
             )
             .filter(tournament_player_registration::Column::TournamentId.eq(tournament_id.0))

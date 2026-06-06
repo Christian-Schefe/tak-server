@@ -198,6 +198,7 @@ impl Orchestrator {
                 }
                 ServerMessage::ChatMessage { .. } => {}
                 ServerMessage::MatchEvent { .. } => {}
+                ServerMessage::AccountsOnline { .. } => {}
             }
         }
     }
