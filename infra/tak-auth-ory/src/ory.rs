@@ -78,13 +78,12 @@ impl OryAuthenticationService {
     }
 
     pub async fn get_account_by_cookie(&self, cookie: &str) -> Option<Account> {
-        to_session(&self.public_config, None, Some(cookie), None)
+        let acc_id = to_session(&self.public_config, None, Some(cookie), None)
             .await
             .ok()
-            .and_then(|session| {
-                let identity = session.identity?;
-                Self::identity_to_account(*identity)
-            })
+            .and_then(|session| session.identity)
+            .and_then(|identity| AccountId::try_from(identity.id.clone()).ok())?;
+        self.get_account(&acc_id).await
     }
 
     pub async fn find_by_username(&self, username: &str) -> Option<Account> {
@@ -111,7 +110,13 @@ impl OryAuthenticationService {
     fn identity_to_account(identity: models::Identity) -> Option<Account> {
         let metadata: OryAdminMetadata = identity.metadata_admin.flatten().map_or_else(
             || OryAdminMetadata::default(),
-            |x| serde_json::from_value(x).unwrap_or_default(),
+            |x| match serde_json::from_value(x) {
+                Ok(metadata) => metadata,
+                Err(e) => {
+                    tracing::error!("Failed to deserialize OryAdminMetadata: {}", e);
+                    OryAdminMetadata::default()
+                }
+            },
         );
 
         let traits: OryTraits = identity

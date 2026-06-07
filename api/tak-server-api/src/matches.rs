@@ -20,23 +20,20 @@ use tak_server_app::{
 
 use crate::{AppState, ServiceError, auth::Auth, game::from_game_record};
 
-pub fn register_routes(router: axum::Router<AppState>) -> axum::Router<AppState> {
-    router
-        .route("/matches/{match_id}", axum::routing::get(get_match))
+pub fn register_routes() -> axum::Router<AppState> {
+    axum::Router::new()
+        .route("/{match_id}", axum::routing::get(get_match))
+        .route("/{match_id}/games", axum::routing::get(get_match_games))
         .route(
-            "/matches/{match_id}/games",
-            axum::routing::get(get_match_games),
-        )
-        .route(
-            "/matches/{match_id}/readiness",
+            "/{match_id}/readiness",
             axum::routing::get(get_match_readiness_status),
         )
         .route(
-            "/matches/{match_id}/readiness",
+            "/{match_id}/readiness",
             axum::routing::post(set_player_ready),
         )
         .route(
-            "/matches/{match_id}/readiness",
+            "/{match_id}/readiness",
             axum::routing::delete(set_player_not_ready),
         )
 }

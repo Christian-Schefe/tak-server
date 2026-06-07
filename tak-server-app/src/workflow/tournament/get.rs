@@ -50,7 +50,6 @@ impl<
     TRR: TournamentRoundRepository + Send + Sync + 'static,
 > GetTournamentUseCase for GetTournamentUseCaseImpl<TR, TPR, TRR>
 {
-    #[tracing::instrument(skip(self))]
     async fn get_tournaments(&self) -> Result<Vec<TournamentView>, ()> {
         match self.tournament_repository.list_tournaments().await {
             Ok(tournaments) => Ok(tournaments
@@ -64,7 +63,6 @@ impl<
         }
     }
 
-    #[tracing::instrument(skip(self))]
     async fn get_tournament(
         &self,
         tournament_id: TournamentId,

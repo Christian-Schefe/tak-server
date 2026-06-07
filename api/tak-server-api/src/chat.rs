@@ -8,11 +8,8 @@ use unordered_pair::UnorderedPair;
 
 use crate::{AppState, ServiceError};
 
-pub fn register_routes(router: axum::Router<AppState>) -> axum::Router<AppState> {
-    router.route(
-        "/chat/{conversation_id}",
-        axum::routing::get(get_chat_messages),
-    )
+pub fn register_routes() -> axum::Router<AppState> {
+    axum::Router::new().route("/{conversation_id}", axum::routing::get(get_chat_messages))
 }
 
 #[derive(serde::Deserialize)]

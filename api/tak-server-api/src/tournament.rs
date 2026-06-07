@@ -17,28 +17,29 @@ use tak_server_app::{
 
 use crate::{AppState, ServiceError, auth::Auth};
 
-pub fn register_routes(router: axum::Router<AppState>) -> axum::Router<AppState> {
-    router
-        .route("/tournaments", axum::routing::get(get_tournaments))
-        .route("/tournaments", axum::routing::post(create_tournament))
+pub fn register_routes() -> axum::Router<AppState> {
+    axum::Router::new()
+        .route("/", axum::routing::get(get_tournaments))
+        .route("/", axum::routing::post(create_tournament))
+        .route("/{tournament_id}", axum::routing::get(get_tournament))
         .route(
-            "/tournaments/{tournament_id}",
-            axum::routing::get(get_tournament),
-        )
-        .route(
-            "/tournaments/{tournament_id}/start",
+            "/{tournament_id}/start",
             axum::routing::post(start_tournament),
         )
         .route(
-            "/tournaments/{tournament_id}/finish",
+            "/{tournament_id}/next-round",
+            axum::routing::post(start_next_round_of_tournament),
+        )
+        .route(
+            "/{tournament_id}/finish",
             axum::routing::post(finish_tournament),
         )
         .route(
-            "/tournaments/{tournament_id}/players",
+            "/{tournament_id}/players",
             axum::routing::post(register_player_to_tournament),
         )
         .route(
-            "/tournaments/{tournament_id}/players",
+            "/{tournament_id}/players",
             axum::routing::delete(unregister_player_from_tournament),
         )
 }
@@ -162,15 +163,15 @@ pub async fn unregister_player_from_tournament(
 }
 
 pub async fn create_tournament(
-    //auth: Auth,
+    auth: Auth,
     State(app): State<AppState>,
     Json(payload): Json<CreateTournamentRequest>,
 ) -> Result<(), ServiceError> {
-    //if !auth.account.is_admin() {
-    //    return Err(ServiceError::Unauthorized(
-    //        "Only admins can create tournaments".to_string(),
-    //    ));
-    //}
+    if !auth.account.is_admin() {
+        return Err(ServiceError::Unauthorized(
+            "Only admins can create tournaments".to_string(),
+        ));
+    }
     match app
         .app
         .host_tournament_use_case
@@ -197,15 +198,15 @@ pub async fn create_tournament(
 }
 
 pub async fn start_tournament(
-    //auth: Auth,
+    auth: Auth,
     State(app): State<AppState>,
     Path(tournament_id): Path<String>,
 ) -> Result<(), ServiceError> {
-    //if !auth.account.is_admin() {
-    //    return Err(ServiceError::Unauthorized(
-    //        "Only admins can start tournaments".to_string(),
-    //    ));
-    //}
+    if !auth.account.is_admin() {
+        return Err(ServiceError::Unauthorized(
+            "Only admins can start tournaments".to_string(),
+        ));
+    }
     let tournament_id = TournamentId(
         tournament_id
             .parse()
@@ -228,15 +229,15 @@ pub async fn start_tournament(
 }
 
 pub async fn finish_tournament(
-    //auth: Auth,
+    auth: Auth,
     State(app): State<AppState>,
     Path(tournament_id): Path<String>,
 ) -> Result<(), ServiceError> {
-    //if !auth.account.is_admin() {
-    //    return Err(ServiceError::Unauthorized(
-    //        "Only admins can finish tournaments".to_string(),
-    //    ));
-    //}
+    if !auth.account.is_admin() {
+        return Err(ServiceError::Unauthorized(
+            "Only admins can finish tournaments".to_string(),
+        ));
+    }
     let tournament_id = TournamentId(
         tournament_id
             .parse()
@@ -252,6 +253,37 @@ pub async fn finish_tournament(
         Err(_) => {
             return Err(ServiceError::Internal(
                 "Failed to finish tournament".to_string(),
+            ));
+        }
+    };
+    Ok(())
+}
+
+pub async fn start_next_round_of_tournament(
+    auth: Auth,
+    State(app): State<AppState>,
+    Path(tournament_id): Path<String>,
+) -> Result<(), ServiceError> {
+    if !auth.account.is_admin() {
+        return Err(ServiceError::Unauthorized(
+            "Only admins can start next round of tournaments".to_string(),
+        ));
+    }
+    let tournament_id = TournamentId(
+        tournament_id
+            .parse()
+            .map_err(|_| ServiceError::BadRequest("Invalid tournament ID".to_string()))?,
+    );
+    match app
+        .app
+        .host_tournament_use_case
+        .start_next_round(tournament_id)
+        .await
+    {
+        Ok(_) => {}
+        Err(_) => {
+            return Err(ServiceError::Internal(
+                "Failed to start next round of tournament".to_string(),
             ));
         }
     };

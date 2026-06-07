@@ -1,6 +1,7 @@
 use axum::{
     Json,
     extract::{Path, State},
+    routing::{delete, get, post},
 };
 use tak_core::TakPlayer;
 use tak_server_api_contract::{game::GameSettingsInfo, seek::SeekInfo};
@@ -12,6 +13,14 @@ use tak_server_app::{
 use uuid::Uuid;
 
 use crate::{AppState, ServiceError, auth::Auth};
+
+pub fn register_routes() -> axum::Router<AppState> {
+    axum::Router::new()
+        .route("/", get(get_seeks))
+        .route("/", post(create_seek))
+        .route("/{seek_id}", delete(cancel_seek))
+        .route("/{seek_id}/accept", post(accept_seek))
+}
 
 pub async fn get_seeks(State(app): State<AppState>) -> Json<Vec<SeekInfo>> {
     let seeks = app.app.seek_list_use_case.list_seeks();

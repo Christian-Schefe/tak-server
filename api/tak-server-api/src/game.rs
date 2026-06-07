@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 use axum::{
     Json,
     extract::{Path, State},
+    routing::{get, post},
 };
 use tak_core::ptn::{action_to_ptn, game_result_to_string};
 use tak_server_api_contract::game::{
@@ -26,6 +27,15 @@ use tak_server_app::{
 };
 
 use crate::{AppState, ServiceError, auth::Auth};
+
+pub fn register_routes() -> axum::Router<AppState> {
+    axum::Router::new()
+        .route("/", get(get_games))
+        .route("/{game_id}", get(get_game_status))
+        .route("/{game_id}/resign", post(resign_game))
+        .route("/{game_id}/request", post(set_request))
+        .route("/{game_id}/request/accept", post(accept_request))
+}
 
 pub async fn get_games(State(app): State<AppState>) -> Json<Vec<JsonGameMetadata>> {
     let games = app.app.game_list_ongoing_use_case.list_games();

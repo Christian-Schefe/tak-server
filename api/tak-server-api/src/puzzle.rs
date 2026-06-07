@@ -11,14 +11,11 @@ use tak_server_app::{
 
 use crate::{AppState, ServiceError};
 
-pub fn register_routes(router: axum::Router<AppState>) -> axum::Router<AppState> {
-    router
-        .route("/puzzles/{puzzle_id}", axum::routing::get(get_puzzle))
-        .route(
-            "/puzzles/{puzzle_id}",
-            axum::routing::post(try_solve_puzzle),
-        )
-        .route("/puzzles", axum::routing::get(get_random_puzzle))
+pub fn register_routes() -> axum::Router<AppState> {
+    axum::Router::new()
+        .route("/{puzzle_id}", axum::routing::get(get_puzzle))
+        .route("/{puzzle_id}", axum::routing::post(try_solve_puzzle))
+        .route("/", axum::routing::get(get_random_puzzle))
 }
 
 pub async fn get_puzzle(
@@ -112,7 +109,9 @@ pub async fn get_random_puzzle(
         .select_random_puzzle()
         .await
         .map_err(|_| ServiceError::Internal("Failed to select random puzzle".to_string()))?;
-    Ok(Json(PuzzleSelection { id: puzzle_id.to_string() }))
+    Ok(Json(PuzzleSelection {
+        id: puzzle_id.to_string(),
+    }))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

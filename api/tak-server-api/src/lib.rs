@@ -1,16 +1,9 @@
 use std::sync::Arc;
 
-use axum::{
-    Json, Router,
-    extract::{Query, State},
-    response::IntoResponse,
-    routing::{delete, get, post},
-};
+use axum::{Router, response::IntoResponse, routing::get};
 use tak_player_connection::PlayerConnectionDriver;
-use tak_server_api_contract::auth::IdentityInfo;
-use tak_server_app::{Application, services::player_resolver::ResolveError};
+use tak_server_app::Application;
 
-use crate::auth::StrictAuth;
 pub use auth::ApiAuthPort;
 pub use ws::WsService;
 
@@ -20,6 +13,7 @@ pub mod chat;
 pub mod game;
 pub mod matches;
 pub mod player;
+pub mod profile;
 pub mod puzzle;
 pub mod seek;
 pub mod tournament;
@@ -47,49 +41,18 @@ pub async fn serve(
         connection_driver,
     };
 
-    let admin_router = Router::new().route("/bot-certificate", post(auth::get_bot_certificate));
-
     let router = Router::new()
-        .nest("/admin", admin_router)
-        .route("/whoami", get(who_am_i))
         .route("/ws", get(ws::ws_handler))
-        .route("/seeks", get(seek::get_seeks))
-        .route("/seeks", post(seek::create_seek))
-        .route("/seeks/{seek_id}", delete(seek::cancel_seek))
-        .route("/seeks/{seek_id}/accept", post(seek::accept_seek))
-        .route("/games", get(game::get_games))
-        .route("/games/{game_id}", get(game::get_game_status))
-        .route("/games/{game_id}/resign", post(game::resign_game))
-        .route("/games/{game_id}/request", post(game::set_request))
-        .route(
-            "/games/{game_id}/request/accept",
-            post(game::accept_request),
-        )
-        .route("/profiles/{account_id}", get(player::get_account_profile))
-        .route("/me/profile", post(player::update_account_profile))
-        .route(
-            "/profiles/{account_id}/picture",
-            get(player::get_profile_picture),
-        )
-        .route("/me/profile/picture", post(player::set_profile_picture))
-        .route("/usernames/{username}", get(player::get_player_by_username))
-        .route(
-            "/accounts/{account_id}",
-            get(player::get_player_by_account_id),
-        )
-        .route("/players/{player_id}", get(player::get_player_info))
-        .route("/players/{player_id}/stats", get(player::get_player_stats))
-        .route(
-            "/players/{player_id}/rating-history",
-            get(player::get_rating_history),
-        )
-        .route("/players/{player_id}/games", get(player::get_games_history));
-
-    let router = puzzle::register_routes(router);
-    let router = chat::register_routes(router);
-    let router = tournament::register_routes(router);
-    let router = matches::register_routes(router);
-    let router = account::register_routes(router);
+        .nest("/seeks", seek::register_routes())
+        .nest("/auth", auth::register_routes())
+        .nest("/games", game::register_routes())
+        .nest("/puzzles", puzzle::register_routes())
+        .nest("/chat", chat::register_routes())
+        .nest("/tournaments", tournament::register_routes())
+        .nest("/matches", matches::register_routes())
+        .nest("/accounts", account::register_routes())
+        .nest("/players", player::register_routes())
+        .nest("/profiles", profile::register_routes());
 
     let port = std::env::var("TAK_HTTP_API_PORT")
         .expect("TAK_HTTP_API_PORT must be set")
@@ -107,58 +70,6 @@ pub async fn serve(
         .unwrap();
 
     tracing::info!("HTTP API shut down gracefully");
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WhoAmIQueryParams {
-    pub prevent_guest: Option<bool>,
-}
-
-async fn who_am_i(
-    auth: StrictAuth,
-    State(app): State<AppState>,
-    Query(params): Query<WhoAmIQueryParams>,
-) -> Result<Json<IdentityInfo>, ServiceError> {
-    let new_guest = auth.account.is_none();
-    if let Some(true) = params.prevent_guest
-        && auth.account.as_ref().is_none_or(|acc| acc.is_guest())
-    {
-        return Err(ServiceError::Unauthorized(
-            "Guest accounts are not allowed".to_string(),
-        ));
-    }
-    let account = if let Some(account) = auth.account {
-        account
-    } else {
-        match app.auth.create_guest().await {
-            Some(guest_account) => guest_account,
-            None => {
-                return Err(ServiceError::Internal(
-                    "Failed to create guest account".to_string(),
-                ));
-            }
-        }
-    };
-    let player_id = app
-        .app
-        .player_resolver_service
-        .resolve_player_id_by_account_id(&account.account_id)
-        .await
-        .map_err(|ResolveError::Internal| {
-            ServiceError::Internal("Failed to resolve player ID".to_string())
-        })?;
-
-    Ok(Json(IdentityInfo {
-        account_id: account.account_id.to_string(),
-        player_id: player_id.to_string(),
-        is_guest: account.is_guest(),
-        new_guest,
-        jwt: app.auth.generate_account_jwt(
-            &account.account_id,
-            std::time::Duration::from_secs(60 * 60 * 24),
-        ),
-    }))
 }
 
 #[derive(serde::Deserialize)]

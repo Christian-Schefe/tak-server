@@ -2,16 +2,19 @@ use std::time::Duration;
 
 use axum::{
     Json, RequestPartsExt,
-    extract::{FromRequestParts, State},
+    extract::{FromRequestParts, Query, State},
     http::{header::COOKIE, request::Parts},
+    routing::{get, post},
 };
 use axum_extra::{
     TypedHeader,
     headers::{Authorization, authorization::Bearer},
 };
+use tak_server_api_contract::auth::IdentityInfo;
 use tak_server_app::{
     domain::{AccountId, moderation::AccountRole},
     ports::authentication::{Account, AuthenticationPort},
+    services::player_resolver::ResolveError,
 };
 
 use crate::{AppState, ServiceError};
@@ -32,6 +35,8 @@ impl FromRequestParts<AppState> for StrictAuth {
         {
             if let Ok(acc) = verify_kratos_cookie(app, cookie).await {
                 return Ok(StrictAuth { account: Some(acc) });
+            } else {
+                tracing::info!("Failed to verify Kratos cookie for strict auth");
             }
         }
 
@@ -85,6 +90,64 @@ async fn verify_kratos_cookie(app: &AppState, cookie: &str) -> Result<Account, (
         .await
         .ok_or(())?;
     Ok(account)
+}
+
+pub fn register_routes() -> axum::Router<AppState> {
+    axum::Router::new()
+        .route("/bot-certificate", post(get_bot_certificate))
+        .route("/whoami", get(who_am_i))
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WhoAmIQueryParams {
+    pub prevent_guest: Option<bool>,
+}
+
+async fn who_am_i(
+    auth: StrictAuth,
+    State(app): State<AppState>,
+    Query(params): Query<WhoAmIQueryParams>,
+) -> Result<Json<IdentityInfo>, ServiceError> {
+    let new_guest = auth.account.is_none();
+    if let Some(true) = params.prevent_guest
+        && auth.account.as_ref().is_none_or(|acc| acc.is_guest())
+    {
+        return Err(ServiceError::Unauthorized(
+            "Guest accounts are not allowed".to_string(),
+        ));
+    }
+    let account = if let Some(account) = auth.account {
+        account
+    } else {
+        match app.auth.create_guest().await {
+            Some(guest_account) => guest_account,
+            None => {
+                return Err(ServiceError::Internal(
+                    "Failed to create guest account".to_string(),
+                ));
+            }
+        }
+    };
+    let player_id = app
+        .app
+        .player_resolver_service
+        .resolve_player_id_by_account_id(&account.account_id)
+        .await
+        .map_err(|ResolveError::Internal| {
+            ServiceError::Internal("Failed to resolve player ID".to_string())
+        })?;
+    Ok(Json(IdentityInfo {
+        account_id: account.account_id.to_string(),
+        player_id: player_id.to_string(),
+        is_guest: account.is_guest(),
+        is_admin: account.is_admin(),
+        new_guest,
+        jwt: app.auth.generate_account_jwt(
+            &account.account_id,
+            std::time::Duration::from_secs(60 * 60 * 24),
+        ),
+    }))
 }
 
 pub async fn get_bot_certificate(
