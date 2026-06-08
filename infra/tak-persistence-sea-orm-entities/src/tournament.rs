@@ -9,6 +9,7 @@ pub struct Model {
     pub tournament_format_settings: serde_json::Value,
     pub status: String,
     pub match_settings: serde_json::Value,
+    pub registration_open: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

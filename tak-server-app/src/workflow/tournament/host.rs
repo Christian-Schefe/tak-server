@@ -79,7 +79,9 @@ impl<
                 tournament_format,
                 match_settings,
             },
-            status: TournamentStatus::Upcoming,
+            status: TournamentStatus::Upcoming {
+                registration_open: false,
+            },
         };
         match self
             .tournament_repository
@@ -111,7 +113,7 @@ impl<
                 return Err(());
             }
         };
-        let TournamentStatus::Upcoming = tournament.status else {
+        let TournamentStatus::Upcoming { .. } = tournament.status else {
             tracing::warn!(
                 "Attempted to begin tournament {} which is not in Upcoming status",
                 tournament_id

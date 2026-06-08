@@ -76,9 +76,12 @@ impl<
                 Err(TournamentRegistrationError::StorageError)
             }
         }?;
-        let TournamentStatus::Upcoming = tournament.status else {
+        let TournamentStatus::Upcoming {
+            registration_open: true,
+        } = tournament.status
+        else {
             tracing::warn!(
-                "Attempted to register player {} in tournament {} which is not upcoming",
+                "Attempted to register player {} in tournament {} which is not upcoming or not open for registration",
                 player_id,
                 tournament_id
             );
@@ -125,9 +128,12 @@ impl<
                 Err(TournamentRegistrationError::StorageError)
             }
         }?;
-        let TournamentStatus::Upcoming = tournament.status else {
+        let TournamentStatus::Upcoming {
+            registration_open: true,
+        } = tournament.status
+        else {
             tracing::warn!(
-                "Attempted to unregister player {} in tournament {} which is not upcoming",
+                "Attempted to unregister player {} in tournament {} which is not upcoming or not open for registration",
                 player_id,
                 tournament_id
             );

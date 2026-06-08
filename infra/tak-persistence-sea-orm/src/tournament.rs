@@ -1,8 +1,6 @@
 use crate::{JsonGameSettings, create_db_pool};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, ExprTrait, QueryFilter};
-use tak_persistence_sea_orm_entities::{
-    tournament, tournament_player_registration, tournament_round,
-};
+use tak_persistence_sea_orm_entities::{tournament, tournament_players, tournament_round};
 use tak_server_app::domain::tournament::{
     Tournament, TournamentFormat, TournamentMetadata, TournamentPlayer, TournamentPlayerRepository,
     TournamentRepository, TournamentRound, TournamentRoundRepository, TournamentStatus,
@@ -50,20 +48,22 @@ impl TournamentRepositoryImpl {
         Self { db }
     }
 
-    fn status_from_str(status: &str) -> Result<TournamentStatus, String> {
+    fn status_from_str(status: &str, registration_open: bool) -> Result<TournamentStatus, String> {
         match status {
-            "upcoming" => Ok(TournamentStatus::Upcoming),
+            "upcoming" => Ok(TournamentStatus::Upcoming { registration_open }),
             "ongoing" => Ok(TournamentStatus::Ongoing),
             "completed" => Ok(TournamentStatus::Completed),
             other => Err(format!("Unknown tournament status: {}", other)),
         }
     }
 
-    fn status_to_str(status: &TournamentStatus) -> String {
+    fn status_to_str(status: &TournamentStatus) -> (String, bool) {
         match status {
-            TournamentStatus::Upcoming => "upcoming".to_string(),
-            TournamentStatus::Ongoing => "ongoing".to_string(),
-            TournamentStatus::Completed => "completed".to_string(),
+            TournamentStatus::Upcoming { registration_open } => {
+                ("upcoming".to_string(), *registration_open)
+            }
+            TournamentStatus::Ongoing => ("ongoing".to_string(), false),
+            TournamentStatus::Completed => ("completed".to_string(), false),
         }
     }
 
@@ -89,7 +89,7 @@ impl TournamentRepositoryImpl {
                 tournament_format: tournament_format_settings.to_tournament_type(),
                 match_settings: settings.to_game_settings(),
             },
-            status: Self::status_from_str(&model.status).map_err(|e| {
+            status: Self::status_from_str(&model.status, model.registration_open).map_err(|e| {
                 format!(
                     "Failed to parse tournament status for tournament {}: {}",
                     model.tournament_id, e
@@ -100,6 +100,7 @@ impl TournamentRepositoryImpl {
 
     fn tournament_to_model(tournament: &Tournament) -> Result<tournament::ActiveModel, String> {
         let settings = JsonGameSettings::from_game_settings(&tournament.metadata.match_settings);
+        let (str_status, registration_open) = Self::status_to_str(&tournament.status);
         Ok(tournament::ActiveModel {
             name: sea_orm::Set(tournament.metadata.name.clone()),
             tournament_format_settings: sea_orm::Set(
@@ -112,7 +113,8 @@ impl TournamentRepositoryImpl {
                 serde_json::to_value(&settings)
                     .map_err(|e| format!("Failed to serialize match settings: {}", e))?,
             ),
-            status: sea_orm::Set(Self::status_to_str(&tournament.status)),
+            status: sea_orm::Set(str_status),
+            registration_open: sea_orm::Set(registration_open),
             tournament_id: Default::default(),
         })
     }
@@ -183,9 +185,11 @@ impl TournamentRepository for TournamentRepositoryImpl {
         tournament_id: TournamentId,
         status: TournamentStatus,
     ) -> Result<(), RepoError> {
+        let (str_status, registration_open) = Self::status_to_str(&status);
         let model = tournament::ActiveModel {
             tournament_id: sea_orm::Set(tournament_id.0),
-            status: sea_orm::Set(Self::status_to_str(&status)),
+            status: sea_orm::Set(str_status),
+            registration_open: sea_orm::Set(registration_open),
             ..Default::default()
         };
         tournament::Entity::update(model)
@@ -218,8 +222,8 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
         &self,
         tournament_id: TournamentId,
     ) -> Result<Vec<TournamentPlayer>, RepoError> {
-        let registration_models = tournament_player_registration::Entity::find()
-            .filter(tournament_player_registration::Column::TournamentId.eq(tournament_id.0))
+        let registration_models = tournament_players::Entity::find()
+            .filter(tournament_players::Column::TournamentId.eq(tournament_id.0))
             .all(&self.db)
             .await
             .map_err(|e| {
@@ -245,12 +249,12 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
         tournament_id: TournamentId,
         player: TournamentPlayer,
     ) -> Result<(), RepoError> {
-        let model = tournament_player_registration::ActiveModel {
+        let model = tournament_players::ActiveModel {
             tournament_id: sea_orm::Set(tournament_id.0),
             player_id: sea_orm::Set(player.player_id.0),
             half_score: sea_orm::Set(player.half_score as i32),
         };
-        match tournament_player_registration::Entity::insert(model)
+        match tournament_players::Entity::insert(model)
             .on_conflict_do_nothing()
             .exec(&self.db)
             .await
@@ -267,12 +271,12 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
         tournament_id: TournamentId,
         player_id: PlayerId,
     ) -> Result<(), RepoError> {
-        let model = tournament_player_registration::ActiveModel {
+        let model = tournament_players::ActiveModel {
             tournament_id: sea_orm::Set(tournament_id.0),
             player_id: sea_orm::Set(player_id.0),
             ..Default::default()
         };
-        match tournament_player_registration::Entity::delete(model)
+        match tournament_players::Entity::delete(model)
             .exec(&self.db)
             .await
         {
@@ -289,14 +293,14 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
         player_id: PlayerId,
         score_increase: u32,
     ) -> Result<(), RepoError> {
-        tournament_player_registration::Entity::update_many()
+        tournament_players::Entity::update_many()
             .col_expr(
-                tournament_player_registration::Column::HalfScore,
-                sea_orm::sea_query::Expr::col(tournament_player_registration::Column::HalfScore)
+                tournament_players::Column::HalfScore,
+                sea_orm::sea_query::Expr::col(tournament_players::Column::HalfScore)
                     .add(score_increase as i32),
             )
-            .filter(tournament_player_registration::Column::TournamentId.eq(tournament_id.0))
-            .filter(tournament_player_registration::Column::PlayerId.eq(player_id.0))
+            .filter(tournament_players::Column::TournamentId.eq(tournament_id.0))
+            .filter(tournament_players::Column::PlayerId.eq(player_id.0))
             .exec(&self.db)
             .await
             .map_err(|e| {

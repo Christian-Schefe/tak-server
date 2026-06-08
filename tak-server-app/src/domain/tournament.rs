@@ -10,7 +10,14 @@ use crate::domain::{
 pub struct TournamentMetadata {
     pub name: String,
     pub tournament_format: TournamentFormat,
-    pub match_settings: TakGameSettings,
+    pub match_settings: TournamentMatchSettings,
+}
+
+#[derive(Clone, Debug)]
+pub struct TournamentMatchSettings {
+    pub game_settings: TakGameSettings,
+    pub games_per_match: usize,
+    // TODO: tiebreak: Option<TiebreakSettings>,
 }
 
 #[derive(Clone, Debug)]
@@ -47,7 +54,7 @@ impl TournamentPlayer {
 
 #[derive(Clone, Debug)]
 pub enum TournamentStatus {
-    Upcoming,
+    Upcoming { registration_open: bool },
     Ongoing,
     Completed,
 }
@@ -56,6 +63,7 @@ pub enum TournamentStatus {
 pub enum TournamentFormat {
     Swiss { rounds: usize },
     RoundRobin,
+    GroupRoundRobin { group_size: usize },
 }
 
 pub struct RoundPairing {
@@ -77,6 +85,9 @@ impl TournamentFormat {
             TournamentFormat::RoundRobin => {
                 Self::generate_round_robin_pairings(players, round_index)
             }
+            TournamentFormat::GroupRoundRobin { group_size } => {
+                Self::generate_group_round_robin_pairings(players, *group_size, round_index)
+            }
         }
     }
 
@@ -90,6 +101,14 @@ impl TournamentFormat {
                     players.len()
                 };
                 round_index >= total_rounds
+            }
+            TournamentFormat::GroupRoundRobin { group_size } => {
+                let rounds_per_group = if *group_size % 2 == 0 {
+                    *group_size - 1
+                } else {
+                    *group_size
+                };
+                round_index >= rounds_per_group
             }
         }
     }
@@ -216,6 +235,23 @@ impl TournamentFormat {
                 (None, Some(p2)) => byes.push(p2),
                 (None, None) => {}
             }
+        }
+
+        RoundPairing { pairings, byes }
+    }
+
+    fn generate_group_round_robin_pairings(
+        players: &[TournamentPlayer],
+        group_size: usize,
+        round_index: usize,
+    ) -> RoundPairing {
+        let mut pairings = Vec::new();
+        let mut byes = Vec::new();
+
+        for group in players.chunks(group_size) {
+            let round_pairing = Self::generate_round_robin_pairings(group, round_index);
+            pairings.extend(round_pairing.pairings);
+            byes.extend(round_pairing.byes);
         }
 
         RoundPairing { pairings, byes }

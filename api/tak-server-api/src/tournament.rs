@@ -368,7 +368,7 @@ pub struct JsonTournament {
     rename_all_fields = "camelCase"
 )]
 pub enum JsonTournamentStatus {
-    Upcoming,
+    Upcoming { registration_open: bool },
     Ongoing,
     Completed,
 }
@@ -412,7 +412,9 @@ impl JsonTournament {
 impl JsonTournamentStatus {
     pub fn from(status: &TournamentStatus) -> Self {
         match status {
-            TournamentStatus::Upcoming => JsonTournamentStatus::Upcoming,
+            TournamentStatus::Upcoming { registration_open } => JsonTournamentStatus::Upcoming {
+                registration_open: *registration_open,
+            },
             TournamentStatus::Ongoing => JsonTournamentStatus::Ongoing,
             TournamentStatus::Completed => JsonTournamentStatus::Completed,
         }

@@ -9,5 +9,5 @@ pub mod rating;
 pub mod rating_history;
 pub mod stats;
 pub mod tournament;
-pub mod tournament_player_registration;
+pub mod tournament_players;
 pub mod tournament_round;
