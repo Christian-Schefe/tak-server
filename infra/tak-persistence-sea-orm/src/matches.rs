@@ -4,7 +4,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use tak_core::TakPlayer;
 use tak_persistence_sea_orm_entities::matches;
 use tak_server_app::domain::matches::{
-    Match, MatchMode, MatchRepository, MatchStatus, MatchTournamentInfo,
+    Match, MatchMode, MatchRepository, MatchSettings, MatchStatus, MatchTournamentInfo,
 };
 use tak_server_app::domain::{MatchId, PlayerId, RepoError, RepoRetrieveError, TournamentId};
 
@@ -37,6 +37,31 @@ impl JsonMatchMode {
     }
 }
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct JsonMatchSettings {
+    game_settings: JsonGameSettings,
+    match_mode: JsonMatchMode,
+    is_rated: bool,
+}
+
+impl JsonMatchSettings {
+    pub fn from_match_settings(settings: &MatchSettings) -> Self {
+        JsonMatchSettings {
+            game_settings: JsonGameSettings::from_game_settings(&settings.game_settings),
+            match_mode: JsonMatchMode::from_match_mode(&settings.match_mode),
+            is_rated: settings.is_rated,
+        }
+    }
+
+    pub fn to_match_settings(&self) -> MatchSettings {
+        MatchSettings {
+            game_settings: self.game_settings.to_game_settings(),
+            match_mode: self.match_mode.to_match_mode(),
+            is_rated: self.is_rated,
+        }
+    }
+}
+
 impl MatchRepositoryImpl {
     pub async fn new() -> Self {
         let db = create_db_pool().await;
@@ -57,11 +82,11 @@ impl MatchRepositoryImpl {
                         model.initial_color
                     )),
                 }?,
-                game_settings: serde_json::from_value::<JsonGameSettings>(model.game_settings)
+                settings: serde_json::from_value::<JsonMatchSettings>(model.settings)
                     .map_err(|e| {
                         format!("Failed to deserialize game settings from database: {}", e)
                     })?
-                    .to_game_settings(),
+                    .to_match_settings(),
                 status: match model.status.as_str() {
                     "waiting" => Ok(MatchStatus::Waiting),
                     "in_progress" => Ok(MatchStatus::InProgress),
@@ -71,13 +96,9 @@ impl MatchRepositoryImpl {
                         model.status
                     )),
                 }?,
-                match_mode: serde_json::from_value::<JsonMatchMode>(model.match_mode)
-                    .map_err(|e| format!("Failed to deserialize match mode from database: {}", e))?
-                    .to_match_mode(),
                 games_played: model.games_played,
-                half_score_player1: model.half_score_player1,
-                half_score_player2: model.half_score_player2,
-                is_rated: model.is_rated,
+                score_player1: model.score_player1,
+                score_player2: model.score_player2,
                 tournament_info: if let Some(tournament_id) = model.tournament_id
                     && let Some(round) = model.tournament_round
                     && let Some(match_number) = model.tournament_round_match_number
@@ -106,23 +127,18 @@ impl MatchRepositoryImpl {
                 TakPlayer::White => "white".to_string(),
                 TakPlayer::Black => "black".to_string(),
             }),
-            game_settings: Set(serde_json::to_value(JsonGameSettings::from_game_settings(
-                &match_entry.game_settings,
+            settings: Set(serde_json::to_value(JsonMatchSettings::from_match_settings(
+                &match_entry.settings,
             ))
-            .map_err(|e| format!("Failed to serialize game settings for database: {}", e))?),
+            .map_err(|e| format!("Failed to serialize match settings for database: {}", e))?),
             status: Set(match match_entry.status {
                 MatchStatus::Waiting => "waiting".to_string(),
                 MatchStatus::InProgress => "in_progress".to_string(),
                 MatchStatus::Completed => "completed".to_string(),
             }),
-            match_mode: Set(serde_json::to_value(JsonMatchMode::from_match_mode(
-                &match_entry.match_mode,
-            ))
-            .map_err(|e| format!("Failed to serialize match mode for database: {}", e))?),
             games_played: Set(match_entry.games_played),
-            half_score_player1: Set(match_entry.half_score_player1),
-            half_score_player2: Set(match_entry.half_score_player2),
-            is_rated: Set(match_entry.is_rated),
+            score_player1: Set(match_entry.score_player1),
+            score_player2: Set(match_entry.score_player2),
             tournament_id: Set(match_entry
                 .tournament_info
                 .as_ref()

@@ -5,7 +5,7 @@ use tak_core::{TakPlayer, TakReserve};
 use tak_server_api_contract::{
     auth::IdentityInfo,
     game::{
-        GameSettingsInfo, GameSettingsInfoBase, JsonGameMetadata, JsonGameStatus, JsonTimeSettings,
+        JsonGameSettings, JsonBaseGameSettings, JsonGameMetadata, JsonGameStatus, JsonTimeSettings,
     },
     seek::{CreateSeekPayload, SeekInfo},
     ws::{ClientMessage, ServerGameEventType, ServerMessage},
@@ -39,8 +39,8 @@ fn get_seek_payload() -> CreateSeekPayload {
         opponent_id: None,
         color: "random".to_string(),
         is_rated: true,
-        game_settings: GameSettingsInfo {
-            base: GameSettingsInfoBase {
+        game_settings: JsonGameSettings {
+            base: JsonBaseGameSettings {
                 board_size: 6,
                 half_komi: 4,
                 pieces: reserve.pieces,

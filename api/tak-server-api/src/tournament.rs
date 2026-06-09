@@ -2,7 +2,7 @@ use axum::{
     Json,
     extract::{Path, State},
 };
-use tak_server_api_contract::game::GameSettingsInfo;
+use tak_server_api_contract::game::JsonGameSettings;
 use tak_server_app::{
     domain::{
         TournamentId,
@@ -15,7 +15,7 @@ use tak_server_app::{
     },
 };
 
-use crate::{AppState, ServiceError, auth::Auth};
+use crate::{AppState, ServiceError, auth::Auth, matches::JsonMatchSettings};
 
 pub fn register_routes() -> axum::Router<AppState> {
     axum::Router::new()
@@ -182,8 +182,13 @@ pub async fn create_tournament(
                     rounds: rounds as usize,
                 },
                 JsonTournamentType::RoundRobin => TournamentFormat::RoundRobin,
+                JsonTournamentType::GroupRoundRobin { group_size } => {
+                    TournamentFormat::GroupRoundRobin {
+                        group_size: group_size as usize,
+                    }
+                }
             },
-            payload.match_settings.to_game_settings(),
+            payload.match_settings.to_match_settings(),
         )
         .await
     {
@@ -295,7 +300,7 @@ pub async fn start_next_round_of_tournament(
 pub struct CreateTournamentRequest {
     pub name: String,
     pub tournament_format: JsonTournamentType,
-    pub match_settings: GameSettingsInfo,
+    pub match_settings: JsonMatchSettings,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -319,11 +324,11 @@ impl JsonTournamentDetail {
         Self {
             tournament: JsonTournament::from(&tournament.tournament),
             players: tournament
-                .player_half_scores
+                .player_scores
                 .iter()
-                .map(|(player_id, half_score)| JsonTournamentPlayer {
+                .map(|(player_id, score)| JsonTournamentPlayer {
                     id: player_id.to_string(),
-                    half_score: *half_score,
+                    score: *score,
                 })
                 .collect(),
             rounds: tournament
@@ -342,7 +347,7 @@ impl JsonTournamentDetail {
 #[serde(rename_all = "camelCase")]
 pub struct JsonTournamentPlayer {
     pub id: String,
-    pub half_score: u32,
+    pub score: u32,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -350,7 +355,7 @@ pub struct JsonTournamentPlayer {
 pub struct JsonTournamentMetadata {
     pub id: String,
     pub name: String,
-    pub match_settings: GameSettingsInfo,
+    pub match_settings: JsonGameSettings,
     pub tournament_format: JsonTournamentType,
 }
 
@@ -382,6 +387,7 @@ pub enum JsonTournamentStatus {
 pub enum JsonTournamentType {
     Swiss { rounds: u32 },
     RoundRobin,
+    GroupRoundRobin { group_size: u32 },
 }
 
 impl JsonTournamentMetadata {
@@ -389,12 +395,19 @@ impl JsonTournamentMetadata {
         Self {
             id: metadata.tournament_id.0.to_string(),
             name: metadata.name.to_string(),
-            match_settings: GameSettingsInfo::from_game_settings(&metadata.match_settings),
+            match_settings: JsonGameSettings::from_game_settings(
+                &metadata.match_settings.game_settings,
+            ),
             tournament_format: match metadata.tournament_format {
                 TournamentFormat::Swiss { rounds } => JsonTournamentType::Swiss {
                     rounds: rounds as u32,
                 },
                 TournamentFormat::RoundRobin => JsonTournamentType::RoundRobin,
+                TournamentFormat::GroupRoundRobin { group_size } => {
+                    JsonTournamentType::GroupRoundRobin {
+                        group_size: group_size as u32,
+                    }
+                }
             },
         }
     }

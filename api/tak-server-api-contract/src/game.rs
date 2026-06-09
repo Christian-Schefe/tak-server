@@ -13,7 +13,7 @@ pub struct JsonGameStatus {
     pub match_id: Option<String>,
     pub player_ids: ForPlayer<String>,
     pub is_rated: bool,
-    pub game_settings: GameSettingsInfo,
+    pub game_settings: JsonGameSettings,
     pub actions: Vec<String>,
     pub status: GameStatusType,
     pub remaining_ms: ForPlayer<u64>,
@@ -83,7 +83,7 @@ pub struct JsonGameMetadata {
     pub date: DateTime<Utc>,
     pub player_ids: ForPlayer<String>,
     pub is_rated: bool,
-    pub game_settings: GameSettingsInfo,
+    pub game_settings: JsonGameSettings,
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
@@ -112,7 +112,7 @@ pub struct JsonPlayerSnapshot {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct GameSettingsInfoBase {
+pub struct JsonBaseGameSettings {
     pub board_size: u32,
     pub half_komi: u32,
     pub pieces: u32,
@@ -121,9 +121,9 @@ pub struct GameSettingsInfoBase {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct GameSettingsInfo {
+pub struct JsonGameSettings {
     #[serde(flatten)]
-    pub base: GameSettingsInfoBase,
+    pub base: JsonBaseGameSettings,
     pub time_settings: JsonTimeSettings,
 }
 
@@ -144,9 +144,9 @@ pub enum JsonTimeSettings {
     },
 }
 
-impl GameSettingsInfoBase {
+impl JsonBaseGameSettings {
     pub fn from_base_settings(settings: &TakBaseGameSettings) -> Self {
-        GameSettingsInfoBase {
+        JsonBaseGameSettings {
             board_size: settings.board_size,
             half_komi: settings.half_komi,
             pieces: settings.reserve.pieces,
@@ -166,10 +166,10 @@ impl GameSettingsInfoBase {
     }
 }
 
-impl GameSettingsInfo {
+impl JsonGameSettings {
     pub fn from_game_settings(settings: &TakGameSettings) -> Self {
-        GameSettingsInfo {
-            base: GameSettingsInfoBase::from_base_settings(&settings.base),
+        JsonGameSettings {
+            base: JsonBaseGameSettings::from_base_settings(&settings.base),
             time_settings: match &settings.time_settings {
                 TakTimeSettings::Realtime(tc) => JsonTimeSettings::Realtime {
                     contingent_ms: tc.contingent.as_millis() as u64,

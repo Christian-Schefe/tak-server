@@ -4,7 +4,7 @@ use tak_core::{
     TakBaseGameSettings, TakPlayer, TakReserve,
     ptn::{action_from_ptn, action_to_ptn},
 };
-use tak_server_api_contract::game::GameSettingsInfoBase;
+use tak_server_api_contract::game::JsonBaseGameSettings;
 use wasm_bindgen::prelude::*;
 use web_sys::{DedicatedWorkerGlobalScope, WorkerGlobalScope};
 
@@ -42,7 +42,7 @@ pub struct Engine {
 
 #[wasm_bindgen]
 pub fn search_position(key: String, settings: String, tps: String) {
-    let settings = match serde_json::from_str::<GameSettingsInfoBase>(&settings) {
+    let settings = match serde_json::from_str::<JsonBaseGameSettings>(&settings) {
         Ok(settings) => settings,
         Err(e) => {
             console_error(&format!("Failed to parse game settings: {}", e));
@@ -83,7 +83,7 @@ pub fn stop_searching() {
 
 #[wasm_bindgen]
 pub fn is_settings_supported(settings: String) -> bool {
-    if let Ok(settings) = serde_json::from_str::<GameSettingsInfoBase>(&settings) {
+    if let Ok(settings) = serde_json::from_str::<JsonBaseGameSettings>(&settings) {
         Engine::are_settings_supported(&settings.to_base_settings())
     } else {
         false
@@ -106,7 +106,7 @@ fn handle_output(key: String, output: &str) {
 }
 
 impl Engine {
-    pub fn new(key: String, settings: GameSettingsInfoBase, tps: String) -> Option<Engine> {
+    pub fn new(key: String, settings: JsonBaseGameSettings, tps: String) -> Option<Engine> {
         let tps_words = tps.split_whitespace().collect::<Vec<_>>();
 
         let player = match *tps_words.get(1).unwrap_or(&"") {

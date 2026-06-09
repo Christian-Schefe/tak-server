@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, State},
 };
 use tak_core::ptn::{action_from_ptn, action_to_ptn};
-use tak_server_api_contract::game::GameSettingsInfoBase;
+use tak_server_api_contract::game::JsonBaseGameSettings;
 use tak_server_app::{
     domain::{PuzzleId, puzzle::PuzzleResponse},
     workflow::puzzle::{PuzzleView, get::GetPuzzleError, solve::SolvePuzzleError},
@@ -125,7 +125,7 @@ pub struct PuzzleSelection {
 pub struct JsonPuzzle {
     pub id: String,
     pub actions: Vec<String>,
-    pub game_settings: GameSettingsInfoBase,
+    pub game_settings: JsonBaseGameSettings,
 }
 
 impl JsonPuzzle {
@@ -133,7 +133,7 @@ impl JsonPuzzle {
         Self {
             id: puzzle.id.to_string(),
             actions: puzzle.position.iter().map(|a| action_to_ptn(a)).collect(),
-            game_settings: GameSettingsInfoBase::from_base_settings(&puzzle.game_settings),
+            game_settings: JsonBaseGameSettings::from_base_settings(&puzzle.game_settings),
         }
     }
 }

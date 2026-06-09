@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
-use tak_core::TakGameSettings;
-
 use crate::domain::{
     MatchId, PlayerId, TournamentId,
+    matches::MatchSettings,
     tournament::{
         Tournament, TournamentFormat, TournamentMetadata, TournamentPlayer, TournamentRound,
         TournamentStatus,
@@ -20,7 +19,7 @@ pub struct TournamentMetadataView {
     pub tournament_id: TournamentId,
     pub name: String,
     pub tournament_format: TournamentFormat,
-    pub match_settings: TakGameSettings,
+    pub match_settings: MatchSettings,
 }
 
 #[derive(Clone, Debug)]
@@ -32,7 +31,7 @@ pub struct TournamentView {
 #[derive(Clone, Debug)]
 pub struct TournamentDetailView {
     pub tournament: TournamentView,
-    pub player_half_scores: HashMap<PlayerId, u32>,
+    pub player_scores: HashMap<PlayerId, u32>,
     pub rounds: Vec<TournamentRoundView>,
 }
 
@@ -71,9 +70,9 @@ impl TournamentDetailView {
     ) -> Self {
         Self {
             tournament: TournamentView::from_tournament(tournament_id, tournament),
-            player_half_scores: tournament_players
+            player_scores: tournament_players
                 .into_iter()
-                .map(|tp| (tp.player_id, tp.half_score))
+                .map(|tp| (tp.player_id, tp.score))
                 .collect(),
             rounds: rounds
                 .into_iter()

@@ -5,7 +5,7 @@ use tak_core::TakPlayer;
 use crate::{
     domain::{
         PlayerId, SeekId,
-        matches::{Match, MatchMode, MatchRepository},
+        matches::{Match, MatchMode, MatchRepository, MatchSettings},
         seek::SeekService,
     },
     ports::notification::{ListenerMessage, ListenerNotificationPort},
@@ -92,14 +92,18 @@ impl<
             }
         });
 
+        let match_settings = MatchSettings {
+            game_settings: seek.game_settings.clone(),
+            match_mode: MatchMode::Unlimited,
+            is_rated: seek.is_rated,
+        };
+
         let match_data = Match::new(
             seek.creator_id,
             player,
-            initial_color,
-            seek.game_settings.clone(),
-            MatchMode::Unlimited,
-            seek.is_rated,
             None,
+            match_settings.clone(),
+            initial_color,
         );
 
         let match_id = match self.match_repo.create_match(match_data).await {

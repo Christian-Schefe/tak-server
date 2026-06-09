@@ -376,6 +376,7 @@ pub async fn build_application<
             match_repository.clone(),
             tournament_player_registration_repository.clone(),
             tournament_round_repository.clone(),
+            rating_repository.clone(),
         )),
 
         match_get_use_case: Box::new(GetMatchUseCaseImpl::new(match_repository.clone())),

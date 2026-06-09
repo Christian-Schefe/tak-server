@@ -1,4 +1,5 @@
-use crate::{JsonGameSettings, create_db_pool};
+use crate::create_db_pool;
+use crate::matches::JsonMatchSettings;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, ExprTrait, QueryFilter};
 use tak_persistence_sea_orm_entities::{tournament, tournament_players, tournament_round};
 use tak_server_app::domain::tournament::{
@@ -21,6 +22,7 @@ pub struct TournamentRepositoryImpl {
 enum JsonTournamentFormat {
     Swiss { rounds: u32 },
     RoundRobin,
+    GroupRoundRobin { group_size: u32 },
 }
 
 impl JsonTournamentFormat {
@@ -30,6 +32,11 @@ impl JsonTournamentFormat {
                 rounds: *rounds as usize,
             },
             JsonTournamentFormat::RoundRobin => TournamentFormat::RoundRobin,
+            JsonTournamentFormat::GroupRoundRobin { group_size } => {
+                TournamentFormat::GroupRoundRobin {
+                    group_size: *group_size as usize,
+                }
+            }
         }
     }
     fn from_tournament_type(tournament_type: &TournamentFormat) -> Self {
@@ -37,6 +44,11 @@ impl JsonTournamentFormat {
             TournamentFormat::Swiss { rounds } => JsonTournamentFormat::Swiss {
                 rounds: *rounds as u32,
             },
+            TournamentFormat::GroupRoundRobin { group_size } => {
+                JsonTournamentFormat::GroupRoundRobin {
+                    group_size: *group_size as u32,
+                }
+            }
             TournamentFormat::RoundRobin => JsonTournamentFormat::RoundRobin,
         }
     }
@@ -69,7 +81,7 @@ impl TournamentRepositoryImpl {
 
     fn tournament_from_model(model: tournament::Model) -> Result<Tournament, String> {
         let settings =
-            serde_json::from_value::<JsonGameSettings>(model.match_settings).map_err(|e| {
+            serde_json::from_value::<JsonMatchSettings>(model.match_settings).map_err(|e| {
                 format!(
                     "Failed to deserialize match settings for tournament {}: {}",
                     model.tournament_id, e
@@ -87,7 +99,7 @@ impl TournamentRepositoryImpl {
             metadata: TournamentMetadata {
                 name: model.name,
                 tournament_format: tournament_format_settings.to_tournament_type(),
-                match_settings: settings.to_game_settings(),
+                match_settings: settings.to_match_settings(),
             },
             status: Self::status_from_str(&model.status, model.registration_open).map_err(|e| {
                 format!(
@@ -99,7 +111,7 @@ impl TournamentRepositoryImpl {
     }
 
     fn tournament_to_model(tournament: &Tournament) -> Result<tournament::ActiveModel, String> {
-        let settings = JsonGameSettings::from_game_settings(&tournament.metadata.match_settings);
+        let settings = JsonMatchSettings::from_match_settings(&tournament.metadata.match_settings);
         let (str_status, registration_open) = Self::status_to_str(&tournament.status);
         Ok(tournament::ActiveModel {
             name: sea_orm::Set(tournament.metadata.name.clone()),
@@ -237,7 +249,8 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
             .into_iter()
             .map(|m| TournamentPlayer {
                 player_id: PlayerId(m.player_id),
-                half_score: m.half_score as u32,
+                score: m.score as u32,
+                seeding_score: m.seeding_score,
             })
             .collect();
 
@@ -252,7 +265,8 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
         let model = tournament_players::ActiveModel {
             tournament_id: sea_orm::Set(tournament_id.0),
             player_id: sea_orm::Set(player.player_id.0),
-            half_score: sea_orm::Set(player.half_score as i32),
+            score: sea_orm::Set(player.score as i32),
+            seeding_score: sea_orm::Set(player.seeding_score),
         };
         match tournament_players::Entity::insert(model)
             .on_conflict_do_nothing()
@@ -266,6 +280,7 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
             ))),
         }
     }
+
     async fn remove_tournament_player(
         &self,
         tournament_id: TournamentId,
@@ -287,6 +302,7 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
             ))),
         }
     }
+
     async fn increase_player_score(
         &self,
         tournament_id: TournamentId,
@@ -295,8 +311,8 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
     ) -> Result<(), RepoError> {
         tournament_players::Entity::update_many()
             .col_expr(
-                tournament_players::Column::HalfScore,
-                sea_orm::sea_query::Expr::col(tournament_players::Column::HalfScore)
+                tournament_players::Column::Score,
+                sea_orm::sea_query::Expr::col(tournament_players::Column::Score)
                     .add(score_increase as i32),
             )
             .filter(tournament_players::Column::TournamentId.eq(tournament_id.0))
@@ -306,6 +322,30 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
             .map_err(|e| {
                 RepoError::StorageError(format!(
                     "Failed to increase player score in tournament: {}",
+                    e
+                ))
+            })?;
+        Ok(())
+    }
+
+    async fn set_player_seeding_score(
+        &self,
+        tournament_id: TournamentId,
+        player_id: PlayerId,
+        seeding_score: i32,
+    ) -> Result<(), RepoError> {
+        let active_model = tournament_players::ActiveModel {
+            tournament_id: sea_orm::Set(tournament_id.0),
+            player_id: sea_orm::Set(player_id.0),
+            seeding_score: sea_orm::Set(seeding_score),
+            ..Default::default()
+        };
+        tournament_players::Entity::update(active_model)
+            .exec(&self.db)
+            .await
+            .map_err(|e| {
+                RepoError::StorageError(format!(
+                    "Failed to set player seeding score in tournament: {}",
                     e
                 ))
             })?;

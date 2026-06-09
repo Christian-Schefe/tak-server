@@ -1,23 +1,17 @@
 use std::collections::HashSet;
 
-use tak_core::{TakGameSettings, TakPlayer};
+use tak_core::TakPlayer;
 
 use crate::domain::{
-    MatchId, PlayerId, RepoError, RepoRetrieveError, TournamentId, matches::Match,
+    MatchId, PlayerId, RepoError, RepoRetrieveError, TournamentId,
+    matches::{Match, MatchSettings},
 };
 
 #[derive(Clone, Debug)]
 pub struct TournamentMetadata {
     pub name: String,
     pub tournament_format: TournamentFormat,
-    pub match_settings: TournamentMatchSettings,
-}
-
-#[derive(Clone, Debug)]
-pub struct TournamentMatchSettings {
-    pub game_settings: TakGameSettings,
-    pub games_per_match: usize,
-    // TODO: tiebreak: Option<TiebreakSettings>,
+    pub match_settings: MatchSettings,
 }
 
 #[derive(Clone, Debug)]
@@ -40,14 +34,16 @@ impl TournamentRound {
 #[derive(Clone, Debug)]
 pub struct TournamentPlayer {
     pub player_id: PlayerId,
-    pub half_score: u32,
+    pub score: u32,
+    pub seeding_score: i32,
 }
 
 impl TournamentPlayer {
     pub fn new(player_id: PlayerId) -> Self {
         Self {
             player_id,
-            half_score: 0,
+            score: 0,
+            seeding_score: 0,
         }
     }
 }
@@ -77,10 +73,10 @@ impl TournamentFormat {
         players: &[TournamentPlayer],
         previous_pairings: &[Match],
         round_index: usize,
-    ) -> RoundPairing {
+    ) -> Option<RoundPairing> {
         match self {
-            TournamentFormat::Swiss { .. } => {
-                Self::generate_swiss_pairings(players, previous_pairings, round_index)
+            TournamentFormat::Swiss { rounds } => {
+                Self::generate_swiss_pairings(players, previous_pairings, round_index, *rounds)
             }
             TournamentFormat::RoundRobin => {
                 Self::generate_round_robin_pairings(players, round_index)
@@ -91,33 +87,15 @@ impl TournamentFormat {
         }
     }
 
-    pub fn is_finished(&self, players: &[TournamentPlayer], round_index: usize) -> bool {
-        match self {
-            TournamentFormat::Swiss { rounds } => round_index >= *rounds,
-            TournamentFormat::RoundRobin => {
-                let total_rounds = if players.len() % 2 == 0 {
-                    players.len() - 1
-                } else {
-                    players.len()
-                };
-                round_index >= total_rounds
-            }
-            TournamentFormat::GroupRoundRobin { group_size } => {
-                let rounds_per_group = if *group_size % 2 == 0 {
-                    *group_size - 1
-                } else {
-                    *group_size
-                };
-                round_index >= rounds_per_group
-            }
-        }
-    }
-
     fn generate_swiss_pairings(
         players: &[TournamentPlayer],
         previous_pairings: &[Match],
         round_index: usize,
-    ) -> RoundPairing {
+        rounds: usize,
+    ) -> Option<RoundPairing> {
+        if round_index >= rounds {
+            return None;
+        }
         fn normalize_pair(a: PlayerId, b: PlayerId) -> (PlayerId, PlayerId) {
             if a.0 < b.0 { (a, b) } else { (b, a) }
         }
@@ -127,15 +105,10 @@ impl TournamentFormat {
             .map(|m| normalize_pair(m.player1, m.player2))
             .collect::<HashSet<_>>();
 
-        let mut sorted = players.to_vec();
+        let mut sorted = players.iter().enumerate().collect::<Vec<_>>();
 
-        // Highest score first
-        sorted.sort_by(|a, b| {
-            b.half_score
-                .partial_cmp(&a.half_score)
-                .unwrap()
-                .then_with(|| a.player_id.0.cmp(&b.player_id.0))
-        });
+        // Highest score first, use seeding order as tiebreaker
+        sorted.sort_by_key(|(index, player)| (std::cmp::Reverse(player.score), *index));
 
         let mut pairings = Vec::new();
         let mut byes = Vec::new();
@@ -145,7 +118,7 @@ impl TournamentFormat {
         // Bye handling
         if sorted.len() % 2 != 0 {
             // Give bye to the lowest-ranked player
-            let bye_player = sorted.last().unwrap().player_id;
+            let bye_player = sorted.last().unwrap().1.player_id;
             byes.push(bye_player);
 
             used[sorted.len() - 1] = true;
@@ -156,7 +129,7 @@ impl TournamentFormat {
                 continue;
             }
 
-            let p1 = sorted[i].player_id;
+            let p1 = sorted[i].1.player_id;
 
             // Find next valid opponent
             let mut opponent_index = None;
@@ -166,7 +139,7 @@ impl TournamentFormat {
                     continue;
                 }
 
-                let p2 = sorted[j].player_id;
+                let p2 = sorted[j].1.player_id;
 
                 let pair_key = normalize_pair(p1, p2);
 
@@ -186,7 +159,7 @@ impl TournamentFormat {
                 used[i] = true;
                 used[j] = true;
 
-                let p2 = sorted[j].player_id;
+                let p2 = sorted[j].1.player_id;
 
                 // Alternate colors by round + board index
                 let color = if (pairings.len() + round_index) % 2 == 0 {
@@ -199,13 +172,21 @@ impl TournamentFormat {
             }
         }
 
-        RoundPairing { pairings, byes }
+        Some(RoundPairing { pairings, byes })
     }
 
     fn generate_round_robin_pairings(
         players: &[TournamentPlayer],
         round_index: usize,
-    ) -> RoundPairing {
+    ) -> Option<RoundPairing> {
+        let total_rounds = if players.len() % 2 == 0 {
+            players.len() - 1
+        } else {
+            players.len()
+        };
+        if round_index >= total_rounds {
+            return None;
+        }
         let mut players: Vec<Option<PlayerId>> =
             players.iter().map(|tp| Some(tp.player_id)).collect();
         if players.len() % 2 != 0 {
@@ -237,24 +218,38 @@ impl TournamentFormat {
             }
         }
 
-        RoundPairing { pairings, byes }
+        Some(RoundPairing { pairings, byes })
     }
 
     fn generate_group_round_robin_pairings(
         players: &[TournamentPlayer],
         group_size: usize,
         round_index: usize,
-    ) -> RoundPairing {
+    ) -> Option<RoundPairing> {
         let mut pairings = Vec::new();
         let mut byes = Vec::new();
+        let mut has_unfinished_group = false;
 
-        for group in players.chunks(group_size) {
-            let round_pairing = Self::generate_round_robin_pairings(group, round_index);
-            pairings.extend(round_pairing.pairings);
-            byes.extend(round_pairing.byes);
+        let group_count = (players.len() + group_size - 1) / group_size;
+        let mut groups = vec![Vec::new(); group_count];
+        for (i, player) in players.iter().enumerate() {
+            groups[i % group_count].push(player.clone());
         }
 
-        RoundPairing { pairings, byes }
+        for group in groups {
+            let round_pairing = Self::generate_round_robin_pairings(&group, round_index);
+            if let Some(rp) = round_pairing {
+                pairings.extend(rp.pairings);
+                byes.extend(rp.byes);
+                has_unfinished_group = true;
+            }
+        }
+
+        if !has_unfinished_group {
+            return None;
+        }
+
+        Some(RoundPairing { pairings, byes })
     }
 }
 
@@ -308,5 +303,11 @@ pub trait TournamentPlayerRepository {
         &self,
         tournament_id: TournamentId,
         player_id: PlayerId,
+    ) -> Result<(), RepoError>;
+    async fn set_player_seeding_score(
+        &self,
+        tournament_id: TournamentId,
+        player_id: PlayerId,
+        seeding_score: i32,
     ) -> Result<(), RepoError>;
 }

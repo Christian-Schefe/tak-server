@@ -3,13 +3,13 @@ use axum::{
     extract::{Path, State},
 };
 use tak_server_api_contract::{
-    game::{GameSettingsInfo, JsonEndedGameInfo},
+    game::{JsonEndedGameInfo, JsonGameSettings},
     matches::MatchReadinessStatus,
 };
 use tak_server_app::{
     domain::{
         MatchId,
-        matches::{Match, MatchStatus},
+        matches::{Match, MatchMode, MatchSettings, MatchStatus},
     },
     services::player_resolver::ResolveError,
     workflow::{
@@ -66,10 +66,64 @@ pub struct JsonMatch {
     pub id: String,
     pub player1_id: String,
     pub player2_id: String,
-    pub game_settings: GameSettingsInfo,
-    pub half_score_player1: u32,
-    pub half_score_player2: u32,
+    pub settings: JsonMatchSettings,
+    pub score_player1: u32,
+    pub score_player2: u32,
     pub status: JsonMatchStatus,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonMatchSettings {
+    game_settings: JsonGameSettings,
+    match_mode: JsonMatchMode,
+    is_rated: bool,
+}
+
+impl JsonMatchSettings {
+    pub fn from_match_settings(settings: &MatchSettings) -> Self {
+        JsonMatchSettings {
+            game_settings: JsonGameSettings::from_game_settings(&settings.game_settings),
+            match_mode: JsonMatchMode::from_match_mode(&settings.match_mode),
+            is_rated: settings.is_rated,
+        }
+    }
+
+    pub fn to_match_settings(&self) -> MatchSettings {
+        MatchSettings {
+            game_settings: self.game_settings.to_game_settings(),
+            match_mode: self.match_mode.to_match_mode(),
+            is_rated: self.is_rated,
+        }
+    }
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum JsonMatchMode {
+    Unlimited,
+    FixedGames { games: u32 },
+    FirstTo { score: u32 },
+}
+
+impl JsonMatchMode {
+    pub fn from_match_mode(mode: &MatchMode) -> Self {
+        match mode {
+            MatchMode::Unlimited => JsonMatchMode::Unlimited,
+            MatchMode::FixedGames(games) => JsonMatchMode::FixedGames { games: *games },
+            MatchMode::FirstTo(score) => JsonMatchMode::FirstTo {
+                score: *score,
+            },
+        }
+    }
+
+    pub fn to_match_mode(&self) -> MatchMode {
+        match self {
+            JsonMatchMode::Unlimited => MatchMode::Unlimited,
+            JsonMatchMode::FixedGames { games } => MatchMode::FixedGames(*games),
+            JsonMatchMode::FirstTo { score } => MatchMode::FirstTo(*score),
+        }
+    }
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -96,9 +150,9 @@ impl JsonMatch {
             id: id.to_string(),
             player1_id: m.player1.to_string(),
             player2_id: m.player2.to_string(),
-            game_settings: GameSettingsInfo::from_game_settings(&m.game_settings),
-            half_score_player1: m.half_score_player1,
-            half_score_player2: m.half_score_player2,
+            settings: JsonMatchSettings::from_match_settings(&m.settings),
+            score_player1: m.score_player1,
+            score_player2: m.score_player2,
             status: JsonMatchStatus::from_match_status(&m.status),
         }
     }

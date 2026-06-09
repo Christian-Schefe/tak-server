@@ -1,4 +1,4 @@
-use crate::game::GameSettingsInfo;
+use crate::game::JsonGameSettings;
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -6,7 +6,7 @@ pub struct CreateSeekPayload {
     pub opponent_id: Option<String>,
     pub color: String,
     pub is_rated: bool,
-    pub game_settings: GameSettingsInfo,
+    pub game_settings: JsonGameSettings,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -17,5 +17,5 @@ pub struct SeekInfo {
     pub opponent_id: Option<String>,
     pub color: String,
     pub is_rated: bool,
-    pub game_settings: GameSettingsInfo,
+    pub game_settings: JsonGameSettings,
 }

@@ -4,7 +4,7 @@ use axum::{
     routing::{delete, get, post},
 };
 use tak_core::TakPlayer;
-use tak_server_api_contract::{game::GameSettingsInfo, seek::SeekInfo};
+use tak_server_api_contract::{game::JsonGameSettings, seek::SeekInfo};
 use tak_server_app::{
     domain::{PlayerId, SeekId, seek::CreateSeekError},
     services::player_resolver::ResolveError,
@@ -116,7 +116,7 @@ pub struct CreateSeekPayload {
     pub opponent_id: Option<String>,
     pub color: String,
     pub is_rated: bool,
-    pub game_settings: GameSettingsInfo,
+    pub game_settings: JsonGameSettings,
 }
 
 pub async fn accept_seek(
@@ -166,7 +166,7 @@ pub fn from_seek_view(seek: SeekView) -> SeekInfo {
             Some(TakPlayer::White) => "white".to_string(),
             Some(TakPlayer::Black) => "black".to_string(),
         },
-        game_settings: GameSettingsInfo::from_game_settings(&seek.game_settings),
+        game_settings: JsonGameSettings::from_game_settings(&seek.game_settings),
         is_rated: seek.is_rated,
     }
 }

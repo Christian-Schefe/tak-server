@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
-use tak_core::TakGameSettings;
-
 use crate::domain::{
     RepoError, TournamentId,
-    matches::{Match, MatchMode, MatchRepository, MatchStatus, MatchTournamentInfo},
+    matches::{Match, MatchRepository, MatchSettings, MatchStatus, MatchTournamentInfo},
+    rating::RatingRepository,
     tournament::{
         Tournament, TournamentFormat, TournamentMetadata, TournamentPlayerRepository,
         TournamentRepository, TournamentRound, TournamentRoundRepository, TournamentStatus,
@@ -17,7 +16,7 @@ pub trait HostTournamentUseCase {
         &self,
         name: String,
         tournament_format: TournamentFormat,
-        match_settings: TakGameSettings,
+        match_settings: MatchSettings,
     ) -> Result<TournamentId, ()>;
     async fn begin_tournament(&self, tournament_id: TournamentId) -> Result<(), ()>;
     async fn start_next_round(&self, tournament_id: TournamentId) -> Result<(), ()>;
@@ -29,11 +28,13 @@ pub struct HostTournamentUseCaseImpl<
     M: MatchRepository,
     TPR: TournamentPlayerRepository,
     TRR: TournamentRoundRepository,
+    R: RatingRepository,
 > {
     tournament_repository: Arc<TR>,
     match_repository: Arc<M>,
     tournament_player_repository: Arc<TPR>,
     tournament_round_repository: Arc<TRR>,
+    rating_repository: Arc<R>,
 }
 
 impl<
@@ -41,19 +42,22 @@ impl<
     M: MatchRepository,
     TPR: TournamentPlayerRepository,
     TRR: TournamentRoundRepository,
-> HostTournamentUseCaseImpl<TR, M, TPR, TRR>
+    R: RatingRepository,
+> HostTournamentUseCaseImpl<TR, M, TPR, TRR, R>
 {
     pub fn new(
         tournament_repository: Arc<TR>,
         match_repository: Arc<M>,
         tournament_player_repository: Arc<TPR>,
         tournament_round_repository: Arc<TRR>,
+        rating_repository: Arc<R>,
     ) -> Self {
         Self {
             tournament_repository,
             match_repository,
             tournament_player_repository,
             tournament_round_repository,
+            rating_repository,
         }
     }
 }
@@ -64,14 +68,15 @@ impl<
     M: MatchRepository + Send + Sync + 'static,
     TPR: TournamentPlayerRepository + Send + Sync + 'static,
     TRR: TournamentRoundRepository + Send + Sync + 'static,
-> HostTournamentUseCase for HostTournamentUseCaseImpl<TR, M, TPR, TRR>
+    R: RatingRepository + Send + Sync + 'static,
+> HostTournamentUseCase for HostTournamentUseCaseImpl<TR, M, TPR, TRR, R>
 {
     #[tracing::instrument(skip(self))]
     async fn create_tournament(
         &self,
         name: String,
         tournament_format: TournamentFormat,
-        match_settings: TakGameSettings,
+        match_settings: MatchSettings,
     ) -> Result<TournamentId, ()> {
         let tournament = Tournament {
             metadata: TournamentMetadata {
@@ -120,6 +125,63 @@ impl<
             );
             return Err(());
         };
+
+        let tournament_players = match self
+            .tournament_player_repository
+            .get_tournament_players(tournament_id)
+            .await
+        {
+            Ok(players) => players,
+            Err(e) => {
+                tracing::error!(
+                    "Failed to retrieve player registrations for tournament {}: {:?}",
+                    tournament_id,
+                    e
+                );
+                return Err(());
+            }
+        };
+
+        let set_seeding_futures = tournament_players.into_iter().map(|player| async move {
+            let rating = self
+                .rating_repository
+                .get_player_rating(player.player_id)
+                .await
+                .map_err(|e| {
+                    tracing::error!(
+                        "Failed to retrieve rating for player {}: {:?}",
+                        player.player_id,
+                        e
+                    );
+                })?;
+            if let Err(e) = self
+                .tournament_player_repository
+                .set_player_seeding_score(tournament_id, player.player_id, rating.rating as i32)
+                .await
+            {
+                tracing::error!(
+                    %tournament_id,
+                    %player.player_id,
+                    "Failed to set tournament player seeding score: {:?}",
+                    e
+                );
+                return Err(());
+            }
+            Ok(())
+        });
+
+        if let Err(_) = futures::future::join_all(set_seeding_futures)
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()
+        {
+            tracing::error!(
+                "Failed to set seeding scores for players in tournament {}",
+                tournament_id
+            );
+            return Err(());
+        }
+
         if let Err(e) = self
             .tournament_repository
             .set_tournament_status(tournament_id, TournamentStatus::Ongoing)
@@ -188,7 +250,7 @@ impl<
             );
             return Err(());
         }
-        let all_players = self
+        let mut all_players = self
             .tournament_player_repository
             .get_tournament_players(tournament_id)
             .await
@@ -199,6 +261,8 @@ impl<
                     e
                 );
             })?;
+
+        all_players.sort_by_key(|x| (std::cmp::Reverse(x.seeding_score), x.player_id.0));
 
         let rounds = match self
             .tournament_round_repository
@@ -217,28 +281,22 @@ impl<
         };
         let next_round_index = rounds.len();
 
-        if tournament
-            .metadata
-            .tournament_format
-            .is_finished(&all_players, next_round_index)
-        {
-            tracing::error!(
-                "Attempted to start next round of tournament {} but tournament format indicates the tournament is already finished",
-                tournament_id
-            );
-            return Err(());
-        }
-
         let previous_matches = tournament_matches
             .into_iter()
             .map(|(_, match_entry)| match_entry)
             .collect::<Vec<_>>();
 
-        let pairings = tournament.metadata.tournament_format.generate_pairings(
+        let Some(pairings) = tournament.metadata.tournament_format.generate_pairings(
             &all_players,
             &previous_matches,
             next_round_index,
-        );
+        ) else {
+            tracing::error!(
+                "Attempted to start next round of tournament {} but tournament format indicates the tournament is already finished",
+                tournament_id
+            );
+            return Err(());
+        };
 
         let bye_futures = pairings.byes.into_iter().map(|player_id| async move {
             if let Err(e) = self
@@ -262,15 +320,13 @@ impl<
                 let match_data = Match::new(
                     player1,
                     player2,
-                    color,
-                    tournament.metadata.match_settings.clone(),
-                    MatchMode::FixedGames(1),
-                    true,
                     Some(MatchTournamentInfo {
                         tournament_id,
                         round: next_round_index as u32,
                         round_match_number: round_match_number as u32,
                     }),
+                    tournament.metadata.match_settings.clone(),
+                    color,
                 );
                 async move {
                     let match_id = match self.match_repository.create_match(match_data).await {

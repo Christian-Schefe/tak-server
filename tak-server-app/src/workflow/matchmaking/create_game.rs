@@ -129,8 +129,8 @@ impl<
             date,
             white_id,
             black_id,
-            match_entry.is_rated,
-            match_entry.game_settings.clone(),
+            match_entry.settings.is_rated,
+            match_entry.settings.game_settings.clone(),
             Some(match_id),
         );
 

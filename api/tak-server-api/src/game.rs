@@ -7,7 +7,7 @@ use axum::{
 };
 use tak_core::ptn::{action_to_ptn, game_result_to_string};
 use tak_server_api_contract::game::{
-    ForPlayer, GameSettingsInfo, GameStatusType, JsonEndedGameInfo, JsonGameMetadata,
+    ForPlayer, JsonGameSettings, GameStatusType, JsonEndedGameInfo, JsonGameMetadata,
     JsonGameRatingInfo, JsonGameRequest, JsonGameRequestType, JsonGameRequests, JsonGameStatus,
     JsonPlayerSnapshot,
 };
@@ -81,7 +81,7 @@ pub async fn get_game_status(
                 black: ongoing_game.metadata.black_id.to_string(),
             },
             is_rated: ongoing_game.metadata.is_rated,
-            game_settings: GameSettingsInfo::from_game_settings(&ongoing_game.metadata.settings),
+            game_settings: JsonGameSettings::from_game_settings(&ongoing_game.metadata.settings),
             actions: ongoing_game
                 .game
                 .action_history()
@@ -117,7 +117,7 @@ pub async fn get_game_status(
                     black: ended_game.metadata.black_id.to_string(),
                 },
                 is_rated: ended_game.metadata.is_rated,
-                game_settings: GameSettingsInfo::from_game_settings(&ended_game.metadata.settings),
+                game_settings: JsonGameSettings::from_game_settings(&ended_game.metadata.settings),
                 actions: ended_game
                     .reconstruct_action_history()
                     .iter()
@@ -277,7 +277,7 @@ pub fn from_metadata_view(game_id: GameId, view: &GameMetadataView) -> JsonGameM
             black: view.black_id.to_string(),
         },
         is_rated: view.is_rated,
-        game_settings: GameSettingsInfo::from_game_settings(&view.settings),
+        game_settings: JsonGameSettings::from_game_settings(&view.settings),
     }
 }
 

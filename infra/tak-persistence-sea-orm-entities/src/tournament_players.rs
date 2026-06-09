@@ -7,7 +7,8 @@ pub struct Model {
     pub tournament_id: i64,
     #[sea_orm(primary_key, auto_increment = false)]
     pub player_id: Uuid,
-    pub half_score: i32,
+    pub score: i32,
+    pub seeding_score: i32,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
