@@ -230,7 +230,11 @@ impl TournamentFormat {
         let mut byes = Vec::new();
         let mut has_unfinished_group = false;
 
-        let group_count = (players.len() + group_size - 1) / group_size;
+        let group_count = if group_size > 0 {
+            (players.len() + group_size - 1) / group_size
+        } else {
+            0
+        };
         let mut groups = vec![Vec::new(); group_count];
         for (i, player) in players.iter().enumerate() {
             groups[i % group_count].push(player.clone());

@@ -89,7 +89,7 @@ impl MatchRepositoryImpl {
                     .to_match_settings(),
                 status: match model.status.as_str() {
                     "waiting" => Ok(MatchStatus::Waiting),
-                    "in_progress" => Ok(MatchStatus::InProgress),
+                    "ongoing" => Ok(MatchStatus::Ongoing),
                     "completed" => Ok(MatchStatus::Completed),
                     _ => Err(format!(
                         "Invalid match status in database: {}",
@@ -133,7 +133,7 @@ impl MatchRepositoryImpl {
             .map_err(|e| format!("Failed to serialize match settings for database: {}", e))?),
             status: Set(match match_entry.status {
                 MatchStatus::Waiting => "waiting".to_string(),
-                MatchStatus::InProgress => "in_progress".to_string(),
+                MatchStatus::Ongoing => "ongoing".to_string(),
                 MatchStatus::Completed => "completed".to_string(),
             }),
             games_played: Set(match_entry.games_played),

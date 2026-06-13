@@ -130,7 +130,7 @@ impl JsonMatchMode {
 #[serde(rename_all = "camelCase")]
 pub enum JsonMatchStatus {
     Waiting,
-    InProgress,
+    Ongoing,
     Completed,
 }
 
@@ -138,7 +138,7 @@ impl JsonMatchStatus {
     pub fn from_match_status(status: &MatchStatus) -> Self {
         match status {
             MatchStatus::Waiting => JsonMatchStatus::Waiting,
-            MatchStatus::InProgress => JsonMatchStatus::InProgress,
+            MatchStatus::Ongoing => JsonMatchStatus::Ongoing,
             MatchStatus::Completed => JsonMatchStatus::Completed,
         }
     }

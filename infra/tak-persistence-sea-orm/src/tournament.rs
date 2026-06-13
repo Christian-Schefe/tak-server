@@ -156,13 +156,13 @@ impl TournamentRepository for TournamentRepositoryImpl {
         let mut tournaments = Vec::new();
         for model in models {
             let tournament_id = TournamentId(model.tournament_id);
-            match Self::tournament_from_model(model) {
-                Ok(tournament) => tournaments.push((tournament_id, tournament)),
-                Err(e) => {
-                    tracing::error!("Failed to convert tournament model to domain object: {}", e);
-                    continue;
-                }
-            }
+            let tournament = Self::tournament_from_model(model).map_err(|e| {
+                RepoError::StorageError(format!(
+                    "Failed to convert tournament model to domain object for tournament {}: {}",
+                    tournament_id.0, e
+                ))
+            })?;
+            tournaments.push((tournament_id, tournament));
         }
         Ok(tournaments)
     }

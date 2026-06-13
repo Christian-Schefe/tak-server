@@ -117,7 +117,7 @@ impl Match {
     pub fn try_begin_game(&mut self) -> Result<TakPlayer, String> {
         match self.status {
             MatchStatus::Waiting => {
-                self.status = MatchStatus::InProgress;
+                self.status = MatchStatus::Ongoing;
                 let player1_color = if self.games_played % 2 == 0 {
                     self.initial_color
                 } else {
@@ -125,7 +125,7 @@ impl Match {
                 };
                 Ok(player1_color)
             }
-            MatchStatus::InProgress => Err("Game is already in progress".to_string()),
+            MatchStatus::Ongoing => Err("Game is already in progress".to_string()),
             MatchStatus::Completed => Err("Match is already completed".to_string()),
         }
     }
@@ -134,7 +134,7 @@ impl Match {
 #[derive(Clone, Debug)]
 pub enum MatchStatus {
     Waiting,
-    InProgress,
+    Ongoing,
     Completed,
 }
 

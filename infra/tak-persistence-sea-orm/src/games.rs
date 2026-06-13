@@ -217,7 +217,7 @@ impl GameRepositoryImpl {
         Self { db }
     }
 
-    fn model_to_game(model: game::Model) -> GameRecord {
+    fn model_to_game(model: game::Model) -> Result<GameRecord, String> {
         let rating_info = if let Some(rating_change_white) = model.rating_change_white
             && let Some(rating_change_black) = model.rating_change_black
         {
@@ -238,7 +238,12 @@ impl GameRepositoryImpl {
         let time_settings =
             match serde_json::from_str::<JsonTimeSettings>(&model.game_settings.to_string()) {
                 Ok(settings) => settings.to_time_settings(),
-                Err(_) => panic!("Failed to deserialize game settings from database"),
+                Err(e) => {
+                    return Err(format!(
+                        "Failed to deserialize game settings from database: {}",
+                        e
+                    ));
+                }
             };
         let json_events: Vec<JsonEventRecord> =
             serde_json::from_value(model.events).unwrap_or_default();
@@ -268,7 +273,7 @@ impl GameRepositoryImpl {
             match_id: model.match_id.map(|id| MatchId(id)),
         };
 
-        GameRecord {
+        Ok(GameRecord {
             metadata,
             white: white_snapshot,
             black: black_snapshot,
@@ -285,7 +290,7 @@ impl GameRepositoryImpl {
                 .result
                 .as_deref()
                 .and_then(|x| game_result_from_string(x)),
-        }
+        })
     }
 }
 
@@ -377,7 +382,7 @@ impl GameRepository for GameRepositoryImpl {
             .await
             .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?
             .ok_or(RepoRetrieveError::NotFound)?;
-        Ok(Self::model_to_game(model))
+        Self::model_to_game(model).map_err(|e| RepoRetrieveError::StorageError(e.to_string()))
     }
 
     async fn query_games(
@@ -510,7 +515,9 @@ impl GameRepository for GameRepositoryImpl {
         let mut results = Vec::new();
         for model in models {
             let game_id = GameId(model.id);
-            let game_record = Self::model_to_game(model);
+            let game_record = Self::model_to_game(model).map_err(|e| {
+                RepoError::StorageError(format!("Failed to convert game model to record: {}", e))
+            })?;
             results.push((game_id, game_record));
         }
 
@@ -533,7 +540,9 @@ impl GameRepository for GameRepositoryImpl {
         let mut results = Vec::new();
         for model in models {
             let game_id = GameId(model.id);
-            let game_record = Self::model_to_game(model);
+            let game_record = Self::model_to_game(model).map_err(|e| {
+                RepoError::StorageError(format!("Failed to convert game model to record: {}", e))
+            })?;
             results.push((game_id, game_record));
         }
 
