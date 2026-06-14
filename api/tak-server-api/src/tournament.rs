@@ -2,7 +2,6 @@ use axum::{
     Json,
     extract::{Path, State},
 };
-use tak_server_api_contract::game::JsonGameSettings;
 use tak_server_app::{
     domain::{
         TournamentId,
@@ -355,7 +354,7 @@ pub struct JsonTournamentPlayer {
 pub struct JsonTournamentMetadata {
     pub id: String,
     pub name: String,
-    pub match_settings: JsonGameSettings,
+    pub match_settings: JsonMatchSettings,
     pub tournament_format: JsonTournamentType,
 }
 
@@ -395,9 +394,7 @@ impl JsonTournamentMetadata {
         Self {
             id: metadata.tournament_id.0.to_string(),
             name: metadata.name.to_string(),
-            match_settings: JsonGameSettings::from_game_settings(
-                &metadata.match_settings.game_settings,
-            ),
+            match_settings: JsonMatchSettings::from_match_settings(&metadata.match_settings),
             tournament_format: match metadata.tournament_format {
                 TournamentFormat::Swiss { rounds } => JsonTournamentType::Swiss {
                     rounds: rounds as u32,

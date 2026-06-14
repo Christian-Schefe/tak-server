@@ -147,9 +147,6 @@ pub async fn accept_seek(
         Err(AcceptSeekError::SeekNotFound) => {
             Err(ServiceError::NotFound("Seek not found".to_string()))
         }
-        Err(AcceptSeekError::InvalidOpponent) => Err(ServiceError::BadRequest(
-            "You are not allowed to accept this seek".to_string(),
-        )),
         Err(AcceptSeekError::FailedToCreateGame) => {
             Err(ServiceError::Internal("Failed to accept seek".to_string()))
         }

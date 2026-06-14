@@ -102,7 +102,7 @@ impl TournamentFormat {
 
         let previous_pairings_set = previous_pairings
             .iter()
-            .map(|m| normalize_pair(m.player1, m.player2))
+            .map(|m| normalize_pair(m.player1.player_id, m.player2.player_id))
             .collect::<HashSet<_>>();
 
         let mut sorted = players.iter().enumerate().collect::<Vec<_>>();

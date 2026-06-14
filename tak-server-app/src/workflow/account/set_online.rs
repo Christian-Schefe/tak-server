@@ -145,7 +145,7 @@ impl<
             )
         });
         for cancelled_seek in cancelled_seeks {
-            let message = ListenerMessage::SeekCanceled {
+            let message = ListenerMessage::SeekCancelled {
                 seek: cancelled_seek.into(),
             };
             self.notification_port.notify_all(&message);
@@ -170,7 +170,10 @@ impl<
                         },
                     };
                     self.notify_player_workflow
-                        .notify_players(&[match_entry.player1, match_entry.player2], &message)
+                        .notify_players(
+                            &[match_entry.player1.player_id, match_entry.player2.player_id],
+                            &message,
+                        )
                         .await;
                 }
                 Err(e) => {

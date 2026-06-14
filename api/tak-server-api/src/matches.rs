@@ -64,11 +64,9 @@ pub async fn get_match(
 #[serde(rename_all = "camelCase")]
 pub struct JsonMatch {
     pub id: String,
-    pub player1_id: String,
-    pub player2_id: String,
+    pub player1: JsonMatchPlayer,
+    pub player2: JsonMatchPlayer,
     pub settings: JsonMatchSettings,
-    pub score_player1: u32,
-    pub score_player2: u32,
     pub status: JsonMatchStatus,
 }
 
@@ -100,6 +98,7 @@ impl JsonMatchSettings {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(tag = "type")]
 pub enum JsonMatchMode {
     Unlimited,
     FixedGames { games: u32 },
@@ -111,9 +110,7 @@ impl JsonMatchMode {
         match mode {
             MatchMode::Unlimited => JsonMatchMode::Unlimited,
             MatchMode::FixedGames(games) => JsonMatchMode::FixedGames { games: *games },
-            MatchMode::FirstTo(score) => JsonMatchMode::FirstTo {
-                score: *score,
-            },
+            MatchMode::FirstTo(score) => JsonMatchMode::FirstTo { score: *score },
         }
     }
 
@@ -144,15 +141,26 @@ impl JsonMatchStatus {
     }
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonMatchPlayer {
+    pub player_id: String,
+    pub score: u32,
+}
+
 impl JsonMatch {
     pub fn from_match(id: MatchId, m: Match) -> Self {
         Self {
             id: id.to_string(),
-            player1_id: m.player1.to_string(),
-            player2_id: m.player2.to_string(),
+            player1: JsonMatchPlayer {
+                player_id: m.player1.player_id.to_string(),
+                score: m.player1.score,
+            },
+            player2: JsonMatchPlayer {
+                player_id: m.player2.player_id.to_string(),
+                score: m.player2.score,
+            },
             settings: JsonMatchSettings::from_match_settings(&m.settings),
-            score_player1: m.score_player1,
-            score_player2: m.score_player2,
             status: JsonMatchStatus::from_match_status(&m.status),
         }
     }

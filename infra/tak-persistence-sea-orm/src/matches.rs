@@ -4,7 +4,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use tak_core::TakPlayer;
 use tak_persistence_sea_orm_entities::matches;
 use tak_server_app::domain::matches::{
-    Match, MatchMode, MatchRepository, MatchSettings, MatchStatus, MatchTournamentInfo,
+    Match, MatchMode, MatchPlayer, MatchRepository, MatchSettings, MatchStatus, MatchTournamentInfo,
 };
 use tak_server_app::domain::{MatchId, PlayerId, RepoError, RepoRetrieveError, TournamentId};
 
@@ -72,8 +72,14 @@ impl MatchRepositoryImpl {
         Ok((
             MatchId(model.match_id),
             Match {
-                player1: PlayerId(model.player1_id),
-                player2: PlayerId(model.player2_id),
+                player1: MatchPlayer {
+                    player_id: PlayerId(model.player1_id),
+                    score: model.score_player1,
+                },
+                player2: MatchPlayer {
+                    player_id: PlayerId(model.player2_id),
+                    score: model.score_player2,
+                },
                 initial_color: match model.initial_color.as_str() {
                     "white" => Ok(TakPlayer::White),
                     "black" => Ok(TakPlayer::Black),
@@ -97,8 +103,6 @@ impl MatchRepositoryImpl {
                     )),
                 }?,
                 games_played: model.games_played,
-                score_player1: model.score_player1,
-                score_player2: model.score_player2,
                 tournament_info: if let Some(tournament_id) = model.tournament_id
                     && let Some(round) = model.tournament_round
                     && let Some(match_number) = model.tournament_round_match_number
@@ -121,8 +125,8 @@ impl MatchRepositoryImpl {
     ) -> Result<matches::ActiveModel, String> {
         Ok(matches::ActiveModel {
             match_id: match_id.map(|id| Set(id.0)).unwrap_or_default(),
-            player1_id: Set(match_entry.player1.0),
-            player2_id: Set(match_entry.player2.0),
+            player1_id: Set(match_entry.player1.player_id.0),
+            player2_id: Set(match_entry.player2.player_id.0),
             initial_color: Set(match match_entry.initial_color {
                 TakPlayer::White => "white".to_string(),
                 TakPlayer::Black => "black".to_string(),
@@ -137,8 +141,8 @@ impl MatchRepositoryImpl {
                 MatchStatus::Completed => "completed".to_string(),
             }),
             games_played: Set(match_entry.games_played),
-            score_player1: Set(match_entry.score_player1),
-            score_player2: Set(match_entry.score_player2),
+            score_player1: Set(match_entry.player1.score),
+            score_player2: Set(match_entry.player2.score),
             tournament_id: Set(match_entry
                 .tournament_info
                 .as_ref()

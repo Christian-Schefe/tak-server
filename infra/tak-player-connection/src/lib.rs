@@ -56,14 +56,10 @@ impl PlayerConnectionDriver {
         Self { app, inner }
     }
 
-    pub async fn associate_connection(
-        &self,
-        account_id: &AccountId,
-        connection_id: ConnectionId,
-    ) -> bool {
+    pub async fn associate_connection(&self, account_id: &AccountId, connection_id: ConnectionId) {
         if let Some(prev_account_id) = self.get_account_id(&connection_id) {
             if &prev_account_id == account_id {
-                return true;
+                return;
             } else {
                 tracing::info!(
                     "Connection {} is already associated with account {}. Reassociating with account {}.",
@@ -76,9 +72,6 @@ impl PlayerConnectionDriver {
         }
         let set_online = {
             let mut registry = self.inner.registry.write();
-            if registry.connection_to_listener.contains_key(&connection_id) {
-                return false;
-            }
             let (listener_id, set_online) =
                 if let Some(listener_id) = registry.listener_map.get_by_left(&account_id) {
                     (*listener_id, false)
@@ -105,7 +98,6 @@ impl PlayerConnectionDriver {
                 .set_online(account_id)
                 .await;
         }
-        true
     }
 
     pub async fn remove_connection(&self, connection_id: &ConnectionId) {

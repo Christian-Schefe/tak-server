@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tak_core::TakPlayer;
+use tak_core::{TakPlayer, TakTimeSettings};
 
 use crate::{
     domain::{
@@ -53,7 +53,6 @@ impl<
 
 pub enum AcceptSeekError {
     SeekNotFound,
-    InvalidOpponent,
     FailedToCreateGame,
 }
 
@@ -69,14 +68,34 @@ impl<
     async fn accept_seek(&self, player: PlayerId, seek_id: SeekId) -> Result<(), AcceptSeekError> {
         let seek = self
             .seek_service
-            .remove_seek(seek_id)
+            .remove_seek_if(seek_id, |s| {
+                (s.opponent_id.is_none() || s.opponent_id == Some(player)) && s.creator_id != player
+            })
             .ok_or(AcceptSeekError::SeekNotFound)?;
 
-        if seek.opponent_id.is_some_and(|opp| opp != player) {
-            return Err(AcceptSeekError::InvalidOpponent);
-        }
-        if player == seek.creator_id {
-            return Err(AcceptSeekError::InvalidOpponent);
+        let cancelled_seeks = self.seek_service.cancel_player_seeks(player, |seek| {
+            matches!(
+                seek.game_settings.time_settings,
+                TakTimeSettings::Realtime(_)
+            )
+        });
+        let cancelled_seeks2 = self
+            .seek_service
+            .cancel_player_seeks(seek.creator_id, |seek| {
+                matches!(
+                    seek.game_settings.time_settings,
+                    TakTimeSettings::Realtime(_)
+                )
+            });
+
+        for cancelled_seek in cancelled_seeks
+            .into_iter()
+            .chain(cancelled_seeks2.into_iter())
+        {
+            let message = ListenerMessage::SeekCancelled {
+                seek: (&cancelled_seek).into(),
+            };
+            self.notification_port.notify_all(&message);
         }
 
         let message = ListenerMessage::SeekAccepted {

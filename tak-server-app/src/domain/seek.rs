@@ -35,7 +35,7 @@ pub trait SeekService {
     fn cancel_seek(&self, player: PlayerId, seek_id: SeekId) -> Option<Seek>;
     fn get_seek(&self, seek_id: SeekId) -> Option<Seek>;
     fn list_seeks(&self) -> Vec<Seek>;
-    fn remove_seek(&self, seek_id: SeekId) -> Option<Seek>;
+    fn remove_seek_if(&self, seek_id: SeekId, predicate: impl Fn(&Seek) -> bool) -> Option<Seek>;
 }
 
 struct SeekRegistry {
@@ -75,23 +75,23 @@ impl SeekRegistry {
         player: PlayerId,
         predicate: impl Fn(&Seek) -> bool,
     ) -> Vec<Seek> {
-        let mut canceled_seek_ids = Vec::new();
+        let mut cancelled_seek_ids = Vec::new();
         if let Some(seek_ids) = self.seeks_by_player.remove(&player) {
             for seek_id in seek_ids {
                 if let Some(seek) = self.seeks.get(&seek_id)
                     && predicate(seek)
                 {
-                    canceled_seek_ids.push(seek_id);
+                    cancelled_seek_ids.push(seek_id);
                 }
             }
         }
-        let mut cancellecd_seeks = Vec::new();
-        for seek_id in &canceled_seek_ids {
+        let mut cancelled_seeks = Vec::new();
+        for seek_id in &cancelled_seek_ids {
             if let Some(seek) = self.seeks.remove(seek_id) {
-                cancellecd_seeks.push(seek);
+                cancelled_seeks.push(seek);
             }
         }
-        cancellecd_seeks
+        cancelled_seeks
     }
 
     fn cancel_player_seek(&mut self, player: PlayerId, seek_id: SeekId) -> Option<Seek> {
@@ -117,8 +117,14 @@ impl SeekRegistry {
         self.seeks.values()
     }
 
-    fn remove_seek(&mut self, seek_id: SeekId) -> Option<Seek> {
-        if let Some(seek) = self.seeks.remove(&seek_id) {
+    fn remove_seek_if(
+        &mut self,
+        seek_id: SeekId,
+        predicate: impl Fn(&Seek) -> bool,
+    ) -> Option<Seek> {
+        if let Some(seek) = self.seeks.get(&seek_id).filter(|s| predicate(s)) {
+            let seek = seek.clone();
+            self.seeks.remove(&seek_id);
             self.seeks_by_player
                 .get_mut(&seek.creator_id)
                 .map(|seek_ids| seek_ids.remove(&seek_id));
@@ -206,7 +212,10 @@ impl SeekService for SeekServiceImpl {
             .collect()
     }
 
-    fn remove_seek(&self, seek_id: SeekId) -> Option<Seek> {
-        self.seek_registry.write().unwrap().remove_seek(seek_id)
+    fn remove_seek_if(&self, seek_id: SeekId, predicate: impl Fn(&Seek) -> bool) -> Option<Seek> {
+        self.seek_registry
+            .write()
+            .unwrap()
+            .remove_seek_if(seek_id, predicate)
     }
 }

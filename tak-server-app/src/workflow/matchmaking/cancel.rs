@@ -29,7 +29,7 @@ impl<S: SeekService, L: ListenerNotificationPort> CancelSeekUseCase
 {
     fn cancel_seeks(&self, player: PlayerId) {
         for cancelled_seek in self.seek_service.cancel_player_seeks(player, |_| true) {
-            let message = ListenerMessage::SeekCanceled {
+            let message = ListenerMessage::SeekCancelled {
                 seek: cancelled_seek.into(),
             };
             self.notification_port.notify_all(&message);
@@ -38,7 +38,7 @@ impl<S: SeekService, L: ListenerNotificationPort> CancelSeekUseCase
 
     fn cancel_seek(&self, player: PlayerId, seek_id: SeekId) -> bool {
         if let Some(cancelled_seek) = self.seek_service.cancel_seek(player, seek_id) {
-            let message = ListenerMessage::SeekCanceled {
+            let message = ListenerMessage::SeekCancelled {
                 seek: cancelled_seek.into(),
             };
             self.notification_port.notify_all(&message);

@@ -19,14 +19,18 @@ pub trait MatchRepository {
 #[derive(Clone, Debug)]
 pub struct Match {
     pub settings: MatchSettings,
-    pub player1: PlayerId,
-    pub player2: PlayerId,
+    pub player1: MatchPlayer,
+    pub player2: MatchPlayer,
     pub status: MatchStatus,
     pub games_played: u32,
-    pub score_player1: u32,
-    pub score_player2: u32,
     pub tournament_info: Option<MatchTournamentInfo>,
     pub initial_color: TakPlayer,
+}
+
+#[derive(Clone, Debug)]
+pub struct MatchPlayer {
+    pub player_id: PlayerId,
+    pub score: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -60,14 +64,18 @@ impl Match {
         initial_color: TakPlayer,
     ) -> Self {
         Self {
-            player1,
-            player2,
+            player1: MatchPlayer {
+                player_id: player1,
+                score: 0,
+            },
+            player2: MatchPlayer {
+                player_id: player2,
+                score: 0,
+            },
             settings,
             status: MatchStatus::Waiting,
             initial_color,
             games_played: 0,
-            score_player1: 0,
-            score_player2: 0,
             tournament_info,
         }
     }
@@ -75,10 +83,10 @@ impl Match {
     pub fn get_winner(&self) -> Option<PlayerId> {
         match self.status {
             MatchStatus::Completed => {
-                if self.score_player1 > self.score_player2 {
-                    Some(self.player1)
-                } else if self.score_player2 > self.score_player1 {
-                    Some(self.player2)
+                if self.player1.score > self.player2.score {
+                    Some(self.player1.player_id)
+                } else if self.player2.score > self.player1.score {
+                    Some(self.player2.player_id)
                 } else {
                     None
                 }
@@ -91,21 +99,21 @@ impl Match {
         self.games_played += 1;
         match winner {
             Some(winner) => {
-                if winner == self.player1 {
-                    self.score_player1 += 2;
-                } else if winner == self.player2 {
-                    self.score_player2 += 2;
+                if winner == self.player1.player_id {
+                    self.player1.score += 2;
+                } else if winner == self.player2.player_id {
+                    self.player2.score += 2;
                 }
             }
             None => {
-                self.score_player1 += 1;
-                self.score_player2 += 1;
+                self.player1.score += 1;
+                self.player2.score += 1;
             }
         }
         let completed = match self.settings.match_mode {
             MatchMode::Unlimited => false,
             MatchMode::FixedGames(total_games) => self.games_played >= total_games,
-            MatchMode::FirstTo(score) => self.score_player1 >= score || self.score_player2 >= score,
+            MatchMode::FirstTo(score) => self.player1.score >= score || self.player2.score >= score,
         };
         if completed {
             self.status = MatchStatus::Completed;

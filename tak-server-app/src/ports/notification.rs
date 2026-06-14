@@ -27,7 +27,7 @@ pub enum ListenerMessage {
     SeekCreated {
         seek: SeekView,
     },
-    SeekCanceled {
+    SeekCancelled {
         seek: SeekView,
     },
     SeekAccepted {

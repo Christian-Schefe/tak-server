@@ -112,8 +112,8 @@ impl<
         })?;
 
         let (white_id, black_id) = match player1_color {
-            TakPlayer::White => (match_entry.player1, match_entry.player2),
-            TakPlayer::Black => (match_entry.player2, match_entry.player1),
+            TakPlayer::White => (match_entry.player1.player_id, match_entry.player2.player_id),
+            TakPlayer::Black => (match_entry.player2.player_id, match_entry.player1.player_id),
         };
 
         let snapshot_white = self

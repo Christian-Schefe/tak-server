@@ -18,12 +18,12 @@ pub trait MatchReadinessUseCase {
     async fn set_player_ready(
         &self,
         match_id: MatchId,
-        player: PlayerId,
+        player_id: PlayerId,
     ) -> Result<(), MatchReadinessError>;
     async fn set_player_not_ready(
         &self,
         match_id: MatchId,
-        player: PlayerId,
+        player_id: PlayerId,
     ) -> Result<(), MatchReadinessError>;
 }
 
@@ -107,13 +107,14 @@ impl<
     async fn set_player_ready(
         &self,
         match_id: MatchId,
-        player: PlayerId,
+        player_id: PlayerId,
     ) -> Result<(), MatchReadinessError> {
         let match_entry = self.get_match(match_id).await?;
-        if match_entry.player1 != player && match_entry.player2 != player {
+        if match_entry.player1.player_id != player_id && match_entry.player2.player_id != player_id
+        {
             tracing::error!(
                 "Player {} is not a participant in match {}",
-                player,
+                player_id,
                 match_id
             );
             return Err(MatchReadinessError::MatchNotFound);
@@ -128,7 +129,7 @@ impl<
         };
         let should_create_game = self
             .match_readiness_service
-            .set_player_ready(match_id, player);
+            .set_player_ready(match_id, player_id);
         if should_create_game {
             if let Err(e) = self
                 .create_game_workflow
@@ -142,12 +143,15 @@ impl<
             let msg = ListenerMessage::MatchEvent {
                 match_id,
                 event_type: ListenerMatchEventType::MatchReadinessChanged {
-                    player_id: Some(player),
+                    player_id: Some(player_id),
                 },
             };
 
             self.notification_port
-                .notify_players(&[match_entry.player1, match_entry.player2], &msg)
+                .notify_players(
+                    &[match_entry.player1.player_id, match_entry.player2.player_id],
+                    &msg,
+                )
                 .await;
         }
         Ok(())
@@ -157,13 +161,14 @@ impl<
     async fn set_player_not_ready(
         &self,
         match_id: MatchId,
-        player: PlayerId,
+        player_id: PlayerId,
     ) -> Result<(), MatchReadinessError> {
         let match_entry = self.get_match(match_id).await?;
-        if match_entry.player1 != player && match_entry.player2 != player {
+        if match_entry.player1.player_id != player_id && match_entry.player2.player_id != player_id
+        {
             tracing::error!(
                 "Player {} is not a participant in match {}",
-                player,
+                player_id,
                 match_id
             );
             return Err(MatchReadinessError::MatchNotFound);
@@ -178,14 +183,17 @@ impl<
         };
         let did_remove = self
             .match_readiness_service
-            .set_player_not_ready(match_id, player);
+            .set_player_not_ready(match_id, player_id);
         if did_remove {
             let msg = ListenerMessage::MatchEvent {
                 match_id,
                 event_type: ListenerMatchEventType::MatchReadinessChanged { player_id: None },
             };
             self.notification_port
-                .notify_players(&[match_entry.player1, match_entry.player2], &msg)
+                .notify_players(
+                    &[match_entry.player1.player_id, match_entry.player2.player_id],
+                    &msg,
+                )
                 .await;
         }
         Ok(())

@@ -400,7 +400,7 @@ fn from_listener_message(message: ListenerMessage) -> Option<ServerMessage> {
         ListenerMessage::SeekCreated { seek } => Some(ServerMessage::SeekCreated {
             seek: from_seek_view(seek),
         }),
-        ListenerMessage::SeekCanceled { seek } | ListenerMessage::SeekAccepted { seek } => {
+        ListenerMessage::SeekCancelled { seek } | ListenerMessage::SeekAccepted { seek } => {
             Some(ServerMessage::SeekRemoved {
                 seek_id: seek.id.to_string(),
             })
