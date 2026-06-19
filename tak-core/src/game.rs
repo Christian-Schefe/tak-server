@@ -283,6 +283,32 @@ impl TakOngoingGame {
         ))
     }
 
+    pub fn abort(
+        &mut self,
+        now: Instant,
+        player: TakPlayer,
+    ) -> MaybeTimeout<Option<TakFinishedGame>, TakFinishedGame> {
+        if let MaybeTimeout::Timeout(finished_game) = self.check_timeout(now) {
+            return MaybeTimeout::Timeout(finished_game);
+        };
+        let max_ply_index = match player {
+            TakPlayer::White => 0,
+            TakPlayer::Black => 1,
+        };
+        if self.base.action_history.len() <= max_ply_index {
+            // if the player hasn't made a move yet, they can abort without penalty
+            return MaybeTimeout::Result(None);
+        }
+        MaybeTimeout::Result(Some(self.set_game_over(now, TakGameResult::Aborted)))
+    }
+
+    pub fn abort_forced(&mut self, now: Instant) -> MaybeTimeout<TakFinishedGame, TakFinishedGame> {
+        if let MaybeTimeout::Timeout(finished_game) = self.check_timeout(now) {
+            return MaybeTimeout::Timeout(finished_game);
+        };
+        MaybeTimeout::Result(self.set_game_over(now, TakGameResult::Aborted))
+    }
+
     pub fn agree_draw(&mut self, now: Instant) -> MaybeTimeout<TakFinishedGame, TakFinishedGame> {
         if let MaybeTimeout::Timeout(finished_game) = self.check_timeout(now) {
             return MaybeTimeout::Timeout(finished_game);

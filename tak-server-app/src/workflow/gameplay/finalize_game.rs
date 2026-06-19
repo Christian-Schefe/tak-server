@@ -102,17 +102,7 @@ impl<
 
     async fn handle_match(&self, match_id: MatchId, game: &FinishedGame) {
         tracing::info!("Finalizing game {} in match {}", game.game_id, match_id);
-        let winner = match game.game.game_result() {
-            TakGameResult::Draw => None,
-            TakGameResult::Win {
-                winner: TakPlayer::White,
-                ..
-            } => Some(game.metadata.white_id),
-            TakGameResult::Win {
-                winner: TakPlayer::Black,
-                ..
-            } => Some(game.metadata.black_id),
-        };
+
         let mut match_data = match self.match_repository.get_match(match_id).await {
             Ok(m) => m,
             Err(e) => {
@@ -120,7 +110,19 @@ impl<
                 return;
             }
         };
-        match_data.end_game_in_match(winner);
+
+        match game.game.game_result() {
+            TakGameResult::Draw => match_data.end_game_in_match(None),
+            TakGameResult::Win {
+                winner: TakPlayer::White,
+                ..
+            } => match_data.end_game_in_match(Some(game.metadata.white_id)),
+            TakGameResult::Win {
+                winner: TakPlayer::Black,
+                ..
+            } => match_data.end_game_in_match(Some(game.metadata.black_id)),
+            TakGameResult::Aborted => match_data.abort_game_in_match(),
+        };
 
         if let Err(e) = self
             .match_repository
@@ -365,6 +367,7 @@ async fn update_stats<S: StatsRepository>(stats_repository: &Arc<S>, ended_game:
             winner: TakPlayer::Black,
             ..
         } => (GameOutcome::Loss, GameOutcome::Win),
+        TakGameResult::Aborted => return,
     };
 
     let is_rated = ended_game.metadata.is_rated;

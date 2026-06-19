@@ -95,14 +95,25 @@ impl Match {
         }
     }
 
+    pub fn abort_game_in_match(&mut self) {
+        self.status = MatchStatus::Waiting;
+    }
+
     pub fn end_game_in_match(&mut self, winner: Option<PlayerId>) {
-        self.games_played += 1;
         match winner {
             Some(winner) => {
                 if winner == self.player1.player_id {
                     self.player1.score += 2;
                 } else if winner == self.player2.player_id {
                     self.player2.score += 2;
+                } else {
+                    tracing::error!(
+                        "Winner {} is not part of the match between {} and {}",
+                        winner,
+                        self.player1.player_id,
+                        self.player2.player_id
+                    );
+                    return;
                 }
             }
             None => {
@@ -110,6 +121,7 @@ impl Match {
                 self.player2.score += 1;
             }
         }
+        self.games_played += 1;
         let completed = match self.settings.match_mode {
             MatchMode::Unlimited => false,
             MatchMode::FixedGames(total_games) => self.games_played >= total_games,

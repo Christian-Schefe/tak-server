@@ -37,6 +37,7 @@ pub trait DoActionUseCase {
         request_type: GameRequestType,
     ) -> ActionResult<HandleRequestError>;
     async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), PlayerActionError>;
+    async fn abort(&self, game_id: GameId, player_id: PlayerId) -> ActionResult<AbortError>;
 }
 
 #[derive(Debug)]
@@ -61,6 +62,10 @@ pub enum DoActionError {
 #[derive(Debug)]
 pub enum HandleRequestError {
     RequestNotFound,
+}
+
+pub enum AbortError {
+    GameAlreadyStarted,
 }
 
 pub struct DoActionUseCaseImpl<G: GameService, NP: NotifyPlayerWorkflow, F: FinalizeGameWorkflow> {
@@ -315,5 +320,20 @@ impl<
             .await?;
         self.handle_ended_game(ended_game).await;
         Ok(())
+    }
+
+    async fn abort(&self, game_id: GameId, player_id: PlayerId) -> ActionResult<AbortError> {
+        let now = Instant::now();
+        match self
+            .handle_game_action_result(self.game_service.abort(game_id, player_id, now))
+            .await
+        {
+            Ok(Some(ended_game)) => {
+                self.handle_ended_game(ended_game).await;
+                ActionResult::Success
+            }
+            Ok(None) => ActionResult::ActionError(AbortError::GameAlreadyStarted),
+            Err(e) => ActionResult::NotPossible(e),
+        }
     }
 }

@@ -70,6 +70,7 @@ enum JsonEventGameOverType {
     Timeout,
     Resignation,
     Abandonment,
+    Aborted,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -116,6 +117,7 @@ impl JsonEventRecordType {
                     GameOverEventType::Timeout => JsonEventGameOverType::Timeout,
                     GameOverEventType::Resignation => JsonEventGameOverType::Resignation,
                     GameOverEventType::Abandonment => JsonEventGameOverType::Abandonment,
+                    GameOverEventType::Aborted => JsonEventGameOverType::Aborted,
                 },
             },
             GameEventType::TimeGiven { player, duration } => JsonEventRecordType::TimeGiven {
@@ -155,6 +157,7 @@ impl JsonEventRecordType {
                     JsonEventGameOverType::Timeout => GameOverEventType::Timeout,
                     JsonEventGameOverType::Resignation => GameOverEventType::Resignation,
                     JsonEventGameOverType::Abandonment => GameOverEventType::Abandonment,
+                    JsonEventGameOverType::Aborted => GameOverEventType::Aborted,
                 })
             }
         }

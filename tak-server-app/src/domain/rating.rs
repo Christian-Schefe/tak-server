@@ -280,6 +280,7 @@ impl RatingService for RatingServiceImpl {
                 TakPlayer::Black => 0.0,
             },
             TakGameResult::Draw => 0.5,
+            TakGameResult::Aborted => return None,
         };
 
         let old_white_rating_decayed = self.get_current_rating(&white_rating, metadata.date);

@@ -190,6 +190,7 @@ pub enum TakGameResult {
         reason: TakWinReason,
     },
     Draw,
+    Aborted,
 }
 
 #[derive(Clone, PartialEq, Debug)]

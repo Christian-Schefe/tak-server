@@ -136,12 +136,19 @@ async fn main() {
 
     tracing::info!("Starting application");
 
+    let app_clone = app.clone();
+    let on_shutdown = async move {
+        shutdown_signal().await;
+        tracing::info!("Executing shutdown workflow");
+        app_clone.shutdown_workflow.shutdown().await;
+    };
+
     tak_server_api::serve(
         app,
         authentication_adapter,
         ws_service,
         connection_driver,
-        shutdown_signal(),
+        on_shutdown,
     )
     .await;
 }

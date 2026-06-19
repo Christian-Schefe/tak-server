@@ -275,6 +275,7 @@ pub fn game_result_to_string(game_result: &TakGameResult) -> String {
             }
         }
         TakGameResult::Draw => "1/2-1/2".to_string(),
+        TakGameResult::Aborted => "0-0".to_string(),
     }
 }
 
@@ -305,6 +306,7 @@ pub fn game_result_from_string(s: &str) -> Option<TakGameResult> {
             reason: TakWinReason::Default,
         }),
         "1/2-1/2" => Some(TakGameResult::Draw),
+        "0-0" => Some(TakGameResult::Aborted),
         _ => None,
     }
 }

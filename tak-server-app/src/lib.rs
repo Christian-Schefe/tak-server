@@ -71,6 +71,7 @@ use crate::{
             get::{GetPuzzleUseCase, GetPuzzleUseCaseImpl},
             solve::{SolvePuzzleUseCase, SolvePuzzleUseCaseImpl},
         },
+        shutdown::{ShutdownWorkflow, ShutdownWorkflowImpl},
         tournament::{
             get::{GetTournamentUseCase, GetTournamentUseCaseImpl},
             host::{HostTournamentUseCase, HostTournamentUseCaseImpl},
@@ -89,34 +90,34 @@ pub mod services;
 pub mod workflow;
 
 pub struct Application {
-    pub seek_accept_use_case: Box<dyn AcceptSeekUseCase + Send + Sync + 'static>,
-    pub seek_cancel_use_case: Box<dyn CancelSeekUseCase + Send + Sync + 'static>,
-    pub seek_create_use_case: Box<dyn CreateSeekUseCase + Send + Sync + 'static>,
-    pub seek_get_use_case: Box<dyn GetSeekUseCase + Send + Sync + 'static>,
-    pub seek_list_use_case: Box<dyn ListSeeksUseCase + Send + Sync + 'static>,
-    pub match_readiness_use_case: Box<dyn MatchReadinessUseCase + Send + Sync + 'static>,
+    pub seek_accept_use_case: Arc<dyn AcceptSeekUseCase + Send + Sync + 'static>,
+    pub seek_cancel_use_case: Arc<dyn CancelSeekUseCase + Send + Sync + 'static>,
+    pub seek_create_use_case: Arc<dyn CreateSeekUseCase + Send + Sync + 'static>,
+    pub seek_get_use_case: Arc<dyn GetSeekUseCase + Send + Sync + 'static>,
+    pub seek_list_use_case: Arc<dyn ListSeeksUseCase + Send + Sync + 'static>,
+    pub match_readiness_use_case: Arc<dyn MatchReadinessUseCase + Send + Sync + 'static>,
 
-    pub account_set_online_use_case: Box<dyn SetAccountOnlineUseCase + Send + Sync + 'static>,
-    pub account_get_online_use_case: Box<dyn GetOnlineAccountsUseCase + Send + Sync + 'static>,
+    pub account_set_online_use_case: Arc<dyn SetAccountOnlineUseCase + Send + Sync + 'static>,
+    pub account_get_online_use_case: Arc<dyn GetOnlineAccountsUseCase + Send + Sync + 'static>,
 
-    pub listener_disconnect_use_case: Box<dyn ListenerDisconnectUseCase + Send + Sync + 'static>,
+    pub listener_disconnect_use_case: Arc<dyn ListenerDisconnectUseCase + Send + Sync + 'static>,
 
-    pub player_get_rating_use_case: Box<dyn PlayerGetRatingUseCase + Send + Sync + 'static>,
+    pub player_get_rating_use_case: Arc<dyn PlayerGetRatingUseCase + Send + Sync + 'static>,
     pub player_resolver_service: Arc<dyn PlayerResolverService + Send + Sync + 'static>,
 
-    pub game_do_action_use_case: Box<dyn DoActionUseCase + Send + Sync + 'static>,
-    pub game_get_ongoing_use_case: Box<dyn GetOngoingGameUseCase + Send + Sync + 'static>,
-    pub game_list_ongoing_use_case: Box<dyn ListOngoingGameUseCase + Send + Sync + 'static>,
-    pub game_observe_use_case: Box<dyn ObserveGameUseCase + Send + Sync + 'static>,
+    pub game_do_action_use_case: Arc<dyn DoActionUseCase + Send + Sync + 'static>,
+    pub game_get_ongoing_use_case: Arc<dyn GetOngoingGameUseCase + Send + Sync + 'static>,
+    pub game_list_ongoing_use_case: Arc<dyn ListOngoingGameUseCase + Send + Sync + 'static>,
+    pub game_observe_use_case: Arc<dyn ObserveGameUseCase + Send + Sync + 'static>,
 
-    pub game_history_query_use_case: Box<dyn GameHistoryQueryUseCase + Send + Sync + 'static>,
+    pub game_history_query_use_case: Arc<dyn GameHistoryQueryUseCase + Send + Sync + 'static>,
 
-    pub chat_message_use_case: Box<dyn ChatMessageUseCase + Send + Sync + 'static>,
-    pub chat_room_use_case: Box<dyn ChatRoomUseCase + Send + Sync + 'static>,
+    pub chat_message_use_case: Arc<dyn ChatMessageUseCase + Send + Sync + 'static>,
+    pub chat_room_use_case: Arc<dyn ChatRoomUseCase + Send + Sync + 'static>,
 
-    pub account_moderate_use_case: Box<dyn ModeratePlayerUseCase + Send + Sync + 'static>,
+    pub account_moderate_use_case: Arc<dyn ModeratePlayerUseCase + Send + Sync + 'static>,
 
-    pub event_list_use_case: Box<dyn ListEventsUseCase + Send + Sync + 'static>,
+    pub event_list_use_case: Arc<dyn ListEventsUseCase + Send + Sync + 'static>,
 
     pub get_snapshot_workflow: Arc<dyn GetSnapshotWorkflow + Send + Sync + 'static>,
     pub get_account_workflow: Arc<dyn GetAccountWorkflow + Send + Sync + 'static>,
@@ -133,7 +134,9 @@ pub struct Application {
         Arc<dyn TournamentPlayerRegistrationUseCase + Send + Sync + 'static>,
     pub host_tournament_use_case: Arc<dyn HostTournamentUseCase + Send + Sync + 'static>,
 
-    pub match_get_use_case: Box<dyn GetMatchUseCase + Send + Sync + 'static>,
+    pub match_get_use_case: Arc<dyn GetMatchUseCase + Send + Sync + 'static>,
+
+    pub shutdown_workflow: Arc<dyn ShutdownWorkflow + Send + Sync + 'static>,
 }
 
 pub async fn build_application<
@@ -256,32 +259,37 @@ pub async fn build_application<
         get_snapshot_workflow.clone(),
     ));
 
+    let shutdown_workflow = Arc::new(ShutdownWorkflowImpl::new(
+        finalize_game_workflow.clone(),
+        game_service.clone(),
+    ));
+
     let application = Application {
-        seek_accept_use_case: Box::new(AcceptSeekUseCaseImpl::new(
+        seek_accept_use_case: Arc::new(AcceptSeekUseCaseImpl::new(
             seek_service.clone(),
             match_repository.clone(),
             listener_notification_port.clone(),
             create_game_from_match_workflow.clone(),
         )),
-        seek_cancel_use_case: Box::new(CancelSeekUseCaseImpl::new(
+        seek_cancel_use_case: Arc::new(CancelSeekUseCaseImpl::new(
             seek_service.clone(),
             listener_notification_port.clone(),
         )),
-        seek_create_use_case: Box::new(CreateSeekUseCaseImpl::new(
+        seek_create_use_case: Arc::new(CreateSeekUseCaseImpl::new(
             seek_service.clone(),
             listener_notification_port.clone(),
         )),
-        seek_get_use_case: Box::new(GetSeekUseCaseImpl::new(seek_service.clone())),
-        seek_list_use_case: Box::new(ListSeeksUseCaseImpl::new(seek_service.clone())),
+        seek_get_use_case: Arc::new(GetSeekUseCaseImpl::new(seek_service.clone())),
+        seek_list_use_case: Arc::new(ListSeeksUseCaseImpl::new(seek_service.clone())),
 
-        match_readiness_use_case: Box::new(MatchReadinessUseCaseImpl::new(
+        match_readiness_use_case: Arc::new(MatchReadinessUseCaseImpl::new(
             match_repository.clone(),
             create_game_from_match_workflow.clone(),
             match_readiness_service.clone(),
             notify_player_workflow.clone(),
         )),
 
-        account_set_online_use_case: Box::new(SetAccountOnlineUseCaseImpl::new(
+        account_set_online_use_case: Arc::new(SetAccountOnlineUseCaseImpl::new(
             account_online_status_port.clone(),
             listener_notification_port.clone(),
             seek_service.clone(),
@@ -291,54 +299,54 @@ pub async fn build_application<
             match_repository.clone(),
             notify_player_workflow.clone(),
         )),
-        account_get_online_use_case: Box::new(GetOnlineAccountsUseCaseImpl::new(
+        account_get_online_use_case: Arc::new(GetOnlineAccountsUseCaseImpl::new(
             account_online_status_port.clone(),
         )),
 
-        listener_disconnect_use_case: Box::new(ListenerDisconnectUseCaseImpl::new(
+        listener_disconnect_use_case: Arc::new(ListenerDisconnectUseCaseImpl::new(
             spectator_service.clone(),
             chat_room_service.clone(),
         )),
 
-        player_get_rating_use_case: Box::new(PlayerGetRatingUseCaseImpl::new(
+        player_get_rating_use_case: Arc::new(PlayerGetRatingUseCaseImpl::new(
             rating_repository.clone(),
             rating_history_repository.clone(),
             rating_service.clone(),
         )),
         player_resolver_service,
 
-        game_do_action_use_case: Box::new(DoActionUseCaseImpl::new(
+        game_do_action_use_case: Arc::new(DoActionUseCaseImpl::new(
             game_service.clone(),
             notify_player_workflow.clone(),
             finalize_game_workflow.clone(),
         )),
-        game_get_ongoing_use_case: Box::new(GetOngoingGameUseCaseImpl::new(game_service.clone())),
-        game_list_ongoing_use_case: Box::new(ListOngoingGameUseCaseImpl::new(game_service.clone())),
-        game_observe_use_case: Box::new(ObserveGameUseCaseImpl::new(
+        game_get_ongoing_use_case: Arc::new(GetOngoingGameUseCaseImpl::new(game_service.clone())),
+        game_list_ongoing_use_case: Arc::new(ListOngoingGameUseCaseImpl::new(game_service.clone())),
+        game_observe_use_case: Arc::new(ObserveGameUseCaseImpl::new(
             game_service.clone(),
             spectator_service.clone(),
         )),
 
-        game_history_query_use_case: Box::new(GameHistoryQueryUseCaseImpl::new(
+        game_history_query_use_case: Arc::new(GameHistoryQueryUseCaseImpl::new(
             game_repository.clone(),
         )),
 
-        chat_message_use_case: Box::new(ChatMessageUseCaseImpl::new(
+        chat_message_use_case: Arc::new(ChatMessageUseCaseImpl::new(
             listener_notification_port.clone(),
             player_connection_port.clone(),
             chat_room_service.clone(),
             chat_content_policy.clone(),
             chat_repository.clone(),
         )),
-        chat_room_use_case: Box::new(ChatRoomUseCaseImpl::new(chat_room_service.clone())),
+        chat_room_use_case: Arc::new(ChatRoomUseCaseImpl::new(chat_room_service.clone())),
 
-        account_moderate_use_case: Box::new(ModeratePlayerUseCaseImpl::new(
+        account_moderate_use_case: Arc::new(ModeratePlayerUseCaseImpl::new(
             email_port.clone(),
             policies,
             authentication_service.clone(),
         )),
 
-        event_list_use_case: Box::new(ListEventsUseCaseImpl::new(event_repository.clone())),
+        event_list_use_case: Arc::new(ListEventsUseCaseImpl::new(event_repository.clone())),
 
         get_snapshot_workflow,
         get_account_workflow,
@@ -379,7 +387,9 @@ pub async fn build_application<
             rating_repository.clone(),
         )),
 
-        match_get_use_case: Box::new(GetMatchUseCaseImpl::new(match_repository.clone())),
+        match_get_use_case: Arc::new(GetMatchUseCaseImpl::new(match_repository.clone())),
+
+        shutdown_workflow,
     };
 
     application

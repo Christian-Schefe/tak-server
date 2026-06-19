@@ -56,6 +56,7 @@ pub enum GameOverEventType {
     Resignation,
     Abandonment,
     DrawAgreement,
+    Aborted,
 }
 
 #[derive(Clone, Debug)]
@@ -149,6 +150,7 @@ pub trait GameService {
     fn create_game(&self, id: GameId, metadata: GameMetadata) -> OngoingGame;
     fn get_game_by_id(&self, game_id: GameId) -> Option<OngoingGame>;
     fn get_games(&self) -> impl Iterator<Item = OngoingGame>;
+    fn abort_all_games(&self, now: Instant) -> Vec<FinishedGame>;
     fn check_timeout(&self, game_id: GameId, now: Instant) -> CheckTimeoutResult;
     fn check_disconnect_timeout(
         &self,
@@ -170,6 +172,12 @@ pub trait GameService {
         player: PlayerId,
         now: Instant,
     ) -> GamePlayerActionResult<FinishedGame>;
+    fn abort(
+        &self,
+        game_id: GameId,
+        player: PlayerId,
+        now: Instant,
+    ) -> GamePlayerActionResult<Option<FinishedGame>>;
     fn set_request(
         &self,
         game_id: GameId,
@@ -452,6 +460,51 @@ impl GameService for GameServiceImpl {
                 (GameControl::Remove, finished_game)
             },
         )
+    }
+
+    fn abort(
+        &self,
+        game_id: GameId,
+        player: PlayerId,
+        now: Instant,
+    ) -> GamePlayerActionResult<Option<FinishedGame>> {
+        self.game_player_action(
+            game_id,
+            player,
+            |game_entry, current_player| Ok(game_entry.game.abort(now, current_player)),
+            |game_entry, _, res| match res {
+                Some(finished_game) => {
+                    let time_info = finished_game.get_time_info();
+                    game_entry.events.push(GameEvent::new(
+                        GameEventType::GameOver(GameOverEventType::Aborted),
+                        time_info,
+                    ));
+                    let finished_game = FinishedGame::new(game_entry, finished_game);
+                    (GameControl::Remove, Some(finished_game))
+                }
+                None => (GameControl::Keep, None),
+            },
+        )
+    }
+
+    fn abort_all_games(&self, now: Instant) -> Vec<FinishedGame> {
+        let mut finished_games = Vec::new();
+        self.games.retain(|_, game_entry| {
+            // Doesn't matter whether the game ended due to timeout or due to abort.
+            let finished_game = match game_entry.game.abort_forced(now) {
+                MaybeTimeout::Result(game) => game,
+                MaybeTimeout::Timeout(game) => game,
+            };
+            let time_info = finished_game.get_time_info();
+            game_entry.events.push(GameEvent::new(
+                GameEventType::GameOver(GameOverEventType::Aborted),
+                time_info,
+            ));
+            let finished_game = FinishedGame::new(game_entry, finished_game);
+            finished_games.push(finished_game);
+            false
+        });
+        finished_games
     }
 
     fn set_request(

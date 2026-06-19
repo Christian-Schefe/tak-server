@@ -8,3 +8,5 @@ pub mod matchmaking;
 pub mod player;
 pub mod puzzle;
 pub mod tournament;
+
+pub mod shutdown;
