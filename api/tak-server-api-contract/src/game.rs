@@ -65,7 +65,6 @@ pub enum GameStatusType {
     Ended {
         result: String,
     },
-    Aborted,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]

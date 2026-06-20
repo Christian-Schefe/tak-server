@@ -16,7 +16,6 @@ pub mod readiness;
 pub struct SeekView {
     pub id: SeekId,
     pub creator_id: PlayerId,
-    pub opponent_id: Option<PlayerId>,
     pub color: Option<TakPlayer>,
     pub game_settings: TakGameSettings,
     pub is_rated: bool,
@@ -28,7 +27,6 @@ impl<T: Borrow<Seek>> From<T> for SeekView {
         SeekView {
             id: seek.id,
             creator_id: seek.creator_id,
-            opponent_id: seek.opponent_id,
             color: seek.color,
             game_settings: seek.game_settings.clone(),
             is_rated: seek.is_rated,

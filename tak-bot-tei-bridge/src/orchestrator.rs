@@ -5,9 +5,9 @@ use tak_core::{TakPlayer, TakReserve};
 use tak_server_api_contract::{
     auth::IdentityInfo,
     game::{
-        JsonGameSettings, JsonBaseGameSettings, JsonGameMetadata, JsonGameStatus, JsonTimeSettings,
+        JsonBaseGameSettings, JsonGameMetadata, JsonGameSettings, JsonGameStatus, JsonTimeSettings,
     },
-    seek::{CreateSeekPayload, SeekInfo},
+    seek::{CreateSeekPayload, JsonSeek},
     ws::{ClientMessage, ServerGameEventType, ServerMessage},
 };
 use tokio::{select, sync::mpsc::UnboundedReceiver};
@@ -20,7 +20,7 @@ pub trait ServerApi {
     async fn send_message(&self, message: ClientMessage) -> Result<(), String>;
     async fn load_games(&self) -> Result<Vec<JsonGameMetadata>, String>;
     async fn load_game(&self, id: String) -> Result<JsonGameStatus, String>;
-    async fn create_seek(&self, seek: CreateSeekPayload) -> Result<SeekInfo, String>;
+    async fn create_seek(&self, seek: CreateSeekPayload) -> Result<JsonSeek, String>;
 }
 
 pub struct Orchestrator {
@@ -36,7 +36,6 @@ pub struct Orchestrator {
 fn get_seek_payload() -> CreateSeekPayload {
     let reserve = TakReserve::from_size(6).unwrap();
     CreateSeekPayload {
-        opponent_id: None,
         color: "random".to_string(),
         is_rated: true,
         game_settings: JsonGameSettings {

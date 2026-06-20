@@ -7,8 +7,8 @@ use axum::{
 };
 use tak_core::ptn::{action_to_ptn, game_result_to_string};
 use tak_server_api_contract::game::{
-    ForPlayer, JsonGameSettings, GameStatusType, JsonEndedGameInfo, JsonGameMetadata,
-    JsonGameRatingInfo, JsonGameRequest, JsonGameRequestType, JsonGameRequests, JsonGameStatus,
+    ForPlayer, GameStatusType, JsonEndedGameInfo, JsonGameMetadata, JsonGameRatingInfo,
+    JsonGameRequest, JsonGameRequestType, JsonGameRequests, JsonGameSettings, JsonGameStatus,
     JsonPlayerSnapshot,
 };
 use tak_server_app::{
@@ -105,7 +105,14 @@ pub async fn get_game_status(
                     result: game_result_to_string(&result),
                 }
             } else {
-                GameStatusType::Aborted // means game ended was never saved after it ended (e.g. due to server restart killing ongoing games)
+                tracing::warn!(
+                    "Game with id {} has no result even though it's ended.",
+                    game_id
+                );
+                return Err(ServiceError::NotFound(format!(
+                    "Game with id {} not found",
+                    game_id
+                )));
             };
 
             let time_info = ended_game.reconstruct_time_info();

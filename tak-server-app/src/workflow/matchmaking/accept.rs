@@ -68,9 +68,7 @@ impl<
     async fn accept_seek(&self, player: PlayerId, seek_id: SeekId) -> Result<(), AcceptSeekError> {
         let seek = self
             .seek_service
-            .remove_seek_if(seek_id, |s| {
-                (s.opponent_id.is_none() || s.opponent_id == Some(player)) && s.creator_id != player
-            })
+            .remove_seek_if(seek_id, |s| s.creator_id != player)
             .ok_or(AcceptSeekError::SeekNotFound)?;
 
         let cancelled_seeks = self.seek_service.cancel_player_seeks(player, |seek| {

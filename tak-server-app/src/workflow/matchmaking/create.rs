@@ -15,7 +15,6 @@ pub trait CreateSeekUseCase {
     fn create_seek(
         &self,
         player: PlayerId,
-        opponent: Option<PlayerId>,
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
         is_rated: bool,
@@ -42,14 +41,13 @@ impl<S: SeekService + Send + Sync + 'static, L: ListenerNotificationPort + Send 
     fn create_seek(
         &self,
         player: PlayerId,
-        opponent: Option<PlayerId>,
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
         is_rated: bool,
     ) -> Result<SeekView, CreateSeekError> {
-        let created_seek =
-            self.seek_service
-                .create_seek(player, opponent, color, game_settings, is_rated)?;
+        let created_seek = self
+            .seek_service
+            .create_seek(player, color, game_settings, is_rated)?;
         let seek_view: SeekView = created_seek.into();
         let message = ListenerMessage::SeekCreated {
             seek: seek_view.clone(),

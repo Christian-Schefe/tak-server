@@ -3,7 +3,7 @@ use uuid::Uuid;
 
 use crate::{
     game::{ForPlayer, JsonGameMetadata, JsonGameRequest},
-    seek::SeekInfo,
+    seek::JsonSeek,
 };
 
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
@@ -54,7 +54,7 @@ pub enum ServerMessage {
         response_id: Uuid,
     },
     SeekCreated {
-        seek: SeekInfo,
+        seek: JsonSeek,
     },
     SeekRemoved {
         seek_id: String,

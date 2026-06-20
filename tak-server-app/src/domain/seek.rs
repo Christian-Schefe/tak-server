@@ -10,7 +10,6 @@ use crate::domain::{PlayerId, SeekId};
 pub struct Seek {
     pub id: SeekId,
     pub creator_id: PlayerId,
-    pub opponent_id: Option<PlayerId>,
     pub color: Option<TakPlayer>,
     pub game_settings: TakGameSettings,
     pub is_rated: bool,
@@ -18,14 +17,12 @@ pub struct Seek {
 
 pub enum CreateSeekError {
     InvalidGameSettings,
-    InvalidOpponent,
 }
 
 pub trait SeekService {
     fn create_seek(
         &self,
         player: PlayerId,
-        opponent: Option<PlayerId>,
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
         is_rated: bool,
@@ -152,16 +149,12 @@ impl SeekService for SeekServiceImpl {
     fn create_seek(
         &self,
         player: PlayerId,
-        opponent: Option<PlayerId>,
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
         is_rated: bool,
     ) -> Result<Seek, CreateSeekError> {
         if !game_settings.is_valid() {
             return Err(CreateSeekError::InvalidGameSettings);
-        }
-        if opponent.is_some_and(|opp| opp == player) {
-            return Err(CreateSeekError::InvalidOpponent);
         }
         Ok(self
             .seek_registry
@@ -170,7 +163,6 @@ impl SeekService for SeekServiceImpl {
             .add_seek(|seek_id| Seek {
                 id: seek_id,
                 creator_id: player,
-                opponent_id: opponent,
                 color,
                 game_settings,
                 is_rated,

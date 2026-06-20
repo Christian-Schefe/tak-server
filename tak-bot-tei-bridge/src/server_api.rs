@@ -6,7 +6,7 @@ use std::{
 use tak_server_api_contract::{
     auth::IdentityInfo,
     game::{JsonGameMetadata, JsonGameStatus},
-    seek::{CreateSeekPayload, SeekInfo},
+    seek::{CreateSeekPayload, JsonSeek},
     ws::{ClientMessage, ClientMessageWrapper, ServerMessage},
 };
 use tokio::{
@@ -293,7 +293,7 @@ impl ServerApi for ServerApiImpl {
         self.get_request(&format!("/games/{}", id)).await
     }
 
-    async fn create_seek(&self, seek: CreateSeekPayload) -> Result<SeekInfo, String> {
+    async fn create_seek(&self, seek: CreateSeekPayload) -> Result<JsonSeek, String> {
         self.post_request("/seeks", seek).await
     }
 }
