@@ -21,7 +21,6 @@ members = [
     "tak-bot-tei-bridge",
     "tak-core",
     "tak-server-app",
-    "tak-wasm-engine",
 ]
 resolver = "3"
 
