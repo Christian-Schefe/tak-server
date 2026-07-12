@@ -28,6 +28,10 @@ pub enum ClientMessage {
         game_id: String,
         spectate: bool,
     },
+    JoinChatRoom {
+        room_name: String,
+        join: bool,
+    },
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Debug)]

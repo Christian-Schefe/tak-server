@@ -73,17 +73,21 @@ pub async fn get_chat_messages(
             ));
         }
     };
-    let messages = app
+    let mut messages = app
         .app
         .chat_message_use_case
         .get_messages(
             &conversation,
             messages_query.cursor.map(|v| ChatMessageId(v)),
-            messages_query.limit,
+            messages_query.limit + 1,
         )
         .await
         .map_err(|_| ServiceError::Internal("Failed to retrieve chat messages".to_string()))?;
-    let next_cursor = messages.last().map(|x| x.id.0);
+    let next_cursor = if messages.len() > messages_query.limit {
+        messages.pop().and_then(|_| messages.last().map(|x| x.id.0))
+    } else {
+        None
+    };
 
     let page = JsonChatMessagePage {
         messages: messages

@@ -317,6 +317,19 @@ async fn handle_authenticated_client_message(
             }
             Ok(())
         }
+        ClientMessage::JoinChatRoom { room_name, join } => {
+            tracing::info!("Received JoinChatRoom for room {}: {}", room_name, join);
+            if join {
+                app.app
+                    .chat_room_use_case
+                    .join_room(&room_name, connection_id.0);
+            } else {
+                app.app
+                    .chat_room_use_case
+                    .leave_room(&room_name, connection_id.0);
+            }
+            Ok(())
+        }
     }
 }
 
