@@ -194,8 +194,8 @@ pub struct Pagination {
 }
 
 impl Pagination {
-    pub fn new(page: usize, page_size: usize) -> Self {
-        let offset = Some((page - 1) * page_size);
+    pub fn new(page_index: usize, page_size: usize) -> Self {
+        let offset = Some(page_index * page_size);
         let limit = Some(page_size);
         Self { offset, limit }
     }

@@ -4,12 +4,8 @@ use axum::{
     routing::get,
 };
 use chrono::{DateTime, Utc};
-use tak_server_api_contract::game::JsonEndedGameInfo;
 use tak_server_app::{
-    domain::{
-        AccountId, Pagination, PlayerId, SortOrder,
-        game_history::{GamePlayerFilter, GameQuery, GameSortBy},
-    },
+    domain::{AccountId, PlayerId},
     workflow::{
         account::{AccountProfileView, get_account::GetAccountError},
         player::{PlayerStatsView, get_rating::GetRatingError},
@@ -17,7 +13,7 @@ use tak_server_app::{
 };
 use uuid::Uuid;
 
-use crate::{AppState, PaginatedResponse, PaginationQuery, ServiceError, game::from_game_record};
+use crate::{AppState, ServiceError};
 
 pub fn register_routes() -> axum::Router<AppState> {
     axum::Router::new()
@@ -29,7 +25,6 @@ pub fn register_routes() -> axum::Router<AppState> {
             "/player/{player_id}/rating-history",
             get(get_rating_history),
         )
-        .route("/player/{player_id}/games", get(get_games_history))
 }
 
 async fn get_player_info_helper(
@@ -139,41 +134,6 @@ pub async fn get_player_by_account_id(
         .map_err(|_| ServiceError::Internal("Failed to resolve player ID".to_string()))?;
 
     get_player_info_helper(&app, player_id).await.map(Json)
-}
-
-pub async fn get_games_history(
-    State(app): State<AppState>,
-    Path(player_id): Path<String>,
-    Query(pagination): Query<PaginationQuery>,
-) -> Result<Json<PaginatedResponse<JsonEndedGameInfo>>, ServiceError> {
-    let player_id = PlayerId(
-        Uuid::parse_str(&player_id)
-            .map_err(|_| ServiceError::BadRequest("Invalid player ID".to_string()))?,
-    );
-    let filter = GameQuery {
-        player_filters: vec![(GamePlayerFilter::PlayerId(player_id), None)],
-        pagination: Pagination::new(pagination.page, pagination.page_size),
-        sort: Some((SortOrder::Descending, GameSortBy::Date)),
-        ..Default::default()
-    };
-    match app
-        .app
-        .game_history_query_use_case
-        .query_games(filter)
-        .await
-    {
-        Ok(result) => Ok(Json(PaginatedResponse {
-            items: result
-                .items
-                .into_iter()
-                .map(|record| from_game_record(&record))
-                .collect(),
-            total_count: result.total_count as u32,
-        })),
-        Err(_) => Err(ServiceError::Internal(
-            "Failed to retrieve game history".to_string(),
-        )),
-    }
 }
 
 pub async fn get_rating_history(

@@ -11,6 +11,7 @@ pub mod account;
 mod auth;
 pub mod chat;
 pub mod game;
+pub mod history;
 pub mod matches;
 pub mod player;
 pub mod profile;
@@ -52,7 +53,8 @@ pub async fn serve(
         .nest("/matches", matches::register_routes())
         .nest("/accounts", account::register_routes())
         .nest("/players", player::register_routes())
-        .nest("/profiles", profile::register_routes());
+        .nest("/profiles", profile::register_routes())
+        .nest("/history", history::register_routes());
 
     let port = std::env::var("TAK_HTTP_API_PORT")
         .expect("TAK_HTTP_API_PORT must be set")
