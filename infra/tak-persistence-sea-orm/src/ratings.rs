@@ -3,12 +3,12 @@ use std::{collections::HashMap, sync::Arc};
 use crate::create_db_pool;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    TransactionError, TransactionTrait,
+    QueryOrder, QuerySelect, TransactionError, TransactionTrait,
 };
 use tak_persistence_sea_orm_entities::rating;
 use tak_server_app::domain::{
-    PlayerId, RepoError, RepoRetrieveError,
-    rating::{PlayerRating, RatingRepository},
+    PaginatedResponse, PlayerId, RepoError, RepoRetrieveError, SortOrder,
+    rating::{PlayerRating, RatingQuery, RatingRepository, RatingSortBy},
 };
 
 pub struct RatingRepositoryImpl {
@@ -184,5 +184,57 @@ impl RatingRepository for RatingRepositoryImpl {
             }
             None => Err(RepoRetrieveError::NotFound),
         }
+    }
+
+    async fn query_player_ratings(
+        &self,
+        filter: RatingQuery,
+    ) -> Result<PaginatedResponse<PlayerRating>, RepoError> {
+        let mut query = rating::Entity::find();
+
+        let total_count = query
+            .clone()
+            .count(&self.db)
+            .await
+            .map_err(|e| RepoError::StorageError(e.to_string()))?;
+
+        if let Some((sort_order, sort_by)) = filter.sort {
+            let order = match sort_order {
+                SortOrder::Ascending => sea_orm::Order::Asc,
+                SortOrder::Descending => sea_orm::Order::Desc,
+            };
+            match sort_by {
+                RatingSortBy::Rating => {
+                    query = query.order_by(rating::Column::Rating, order);
+                }
+                RatingSortBy::RatedGames => {
+                    query = query.order_by(rating::Column::RatedGames, order);
+                }
+                RatingSortBy::MaxRating => {
+                    query = query.order_by(rating::Column::MaxRating, order);
+                }
+            }
+        } else {
+            query = query.order_by_desc(rating::Column::Rating);
+        }
+        if let Some(offset) = filter.pagination.offset {
+            query = query.offset(offset as u64);
+        }
+        if let Some(limit) = filter.pagination.limit {
+            query = query.limit(limit as u64);
+        }
+
+        let items = query
+            .all(&self.db)
+            .await
+            .map_err(|e| RepoError::StorageError(e.to_string()))?
+            .into_iter()
+            .map(Self::model_to_rating)
+            .collect::<Vec<_>>();
+
+        Ok(PaginatedResponse {
+            total_count: total_count as usize,
+            items,
+        })
     }
 }

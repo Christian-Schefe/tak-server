@@ -4,8 +4,8 @@ use chrono::{DateTime, Utc};
 
 use crate::{
     domain::{
-        PlayerId, RepoRetrieveError,
-        rating::{RatingRepository, RatingService},
+        PaginatedResponse, PlayerId, RepoRetrieveError,
+        rating::{RatingQuery, RatingRepository, RatingService},
         stats::RatingHistoryRepository,
     },
     workflow::player::{RatingHistoryEntryView, RatingHistoryRangeView},
@@ -20,6 +20,10 @@ pub trait PlayerGetRatingUseCase {
         from: Option<DateTime<Utc>>,
         to: Option<DateTime<Utc>>,
     ) -> Result<RatingHistoryRangeView, GetRatingError>;
+    async fn query_player_ratings(
+        &self,
+        query: RatingQuery,
+    ) -> Result<PaginatedResponse<(PlayerId, f64)>, GetRatingError>;
 }
 
 pub struct PlayerGetRatingUseCaseImpl<
@@ -111,6 +115,28 @@ impl<
                     rating: entry.rating,
                 }
             }),
+        })
+    }
+
+    async fn query_player_ratings(
+        &self,
+        query: RatingQuery,
+    ) -> Result<PaginatedResponse<(PlayerId, f64)>, GetRatingError> {
+        let paginated_ratings = self
+            .rating_repository
+            .query_player_ratings(query)
+            .await
+            .map_err(|e| {
+                tracing::error!("Error querying player ratings: {}", e);
+                GetRatingError::Internal
+            })?;
+        Ok(PaginatedResponse {
+            total_count: paginated_ratings.total_count,
+            items: paginated_ratings
+                .items
+                .into_iter()
+                .map(|r| (r.player_id, r.rating))
+                .collect(),
         })
     }
 }

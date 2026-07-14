@@ -5,7 +5,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use tak_server_app::{
-    domain::{AccountId, PlayerId},
+    domain::{AccountId, Pagination, PlayerId, rating::RatingQuery},
     workflow::{
         account::{AccountProfileView, get_account::GetAccountError},
         player::{PlayerStatsView, get_rating::GetRatingError},
@@ -13,7 +13,7 @@ use tak_server_app::{
 };
 use uuid::Uuid;
 
-use crate::{AppState, ServiceError};
+use crate::{AppState, PaginatedResponse, PaginationQuery, ServiceError};
 
 pub fn register_routes() -> axum::Router<AppState> {
     axum::Router::new()
@@ -25,6 +25,7 @@ pub fn register_routes() -> axum::Router<AppState> {
             "/player/{player_id}/rating-history",
             get(get_rating_history),
         )
+        .route("/leaderboard", get(query_player_ratings))
 }
 
 async fn get_player_info_helper(
@@ -169,6 +170,44 @@ pub async fn get_rating_history(
         })),
         Err(_) => Err(ServiceError::Internal(
             "Failed to retrieve rating history".to_string(),
+        )),
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonRatingEntry {
+    pub player_id: String,
+    pub rating: f64,
+}
+
+pub async fn query_player_ratings(
+    State(app): State<AppState>,
+    Query(query): Query<PaginationQuery>,
+) -> Result<Json<PaginatedResponse<JsonRatingEntry>>, ServiceError> {
+    let query = RatingQuery {
+        pagination: Pagination::new(query.page.saturating_sub(1), query.page_size),
+        ..Default::default()
+    };
+    match app
+        .app
+        .player_get_rating_use_case
+        .query_player_ratings(query)
+        .await
+    {
+        Ok(response) => Ok(Json(PaginatedResponse {
+            items: response
+                .items
+                .into_iter()
+                .map(|(player_id, rating)| JsonRatingEntry {
+                    player_id: player_id.to_string(),
+                    rating,
+                })
+                .collect(),
+            total_count: response.total_count as u32,
+        })),
+        Err(_) => Err(ServiceError::Internal(
+            "Failed to retrieve player ratings".to_string(),
         )),
     }
 }

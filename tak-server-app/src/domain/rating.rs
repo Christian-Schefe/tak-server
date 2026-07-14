@@ -4,8 +4,8 @@ use chrono::{DateTime, TimeDelta, Utc};
 use tak_core::{TakGameResult, TakGameSettings, TakPlayer, TakTimeSettings};
 
 use crate::domain::{
-    Pagination, PlayerId, RepoError, RepoRetrieveError, SortOrder, game::FinishedGame,
-    game_history::GameRatingInfo,
+    PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError, SortOrder,
+    game::FinishedGame, game_history::GameRatingInfo,
 };
 
 #[derive(Clone, Debug)]
@@ -43,6 +43,10 @@ pub trait RatingRepository {
         &self,
         player_id: PlayerId,
     ) -> Result<(u32, PlayerRating), RepoRetrieveError>;
+    async fn query_player_ratings(
+        &self,
+        query: RatingQuery,
+    ) -> Result<PaginatedResponse<PlayerRating>, RepoError>;
     async fn update_player_ratings<R: Send + 'static>(
         &self,
         white: PlayerId,

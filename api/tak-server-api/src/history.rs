@@ -22,18 +22,8 @@ pub async fn query_game_history(
     State(app): State<AppState>,
     Query(pagination): Query<PaginationQuery>,
 ) -> Result<Json<PaginatedResponse<JsonEndedGameInfo>>, ServiceError> {
-    if pagination.page == 0 {
-        return Err(ServiceError::BadRequest(
-            "Page index must be greater than 0".to_string(),
-        ));
-    }
-    if pagination.page_size == 0 {
-        return Err(ServiceError::BadRequest(
-            "Page size must be greater than 0".to_string(),
-        ));
-    }
     let filter = GameQuery {
-        pagination: Pagination::new(pagination.page - 1, pagination.page_size),
+        pagination: Pagination::new(pagination.page.saturating_sub(1), pagination.page_size),
         sort: Some((SortOrder::Descending, GameSortBy::Date)),
         ..Default::default()
     };
