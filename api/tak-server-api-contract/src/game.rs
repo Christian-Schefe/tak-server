@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use tak_core::{
-    TakAsyncTimeControl, TakBaseGameSettings, TakGameSettings, TakRealtimeTimeControl, TakReserve,
-    TakTimeSettings,
+    TakAsyncTimeControl, TakBaseGameSettings, TakGameSettings, TakOpening, TakRealtimeTimeControl,
+    TakReserve, TakTimeSettings,
 };
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -116,6 +116,15 @@ pub struct JsonBaseGameSettings {
     pub half_komi: u32,
     pub pieces: u32,
     pub capstones: u32,
+    pub opening: JsonTakOpening,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub enum JsonTakOpening {
+    Swap,
+    NoSwap,
+    DoubleStack,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -150,6 +159,11 @@ impl JsonBaseGameSettings {
             half_komi: settings.half_komi,
             pieces: settings.reserve.pieces,
             capstones: settings.reserve.capstones,
+            opening: match settings.opening {
+                TakOpening::Swap => JsonTakOpening::Swap,
+                TakOpening::NoSwap => JsonTakOpening::NoSwap,
+                TakOpening::DoubleStack => JsonTakOpening::DoubleStack,
+            },
         }
     }
 
@@ -160,6 +174,11 @@ impl JsonBaseGameSettings {
             reserve: TakReserve {
                 pieces: self.pieces,
                 capstones: self.capstones,
+            },
+            opening: match self.opening {
+                JsonTakOpening::Swap => TakOpening::Swap,
+                JsonTakOpening::NoSwap => TakOpening::NoSwap,
+                JsonTakOpening::DoubleStack => TakOpening::DoubleStack,
             },
         }
     }

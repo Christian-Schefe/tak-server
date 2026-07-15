@@ -7,7 +7,7 @@ use sea_orm::{
     sea_query::{Func, OnConflict, Query},
 };
 use tak_core::{
-    TakBaseGameSettings, TakReserve,
+    TakBaseGameSettings, TakOpening, TakReserve,
     ptn::{action_from_ptn, action_to_ptn},
 };
 use tak_persistence_sea_orm_entities::puzzle;
@@ -16,7 +16,7 @@ use tak_server_app::domain::{
     puzzle::{Puzzle, PuzzleRepository, PuzzleResponseEntry},
 };
 
-use crate::create_db_pool;
+use crate::{create_db_pool, tak_opening_from_string, tak_opening_to_string};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -99,6 +99,12 @@ impl PuzzleRepositoryImpl {
             board_size: model.size as u32,
             half_komi: model.half_komi as u32,
             reserve: TakReserve::new(model.pieces as u32, model.capstones as u32),
+            opening: tak_opening_from_string(&model.opening).ok_or_else(|| {
+                RepoRetrieveError::StorageError(format!(
+                    "Invalid opening in puzzle: {}",
+                    model.opening
+                ))
+            })?,
         };
         let position = serde_json::from_value::<Vec<String>>(model.position)
             .map_err(|e| {
@@ -167,6 +173,7 @@ impl PuzzleRepositoryImpl {
             half_komi: Set(puzzle.game_settings.half_komi as i32),
             pieces: Set(puzzle.game_settings.reserve.pieces as i32),
             capstones: Set(puzzle.game_settings.reserve.capstones as i32),
+            opening: Set(tak_opening_to_string(&puzzle.game_settings.opening)),
             position: Set(position_val),
             responses: Set(responses),
             random_seed: Set(rand::random_range(0.0..1.0)),
@@ -240,6 +247,7 @@ fn test_puzzle() -> Puzzle {
         board_size: 5,
         half_komi: 2,
         reserve: TakReserve::from_size(5).unwrap(),
+        opening: TakOpening::Swap,
     };
     let position = vec![
         action_from_ptn("a5").unwrap(),
@@ -266,6 +274,7 @@ fn test_puzzle2() -> Puzzle {
         board_size: 6,
         half_komi: 2,
         reserve: TakReserve::from_size(6).unwrap(),
+        opening: TakOpening::Swap,
     };
     let position = vec![
         action_from_ptn("a5").unwrap(),

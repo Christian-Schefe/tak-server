@@ -9,6 +9,7 @@ pub struct Model {
     pub half_komi: i32,
     pub pieces: i32,
     pub capstones: i32,
+    pub opening: String,
     pub position: serde_json::Value,
     pub responses: serde_json::Value,
     pub random_seed: f64,

@@ -38,13 +38,13 @@ impl TakBoard {
         &mut self,
         pos: &TakPos,
         variant: TakVariant,
-        player: TakPlayer,
+        composition: Vec<TakPlayer>,
     ) -> Result<(), InvalidPlaceReason> {
         self.can_do_place(&pos)?;
         let index = (pos.y * self.size as i32 + pos.x) as usize;
         self.stacks[index] = Some(TakStack {
             variant: variant.clone(),
-            composition: vec![player.clone()],
+            composition,
         });
         Ok(())
     }
@@ -267,7 +267,7 @@ mod tests {
         let player = TakPlayer::White;
         let variant = TakVariant::Flat;
 
-        assert!(board.do_place(&pos, variant, player).is_ok());
+        assert!(board.do_place(&pos, variant, vec![player]).is_ok());
         assert!(board.can_do_move(&pos, TakDir::Right, &[1]).is_ok());
         assert!(board.do_move(&pos, TakDir::Right, &[1]).is_ok());
 
@@ -276,7 +276,7 @@ mod tests {
 
         assert!(
             board
-                .do_place(&pos, TakVariant::Capstone, TakPlayer::Black)
+                .do_place(&pos, TakVariant::Capstone, vec![TakPlayer::Black])
                 .is_ok()
         );
         assert!(board.can_do_move(&pos, TakDir::Right, &[1]).is_ok());
@@ -322,15 +322,15 @@ mod tests {
         let player = TakPlayer::White;
         let variant = TakVariant::Flat;
 
-        assert!(board.do_place(&pos, variant, player).is_ok());
+        assert!(board.do_place(&pos, variant, vec![player]).is_ok());
         assert!(
             board
-                .do_place(&wall_pos, TakVariant::Standing, player)
+                .do_place(&wall_pos, TakVariant::Standing, vec![player])
                 .is_ok()
         );
         assert!(
             board
-                .do_place(&cap_pos, TakVariant::Capstone, player)
+                .do_place(&cap_pos, TakVariant::Capstone, vec![player])
                 .is_ok()
         );
         assert!(board.can_do_move(&pos, TakDir::Right, &[1]).is_err());
@@ -345,10 +345,10 @@ mod tests {
         let player = TakPlayer::White;
         let variant = TakVariant::Capstone;
 
-        assert!(board.do_place(&pos, variant, player).is_ok());
+        assert!(board.do_place(&pos, variant, vec![player]).is_ok());
         assert!(
             board
-                .do_place(&cap_pos, TakVariant::Standing, player)
+                .do_place(&cap_pos, TakVariant::Standing, vec![player])
                 .is_ok()
         );
         assert!(board.can_do_move(&pos, TakDir::Right, &[1]).is_ok());
@@ -364,7 +364,7 @@ mod tests {
         for x in 0..5 {
             let pos = TakPos { x, y: 0 };
             assert!(!board.check_for_road(player));
-            assert!(board.do_place(&pos, variant, player).is_ok());
+            assert!(board.do_place(&pos, variant, vec![player]).is_ok());
         }
 
         assert!(board.check_for_road(player));

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     InvalidActionReason, InvalidPlaceReason, TakAction, TakBaseGameSettings, TakGameResult,
-    TakPlayer, TakReserve, TakVariant, TakWinReason, board::TakBoard,
+    TakOpening, TakPlayer, TakReserve, TakVariant, TakWinReason, board::TakBoard,
 };
 
 #[derive(Clone, Debug)]
@@ -45,37 +45,54 @@ impl TakOngoingBaseGame {
     }
 
     pub fn can_do_action(&self, action: &TakAction) -> Result<(), InvalidActionReason> {
-        match action {
-            TakAction::Place { pos, variant } => {
-                if self.action_history.len() < 2 && *variant != TakVariant::Flat {
-                    return Err(InvalidActionReason::OpeningViolation);
+        let is_opening_action = self.action_history.len() < 2;
+        let is_first_move = self.action_history.is_empty();
+        if is_opening_action {
+            match action {
+                TakAction::Place { pos, variant } => {
+                    if *variant != TakVariant::Flat {
+                        return Err(InvalidActionReason::OpeningViolation);
+                    }
+                    let (reserve, opponent_reserve) = match self.current_player {
+                        TakPlayer::White => (&self.reserves.0, &self.reserves.1),
+                        TakPlayer::Black => (&self.reserves.1, &self.reserves.0),
+                    };
+                    if !match self.settings.opening {
+                        TakOpening::Swap => opponent_reserve.has(TakVariant::Flat, 1),
+                        TakOpening::NoSwap => reserve.has(TakVariant::Flat, 1),
+                        TakOpening::DoubleStack => opponent_reserve
+                            .has(TakVariant::Flat, if is_first_move { 2 } else { 1 }),
+                    } {
+                        return Err(InvalidActionReason::InvalidPlace(
+                            InvalidPlaceReason::NoPiecesRemaining,
+                        ));
+                    }
+                    self.board
+                        .can_do_place(pos)
+                        .map_err(|e| InvalidActionReason::InvalidPlace(e))
                 }
-                let reserve = match self.current_player {
-                    TakPlayer::White => &self.reserves.0,
-                    TakPlayer::Black => &self.reserves.1,
-                };
-                let amount = match variant {
-                    TakVariant::Flat | TakVariant::Standing => reserve.pieces,
-                    TakVariant::Capstone => reserve.capstones,
-                };
-                if amount == 0 {
-                    return Err(InvalidActionReason::InvalidPlace(
-                        InvalidPlaceReason::NoPiecesRemaining,
-                    ));
-                }
-                if let Err(e) = self.board.can_do_place(pos) {
-                    return Err(InvalidActionReason::InvalidPlace(e));
-                }
-                Ok(())
+                TakAction::Move { .. } => Err(InvalidActionReason::OpeningViolation),
             }
-            TakAction::Move { pos, dir, drops } => {
-                if self.action_history.len() < 2 {
-                    return Err(InvalidActionReason::OpeningViolation);
+        } else {
+            match action {
+                TakAction::Place { pos, variant } => {
+                    let reserve = match self.current_player {
+                        TakPlayer::White => &self.reserves.0,
+                        TakPlayer::Black => &self.reserves.1,
+                    };
+                    if !reserve.has(*variant, 1) {
+                        return Err(InvalidActionReason::InvalidPlace(
+                            InvalidPlaceReason::NoPiecesRemaining,
+                        ));
+                    }
+                    self.board
+                        .can_do_place(pos)
+                        .map_err(|e| InvalidActionReason::InvalidPlace(e))
                 }
-                if let Err(e) = self.board.can_do_move(pos, *dir, drops) {
-                    return Err(InvalidActionReason::InvalidMove(e));
-                }
-                Ok(())
+                TakAction::Move { pos, dir, drops } => self
+                    .board
+                    .can_do_move(pos, *dir, drops)
+                    .map_err(|e| InvalidActionReason::InvalidMove(e)),
             }
         }
     }
@@ -87,25 +104,44 @@ impl TakOngoingBaseGame {
         if let Err(e) = self.can_do_action(&action) {
             return Err(e);
         }
+        let is_opening_action = self.action_history.len() < 2;
         let moved_player = self.current_player;
+        let is_first_move = self.action_history.is_empty();
         match &action {
             TakAction::Place { pos, variant } => {
-                let placing_player = if self.action_history.len() < 2 {
-                    self.current_player.opponent()
+                let (reserve, opponent_reserve) = match self.current_player {
+                    TakPlayer::White => (&mut self.reserves.0, &mut self.reserves.1),
+                    TakPlayer::Black => (&mut self.reserves.1, &mut self.reserves.0),
+                };
+                if is_opening_action {
+                    match self.settings.opening {
+                        TakOpening::Swap => opponent_reserve.try_take(*variant, 1),
+                        TakOpening::NoSwap => reserve.try_take(*variant, 1),
+                        TakOpening::DoubleStack => {
+                            opponent_reserve.try_take(*variant, if is_first_move { 2 } else { 1 })
+                        }
+                    }
+                    .expect(
+                        "can_do_action should have prevented invalid place due to reserve state",
+                    );
                 } else {
-                    self.current_player
+                    reserve.try_take(*variant, 1).expect(
+                        "can_do_action should have prevented invalid place due to reserve state",
+                    );
+                }
+                let placing_composition = if is_opening_action {
+                    match self.settings.opening {
+                        TakOpening::Swap => vec![self.current_player.opponent()],
+                        TakOpening::DoubleStack => {
+                            vec![self.current_player.opponent(); if is_first_move { 2 } else { 1 }]
+                        }
+                        TakOpening::NoSwap => vec![self.current_player],
+                    }
+                } else {
+                    vec![self.current_player]
                 };
-                let reserve = match self.current_player {
-                    TakPlayer::White => &mut self.reserves.0,
-                    TakPlayer::Black => &mut self.reserves.1,
-                };
-                let amount = match variant {
-                    TakVariant::Flat | TakVariant::Standing => &mut reserve.pieces,
-                    TakVariant::Capstone => &mut reserve.capstones,
-                };
-                *amount -= 1;
                 self.board
-                    .do_place(pos, *variant, placing_player)
+                    .do_place(pos, *variant, placing_composition)
                     .expect("can_do_action should have prevented invalid place due to board state");
             }
             TakAction::Move { pos, dir, drops } => {

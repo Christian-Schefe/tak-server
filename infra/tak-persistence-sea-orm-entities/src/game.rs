@@ -25,6 +25,7 @@ pub struct Model {
     pub half_komi: i32,
     pub pieces: i32,
     pub capstones: i32,
+    pub opening: String,
     pub game_settings: serde_json::Value,
 
     #[sea_orm(indexed)]

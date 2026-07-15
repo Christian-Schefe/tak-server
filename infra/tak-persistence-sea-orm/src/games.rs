@@ -19,7 +19,10 @@ use tak_server_app::domain::{
     },
 };
 
-use crate::{JsonTimeSettings, create_db_pool, db_error_to_repo_retrieve_error};
+use crate::{
+    JsonTimeSettings, create_db_pool, db_error_to_repo_retrieve_error, tak_opening_from_string,
+    tak_opening_to_string,
+};
 
 pub struct GameRepositoryImpl {
     db: DatabaseConnection,
@@ -236,6 +239,8 @@ impl GameRepositoryImpl {
             board_size: model.size as u32,
             half_komi: model.half_komi as u32,
             reserve: TakReserve::new(model.pieces as u32, model.capstones as u32),
+            opening: tak_opening_from_string(&model.opening)
+                .ok_or_else(|| format!("Invalid opening string in database: {}", model.opening))?,
         };
 
         let time_settings =
@@ -320,6 +325,7 @@ impl GameRepository for GameRepositoryImpl {
             half_komi: Set(base_settings.half_komi as i32),
             pieces: Set(base_settings.reserve.pieces as i32),
             capstones: Set(base_settings.reserve.capstones as i32),
+            opening: Set(tak_opening_to_string(&base_settings.opening)),
             rating_change_white: Set(None),
             rating_change_black: Set(None),
             game_settings: Set(serde_json::to_value(&time_settings).map_err(|e| {

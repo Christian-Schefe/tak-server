@@ -4,8 +4,8 @@ use async_lock::OnceCell;
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use sea_orm_migration::MigratorTrait;
 use tak_core::{
-    TakAsyncTimeControl, TakBaseGameSettings, TakGameSettings, TakRealtimeTimeControl, TakReserve,
-    TakTimeSettings,
+    TakAsyncTimeControl, TakBaseGameSettings, TakGameSettings, TakOpening, TakRealtimeTimeControl,
+    TakReserve, TakTimeSettings,
 };
 use tak_persistence_sea_orm_migrations::Migrator;
 use tak_server_app::domain::RepoRetrieveError;
@@ -107,6 +107,7 @@ struct JsonGameSettings {
     half_komi: u32,
     pieces: u32,
     capstones: u32,
+    opening: JsonTakOpening,
     time_settings: JsonTimeSettings,
 }
 
@@ -117,6 +118,7 @@ impl JsonGameSettings {
             half_komi: game_settings.base.half_komi,
             pieces: game_settings.base.reserve.pieces,
             capstones: game_settings.base.reserve.capstones,
+            opening: JsonTakOpening::from_tak_opening(&game_settings.base.opening),
             time_settings: JsonTimeSettings::from_time_settings(&game_settings.time_settings),
         }
     }
@@ -130,8 +132,35 @@ impl JsonGameSettings {
                     pieces: self.pieces,
                     capstones: self.capstones,
                 },
+                opening: self.opening.to_tak_opening(),
             },
             time_settings: self.time_settings.to_time_settings(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+enum JsonTakOpening {
+    Swap,
+    NoSwap,
+    DoubleStack,
+}
+
+impl JsonTakOpening {
+    fn from_tak_opening(opening: &TakOpening) -> Self {
+        match opening {
+            TakOpening::Swap => JsonTakOpening::Swap,
+            TakOpening::NoSwap => JsonTakOpening::NoSwap,
+            TakOpening::DoubleStack => JsonTakOpening::DoubleStack,
+        }
+    }
+
+    fn to_tak_opening(&self) -> TakOpening {
+        match self {
+            JsonTakOpening::Swap => TakOpening::Swap,
+            JsonTakOpening::NoSwap => TakOpening::NoSwap,
+            JsonTakOpening::DoubleStack => TakOpening::DoubleStack,
         }
     }
 }
@@ -210,4 +239,21 @@ struct JsonRealtimeTimeExtra {
 #[serde(rename_all = "camelCase")]
 struct JsonAsyncTimeSettings {
     increment_ms: u64,
+}
+
+fn tak_opening_to_string(opening: &TakOpening) -> String {
+    match opening {
+        TakOpening::Swap => "swap".to_string(),
+        TakOpening::NoSwap => "no_swap".to_string(),
+        TakOpening::DoubleStack => "double_stack".to_string(),
+    }
+}
+
+fn tak_opening_from_string(s: &str) -> Option<TakOpening> {
+    match s {
+        "swap" => Some(TakOpening::Swap),
+        "no_swap" => Some(TakOpening::NoSwap),
+        "double_stack" => Some(TakOpening::DoubleStack),
+        _ => None,
+    }
 }

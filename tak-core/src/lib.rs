@@ -88,6 +88,29 @@ impl TakReserve {
             _ => return None,
         })
     }
+    pub fn has(&self, variant: TakVariant, amount: u32) -> bool {
+        match variant {
+            TakVariant::Flat | TakVariant::Standing => self.pieces >= amount,
+            TakVariant::Capstone => self.capstones >= amount,
+        }
+    }
+    pub fn try_take(&mut self, variant: TakVariant, amount: u32) -> Option<()> {
+        if !self.has(variant, amount) {
+            return None;
+        }
+        match variant {
+            TakVariant::Flat | TakVariant::Standing => self.pieces -= amount,
+            TakVariant::Capstone => self.capstones -= amount,
+        }
+        Some(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum TakOpening {
+    Swap,
+    NoSwap,
+    DoubleStack,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -95,6 +118,7 @@ pub struct TakBaseGameSettings {
     pub board_size: u32,
     pub half_komi: u32,
     pub reserve: TakReserve,
+    pub opening: TakOpening,
 }
 
 impl TakBaseGameSettings {
@@ -249,6 +273,7 @@ mod tests {
                 board_size: 5,
                 half_komi: 0,
                 reserve: TakReserve::new(21, 1),
+                opening: TakOpening::Swap,
             },
             time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
                 contingent: Duration::from_secs(300),
@@ -263,6 +288,7 @@ mod tests {
                 board_size: 9,
                 half_komi: 0,
                 reserve: TakReserve::new(21, 1),
+                opening: TakOpening::Swap,
             },
             time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
                 contingent: Duration::from_secs(300),
@@ -277,6 +303,7 @@ mod tests {
                 board_size: 5,
                 half_komi: 0,
                 reserve: TakReserve::new(21, 1),
+                opening: TakOpening::Swap,
             },
             time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
                 contingent: Duration::from_secs(0),
@@ -291,6 +318,7 @@ mod tests {
                 board_size: 5,
                 half_komi: 0,
                 reserve: TakReserve::new(21, 1),
+                opening: TakOpening::Swap,
             },
             time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
                 contingent: Duration::from_secs(300),

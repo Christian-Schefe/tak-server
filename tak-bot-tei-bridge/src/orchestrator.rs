@@ -5,7 +5,8 @@ use tak_core::{TakPlayer, TakReserve};
 use tak_server_api_contract::{
     auth::IdentityInfo,
     game::{
-        JsonBaseGameSettings, JsonGameMetadata, JsonGameSettings, JsonGameStatus, JsonTimeSettings,
+        JsonBaseGameSettings, JsonGameMetadata, JsonGameSettings, JsonGameStatus, JsonTakOpening,
+        JsonTimeSettings,
     },
     seek::{CreateSeekPayload, JsonSeek},
     ws::{ClientMessage, ServerGameEventType, ServerMessage},
@@ -44,6 +45,7 @@ fn get_seek_payload() -> CreateSeekPayload {
                 half_komi: 4,
                 pieces: reserve.pieces,
                 capstones: reserve.capstones,
+                opening: JsonTakOpening::Swap,
             },
             time_settings: JsonTimeSettings::Realtime {
                 increment_ms: 5_000,

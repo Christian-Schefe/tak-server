@@ -339,7 +339,8 @@ impl TakOngoingGame {
 #[cfg(test)]
 mod tests {
     use crate::{
-        TakBaseGameSettings, TakDir, TakPos, TakRealtimeTimeControl, TakReserve, TakVariant,
+        TakBaseGameSettings, TakDir, TakOpening, TakPos, TakRealtimeTimeControl, TakReserve,
+        TakVariant,
     };
 
     use super::*;
@@ -385,6 +386,7 @@ mod tests {
                 board_size: 5,
                 half_komi: 0,
                 reserve: TakReserve::new(3, 1),
+                opening: TakOpening::Swap,
             },
             time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
                 contingent: Duration::from_secs(300),
@@ -530,6 +532,7 @@ mod tests {
                     board_size: 5,
                     half_komi,
                     reserve: TakReserve::new(2, 0),
+                    opening: TakOpening::Swap,
                 },
                 time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
                     contingent: Duration::from_secs(300),
@@ -568,6 +571,7 @@ mod tests {
                     board_size: 5,
                     half_komi,
                     reserve: TakReserve::new(1, 1),
+                    opening: TakOpening::Swap,
                 },
                 time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
                     contingent: Duration::from_secs(300),
@@ -611,6 +615,7 @@ mod tests {
                 board_size: 5,
                 half_komi: 0,
                 reserve: TakReserve::new(21, 1),
+                opening: TakOpening::Swap,
             },
             time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
                 contingent: Duration::from_secs(300),
