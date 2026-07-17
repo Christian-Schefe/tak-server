@@ -41,6 +41,10 @@ pub fn register_routes() -> axum::Router<AppState> {
             "/{tournament_id}/players",
             axum::routing::delete(unregister_player_from_tournament),
         )
+        .route(
+            "/{tournament_id}/registration",
+            axum::routing::post(set_registration_open),
+        )
 }
 
 pub async fn get_tournaments(
@@ -292,6 +296,44 @@ pub async fn start_next_round_of_tournament(
         }
     };
     Ok(())
+}
+
+pub async fn set_registration_open(
+    auth: Auth,
+    State(app): State<AppState>,
+    Path(tournament_id): Path<String>,
+    Json(payload): Json<SetRegistrationOpenRequest>,
+) -> Result<(), ServiceError> {
+    if !auth.account.is_admin() {
+        return Err(ServiceError::Unauthorized(
+            "Only admins can set registration open/closed".to_string(),
+        ));
+    }
+    let tournament_id = TournamentId(
+        tournament_id
+            .parse()
+            .map_err(|_| ServiceError::BadRequest("Invalid tournament ID".to_string()))?,
+    );
+    match app
+        .app
+        .host_tournament_use_case
+        .set_registration_open(tournament_id, payload.registration_open)
+        .await
+    {
+        Ok(_) => {}
+        Err(_) => {
+            return Err(ServiceError::Internal(
+                "Failed to set registration open/closed".to_string(),
+            ));
+        }
+    };
+    Ok(())
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetRegistrationOpenRequest {
+    pub registration_open: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

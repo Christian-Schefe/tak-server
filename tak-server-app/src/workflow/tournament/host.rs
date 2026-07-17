@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::domain::{
-    RepoError, TournamentId,
+    RepoError, RepoRetrieveError, TournamentId,
     matches::{Match, MatchRepository, MatchSettings, MatchStatus, MatchTournamentInfo},
     rating::RatingRepository,
     tournament::{
@@ -21,6 +21,11 @@ pub trait HostTournamentUseCase {
     async fn begin_tournament(&self, tournament_id: TournamentId) -> Result<(), ()>;
     async fn start_next_round(&self, tournament_id: TournamentId) -> Result<(), ()>;
     async fn finish_tournament(&self, tournament_id: TournamentId) -> Result<(), ()>;
+    async fn set_registration_open(
+        &self,
+        tournament_id: TournamentId,
+        open: bool,
+    ) -> Result<(), ()>;
 }
 
 pub struct HostTournamentUseCaseImpl<
@@ -143,20 +148,26 @@ impl<
         };
 
         let set_seeding_futures = tournament_players.into_iter().map(|player| async move {
-            let rating = self
+            let seeding_score = match self
                 .rating_repository
                 .get_player_rating(player.player_id)
                 .await
-                .map_err(|e| {
+            {
+                Ok(rating) => rating.rating as i32,
+                // Player is a guest or not rated yet, use default rating of 1000
+                Err(RepoRetrieveError::NotFound) => 1000,
+                Err(RepoRetrieveError::StorageError(e)) => {
                     tracing::error!(
                         "Failed to retrieve rating for player {}: {:?}",
                         player.player_id,
                         e
                     );
-                })?;
+                    return Err(());
+                }
+            };
             if let Err(e) = self
                 .tournament_player_repository
-                .set_player_seeding_score(tournament_id, player.player_id, rating.rating as i32)
+                .set_player_seeding_score(tournament_id, player.player_id, seeding_score)
                 .await
             {
                 tracing::error!(
@@ -448,6 +459,56 @@ impl<
         {
             tracing::error!(
                 "Failed to set tournament {} status to Completed: {:?}",
+                tournament_id,
+                e
+            );
+            return Err(());
+        }
+        Ok(())
+    }
+
+    async fn set_registration_open(
+        &self,
+        tournament_id: TournamentId,
+        open: bool,
+    ) -> Result<(), ()> {
+        let tournament = match self
+            .tournament_repository
+            .get_tournament(tournament_id)
+            .await
+        {
+            Ok(tournament) => tournament,
+            Err(e) => {
+                tracing::error!(
+                    "Failed to get tournament with id {}: {:?}",
+                    tournament_id,
+                    e
+                );
+                return Err(());
+            }
+        };
+        let TournamentStatus::Upcoming { registration_open } = tournament.status else {
+            tracing::warn!(
+                "Attempted to set registration open for tournament {} which is not in Upcoming status",
+                tournament_id
+            );
+            return Err(());
+        };
+        if registration_open == open {
+            return Ok(());
+        }
+        if let Err(e) = self
+            .tournament_repository
+            .set_tournament_status(
+                tournament_id,
+                TournamentStatus::Upcoming {
+                    registration_open: open,
+                },
+            )
+            .await
+        {
+            tracing::error!(
+                "Failed to set registration open for tournament {}: {:?}",
                 tournament_id,
                 e
             );

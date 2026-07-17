@@ -476,13 +476,17 @@ impl GameRepository for GameRepositoryImpl {
         if let Some(is_rated) = filter.is_rated {
             query = query.filter(game::Column::IsRated.eq(is_rated));
         }
+
         if let Some(game_results) = filter.game_results {
             let result_strings: Vec<String> = game_results
                 .iter()
                 .map(|result| game_result_to_string(result))
                 .collect();
             query = query.filter(game::Column::Result.is_in(result_strings));
+        } else {
+            query = query.filter(game::Column::Result.is_not_null());
         }
+
         if let Some(half_komi) = filter.half_komi {
             query = query.filter(game::Column::HalfKomi.eq(half_komi as i32));
         }
