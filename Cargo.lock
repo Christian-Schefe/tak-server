@@ -4760,6 +4760,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "tak-main"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "dotenvy",
+ "tak-auth-ory",
+ "tak-bot-registry",
+ "tak-email-lettre",
+ "tak-events-google-sheets",
+ "tak-persistence-profile-pictures",
+ "tak-persistence-sea-orm",
+ "tak-player-connection",
+ "tak-server-api",
+ "tak-server-app",
+ "tokio",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "tak-persistence-profile-pictures"
 version = "0.1.0"
 dependencies = [
@@ -4825,27 +4846,6 @@ dependencies = [
  "parking_lot",
  "tak-server-app",
  "tracing",
-]
-
-[[package]]
-name = "tak-server"
-version = "0.1.0"
-dependencies = [
- "clap",
- "dotenvy",
- "tak-auth-ory",
- "tak-bot-registry",
- "tak-email-lettre",
- "tak-events-google-sheets",
- "tak-persistence-profile-pictures",
- "tak-persistence-sea-orm",
- "tak-player-connection",
- "tak-server-api",
- "tak-server-app",
- "tokio",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
 ]
 
 [[package]]

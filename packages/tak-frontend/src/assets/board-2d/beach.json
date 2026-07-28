@@ -1,0 +1,24 @@
+{
+  "name": "Beach",
+  "background": "#f8f4ed",
+  "text": "#3a2e1f",
+  "board1": "#f3eee5",
+  "board2": "#e6dfd4",
+  "highlight": "#71d6fa",
+  "hover": "#00000022",
+  "piece1": { "background": "#fffaf2", "border": "#9c8f80" },
+  "piece2": {
+    "background": "#b8a899",
+    "border": "#7a6a5b",
+    "text": "#2f2418"
+  },
+  "board": {
+    "spacing": "4px",
+    "rounded": "4px",
+    "tiling": "checkerboard"
+  },
+  "pieces": {
+    "rounded": 5,
+    "border": "2px"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "Neon",
+  "background": "#282033",
+  "text": "#EEEEFF",
+  "board1": "#222851",
+  "board2": "#4c357d",
+  "highlight": "#1c48f555",
+  "hover": "#8a74c355",
+  "piece1": {
+    "background": "#33315f",
+    "border": "#50ffe1",
+    "capstoneOverride": {
+      "background": "#50ffe1",
+      "border": "#00000000"
+    }
+  },
+  "piece2": {
+    "background": "#33315f",
+    "border": "#e055c3",
+    "capstoneOverride": {
+      "background": "#e055c3",
+      "border": "#00000000"
+    }
+  },
+  "board": {
+    "spacing": "1px",
+    "rounded": "100%",
+    "tiling": "rings"
+  },
+  "pieces": {
+    "rounded": 10,
+    "border": "3px",
+    "shadow": {
+      "opacity": 0.1,
+      "blur": "2px",
+      "offsetY": 3,
+      "color": "#000000"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "Discord",
+  "background": "#313338",
+  "text": "#c6c6c7",
+  "board1": "#65676b",
+  "board2": "#65676b",
+  "highlight": "#b69465",
+  "hover": "#ffffff44",
+  "piece1": { "background": "#c1c1c1", "border": "#333232" },
+  "piece2": {
+    "background": "#333333",
+    "border": "#000000",
+    "text": "#c6c6c7"
+  },
+  "board": {
+    "spacing": "2px",
+    "rounded": "2px",
+    "tiling": "checkerboard"
+  },
+  "pieces": {
+    "rounded": 5,
+    "border": "3px"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "whitePieceModel": {
+    "fileName": "piece_white.glb",
+    "offset": [0, 0.125, 0],
+    "standingOffset": [0, 0.4, 0],
+    "scale": 1
+  },
+  "blackPieceModel": {
+    "fileName": "piece_black.glb",
+    "offset": [0, 0.125, 0],
+    "standingOffset": [0, 0.4, 0],
+    "standingRotation": [0, -45, -90],
+    "scale": 1
+  },
+  "whiteCapstoneModel": {
+    "fileName": "capstone_white.glb",
+    "offset": [0, 0.4, 0],
+    "scale": 1
+  },
+  "blackCapstoneModel": {
+    "fileName": "capstone_black.glb",
+    "offset": [0, 0.4, 0],
+    "scale": 1
+  },
+  "pieceHeight": 0.25
+}

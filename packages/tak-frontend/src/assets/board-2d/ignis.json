@@ -1,0 +1,20 @@
+{
+  "name": "Ignis",
+  "background": "#330721",
+  "text": "#FFEEEE",
+  "board1": "#981930",
+  "board2": "#ff6c40",
+  "highlight": "#fde57799",
+  "hover": "#f4e5a577",
+  "piece1": { "background": "#fde577", "border": "#330721" },
+  "piece2": { "background": "#690d42", "border": "#330721", "text": "#fde577" },
+  "board": {
+    "spacing": "2px",
+    "rounded": "4px",
+    "tiling": "rings"
+  },
+  "pieces": {
+    "rounded": 5,
+    "border": "3px"
+  }
+}

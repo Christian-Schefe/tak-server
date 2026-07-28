@@ -1,0 +1,36 @@
+{
+  "name": "@tak-ui-lib/components",
+  "main": "src/index.styled.ts",
+  "types": "src/index.ts",
+  "sideEffects": [
+    "dist/**/*.css"
+  ],
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "prebuild": "rimraf dist",
+    "build": "vue-tsc -p tsconfig.build.json && vite build"
+  },
+  "devDependencies": {
+    "@cbnventures/nova": "^0.20.0",
+    "@types/bun": "latest",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "glob": "^13.0.6",
+    "rimraf": "^6.1.3",
+    "vite": "^8.1.5",
+    "vite-plugin-lib-inject-css": "^2.2.2",
+    "vitest": "^4.1.10",
+    "vue-tsc": "^3.3.7"
+  },
+  "peerDependencies": {
+    "typescript": "^6"
+  },
+  "dependencies": {
+    "@floating-ui/vue": "^2.0.1",
+    "@tak-ui-lib/icons": "workspace:*",
+    "@tak-ui-lib/themes": "workspace:*",
+    "@vueuse/core": "^14.3.0",
+    "vue": "^3.5.40",
+    "vue-component-type-helpers": "^3.3.7"
+  }
+}

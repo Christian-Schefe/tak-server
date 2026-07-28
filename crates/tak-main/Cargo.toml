@@ -1,0 +1,21 @@
+[package]
+edition.workspace = true
+name              = "tak-main"
+version           = "0.1.0"
+
+[dependencies]
+clap                             = { version = "4.5.57", features = [ "derive" ] }
+dotenvy                          = "0.15.7"
+tak-auth-ory                     = { path = "../infra/tak-auth-ory" }
+tak-bot-registry                 = { path = "../infra/tak-bot-registry" }
+tak-email-lettre                 = { path = "../infra/tak-email-lettre" }
+tak-events-google-sheets         = { path = "../infra/tak-events-google-sheets" }
+tak-persistence-profile-pictures = { path = "../infra/tak-persistence-profile-pictures" }
+tak-persistence-sea-orm          = { path = "../infra/tak-persistence-sea-orm" }
+tak-player-connection            = { path = "../infra/tak-player-connection" }
+tak-server-api                   = { path = "../api/tak-server-api" }
+tak-server-app                   = { path = "../tak-server-app" }
+tokio                            = { version = "1.47.1", features = [ "full" ] }
+tracing                          = "0.1.44"
+tracing-appender                 = "0.2.4"
+tracing-subscriber               = "0.3.23"

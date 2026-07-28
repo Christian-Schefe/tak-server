@@ -1,0 +1,16 @@
+.p-body {
+  overflow: hidden;
+}
+
+:root {
+  background-color: var(--p-color-background);
+  color: var(--p-color-text);
+  font-size: var(--p-text-medium-size);
+  line-height: var(--p-text-medium-line-height);
+  scrollbar-color: var(--p-scrollbar-thumb) var(--p-scrollbar-track);
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}

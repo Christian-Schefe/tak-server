@@ -1,0 +1,12 @@
+{
+  "models": {
+    "3": { "fileName": "board_3x3.glb" },
+    "4": { "fileName": "board_4x4.glb" },
+    "5": { "fileName": "board_5x5.glb" },
+    "6": { "fileName": "board_6x6.glb" },
+    "7": { "fileName": "board_7x7.glb" },
+    "8": { "fileName": "board_8x8.glb" }
+  },
+  "offset": [0, 0.1, 0],
+  "height": 0.2
+}

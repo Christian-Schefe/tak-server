@@ -1,45 +1,26 @@
-[package]
-default-run = "tak-server"
-edition     = "2024"
-name        = "tak-server"
-version     = "0.1.0"
+[workspace.package]
+edition = "2024"
 
 [workspace]
 members = [
-    "api/tak-server-api",
-    "api/tak-server-api-contract",
-    "infra/tak-auth-ory",
-    "infra/tak-bot-registry",
-    "infra/tak-email-lettre",
-    "infra/tak-events-google-sheets",
-    "infra/tak-persistence-profile-pictures",
-    "infra/tak-persistence-sea-orm",
-    "infra/tak-persistence-sea-orm-entities",
-    "infra/tak-persistence-sea-orm-migrations",
-    "infra/tak-player-connection",
-    "more-concurrent-maps",
-    "tak-bot-tei-bridge",
-    "tak-core",
-    "tak-server-app",
+    "crates/api/tak-server-api",
+    "crates/api/tak-server-api-contract",
+    "crates/infra/tak-auth-ory",
+    "crates/infra/tak-bot-registry",
+    "crates/infra/tak-email-lettre",
+    "crates/infra/tak-events-google-sheets",
+    "crates/infra/tak-persistence-profile-pictures",
+    "crates/infra/tak-persistence-sea-orm",
+    "crates/infra/tak-persistence-sea-orm-entities",
+    "crates/infra/tak-persistence-sea-orm-migrations",
+    "crates/infra/tak-player-connection",
+    "crates/more-concurrent-maps",
+    "crates/tak-bot-tei-bridge",
+    "crates/tak-core",
+    "crates/tak-main",
+    "crates/tak-server-app",
 ]
 resolver = "3"
-
-[dependencies]
-clap                             = { version = "4.5.57", features = [ "derive" ] }
-dotenvy                          = "0.15.7"
-tak-auth-ory                     = { path = "./infra/tak-auth-ory" }
-tak-bot-registry                 = { path = "./infra/tak-bot-registry" }
-tak-email-lettre                 = { path = "./infra/tak-email-lettre" }
-tak-events-google-sheets         = { path = "./infra/tak-events-google-sheets" }
-tak-persistence-profile-pictures = { path = "./infra/tak-persistence-profile-pictures" }
-tak-persistence-sea-orm          = { path = "./infra/tak-persistence-sea-orm" }
-tak-player-connection            = { path = "./infra/tak-player-connection" }
-tak-server-api                   = { path = "./api/tak-server-api" }
-tak-server-app                   = { path = "./tak-server-app" }
-tokio                            = { version = "1.47.1", features = [ "full" ] }
-tracing                          = "0.1.44"
-tracing-appender                 = "0.2.4"
-tracing-subscriber               = "0.3.23"
 
 [profile.release-wasm]
 inherits = "release"

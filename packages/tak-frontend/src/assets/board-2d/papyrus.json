@@ -1,0 +1,24 @@
+{
+  "name": "Papyrus",
+  "background": "#f4e2b5",
+  "text": "#3d2b1f",
+  "board1": "#e9c77b",
+  "board2": "#d8b169",
+  "highlight": "#cc3a1a",
+  "hover": "#f4e2b577",
+  "piece1": { "background": "#f7e2a4", "border": "#b08a3d" },
+  "piece2": {
+    "background": "#8c6a3b",
+    "border": "#4d3920",
+    "text": "#f4e2b5"
+  },
+  "board": {
+    "spacing": "2px",
+    "rounded": "2px",
+    "tiling": "rings"
+  },
+  "pieces": {
+    "rounded": 3,
+    "border": "3px"
+  }
+}

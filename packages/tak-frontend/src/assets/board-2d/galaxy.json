@@ -1,0 +1,43 @@
+{
+  "name": "Galaxy",
+  "background": "#000000",
+  "text": "#e0ddff",
+  "board1": "#05010a",
+  "board2": "#05010a",
+  "highlight": "#9d4edd44",
+  "hover": "#e0ddff33",
+  "piece1": {
+    "background": "#d0d6ffaa",
+    "border": "#d0d6ff",
+    "text": "#05010a",
+    "capstoneOverride": {
+      "background": "#d0d6ffee",
+      "border": "transparent"
+    }
+  },
+  "piece2": {
+    "background": "#05010abf",
+    "border": "#d0d6ff",
+    "capstoneOverride": {
+      "background": "#05010aee",
+      "border": "#d0d6ff"
+    }
+  },
+  "board": {
+    "spacing": "5px",
+    "rounded": "12px",
+    "tiling": "checkerboard"
+  },
+  "pieces": {
+    "rounded": 8,
+    "border": "2px"
+  },
+  "tileSpecial": {
+    "color": "#d0d6ff33",
+    "size": "6px",
+    "hideBackground": true,
+    "transform": "rotate(45deg)",
+    "borderColor": "transparent",
+    "border": "0"
+  }
+}

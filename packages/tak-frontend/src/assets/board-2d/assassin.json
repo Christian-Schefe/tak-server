@@ -1,0 +1,24 @@
+{
+  "name": "Assassin",
+  "background": "#1a1a1a",
+  "text": "#e0e0e0",
+  "board1": "#2a2a2a",
+  "board2": "#232323",
+  "highlight": "#e0e0e077",
+  "hover": "#ffffff22",
+  "piece1": { "background": "#676767", "border": "#2a2a2a" },
+  "piece2": {
+    "background": "#b22222",
+    "border": "#1a1a1a",
+    "text": "#1a1a1a"
+  },
+  "board": {
+    "spacing": "2px",
+    "rounded": "2px",
+    "tiling": "checkerboard"
+  },
+  "pieces": {
+    "rounded": 5,
+    "border": "2px"
+  }
+}

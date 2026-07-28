@@ -1,0 +1,20 @@
+{
+  "name": "Jungle",
+  "background": "#263238",
+  "text": "#EEEEFF",
+  "board1": "#6a7f89",
+  "board2": "#95aab5",
+  "highlight": "#8bc34a99",
+  "hover": "#FFFFFF33",
+  "piece1": { "background": "#cfd8dc", "border": "#546e7a" },
+  "piece2": { "background": "#546e7a", "border": "#cfd8dc" },
+  "board": {
+    "spacing": "2px",
+    "rounded": "2px",
+    "tiling": "linear"
+  },
+  "pieces": {
+    "rounded": 10,
+    "border": "1px"
+  }
+}

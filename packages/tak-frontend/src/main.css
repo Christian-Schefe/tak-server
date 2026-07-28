@@ -1,0 +1,19 @@
+@import 'tailwindcss';
+@import 'tailwindcss-primeui';
+@custom-variant dark (&:where(.dark-mode, .dark-mode *));
+
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-variable.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+html {
+  font-family: 'Inter', sans-serif;
+}
+
+.bg-content {
+  background-color: var(--p-content-background);
+}
