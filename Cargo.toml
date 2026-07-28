@@ -1,36 +1,27 @@
-[package]
-name = "tak-server"
-version = "0.1.0"
+[workspace.package]
 edition = "2024"
-default-run = "tak-server"
 
 [workspace]
-resolver = "3"
 members = [
-    "api/tak-server-api",
-    "api/tak-server-legacy-api",
-    "infra/tak-auth-ory",
-    "infra/tak-email-lettre",
-    "infra/tak-events-google-sheets",
-    "infra/tak-persistence-sea-orm",
-    "infra/tak-persistence-sea-orm-entites",
-    "infra/tak-player-connection",
-    "more-concurrent-maps",
-    "tak-core",
-    "tak-server-app",
+    "crates/api/tak-server-api",
+    "crates/api/tak-server-api-contract",
+    "crates/infra/tak-auth-ory",
+    "crates/infra/tak-bot-registry",
+    "crates/infra/tak-email-lettre",
+    "crates/infra/tak-events-google-sheets",
+    "crates/infra/tak-persistence-profile-pictures",
+    "crates/infra/tak-persistence-sea-orm",
+    "crates/infra/tak-persistence-sea-orm-entities",
+    "crates/infra/tak-persistence-sea-orm-migrations",
+    "crates/infra/tak-player-connection",
+    "crates/more-concurrent-maps",
+    "crates/tak-bot-tei-bridge",
+    "crates/tak-core",
+    "crates/tak-main",
+    "crates/tak-server-app",
 ]
+resolver = "3"
 
-[dependencies]
-dotenvy = "0.15.7"
-log = "0.4.28"
-log4rs = { version = "1.4.0", features = ["gzip"] }
-tak-auth-ory = { path = "./infra/tak-auth-ory" }
-tak-email-lettre = { path = "./infra/tak-email-lettre" }
-tak-events-google-sheets = { path = "./infra/tak-events-google-sheets" }
-tak-persistence-sea-orm = { path = "./infra/tak-persistence-sea-orm" }
-tak-server-legacy-api = { path = "./api/tak-server-legacy-api" }
-tak-server-api = { path = "./api/tak-server-api" }
-tak-server-app = { path = "./tak-server-app" }
-tak-player-connection = { path = "./infra/tak-player-connection" }
-tokio = { version = "1.47.1", features = ["full"] }
-async-trait = "0.1.89"
+[profile.release-wasm]
+inherits = "release"
+lto      = true

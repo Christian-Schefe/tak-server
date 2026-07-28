@@ -1,0 +1,28 @@
+{
+  "name": "tak-ui-lib",
+  "type": "module",
+  "private": true,
+  "workspaces": [
+    "packages/tak-frontend",
+    "packages/tak-ui/*"
+  ],
+  "scripts": {
+    "build": "bun run --filter '*' build",
+    "dev": "bun --filter 'tak-frontend' dev",
+    "dev-ui": "bun --filter 'playground' dev",
+    "test": "bun run --filter '*' test"
+  },
+  "devDependencies": {
+    "@cbnventures/nova": "^0.20.0",
+    "@tsconfig/node24": "^24.0.4",
+    "@types/bun": "latest",
+    "@types/node": "^26.1.1",
+    "@vue/eslint-config-typescript": "^14.9.0",
+    "eslint-config-prettier": "^10.1.8",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.7.0",
+    "eslint-plugin-vue": "^10.9.2",
+    "typescript-eslint": "^8.64.0",
+    "typescript": "6"
+  }
+}

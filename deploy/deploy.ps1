@@ -4,7 +4,7 @@ ssh root@tak_server "rm -rf /root/app/*"
 # Copy frontend dist to artifacts
 Remove-Item -Path ./deploy/artifacts/dist -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -Path ./deploy/artifacts/dist -ItemType Directory | Out-Null
-Copy-Item -Path ../tak-frontend/dist/tak-frontend/browser/* -Destination ./deploy/artifacts/dist -Recurse -Force
+Copy-Item -Path ../tak-frontend-vue/dist/* -Destination ./deploy/artifacts/dist -Recurse -Force
 
 # Docker Compose file
 scp ./deploy/docker-compose.yml root@tak_server:/root/app/docker-compose.yml

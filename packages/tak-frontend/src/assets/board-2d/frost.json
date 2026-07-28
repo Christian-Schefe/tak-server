@@ -1,0 +1,24 @@
+{
+  "name": "Frost",
+  "background": "#e8f4f8",
+  "text": "#1c2a33",
+  "board1": "#cfe4ed",
+  "board2": "#b5d2dd",
+  "highlight": "#b22222bb",
+  "hover": "#ffffff77",
+  "piece1": { "background": "#ffffff", "border": "#8aa6b5" },
+  "piece2": {
+    "background": "#5a7b8c",
+    "border": "#2f3f47",
+    "text": "#e8f4f8"
+  },
+  "board": {
+    "spacing": "2px",
+    "rounded": "2px",
+    "tiling": "linear"
+  },
+  "pieces": {
+    "rounded": 2,
+    "border": "3px"
+  }
+}

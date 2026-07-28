@@ -1,0 +1,24 @@
+{
+  "name": "Space",
+  "background": "#0b0f1a",
+  "text": "#d0d6f0",
+  "board1": "#1a1f33",
+  "board2": "#111426",
+  "highlight": "#4df3ff55",
+  "hover": "#ffffff22",
+  "piece1": { "background": "#e0e6ff", "border": "#1a1f33" },
+  "piece2": {
+    "background": "#2d3250",
+    "border": "#4df3ff",
+    "text": "#d0d6f0"
+  },
+  "board": {
+    "spacing": "2px",
+    "rounded": "2px",
+    "tiling": "rings"
+  },
+  "pieces": {
+    "rounded": 5,
+    "border": "3px"
+  }
+}

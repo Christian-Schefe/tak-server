@@ -1,0 +1,24 @@
+{
+  "name": "Bubblegum",
+  "background": "#ffe8cc",
+  "text": "#3a2a2a",
+  "board1": "#fff2e0",
+  "board2": "#ffe8d3",
+  "highlight": "#ff99c8",
+  "hover": "#99ddff66",
+  "piece1": { "background": "#99ddff", "border": "#3399cc", "text": "#ffffff" },
+  "piece2": {
+    "background": "#ff77aa",
+    "border": "#c94f7c",
+    "text": "#ffffff"
+  },
+  "board": {
+    "spacing": "2px",
+    "rounded": "8px",
+    "tiling": "random"
+  },
+  "pieces": {
+    "rounded": 10,
+    "border": "3px"
+  }
+}

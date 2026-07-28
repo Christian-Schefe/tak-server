@@ -1,0 +1,240 @@
+use std::{collections::HashMap, sync::Arc};
+
+use crate::create_db_pool;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QueryOrder, QuerySelect, TransactionError, TransactionTrait,
+};
+use tak_persistence_sea_orm_entities::rating;
+use tak_server_app::domain::{
+    PaginatedResponse, PlayerId, RepoError, RepoRetrieveError, SortOrder,
+    rating::{PlayerRating, RatingQuery, RatingRepository, RatingSortBy},
+};
+
+pub struct RatingRepositoryImpl {
+    db: DatabaseConnection,
+    ratings_cache: Arc<moka::sync::Cache<PlayerId, PlayerRating>>,
+}
+
+impl RatingRepositoryImpl {
+    pub async fn new() -> Self {
+        let db = create_db_pool().await;
+        let ratings_cache = Arc::new(
+            moka::sync::Cache::builder()
+                .max_capacity(10_000)
+                .time_to_live(std::time::Duration::from_secs(60 * 5))
+                .build(),
+        );
+        Self { db, ratings_cache }
+    }
+
+    fn model_to_rating(model: rating::Model) -> PlayerRating {
+        PlayerRating {
+            player_id: PlayerId(model.player_id),
+            rating: model.rating,
+            boost: model.boost,
+            max_rating: model.max_rating,
+            rated_games_played: model.rated_games as u32,
+            rating_age: model.rating_age,
+            fatigue: serde_json::from_value::<HashMap<uuid::Uuid, f64>>(model.fatigue)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(k, v)| (PlayerId(k), v))
+                .collect(),
+        }
+    }
+
+    fn rating_to_model(player_id: PlayerId, rating: &PlayerRating) -> rating::ActiveModel {
+        rating::ActiveModel {
+            player_id: sea_orm::Set(player_id.0),
+            rating: sea_orm::Set(rating.rating),
+            boost: sea_orm::Set(rating.boost),
+            max_rating: sea_orm::Set(rating.max_rating),
+            rated_games: sea_orm::Set(rating.rated_games_played as i32),
+            rating_age: sea_orm::Set(rating.rating_age),
+            fatigue: sea_orm::Set(
+                serde_json::to_value(
+                    &rating
+                        .fatigue
+                        .iter()
+                        .map(|(k, v)| (k.0, *v))
+                        .collect::<HashMap<uuid::Uuid, f64>>(),
+                )
+                .unwrap_or_else(|_| serde_json::json!({})),
+            ),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl RatingRepository for RatingRepositoryImpl {
+    async fn get_player_rating(
+        &self,
+        player_id: PlayerId,
+    ) -> Result<PlayerRating, RepoRetrieveError> {
+        if let Some(cached) = self.ratings_cache.get(&player_id) {
+            return Ok(cached);
+        }
+        let rating_model = rating::Entity::find_by_id(player_id.0)
+            .one(&self.db)
+            .await
+            .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
+        match rating_model {
+            Some(model) => {
+                let rating = Self::model_to_rating(model);
+                self.ratings_cache.insert(player_id, rating.clone());
+                Ok(rating)
+            }
+            None => Err(RepoRetrieveError::NotFound),
+        }
+    }
+
+    async fn update_player_ratings<R: Send + 'static>(
+        &self,
+        white: PlayerId,
+        black: PlayerId,
+        calc_fn: impl FnOnce(
+            Option<PlayerRating>,
+            Option<PlayerRating>,
+        ) -> (PlayerRating, PlayerRating, R)
+        + Send
+        + 'static,
+    ) -> Result<R, RepoError> {
+        let res = self
+            .db
+            .transaction::<_, R, RepoError>(|c| {
+                Box::pin(async move {
+                    let white_rating_model = rating::Entity::find_by_id(white.0)
+                        .one(c)
+                        .await
+                        .map_err(|e| RepoError::StorageError(e.to_string()))?;
+                    let black_rating_model = rating::Entity::find_by_id(black.0)
+                        .one(c)
+                        .await
+                        .map_err(|e| RepoError::StorageError(e.to_string()))?;
+
+                    let white_rating = white_rating_model.map(|model| Self::model_to_rating(model));
+                    let black_rating = black_rating_model.map(|model| Self::model_to_rating(model));
+
+                    let has_white_rating = white_rating.is_some();
+                    let has_black_rating = black_rating.is_some();
+
+                    let (new_white_rating, new_black_rating, res) =
+                        calc_fn(white_rating, black_rating);
+
+                    let white_active_model = Self::rating_to_model(white, &new_white_rating);
+                    let black_active_model = Self::rating_to_model(black, &new_black_rating);
+
+                    if has_white_rating {
+                        white_active_model
+                            .update(c)
+                            .await
+                            .map_err(|e| RepoError::StorageError(e.to_string()))?;
+                    } else {
+                        white_active_model
+                            .insert(c)
+                            .await
+                            .map_err(|e| RepoError::StorageError(e.to_string()))?;
+                    }
+
+                    if has_black_rating {
+                        black_active_model
+                            .update(c)
+                            .await
+                            .map_err(|e| RepoError::StorageError(e.to_string()))?;
+                    } else {
+                        black_active_model
+                            .insert(c)
+                            .await
+                            .map_err(|e| RepoError::StorageError(e.to_string()))?;
+                    }
+                    Ok(res)
+                })
+            })
+            .await;
+
+        match res {
+            Ok(result) => {
+                self.ratings_cache.invalidate(&white);
+                self.ratings_cache.invalidate(&black);
+                Ok(result)
+            }
+            Err(TransactionError::Transaction(e)) => Err(e),
+            Err(TransactionError::Connection(e)) => Err(RepoError::StorageError(e.to_string())),
+        }
+    }
+
+    async fn get_player_ranking(
+        &self,
+        player_id: PlayerId,
+    ) -> Result<(u32, PlayerRating), RepoRetrieveError> {
+        let rating_model = rating::Entity::find_by_id(player_id.0)
+            .one(&self.db)
+            .await
+            .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
+        match rating_model {
+            Some(model) => {
+                let player_rating = Self::model_to_rating(model);
+                let better_count = rating::Entity::find()
+                    .filter(rating::Column::Rating.gt(player_rating.rating))
+                    .count(&self.db)
+                    .await
+                    .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
+                Ok(((better_count + 1) as u32, player_rating))
+            }
+            None => Err(RepoRetrieveError::NotFound),
+        }
+    }
+
+    async fn query_player_ratings(
+        &self,
+        filter: RatingQuery,
+    ) -> Result<PaginatedResponse<PlayerRating>, RepoError> {
+        let mut query = rating::Entity::find();
+
+        let total_count = query
+            .clone()
+            .count(&self.db)
+            .await
+            .map_err(|e| RepoError::StorageError(e.to_string()))?;
+
+        if let Some((sort_order, sort_by)) = filter.sort {
+            let order = match sort_order {
+                SortOrder::Ascending => sea_orm::Order::Asc,
+                SortOrder::Descending => sea_orm::Order::Desc,
+            };
+            match sort_by {
+                RatingSortBy::Rating => {
+                    query = query.order_by(rating::Column::Rating, order);
+                }
+                RatingSortBy::RatedGames => {
+                    query = query.order_by(rating::Column::RatedGames, order);
+                }
+                RatingSortBy::MaxRating => {
+                    query = query.order_by(rating::Column::MaxRating, order);
+                }
+            }
+        } else {
+            query = query.order_by_desc(rating::Column::Rating);
+        }
+        if let Some(offset) = filter.pagination.offset {
+            query = query.offset(offset as u64);
+        }
+        if let Some(limit) = filter.pagination.limit {
+            query = query.limit(limit as u64);
+        }
+
+        let items = query
+            .all(&self.db)
+            .await
+            .map_err(|e| RepoError::StorageError(e.to_string()))?
+            .into_iter()
+            .map(Self::model_to_rating)
+            .collect::<Vec<_>>();
+
+        Ok(PaginatedResponse {
+            total_count: total_count as usize,
+            items,
+        })
+    }
+}

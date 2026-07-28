@@ -1,0 +1,10 @@
+[package]
+edition = "2024"
+name    = "tak-server-api-contract"
+version = "0.1.0"
+
+[dependencies]
+chrono   = { version = "0.4.42", features = [ "serde" ] }
+serde    = { version = "1.0.219", features = [ "derive" ] }
+tak-core = { path = "../../tak-core" }
+uuid     = { version = "1.18.1", features = [ "serde", "v4" ] }

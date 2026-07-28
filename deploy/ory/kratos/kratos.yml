@@ -11,6 +11,9 @@ serve:
     port: 4434
     base_url: set_by_env_variable
 
+session:
+  lifespan: 720h
+
 selfservice:
   default_browser_return_url: set_by_env_variable
 
@@ -46,9 +49,6 @@ identity:
   schemas:
     - id: default
       url: file:///etc/config/kratos/user.schema.json
-
-    - id: bot
-      url: file:///etc/config/kratos/bot.schema.json
 
 courier:
   smtp:

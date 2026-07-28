@@ -1,0 +1,10 @@
+@import 'tailwindcss';
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+h1 {
+  @apply text-2xl font-semibold;
+}
+
+h2 {
+  @apply text-lg font-semibold;
+}

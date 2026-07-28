@@ -27,8 +27,8 @@ services:
     environment:
       - SITE_ADDRESS=${SITE_ADDRESS}
       - TAK_HTTP_API_PORT=${TAK_HTTP_API_PORT}
-      - TAK_LEGACY_HTTP_API_PORT=${TAK_LEGACY_HTTP_API_PORT}
-      - TAK_WS_PORT=${TAK_WS_PORT}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   kratos-migrate:
     image: oryd/kratos:v25.4.0
@@ -55,8 +55,8 @@ services:
     environment:
       - DSN=postgres://${KRATOS_POSTGRES_USER}:${KRATOS_POSTGRES_PASSWORD}@postgresd:5432/${KRATOS_POSTGRES_DB}?sslmode=disable&max_conns=20&max_idle_conns=4
       - COURIER_SMTP_CONNECTION_URI=${KRATOS_EMAIL_SMTP_URI}
-      - LOG_LEVEL=trace
-      - LOG_LEAK_SENSITIVE_VALUES=true
+      - LOG_LEVEL=info
+      - LOG_LEAK_SENSITIVE_VALUES=false
     command: serve -c /etc/config/kratos/kratos.yml ${KRATOS_FLAGS}
     volumes:
       - ./ory/kratos:/etc/config/kratos
@@ -84,21 +84,17 @@ services:
     image: tak-server:latest
     restart: unless-stopped
     ports:
-      - '${TAK_TCP_PORT}:${TAK_TCP_PORT}'
       - '${TAK_HTTP_API_PORT}:${TAK_HTTP_API_PORT}'
-      - '${TAK_LEGACY_HTTP_API_PORT}:${TAK_LEGACY_HTTP_API_PORT}'
-      - '${TAK_WS_PORT}:${TAK_WS_PORT}'
     environment:
-      - TAK_WS_PORT=${TAK_WS_PORT}
-      - TAK_TCP_PORT=${TAK_TCP_PORT}
       - TAK_HTTP_API_PORT=${TAK_HTTP_API_PORT}
-      - TAK_LEGACY_HTTP_API_PORT=${TAK_LEGACY_HTTP_API_PORT}
       - TAK_HOST=${TAK_HOST}
       - TAK_ORY_KRATOS_PUBLIC_URL=${TAK_ORY_KRATOS_PUBLIC_URL}
       - TAK_ORY_KRATOS_ADMIN_URL=${TAK_ORY_KRATOS_ADMIN_URL}
       - TAK_JWT_SECRET=${TAK_JWT_SECRET}
-      - LOG_FILE_PATH=${LOG_FILE_PATH}
-      - LOG_ARCHIVE_PATTERN=${LOG_ARCHIVE_PATTERN}
+      - TAK_BOT_REGISTRY_PATH=${TAK_BOT_REGISTRY_PATH}
+      - PROFILE_PICTURE_STORAGE_PATH=${PROFILE_PICTURE_STORAGE_PATH}
+      - LOG_FILE_DIRECTORY=${LOG_FILE_DIRECTORY}
+      - LOG_FILE_NAME=${LOG_FILE_NAME}
       - GOOGLE_SERVICE_ACCOUNT_KEY=${GOOGLE_SERVICE_ACCOUNT_KEY}
       - GOOGLE_SHEETS_EVENTS_SPREADSHEET_ID=${GOOGLE_SHEETS_EVENTS_SPREADSHEET_ID}
       - MARIADB_DATABASE=${MARIADB_DATABASE}
@@ -113,9 +109,12 @@ services:
       - mariadb
     profiles:
       - production
+    volumes:
+      - profile_picture_storage:${PROFILE_PICTURE_STORAGE_PATH}
 
 volumes:
   caddy_data:
   caddy_config:
   mariadb_data:
   postgres_data:
+  profile_picture_storage:

@@ -1,0 +1,24 @@
+{
+  "name": "Sakura",
+  "background": "#fdfaf7",
+  "text": "#3a2a21",
+  "board1": "#f7ede9",
+  "board2": "#f0e2db",
+  "highlight": "#e69aaa",
+  "hover": "#e6cbb877",
+  "piece1": { "background": "#fff6f8", "border": "#d9b5c2", "text": "#3a2a21" },
+  "piece2": {
+    "background": "#f0c94d",
+    "border": "#b08a22",
+    "text": "#3a2a21"
+  },
+  "board": {
+    "spacing": "2px",
+    "rounded": "2px",
+    "tiling": "linear"
+  },
+  "pieces": {
+    "rounded": 5,
+    "border": "3px"
+  }
+}

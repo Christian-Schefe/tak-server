@@ -1,0 +1,32 @@
+{
+  "name": "Mushroom",
+  "background": "#2f2a26",
+  "text": "#f4e2b5",
+  "board1": "#6e6259",
+  "board2": "#8c7b6e",
+  "highlight": "#7a1ea844",
+  "hover": "#f4e2b544",
+  "piece1": { "background": "#b08d57", "border": "#7a5d32", "text": "#1e1610" },
+  "piece2": {
+    "background": "#4d3c2f",
+    "border": "#1e1610",
+    "text": "#f4e2b5"
+  },
+  "board": {
+    "spacing": "2px",
+    "rounded": "2px",
+    "tiling": "random"
+  },
+  "pieces": {
+    "rounded": 3,
+    "border": "3px"
+  },
+  "tileSpecial": {
+    "color": "#2f2a2666",
+    "size": "85%",
+    "hideBackground": false,
+    "rounded": "5px",
+    "borderColor": "transparent",
+    "border": "0"
+  }
+}
