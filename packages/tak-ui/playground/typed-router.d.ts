@@ -38,9 +38,16 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/components': RouteRecordInfo<
+    '/components/': RouteRecordInfo<
+      '/components/',
       '/components',
-      '/components',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/components/form': RouteRecordInfo<
+      '/components/form',
+      '/components/form',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -73,9 +80,17 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
-    'src/pages/components.vue': {
+    'src/pages/components/index.vue': {
       routes:
-        | '/components'
+        | '/components/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/components/form.vue': {
+      routes:
+        | '/components/form'
       views:
         | never
       pathParamNames:

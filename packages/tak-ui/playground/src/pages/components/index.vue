@@ -12,7 +12,8 @@ import {
 } from '@tak-ui-lib/components';
 import { ref } from 'vue';
 import { LuAlarmClock, LuX } from 'vue-icons-plus/lu';
-import Page from '../components/Page.vue';
+import Page from '../../components/Page.vue';
+import ButtonGroup from '@tak-ui-lib/components/src/components/buttongroup/ButtonGroup.vue';
 
 const inputSliderValue = ref(50);
 
@@ -80,6 +81,14 @@ const inputTextValue = ref('');
           :as="{ component: 'a', props: { href: 'https://example.com', target: '_blank' } }"
           label="Link"
         />
+      </div>
+      <h2>Button Group</h2>
+      <div class="flex gap-2 items-center flex-wrap">
+        <ButtonGroup>
+          <Button label="Button 1" />
+          <Button label="Button 2" />
+          <Button label="Button 3" />
+        </ButtonGroup>
       </div>
     </Card>
     <h1>Sliders</h1>

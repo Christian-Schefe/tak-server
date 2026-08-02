@@ -43,7 +43,9 @@ export function useIconManager(): IconManager {
   return iconManager;
 }
 
-export function useIcon(name: MaybeRefOrGetter<string>): Icon | undefined {
+export function useIcon(name: MaybeRefOrGetter<string>) {
   const iconManager = useIconManager();
-  return computed(() => iconManager.getIcon(toValue(name)));
+  return computed(() => {
+    return iconManager.getIcon(toValue(name));
+  });
 }

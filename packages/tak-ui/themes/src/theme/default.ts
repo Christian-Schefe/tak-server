@@ -137,12 +137,18 @@ const defaultColorsSemantic: ColorsSemantic = {
 };
 
 const defaultSliderSemantic: SliderSemantic = {
-  height: '0.25rem',
+  height: '1.25rem',
+  gap: '0.5rem',
+  'border-radius': '0.25rem',
+  padding: '0.5rem',
   handle: {
-    size: '1.25rem',
-    background: '{surface-0|surface-900}',
-    border: '2px solid {surface-200|surface-700}',
-    'disabled-background': '{surface-100|surface-800}',
+    width: '0.25rem',
+    height: '2.5rem',
+    background: '{primary-500|primary-400}',
+    'hover-background': '{primary-600|primary-300}',
+    border: 'none',
+    'border-radius': '0.125rem',
+    'disabled-background': '{primary-400|primary-500}',
     'focus-outline': '2px solid {surface-700|surface-200}',
     'focus-outline-offset': '2px',
   },

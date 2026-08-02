@@ -16,6 +16,7 @@ const props = withDefaults(
     disabled?: boolean | undefined;
     iconOnly?: boolean | undefined;
     label?: string | undefined;
+    type?: 'button' | 'submit' | 'reset';
     as?: undefined | { component: T; props: PropsOf<T> };
   }>(),
   {
@@ -25,8 +26,8 @@ const props = withDefaults(
     disabled: false,
     iconOnly: false,
     label: undefined,
+    type: 'button',
     as: undefined,
-    asProps: undefined,
   },
 );
 
@@ -106,11 +107,12 @@ const buttonContentStyle = computed<StyleValue>(() => {
 <template>
   <component
     :is="props.as?.component ?? 'button'"
-    v-bind="props.as?.props"
     class="p-button"
     :disabled="disabled"
     :draggable="false"
     :style="buttonStyle"
+    :type="type"
+    v-bind="props.as?.props"
     @click="handleClick"
     @pointerdown="handlePointerDown"
   >
@@ -169,6 +171,15 @@ const buttonContentStyle = computed<StyleValue>(() => {
 }
 .p-button:active:not(:disabled) {
   background-color: var(--p-button-_hover);
+}
+
+.p-button-group .p-button:not(:last-child) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.p-button-group .p-button:not(:first-child) {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
 }
 
 .p-button .p-button-content {

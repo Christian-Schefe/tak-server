@@ -1,12 +1,16 @@
 <script setup lang="ts">
+import { useFormValue } from '../../form';
+
 const model = defineModel<string>({ default: '' });
-withDefaults(
+const props = withDefaults(
   defineProps<{
+    name?: string | undefined;
     placeholder?: string | undefined;
     label?: string | undefined;
     inputId?: string | undefined;
   }>(),
   {
+    name: undefined,
     placeholder: undefined,
     label: undefined,
     inputId: undefined,
@@ -21,6 +25,8 @@ function onInputChange(event: Event) {
   model.value = target.value;
   emit('change', target.value);
 }
+
+useFormValue(model, () => props.name);
 </script>
 <template>
   <div class="p-inputtext-container">
@@ -28,6 +34,7 @@ function onInputChange(event: Event) {
       <input
         :id="inputId"
         v-model="model"
+        :name="name"
         class="p-inputtext"
         :class="{ 'p-inputtext-with-label': !!label }"
         :placeholder="placeholder"

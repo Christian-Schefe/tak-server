@@ -26,6 +26,10 @@ export class ThemeManager {
     );
   }
 
+  toggleDarkMode(): void {
+    this.setDarkMode(this.isDark.value ? 'light' : 'dark');
+  }
+
   setDarkMode(darkMode: DarkMode): void {
     this.current.value.darkMode = darkMode;
   }
