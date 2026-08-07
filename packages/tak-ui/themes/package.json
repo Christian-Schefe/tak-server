@@ -11,7 +11,8 @@
   "devDependencies": {
     "@cbnventures/nova": "^0.20.0",
     "@types/bun": "latest",
-    "rimraf": "^6.1.3"
+    "rimraf": "^6.1.3",
+    "type-fest": "^5.8.0"
   },
   "peerDependencies": {
     "typescript": "^6"

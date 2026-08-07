@@ -135,7 +135,74 @@ const defaultColorsSemantic: ColorsSemantic = {
   background: '{surface-50|surface-950}',
   text: '{surface-950|surface-0}',
 };
-
+const defaultSliderSemantic: SliderSemantic = {
+  normal: {
+    track: {
+      padding: '0.5rem',
+      gap: '0.75rem',
+      height: '1.25rem',
+      filled: {
+        background: '{primary-500|primary-400}',
+      },
+      unfilled: {
+        background: '{surface-200|surface-700}',
+      },
+      'border-radius': '0.25rem',
+    },
+    handle: {
+      width: '0.25rem',
+      height: '2.5rem',
+      background: '{primary-500|primary-400}',
+      'border-radius': '1rem',
+    },
+  },
+  hovered: {
+    track: {
+      filled: {
+        background: '{primary-600|primary-300}',
+      },
+      unfilled: {
+        background: '{surface-300|surface-600}',
+      },
+    },
+    handle: {
+      background: '{primary-600|primary-300}',
+    },
+  },
+  pressed: {
+    track: {
+      gap: '0.375rem',
+      filled: {
+        background: '{primary-600|primary-300}',
+      },
+      unfilled: {
+        background: '{surface-300|surface-600}',
+      },
+    },
+    handle: {
+      width: '0.125rem',
+      background: '{primary-600|primary-300}',
+    },
+  },
+  disabled: {
+    track: {
+      filled: {
+        background: '{primary-400|primary-500}',
+      },
+      unfilled: {
+        background: '{surface-300|surface-600}',
+      },
+    },
+    handle: {
+      background: '{primary-400|primary-500}',
+    },
+  },
+  focus: {
+    outline: '2px solid {surface-700|surface-200}',
+    'outline-offset': '2px',
+  },
+};
+/*
 const defaultSliderSemantic: SliderSemantic = {
   height: '1.25rem',
   gap: '0.5rem',
@@ -158,8 +225,7 @@ const defaultSliderSemantic: SliderSemantic = {
   'filled-background': '{primary-500|primary-400}',
   'hover-filled-background': '{primary-600|primary-300}',
   'disabled-filled-background': '{primary-400|primary-500}',
-};
-
+};*/
 const defaultSelectSemantic: SelectSemantic = {
   background: '{surface-0|surface-900}',
   'border-radius': '0.25rem',
@@ -195,25 +261,85 @@ const defaultTooltipSemantic: TooltipSemantic = {
 };
 
 const defaultToggleSemantic: ToggleSemantic = {
-  width: '2.5rem',
-  height: '1.5rem',
-  background: '{surface-200|surface-700}',
-  'hover-background': '{surface-300|surface-600}',
-  'disabled-background': '{surface-300|surface-600}',
-  'active-background': '{primary-500|primary-400}',
-  'active-hover-background': '{primary-600|primary-300}',
-  'disabled-active-background': '{primary-400|primary-500}',
-  'focus-outline': '2px solid {surface-700|surface-200}',
-  'focus-outline-offset': '2px',
-  handle: {
-    size: '1rem',
-    background: '{surface-0|surface-300}',
-    'hover-background': '{surface-0|surface-200}',
-    'disabled-background': '{surface-100|surface-400}',
-    'active-background': '{surface-0|surface-900}',
-    'active-hover-background': '{surface-0|surface-900}',
-    'active-disabled-background': '{surface-100|surface-800}',
-    border: 'none',
+  off: {
+    normal: {
+      track: {
+        width: '3rem',
+        height: '1.75rem',
+        background: '{surface-200|surface-700}',
+        'border-radius': '1.5rem',
+      },
+      handle: {
+        width: '0.875rem',
+        height: '0.875rem',
+        background: '{surface-0|surface-300}',
+        'border-radius': '1rem',
+      },
+    },
+    hovered: {
+      track: {
+        background: '{surface-300|surface-600}',
+      },
+    },
+    pressed: {
+      track: {
+        background: '{surface-300|surface-600}',
+      },
+      handle: {
+        width: '1.25rem',
+        height: '1.25rem',
+      },
+    },
+    disabled: {
+      track: {
+        background: '{surface-300|surface-600}',
+      },
+      handle: {
+        background: '{surface-100|surface-400}',
+      },
+    },
+  },
+  on: {
+    normal: {
+      track: {
+        width: '3rem',
+        height: '1.75rem',
+        background: '{primary-500|primary-400}',
+        'border-radius': '1.5rem',
+      },
+      handle: {
+        width: '1.25rem',
+        height: '1.25rem',
+        background: '{surface-0|surface-900}',
+        'border-radius': '1rem',
+      },
+    },
+    hovered: {
+      track: {
+        background: '{primary-600|primary-300}',
+      },
+    },
+    pressed: {
+      track: {
+        background: '{primary-600|primary-300}',
+      },
+      handle: {
+        width: '1.5rem',
+        height: '1.5rem',
+      },
+    },
+    disabled: {
+      track: {
+        background: '{primary-400|primary-500}',
+      },
+      handle: {
+        background: '{surface-100|surface-800}',
+      },
+    },
+  },
+  focus: {
+    outline: '2px solid {surface-700|surface-200}',
+    'outline-offset': '2px',
   },
 };
 

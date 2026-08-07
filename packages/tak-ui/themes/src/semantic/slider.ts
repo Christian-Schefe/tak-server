@@ -1,25 +1,20 @@
-export interface SliderSemantic {
-  height: string;
-  handle: SliderHandleSemantic;
-  background: string;
-  gap: string;
-  padding: string;
-  'border-radius': string;
-  'hover-background': string;
-  'disabled-background': string;
-  'filled-background': string;
-  'hover-filled-background': string;
-  'disabled-filled-background': string;
-}
+import type { Switch } from '.';
 
-export interface SliderHandleSemantic {
-  width: string;
-  height: string;
-  background: string;
-  'hover-background': string;
-  'disabled-background': string;
-  border: string;
-  'border-radius': string;
-  'focus-outline': string;
-  'focus-outline-offset': string;
-}
+export type SliderSemantic = Switch<
+  'normal',
+  'hovered' | 'pressed' | 'disabled',
+  {
+    track: {
+      padding: string;
+      gap: string;
+      height: string;
+      'border-radius': string;
+    } & Record<'unfilled' | 'filled', { background: string }>;
+    handle: {
+      width: string;
+      height: string;
+      background: string;
+      'border-radius': string;
+    };
+  }
+> & { focus: { outline: string; 'outline-offset': string } };

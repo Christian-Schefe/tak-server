@@ -10,6 +10,7 @@ import type { SliderSemantic } from './slider';
 import type { TextSemantic } from './text';
 import type { ToggleSemantic } from './toggle';
 import type { TooltipSemantic } from './tooltip';
+import type { PartialDeep } from 'type-fest';
 
 export interface ThemeSemantic {
   color: ColorsSemantic;
@@ -30,3 +31,9 @@ export interface Vector2 {
   x: string;
   y: string;
 }
+
+export type Switch<ReqStates extends string, OptStates extends string, T> = {
+  [K in ReqStates]: T;
+} & {
+  [K in OptStates]?: PartialDeep<T>;
+};

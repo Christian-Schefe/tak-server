@@ -58,33 +58,70 @@ function handleInput(event: InputEvent) {
     </div>
   </div>
 </template>
-<style lang="css" scoped>
+<style lang="scss" scoped>
+$states: (
+  'normal': '.p-slider',
+  'hovered': '.p-slider:hover',
+  'pressed': '.p-slider:active',
+  'disabled': '.p-slider.p-slider-disabled',
+);
+@each $state, $state-selector in $states {
+  #{$state-selector} {
+    height: max(
+      var(--p-slider-#{$state}-track-height, var(--p-slider-normal-track-height)),
+      var(--p-slider-#{$state}-handle-height, var(--p-slider-normal-handle-height))
+    );
+    padding-left: var(--p-slider-#{$state}-track-padding, var(--p-slider-normal-track-padding));
+    padding-right: var(--p-slider-#{$state}-track-padding, var(--p-slider-normal-track-padding));
+    .p-slider-track-unfilled-inner {
+      background-color: var(
+        --p-slider-#{$state}-track-unfilled-background,
+        var(--p-slider-normal-track-unfilled-background)
+      );
+      left: var(--p-slider-#{$state}-track-gap, var(--p-slider-normal-track-gap));
+      border-radius: var(
+        --p-slider-#{$state}-track-border-radius,
+        var(--p-slider-normal-track-border-radius)
+      );
+    }
+    .p-slider-track-filled-inner {
+      background-color: var(
+        --p-slider-#{$state}-track-filled-background,
+        var(--p-slider-normal-track-filled-background)
+      );
+      right: var(--p-slider-#{$state}-track-gap, var(--p-slider-normal-track-gap));
+      border-radius: var(
+        --p-slider-#{$state}-track-border-radius,
+        var(--p-slider-normal-track-border-radius)
+      );
+    }
+    .p-slider-handle {
+      background-color: var(
+        --p-slider-#{$state}-handle-background,
+        var(--p-slider-normal-handle-background)
+      );
+      width: var(--p-slider-#{$state}-handle-width, var(--p-slider-normal-handle-width));
+      height: var(--p-slider-#{$state}-handle-height, var(--p-slider-normal-handle-height));
+      border-radius: var(
+        --p-slider-#{$state}-handle-border-radius,
+        var(--p-slider-normal-handle-border-radius)
+      );
+    }
+    .p-slider-track {
+      border-radius: var(
+        --p-slider-#{$state}-track-border-radius,
+        var(--p-slider-normal-track-border-radius)
+      );
+      height: var(--p-slider-#{$state}-track-height, var(--p-slider-normal-track-height));
+    }
+  }
+}
+
 .p-slider {
-  height: max(var(--p-slider-height), var(--p-slider-handle-height));
   touch-action: none;
-  padding-left: var(--p-slider-padding);
-  padding-right: var(--p-slider-padding);
   outline: none;
   position: relative;
   user-select: none;
-}
-.p-slider:hover .p-slider-track-unfilled-inner {
-  background-color: var(--p-slider-hover-background);
-}
-.p-slider:hover .p-slider-track-filled-inner {
-  background-color: var(--p-slider-hover-filled-background);
-}
-.p-slider:hover .p-slider-handle {
-  background-color: var(--p-slider-handle-hover-background);
-}
-.p-slider.p-slider-disabled .p-slider-track-unfilled-inner {
-  background-color: var(--p-slider-disabled-background);
-}
-.p-slider.p-slider-disabled .p-slider-track-filled-inner {
-  background-color: var(--p-slider-disabled-filled-background);
-}
-.p-slider.p-slider-disabled .p-slider-handle {
-  background-color: var(--p-slider-handle-disabled-background);
 }
 .p-slider-input {
   position: absolute;
@@ -109,9 +146,6 @@ function handleInput(event: InputEvent) {
 .p-slider-track {
   position: relative;
   width: 100%;
-  height: var(--p-slider-height);
-  border-radius: var(--p-slider-border-radius);
-  overflow: hidden;
 }
 .p-slider-track-unfilled {
   position: absolute;
@@ -127,38 +161,37 @@ function handleInput(event: InputEvent) {
 }
 .p-slider-track-unfilled-inner {
   position: absolute;
-  left: var(--p-slider-gap);
   right: 0;
   top: 0;
   bottom: 0;
-  background-color: var(--p-slider-background);
-  transition: background-color 0.2s ease;
-  border-radius: var(--p-slider-border-radius);
+  transition:
+    background-color 0.2s ease,
+    left 0.1s ease,
+    border-radius 0.2s ease;
 }
 .p-slider-track-filled-inner {
   position: absolute;
   top: 0;
   left: 0;
-  right: var(--p-slider-gap);
   bottom: 0;
-  background-color: var(--p-slider-filled-background);
-  transition: background-color 0.2s ease;
-  border-radius: var(--p-slider-border-radius);
+  transition:
+    background-color 0.2s ease,
+    right 0.1s ease,
+    border-radius 0.2s ease;
 }
 .p-slider-handle {
   position: absolute;
   top: 50%;
   left: 0;
   transform: translate(-50%, -50%);
-  width: var(--p-slider-handle-width);
-  height: var(--p-slider-handle-height);
-  background-color: var(--p-slider-handle-background);
-  border-radius: var(--p-slider-handle-border-radius);
-  border: var(--p-slider-handle-border, none);
-  transition: background-color 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    width 0.1s ease,
+    height 0.1s ease,
+    border-radius 0.2s ease;
 }
 .p-slider:has(> .p-slider-input:focus-visible) .p-slider-handle {
-  outline: var(--p-slider-handle-focus-outline);
-  outline-offset: var(--p-slider-handle-focus-outline-offset);
+  outline: var(--p-slider-focus-outline);
+  outline-offset: var(--p-slider-focus-outline-offset);
 }
 </style>
