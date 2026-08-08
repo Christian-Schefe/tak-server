@@ -1,15 +1,14 @@
 import type { Switch } from '.';
 
-export type ToggleSemantic = Record<
-  'off' | 'on',
-  Switch<
-    'normal',
-    'hovered' | 'pressed' | 'disabled',
+export type ToggleSemantic = Switch<
+  'normal',
+  'hovered' | 'pressed' | 'disabled',
+  Record<
+    'off' | 'on',
     {
       track: {
-        width: string;
-        height: string;
         background: string;
+        border: string;
         'border-radius': string;
       };
       handle: {
@@ -19,5 +18,13 @@ export type ToggleSemantic = Record<
         'border-radius': string;
       };
     }
-  >
-> & { focus: { outline: string; 'outline-offset': string } };
+  > & {
+    track: {
+      width: string;
+      height: string;
+    };
+    opacity: string;
+  }
+> & {
+  focus: { outline: string; 'outline-offset': string };
+};

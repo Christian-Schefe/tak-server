@@ -1,14 +1,4 @@
-export interface ButtonSemantic {
-  'border-radius': string;
-  size: string;
-  padding: string;
-  gap: string;
-  'focus-outline': string;
-  'focus-outline-offset': string;
-  filled: ButtonSemanticVariant;
-  text: ButtonSemanticVariant;
-  outlined: ButtonSemanticVariant;
-}
+import type { Switch } from '.';
 
 interface ButtonSemanticVariant {
   secondary: ButtonSemanticSeverity;
@@ -18,9 +8,20 @@ interface ButtonSemanticVariant {
 interface ButtonSemanticSeverity {
   background: string;
   text: string;
-  'disabled-background': string;
-  'disabled-text': string;
   border: string;
-  hover: string;
-  active: string;
 }
+
+export type ButtonSemantic = Switch<
+  'normal',
+  'hovered' | 'pressed' | 'disabled',
+  {
+    'border-radius': string;
+    size: string;
+    padding: string;
+    gap: string;
+    opacity: string;
+    filled: ButtonSemanticVariant;
+    text: ButtonSemanticVariant;
+    outlined: ButtonSemanticVariant;
+  }
+> & { focus: { outline: string; 'outline-offset': string } };

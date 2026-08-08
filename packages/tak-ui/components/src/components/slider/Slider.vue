@@ -73,6 +73,7 @@ $states: (
     );
     padding-left: var(--p-slider-#{$state}-track-padding, var(--p-slider-normal-track-padding));
     padding-right: var(--p-slider-#{$state}-track-padding, var(--p-slider-normal-track-padding));
+    opacity: var(--p-slider-#{$state}-opacity, var(--p-slider-normal-opacity));
     .p-slider-track-unfilled-inner {
       background-color: var(
         --p-slider-#{$state}-track-unfilled-background,

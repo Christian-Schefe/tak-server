@@ -79,21 +79,6 @@ function handleClick(e: PointerEvent) {
   emit('click', e);
 }
 
-const buttonStyle = computed<StyleValue>(() => {
-  return {
-    '--p-button-_background': props.disabled
-      ? `var(--p-button-${props.variant}-${props.severity}-disabled-background)`
-      : `var(--p-button-${props.variant}-${props.severity}-background)`,
-    '--p-button-_hover': `var(--p-button-${props.variant}-${props.severity}-hover)`,
-    color: props.disabled
-      ? `var(--p-button-${props.variant}-${props.severity}-disabled-text)`
-      : `var(--p-button-${props.variant}-${props.severity}-text)`,
-    border: `var(--p-button-${props.variant}-${props.severity}-border, none)`,
-    padding: props.iconOnly
-      ? `var(--p-button-padding)`
-      : `var(--p-button-padding) calc(var(--p-button-padding) + 0.25rem)`,
-  };
-});
 const buttonContentStyle = computed<StyleValue>(() => {
   return {
     justifyContent:
@@ -108,9 +93,13 @@ const buttonContentStyle = computed<StyleValue>(() => {
   <component
     :is="props.as?.component ?? 'button'"
     class="p-button"
+    :class="[
+      `p-button-${props.variant}`,
+      `p-button-${props.severity}`,
+      { 'p-button-disabled': props.disabled, 'p-button-icon-only': props.iconOnly },
+    ]"
     :disabled="disabled"
     :draggable="false"
-    :style="buttonStyle"
     :type="type"
     v-bind="props.as?.props"
     @click="handleClick"
@@ -124,14 +113,33 @@ const buttonContentStyle = computed<StyleValue>(() => {
     </div>
   </component>
 </template>
-<style lang="css">
+<style lang="scss">
+$variants: (
+  'filled': '.p-button-filled',
+  'text': '.p-button-text',
+  'outlined': '.p-button-outlined',
+);
+$severities: (
+  'primary': '.p-button-primary',
+  'secondary': '.p-button-secondary',
+);
+
+@each $severity, $severity-selector in $severities {
+  @each $variant, $variant-selector in $variants {
+    #{$variant-selector}#{$severity-selector} .p-button-ripple {
+      background-color: var(
+        --p-button-pressed-#{$variant}-#{$severity}-background,
+        var(--p-button-normal-#{$variant}-#{$severity}-background)
+      );
+    }
+  }
+}
 .p-button-ripple {
   position: absolute;
   border-radius: 50%;
   transform: scale(2.5);
   pointer-events: none;
   animation: ripple-animation 0.2s linear;
-  background-color: var(--p-button-_active);
 }
 @keyframes ripple-animation {
   from {
@@ -150,11 +158,56 @@ const buttonContentStyle = computed<StyleValue>(() => {
   animation: fadeout-animation 0.1s linear;
 }
 </style>
-<style lang="css" scoped>
+<style lang="scss" scoped>
+$states: (
+  'normal': '.p-button',
+  'hovered': '.p-button:hover',
+  'pressed': '.p-button:active',
+  'disabled': '.p-button.p-button-disabled',
+);
+$variants: (
+  'filled': '.p-button-filled',
+  'text': '.p-button-text',
+  'outlined': '.p-button-outlined',
+);
+$severities: (
+  'primary': '.p-button-primary',
+  'secondary': '.p-button-secondary',
+);
+@each $state, $state-selector in $states {
+  @each $severity, $severity-selector in $severities {
+    @each $variant, $variant-selector in $variants {
+      #{$state-selector}#{$variant-selector}#{$severity-selector} {
+        background-color: var(
+          --p-button-#{$state}-#{$variant}-#{$severity}-background,
+          var(--p-button-normal-#{$variant}-#{$severity}-background),
+        );
+        color: var(
+          --p-button-#{$state}-#{$variant}-#{$severity}-text,
+          var(--p-button-normal-#{$variant}-#{$severity}-text),
+        );
+        border: var(
+          --p-button-#{$state}-#{$variant}-#{$severity}-border,
+          var(--p-button-normal-#{$variant}-#{$severity}-border, none),
+        );
+      }
+    }
+  }
+  #{$state-selector} {
+    border-radius: var(--p-button-#{$state}-border-radius, var(--p-button-normal-border-radius));
+    opacity: var(--p-button-#{$state}-opacity, var(--p-button-normal-opacity));
+    padding: var(--p-button-#{$state}-padding, var(--p-button-normal-padding))
+      calc(var(--p-button-#{$state}-padding, var(--p-button-normal-padding)) + 0.25rem);
+  }
+  #{$state-selector}.p-button-icon-only {
+    padding: var(--p-button-#{$state}-padding, var(--p-button-normal-padding));
+  }
+  #{$state-selector} .p-button-content {
+    gap: var(--p-button-#{$state}-gap, var(--p-button-normal-gap, 0.25rem));
+  }
+}
 .p-button {
   margin: 0;
-  border-radius: var(--p-button-border-radius);
-  background-color: var(--p-button-_background);
   transition:
     background-color 0.1s ease-in-out,
     color 0.1s ease-in-out,
@@ -165,12 +218,6 @@ const buttonContentStyle = computed<StyleValue>(() => {
 }
 .p-button:disabled {
   cursor: unset;
-}
-.p-button:hover:not(:disabled) {
-  background-color: var(--p-button-_hover);
-}
-.p-button:active:not(:disabled) {
-  background-color: var(--p-button-_hover);
 }
 
 .p-button-group .p-button:not(:last-child) {
@@ -188,7 +235,6 @@ const buttonContentStyle = computed<StyleValue>(() => {
   justify-content: center;
   z-index: 1;
   position: relative;
-  gap: var(--p-button-padding);
 }
 
 .p-button:focus-visible {

@@ -12,7 +12,7 @@ withDefaults(
 );
 </script>
 <template>
-  <div class="p-toggle" :class="{ 'p-toggle-active': value, 'p-toggle-disabled': disabled }">
+  <div class="p-toggle" :class="{ 'p-toggle-on': value, 'p-toggle-disabled': disabled }">
     <input
       :id="inputId"
       v-model="value"
@@ -32,59 +32,67 @@ $states: (
 );
 $variants: (
   'off': '',
-  'on': '.p-toggle-active',
+  'on': '.p-toggle-on',
 );
-@each $variant, $variant-selector in $variants {
-  @each $state, $state-selector in $states {
-    #{$variant-selector}#{$state-selector} {
-      width: var(--p-toggle-#{$state}-track-width, var(--p-toggle-#{$variant}-normal-track-width));
-      height: var(
-        --p-toggle-#{$variant}-#{$state}-track-height,
-        var(--p-toggle-#{$variant}-normal-track-height)
-      );
+@each $state, $state-selector in $states {
+  @each $variant, $variant-selector in $variants {
+    #{$state-selector}#{$variant-selector} {
       background-color: var(
-        --p-toggle-#{$variant}-#{$state}-track-background,
-        var(--p-toggle-#{$variant}-normal-track-background)
+        --p-toggle-#{$state}-#{$variant}-track-background,
+        var(--p-toggle-normal-#{$variant}-track-background)
       );
       border-radius: var(
-        --p-toggle-#{$variant}-#{$state}-track-border-radius,
-        var(--p-toggle-#{$variant}-normal-track-border-radius)
+        --p-toggle-#{$state}-#{$variant}-track-border-radius,
+        var(--p-toggle-normal-#{$variant}-track-border-radius)
       );
       border: var(
-        --p-toggle-#{$variant}-#{$state}-track-border,
-        var(--p-toggle-#{$variant}-normal-track-border)
+        --p-toggle-#{$state}-#{$variant}-track-border,
+        var(--p-toggle-normal-#{$variant}-track-border)
       );
       outline: var(
-        --p-toggle-#{$variant}-#{$state}-track-outline,
-        var(--p-toggle-#{$variant}-normal-track-outline)
+        --p-toggle-#{$state}-#{$variant}-track-outline,
+        var(--p-toggle-normal-#{$variant}-track-outline)
       );
       outline-offset: var(
-        --p-toggle-#{$variant}-#{$state}-track-outline-offset,
-        var(--p-toggle-#{$variant}-normal-track-outline-offset)
+        --p-toggle-#{$state}-#{$variant}-track-outline-offset,
+        var(--p-toggle-normal-#{$variant}-track-outline-offset)
       );
       .p-toggle-handle {
         width: var(
-          --p-toggle-#{$variant}-#{$state}-handle-width,
-          var(--p-toggle-#{$variant}-normal-handle-width)
+          --p-toggle-#{$state}-#{$variant}-handle-width,
+          var(--p-toggle-normal-#{$variant}-handle-width)
         );
         height: var(
-          --p-toggle-#{$variant}-#{$state}-handle-height,
-          var(--p-toggle-#{$variant}-normal-handle-height)
+          --p-toggle-#{$state}-#{$variant}-handle-height,
+          var(--p-toggle-normal-#{$variant}-handle-height)
         );
         background-color: var(
-          --p-toggle-#{$variant}-#{$state}-handle-background,
-          var(--p-toggle-#{$variant}-normal-handle-background)
+          --p-toggle-#{$state}-#{$variant}-handle-background,
+          var(--p-toggle-normal-#{$variant}-handle-background)
         );
         border-radius: var(
-          --p-toggle-#{$variant}-#{$state}-handle-border-radius,
-          var(--p-toggle-#{$variant}-normal-handle-border-radius)
+          --p-toggle-#{$state}-#{$variant}-handle-border-radius,
+          var(--p-toggle-normal-#{$variant}-handle-border-radius)
         );
         border: var(
-          --p-toggle-#{$variant}-#{$state}-handle-border,
-          var(--p-toggle-#{$variant}-normal-handle-border)
+          --p-toggle-#{$state}-#{$variant}-handle-border,
+          var(--p-toggle-normal-#{$variant}-handle-border)
         );
       }
     }
+  }
+  #{$state-selector} {
+    width: var(--p-toggle-#{$state}-track-width, var(--p-toggle-normal-track-width));
+    height: var(--p-toggle-#{$state}-track-height, var(--p-toggle-normal-track-height));
+    opacity: var(--p-toggle-#{$state}-opacity, var(--p-toggle-normal-opacity));
+  }
+  #{$state-selector} .p-toggle-handle {
+    left: calc(var(--p-toggle-#{$state}-track-height, var(--p-toggle-normal-track-height)) / 2);
+  }
+  #{$state-selector}.p-toggle-on .p-toggle-handle {
+    left: calc(
+      100% - var(--p-toggle-#{$state}-track-height, var(--p-toggle-normal-track-height)) / 2
+    );
   }
 }
 
@@ -103,7 +111,6 @@ $variants: (
 
 .p-toggle-handle {
   top: 50%;
-  left: calc(var(--p-toggle-off-normal-track-height) / 2);
   position: absolute;
   transition:
     left 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275),
@@ -113,9 +120,6 @@ $variants: (
     border-radius 0.2s ease,
     border 0.2s ease;
   transform: translate(-50%, -50%);
-}
-.p-toggle.p-toggle-active .p-toggle-handle {
-  left: calc(100% - var(--p-toggle-on-normal-track-height) / 2);
 }
 
 .p-toggle-input {

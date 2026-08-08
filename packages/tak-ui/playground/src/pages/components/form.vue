@@ -29,10 +29,8 @@ const validator: FormValidator<FormData> = (data: Record<string, unknown>) => {
     <Card>
       <Form v-slot="form" :validator="validator" :initial-values="{ email: 'hi' }">
         <div class="flex flex-col gap-2">
-          <InputText name="name" label="Name" />
-          <p v-if="form.errors.name" class="text-red-500">{{ form.errors.name }}</p>
-          <InputText name="email" label="Email" />
-          <p v-if="form.errors.email" class="text-red-500">{{ form.errors.email }}</p>
+          <InputText name="name" label="Name" :support-text="form.errors.name" />
+          <InputText name="email" label="Email" :support-text="form.errors.email" />
           <Button type="reset" label="Reset" />
           <Button type="submit" label="Submit" />
         </div>

@@ -1,14 +1,23 @@
-import type { Vector2 } from '.';
+import type { Switch, Vector2 } from '.';
 
-export interface InputTextSemantic {
-  background: string;
-  'border-radius': string;
-  border: string;
-  'border-hover': string;
-  'border-focus': string;
-  'empty-text': string;
-  'filled-text': string;
-  padding: Vector2;
-  width: string;
-  'label-text-focus': string;
-}
+export type InputTextSemantic = Switch<
+  'normal',
+  'hovered' | 'focused' | 'disabled',
+  {
+    background: string;
+    'border-radius': string;
+    'text-empty': string;
+    'text-filled': string;
+    padding: Vector2;
+    width: string;
+    outline: string;
+    label: {
+      padding: string;
+      color: string;
+    };
+    support: {
+      padding: string;
+      color: string;
+    };
+  }
+>;

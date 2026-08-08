@@ -241,6 +241,7 @@ const inputTextValue = ref('');
           placeholder="Enter text"
           label="Label"
           input-id="input2"
+          support-text="Support text"
         />
         <InputText
           v-model="inputTextValue"

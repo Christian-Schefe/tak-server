@@ -16,5 +16,6 @@ export type SliderSemantic = Switch<
       background: string;
       'border-radius': string;
     };
+    opacity: string;
   }
 > & { focus: { outline: string; 'outline-offset': string } };
