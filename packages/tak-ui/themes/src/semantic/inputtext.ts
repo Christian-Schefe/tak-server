@@ -1,4 +1,4 @@
-import type { Switch, Vector2 } from '.';
+import type { Rect, Switch } from '.';
 
 export type InputTextSemantic = Switch<
   'normal',
@@ -8,16 +8,19 @@ export type InputTextSemantic = Switch<
     'border-radius': string;
     'text-empty': string;
     'text-filled': string;
-    padding: Vector2;
+    padding: Rect;
     width: string;
+    height: string;
     outline: string;
     label: {
-      padding: string;
+      top: string;
       color: string;
     };
+    'icon-padding': string;
     support: {
       padding: string;
       color: string;
     };
+    opacity: string;
   }
 >;

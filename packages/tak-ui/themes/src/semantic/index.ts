@@ -1,6 +1,6 @@
 import type { ButtonSemantic } from './button';
 import type { CardSemantic } from './card';
-import type { ColorsSemantic } from './colors';
+import type { RootSemantic } from './root';
 import type { DialogSemantic } from './dialog';
 import type { InputTextSemantic } from './inputtext';
 import type { ScrollbarSemantic } from './scrollbar';
@@ -13,7 +13,7 @@ import type { TooltipSemantic } from './tooltip';
 import type { PartialDeep } from 'type-fest';
 
 export interface ThemeSemantic {
-  color: ColorsSemantic;
+  root: RootSemantic;
   button: ButtonSemantic;
   inputtext: InputTextSemantic;
   card: CardSemantic;
@@ -30,6 +30,13 @@ export interface ThemeSemantic {
 export interface Vector2 {
   x: string;
   y: string;
+}
+
+export interface Rect {
+  top: string;
+  right: string;
+  bottom: string;
+  left: string;
 }
 
 export type Switch<ReqStates extends string, OptStates extends string, T> = {

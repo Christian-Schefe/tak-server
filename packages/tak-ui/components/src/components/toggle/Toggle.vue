@@ -20,6 +20,7 @@ withDefaults(
       type="checkbox"
       :disabled="disabled"
     />
+    <div class="p-toggle-track" />
     <div class="p-toggle-handle" />
   </div>
 </template>
@@ -37,26 +38,28 @@ $variants: (
 @each $state, $state-selector in $states {
   @each $variant, $variant-selector in $variants {
     #{$state-selector}#{$variant-selector} {
-      background-color: var(
-        --p-toggle-#{$state}-#{$variant}-track-background,
-        var(--p-toggle-normal-#{$variant}-track-background)
-      );
-      border-radius: var(
-        --p-toggle-#{$state}-#{$variant}-track-border-radius,
-        var(--p-toggle-normal-#{$variant}-track-border-radius)
-      );
-      border: var(
-        --p-toggle-#{$state}-#{$variant}-track-border,
-        var(--p-toggle-normal-#{$variant}-track-border)
-      );
-      outline: var(
-        --p-toggle-#{$state}-#{$variant}-track-outline,
-        var(--p-toggle-normal-#{$variant}-track-outline)
-      );
-      outline-offset: var(
-        --p-toggle-#{$state}-#{$variant}-track-outline-offset,
-        var(--p-toggle-normal-#{$variant}-track-outline-offset)
-      );
+      .p-toggle-track {
+        background-color: var(
+          --p-toggle-#{$state}-#{$variant}-track-background,
+          var(--p-toggle-normal-#{$variant}-track-background)
+        );
+        border-radius: var(
+          --p-toggle-#{$state}-#{$variant}-track-border-radius,
+          var(--p-toggle-normal-#{$variant}-track-border-radius)
+        );
+        border: var(
+          --p-toggle-#{$state}-#{$variant}-track-border,
+          var(--p-toggle-normal-#{$variant}-track-border)
+        );
+        outline: var(
+          --p-toggle-#{$state}-#{$variant}-track-outline,
+          var(--p-toggle-normal-#{$variant}-track-outline)
+        );
+        outline-offset: var(
+          --p-toggle-#{$state}-#{$variant}-track-outline-offset,
+          var(--p-toggle-normal-#{$variant}-track-outline-offset)
+        );
+      }
       .p-toggle-handle {
         width: var(
           --p-toggle-#{$state}-#{$variant}-handle-width,
@@ -97,11 +100,16 @@ $variants: (
 }
 
 .p-toggle {
+  position: relative;
+}
+
+.p-toggle-track {
+  width: 100%;
+  height: 100%;
   transition:
     background-color 0.2s ease,
     border 0.2s ease,
     border-radius 0.2s ease;
-  position: relative;
 }
 
 .p-toggle:has(> .p-toggle-input:focus-visible) {

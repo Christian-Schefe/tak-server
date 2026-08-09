@@ -3,8 +3,8 @@
 }
 
 :root {
-  background-color: var(--p-color-background);
-  color: var(--p-color-text);
+  background-color: var(--p-root-background);
+  color: var(--p-root-text);
   font-size: var(--p-text-medium-size);
   line-height: var(--p-text-medium-line-height);
   scrollbar-color: var(--p-scrollbar-thumb) var(--p-scrollbar-track);

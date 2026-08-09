@@ -1,9 +1,9 @@
 import type { FullTheme } from '.';
 import type { ButtonSemantic } from '../semantic/button';
 import type { CardSemantic } from '../semantic/card';
-import type { ColorsSemantic } from '../semantic/colors';
 import type { DialogSemantic } from '../semantic/dialog';
 import type { InputTextSemantic } from '../semantic/inputtext';
+import type { RootSemantic } from '../semantic/root';
 import type { ScrollbarSemantic } from '../semantic/scrollbar';
 import type { SelectSemantic } from '../semantic/select';
 import type { SideBarSemantic } from '../semantic/sidebar';
@@ -11,384 +11,405 @@ import type { SliderSemantic } from '../semantic/slider';
 import type { TextSemantic } from '../semantic/text';
 import type { ToggleSemantic } from '../semantic/toggle';
 import type { TooltipSemantic } from '../semantic/tooltip';
-import { blue, soho } from './colors';
+import { materialColorScheme, type ColorScheme } from './schemas';
 
-const primaryColor = '{primary-500|primary-400}';
-const primaryColorHover = '{primary-600|primary-300}';
-const primaryColorActive = '{primary-700|primary-200}';
-
-const textOnPrimary = '{surface-0|surface-950}';
-
-const secondaryColor = '{surface-100|surface-700}';
-const secondaryColorHover = '{surface-200|surface-600}';
-const secondaryColorActive = '{surface-300|surface-500}';
-
-const textOnSecondary = '{surface-700|surface-200}';
-
-const focusOutline = '2px solid {surface-700|surface-200}';
-
-const border = '1px solid {surface-200|surface-700}';
-
-const defaultButtonSemantic: ButtonSemantic = {
-  normal: {
-    'border-radius': '0.25rem',
-    size: '1.5rem',
-    padding: '0.5rem',
-    gap: '0.5rem',
-    opacity: '1',
-    filled: {
-      secondary: {
-        background: secondaryColor,
-        text: textOnSecondary,
-        border: 'none',
-      },
-      primary: {
-        background: primaryColor,
-        text: textOnPrimary,
-        border: 'none',
-      },
-    },
-    text: {
-      secondary: {
-        background: 'transparent',
-        text: textOnSecondary,
-        border: 'none',
-      },
-      primary: {
-        background: 'transparent',
-        text: primaryColor,
-        border: 'none',
-      },
-    },
-    outlined: {
-      secondary: {
-        background: 'transparent',
-        text: textOnSecondary,
-        border: border,
-      },
-      primary: {
-        background: 'transparent',
-        text: primaryColor,
-        border: `1px solid ${primaryColor}`,
-      },
-    },
-  },
-  hovered: {
-    filled: {
-      secondary: {
-        background: secondaryColorHover,
-      },
-      primary: {
-        background: primaryColorHover,
-      },
-    },
-    text: {
-      secondary: {
-        background: `color-mix(in srgb, ${secondaryColorHover} 10%, transparent)`,
-      },
-      primary: {
-        background: `color-mix(in srgb, ${primaryColorHover} 10%, transparent)`,
-      },
-    },
-    outlined: {
-      secondary: {
-        background: `color-mix(in srgb, ${secondaryColorHover} 10%, transparent)`,
-      },
-      primary: {
-        background: `color-mix(in srgb, ${primaryColorHover} 10%, transparent)`,
-      },
-    },
-  },
-  pressed: {
-    filled: {
-      secondary: {
-        background: secondaryColorActive,
-      },
-      primary: {
-        background: primaryColorActive,
-      },
-    },
-    text: {
-      secondary: {
-        background: `color-mix(in srgb, ${secondaryColorActive} 10%, transparent)`,
-      },
-      primary: {
-        background: `color-mix(in srgb, ${primaryColorActive} 10%, transparent)`,
-      },
-    },
-    outlined: {
-      secondary: {
-        background: `color-mix(in srgb, ${secondaryColorActive} 10%, transparent)`,
-      },
-      primary: {
-        background: `color-mix(in srgb, ${primaryColorActive} 10%, transparent)`,
-      },
-    },
-  },
-  disabled: {
-    opacity: '0.5',
-  },
-  focus: {
-    outline: focusOutline,
-    'outline-offset': '2px',
-  },
+type LayoutScheme = {
+  borderRadius: string;
+  borderRadiusSmall: string;
 };
 
-const defaultCardSemantic: CardSemantic = {
-  'border-radius': '0.25rem',
-  padding: '1rem',
-  gap: '1rem',
-  background: '{surface-0|surface-900}',
-  border: border,
+const layoutScheme: LayoutScheme = {
+  borderRadius: '0.75rem',
+  borderRadiusSmall: '0.5rem',
 };
 
-const defaultDialogSemantic: DialogSemantic = {
-  'border-radius': '0.25rem',
-  'box-shadow': '0 4px 6px rgba(0, 0, 0, 0.1)',
-  background: '{surface-0|surface-900}',
-  padding: '1rem',
-  'mask-background': 'rgba(0, 0, 0, 0.5)',
-};
-
-const defaultInputTextSemantic: InputTextSemantic = {
-  normal: {
-    background: '{surface-0|surface-900}',
-    'border-radius': '0.25rem',
-    outline: border,
-    'text-empty': '{surface-500|surface-400}',
-    'text-filled': '{surface-950|surface-0}',
-    label: {
-      color: '{surface-500|surface-400}',
-      padding: '0.25rem',
-    },
-    padding: { x: '0.75rem', y: '0.5rem' },
-    width: '16rem',
-    support: {
-      padding: '0.25rem 0.75rem',
-      color: '{surface-500|surface-400}',
-    },
-  },
-  hovered: {
-    outline: '1px solid {surface-400|surface-500}',
-  },
-  focused: {
-    outline: `2px solid ${primaryColor}`,
-    label: {
-      color: primaryColor,
-    },
-  },
-};
-
-const defaultScrollbarSemantic: ScrollbarSemantic = {
-  track: '{surface-0|surface-900}',
-  thumb: '{surface-400|surface-500}',
-};
-
-const defaultTextSemantic: TextSemantic = {
-  small: {
-    size: '0.875rem',
-    'line-height': 'calc(1.25rem / 0.875rem)',
-  },
-  medium: {
-    size: '1rem',
-    'line-height': 'calc(1.5rem / 1rem)',
-  },
-  large: {
-    size: '1.25rem',
-    'line-height': 'calc(1.75rem / 1.25rem)',
-  },
-};
-
-const defaultColorsSemantic: ColorsSemantic = {
-  background: '{surface-50|surface-950}',
-  text: '{surface-950|surface-0}',
-};
-const defaultSliderSemantic: SliderSemantic = {
-  normal: {
-    track: {
+export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
+  const defaultButtonSemantic: ButtonSemantic = {
+    normal: {
+      'border-radius': layoutScheme.borderRadiusSmall,
+      size: '1.5rem',
       padding: '0.5rem',
-      gap: '0.75rem',
-      height: '1.25rem',
+      gap: '0.5rem',
+      opacity: '1',
       filled: {
-        background: primaryColor,
+        secondary: {
+          background: colorScheme.secondaryContainer,
+          text: colorScheme.onSecondaryContainer,
+          border: 'none',
+        },
+        primary: {
+          background: colorScheme.primary,
+          text: colorScheme.onPrimary,
+          border: 'none',
+        },
       },
-      unfilled: {
-        background: secondaryColor,
+      text: {
+        secondary: {
+          background: 'transparent',
+          text: colorScheme.secondary,
+          border: 'none',
+        },
+        primary: {
+          background: 'transparent',
+          text: colorScheme.primary,
+          border: 'none',
+        },
       },
-      'border-radius': '0.25rem',
+      outlined: {
+        secondary: {
+          background: 'transparent',
+          text: colorScheme.secondary,
+          border: `1px solid ${colorScheme.secondary}`,
+        },
+        primary: {
+          background: 'transparent',
+          text: colorScheme.primary,
+          border: `1px solid ${colorScheme.primary}`,
+        },
+      },
     },
-    handle: {
-      width: '0.25rem',
-      height: '2.5rem',
-      background: primaryColor,
-      'border-radius': '1rem',
-    },
-    opacity: '1',
-  },
-  hovered: {
-    track: {
+    hovered: {
       filled: {
-        background: primaryColorHover,
+        secondary: {
+          background: colorScheme.secondaryContainerHover,
+        },
+        primary: {
+          background: colorScheme.primaryHover,
+        },
       },
-      unfilled: {
-        background: '{surface-300|surface-600}',
+      text: {
+        secondary: {
+          background: `color-mix(in srgb, ${colorScheme.secondaryContainerHover} 10%, transparent)`,
+        },
+        primary: {
+          background: `color-mix(in srgb, ${colorScheme.primaryHover} 10%, transparent)`,
+        },
+      },
+      outlined: {
+        secondary: {
+          background: `color-mix(in srgb, ${colorScheme.secondaryContainerHover} 10%, transparent)`,
+        },
+        primary: {
+          background: `color-mix(in srgb, ${colorScheme.primaryHover} 10%, transparent)`,
+        },
       },
     },
-    handle: {
-      background: primaryColorHover,
-    },
-  },
-  pressed: {
-    track: {
-      gap: '0.375rem',
+    pressed: {
       filled: {
-        background: primaryColorHover,
+        secondary: {
+          background: colorScheme.secondaryContainerActive,
+        },
+        primary: {
+          background: colorScheme.primaryActive,
+        },
       },
-      unfilled: {
-        background: '{surface-300|surface-600}',
+      text: {
+        secondary: {
+          background: `color-mix(in srgb, ${colorScheme.secondary} 10%, transparent)`,
+        },
+        primary: {
+          background: `color-mix(in srgb, ${colorScheme.primary} 10%, transparent)`,
+        },
+      },
+      outlined: {
+        secondary: {
+          background: `color-mix(in srgb, ${colorScheme.secondary} 10%, transparent)`,
+        },
+        primary: {
+          background: `color-mix(in srgb, ${colorScheme.primary} 10%, transparent)`,
+        },
       },
     },
-    handle: {
-      width: '0.125rem',
-      background: primaryColorHover,
+    disabled: {
+      opacity: '0.5',
     },
-  },
-  disabled: {
-    opacity: '0.5',
-  },
-  focus: {
-    outline: focusOutline,
-    'outline-offset': '2px',
-  },
-};
+    focus: {
+      outline: `2px solid ${colorScheme.outline}`,
+      'outline-offset': '2px',
+    },
+  };
 
-const defaultSelectSemantic: SelectSemantic = {
-  background: '{surface-0|surface-900}',
-  'border-radius': '0.25rem',
-  border: border,
-  'border-hover': '1px solid {surface-400|surface-500}',
-  'border-focus': `1px solid ${primaryColor}`,
-  padding: { x: '0.5rem', y: '0.25rem' },
-  dropdown: {
-    background: '{surface-0|surface-900}',
-    'border-radius': '0.25rem',
+  const defaultCardSemantic: CardSemantic = {
+    'border-radius': layoutScheme.borderRadius,
+    padding: '1rem',
+    gap: '1rem',
+    background: colorScheme.surfaceContainer,
+    text: colorScheme.onSurfaceContainer,
+    border: `none`,
+  };
+
+  const defaultDialogSemantic: DialogSemantic = {
+    'border-radius': layoutScheme.borderRadius,
+    'box-shadow': '0 4px 6px rgba(0, 0, 0, 0.1)',
+    background: colorScheme.surface,
+    padding: '1rem',
+    'mask-background': 'rgba(0, 0, 0, 0.5)',
+  };
+
+  const defaultInputTextSemantic: InputTextSemantic = {
+    normal: {
+      background: 'transparent',
+      'border-radius': layoutScheme.borderRadiusSmall,
+      outline: `1px solid ${colorScheme.outline}`,
+      'text-empty': colorScheme.onSurfaceVariant,
+      'text-filled': colorScheme.onSurface,
+      label: {
+        color: colorScheme.onSurfaceVariant,
+        top: '0.375rem',
+      },
+      'icon-padding': '0.25rem',
+      padding: { left: '0.75rem', top: '0.875rem', right: '0.75rem', bottom: '0.25rem' },
+      width: '16rem',
+      height: '2.75rem',
+      support: {
+        padding: '0.25rem 0.75rem',
+        color: colorScheme.onSurfaceVariant,
+      },
+      opacity: '1',
+    },
+    hovered: {
+      outline: `1px solid ${colorScheme.outline}`,
+    },
+    focused: {
+      outline: `2px solid ${colorScheme.primary}`,
+      label: {
+        color: colorScheme.primary,
+      },
+    },
+    disabled: {
+      opacity: '0.5',
+    },
+  };
+
+  const defaultScrollbarSemantic: ScrollbarSemantic = {
+    track: colorScheme.surface,
+    thumb: colorScheme.outline,
+  };
+
+  const defaultTextSemantic: TextSemantic = {
+    small: {
+      size: '0.875rem',
+      'line-height': 'calc(1.25rem / 0.875rem)',
+    },
+    medium: {
+      size: '1rem',
+      'line-height': 'calc(1.5rem / 1rem)',
+    },
+    large: {
+      size: '1.25rem',
+      'line-height': 'calc(1.75rem / 1.25rem)',
+    },
+  };
+
+  const defaultRootSemantic: RootSemantic = {
+    background: colorScheme.surface,
+    text: colorScheme.onSurface,
+  };
+  const defaultSliderSemantic: SliderSemantic = {
+    normal: {
+      track: {
+        padding: '0.5rem',
+        gap: '0.75rem',
+        height: '1.25rem',
+        filled: {
+          background: colorScheme.primary,
+        },
+        unfilled: {
+          background: colorScheme.secondaryContainer,
+        },
+        'border-radius': '1.25rem',
+      },
+      handle: {
+        width: '0.25rem',
+        height: '2.5rem',
+        background: colorScheme.primary,
+        'border-radius': '1rem',
+      },
+      opacity: '1',
+    },
+    hovered: {
+      track: {
+        filled: {
+          background: colorScheme.primaryHover,
+        },
+        unfilled: {
+          background: colorScheme.secondaryContainerHover,
+        },
+      },
+      handle: {
+        background: colorScheme.primaryHover,
+      },
+    },
+    pressed: {
+      track: {
+        gap: '0.375rem',
+        filled: {
+          background: colorScheme.primaryHover,
+        },
+        unfilled: {
+          background: colorScheme.secondaryContainerHover,
+        },
+      },
+      handle: {
+        width: '0.125rem',
+        background: colorScheme.primaryHover,
+      },
+    },
+    disabled: {
+      opacity: '0.5',
+    },
+    focus: {
+      outline: `2px solid ${colorScheme.outline}`,
+      'outline-offset': '2px',
+    },
+  };
+
+  const defaultSelectSemantic: SelectSemantic = {
+    normal: {
+      background: 'transparent',
+      'border-radius': layoutScheme.borderRadiusSmall,
+      width: '16rem',
+      height: '2.75rem',
+      outline: `1px solid ${colorScheme.outline}`,
+      label: {
+        color: colorScheme.onSurfaceVariant,
+        top: '0.375rem',
+      },
+      'icon-padding': '0.25rem',
+      'icon-color': colorScheme.onSurfaceVariant,
+      padding: { left: '0.75rem', top: '0.875rem', right: '0.75rem', bottom: '0.25rem' },
+
+      'text-empty': colorScheme.onSurfaceVariant,
+      'text-filled': colorScheme.onSurface,
+      opacity: '1',
+    },
+    hovered: {
+      outline: `1px solid ${colorScheme.outline}`,
+    },
+    disabled: {
+      opacity: '0.5',
+    },
+    focused: {
+      outline: `2px solid ${colorScheme.primary}`,
+      label: {
+        color: colorScheme.primary,
+      },
+      'icon-color': colorScheme.primary,
+    },
+    dropdown: {
+      background: colorScheme.surface,
+      'border-radius': layoutScheme.borderRadius,
+      'box-shadow': '0 4px 6px rgba(0, 0, 0, 0.1)',
+      padding: '0.5rem',
+    },
+  };
+
+  const defaultSideBarSemantic: SideBarSemantic = {
+    background: colorScheme.surfaceContainer,
+    text: colorScheme.onSurfaceContainer,
+    border: 'none',
+    padding: '0.5rem',
+    'mask-background': 'rgba(0, 0, 0, 0.5)',
+  };
+
+  const defaultTooltipSemantic: TooltipSemantic = {
+    background: colorScheme.inverseSurface,
+    text: colorScheme.onInverseSurface,
+    'border-radius': layoutScheme.borderRadius,
     'box-shadow': '0 4px 6px rgba(0, 0, 0, 0.1)',
     padding: '0.5rem',
-  },
-  'filled-text': '{surface-950|surface-0}',
-  'empty-text': '{surface-500|surface-400}',
-  'icon-color': '{surface-500|surface-400}',
-  'label-text-focus': primaryColor,
-};
+  };
 
-const defaultSideBarSemantic: SideBarSemantic = {
-  background: '{surface-0|surface-900}',
-  border: border,
-  padding: '0.5rem',
-  'mask-background': 'rgba(0, 0, 0, 0.5)',
-};
-
-const defaultTooltipSemantic: TooltipSemantic = {
-  background: '{surface-900|surface-0}',
-  text: '{surface-0|surface-900}',
-  'border-radius': '0.25rem',
-  'box-shadow': '0 4px 6px rgba(0, 0, 0, 0.1)',
-  padding: '0.5rem',
-};
-
-const defaultToggleSemantic: ToggleSemantic = {
-  normal: {
-    off: {
+  const defaultToggleSemantic: ToggleSemantic = {
+    normal: {
+      off: {
+        track: {
+          background: colorScheme.surfaceContainer,
+          border: `2px solid ${colorScheme.outline}`,
+          'border-radius': '1.5rem',
+        },
+        handle: {
+          width: '0.875rem',
+          height: '0.875rem',
+          background: colorScheme.outline,
+          'border-radius': '1rem',
+        },
+      },
+      on: {
+        track: {
+          background: colorScheme.primary,
+          border: '2px solid transparent',
+          'border-radius': '1.5rem',
+        },
+        handle: {
+          width: '1.25rem',
+          height: '1.25rem',
+          background: colorScheme.onPrimary,
+          'border-radius': '1rem',
+        },
+      },
+      opacity: '1',
       track: {
-        background: secondaryColor,
-        border: `2px solid ${textOnSecondary}`,
-        'border-radius': '1.5rem',
-      },
-      handle: {
-        width: '0.875rem',
-        height: '0.875rem',
-        background: textOnSecondary,
-        'border-radius': '1rem',
+        width: '3rem',
+        height: '1.875rem',
       },
     },
-    on: {
-      track: {
-        background: primaryColor,
-        border: '2px solid transparent',
-        'border-radius': '1.5rem',
+    hovered: {
+      off: {
+        track: {
+          background: colorScheme.secondaryContainerHover,
+        },
       },
-      handle: {
-        width: '1.25rem',
-        height: '1.25rem',
-        background: '{surface-0|surface-900}',
-        'border-radius': '1rem',
-      },
-    },
-    opacity: '1',
-    track: {
-      width: '3rem',
-      height: '1.875rem',
-    },
-  },
-  hovered: {
-    off: {
-      track: {
-        background: secondaryColorHover,
+      on: {
+        track: {
+          background: colorScheme.primaryHover,
+        },
       },
     },
-    on: {
-      track: {
-        background: primaryColorHover,
+    pressed: {
+      off: {
+        track: {
+          background: colorScheme.secondaryContainerHover,
+        },
+        handle: {
+          width: '1.25rem',
+          height: '1.25rem',
+        },
+      },
+      on: {
+        track: {
+          background: colorScheme.primaryHover,
+        },
+        handle: {
+          width: '1.5rem',
+          height: '1.5rem',
+        },
       },
     },
-  },
-  pressed: {
-    off: {
-      track: {
-        background: secondaryColorHover,
-      },
-      handle: {
-        width: '1.25rem',
-        height: '1.25rem',
-      },
+    disabled: {
+      opacity: '0.5',
     },
-    on: {
-      track: {
-        background: primaryColorHover,
-      },
-      handle: {
-        width: '1.5rem',
-        height: '1.5rem',
-      },
+    focus: {
+      outline: `2px solid ${colorScheme.outline}`,
+      'outline-offset': '2px',
     },
-  },
-  disabled: {
-    opacity: '0.5',
-  },
-  focus: {
-    outline: focusOutline,
-    'outline-offset': '2px',
-  },
-};
-
-export const defaultTheme: FullTheme = {
-  id: 'default',
-  colors: {
-    primary: blue,
-    surface: soho,
-  },
-  semantic: {
-    color: defaultColorsSemantic,
-    text: defaultTextSemantic,
-    button: defaultButtonSemantic,
-    card: defaultCardSemantic,
-    dialog: defaultDialogSemantic,
-    inputtext: defaultInputTextSemantic,
-    scrollbar: defaultScrollbarSemantic,
-    slider: defaultSliderSemantic,
-    select: defaultSelectSemantic,
-    sidebar: defaultSideBarSemantic,
-    tooltip: defaultTooltipSemantic,
-    toggle: defaultToggleSemantic,
-  },
-};
+  };
+  return {
+    id: 'default',
+    semantic: {
+      root: defaultRootSemantic,
+      text: defaultTextSemantic,
+      button: defaultButtonSemantic,
+      card: defaultCardSemantic,
+      dialog: defaultDialogSemantic,
+      inputtext: defaultInputTextSemantic,
+      scrollbar: defaultScrollbarSemantic,
+      slider: defaultSliderSemantic,
+      select: defaultSelectSemantic,
+      sidebar: defaultSideBarSemantic,
+      tooltip: defaultTooltipSemantic,
+      toggle: defaultToggleSemantic,
+    },
+  };
+}
+export const defaultTheme: FullTheme = createDefaultTheme(materialColorScheme);

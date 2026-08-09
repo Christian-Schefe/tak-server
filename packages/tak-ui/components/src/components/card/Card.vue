@@ -7,6 +7,7 @@
 <style lang="css">
 .p-card {
   background-color: var(--p-card-background);
+  color: var(--p-card-text);
   border-radius: var(--p-card-border-radius);
   padding: var(--p-card-padding);
   gap: var(--p-card-gap);

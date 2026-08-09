@@ -8,38 +8,17 @@ import {
   type DarkMode,
 } from '@tak-ui-lib/components';
 import type { Theme } from '@tak-ui-lib/themes';
-import { gray, green, rose, slate, stone, viva } from '@tak-ui-lib/themes/src/theme/colors.ts';
+import { blueColorScheme } from '@tak-ui-lib/themes/src/theme/schemas.ts';
+import { createDefaultTheme } from '@tak-ui-lib/themes/src/theme/default.ts';
 import Page from '../components/Page.vue';
 
 const themeManager = useThemeManager();
 
-const theme1: Theme = {
-  id: 'theme1',
-  colors: {
-    primary: gray,
-    surface: stone,
-  },
-};
-const theme2: Theme = {
-  id: 'theme2',
-  colors: {
-    primary: rose,
-    surface: viva,
-  },
-};
-const theme3: Theme = {
-  id: 'theme3',
-  colors: {
-    primary: green,
-    surface: slate,
-  },
-};
+const theme1: Theme = createDefaultTheme(blueColorScheme);
 
 const themeOptions = [
   { label: 'Default', value: { id: 'default' } },
-  { label: 'Monochrome', value: theme1 },
-  { label: 'Rose', value: theme2 },
-  { label: 'Mint', value: theme3 },
+  { label: 'Blue', value: theme1 },
 ];
 
 const darkModeOptions: { label: string; value: DarkMode }[] = [

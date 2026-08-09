@@ -1,4 +1,4 @@
-export interface ColorsSemantic {
+export interface RootSemantic {
   background: string;
   text: string;
 }

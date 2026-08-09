@@ -119,6 +119,7 @@ const zIndex = useOverlayZIndex(floating, visible, 0);
   position: absolute;
   display: flex;
   background-color: var(--p-sidebar-background);
+  color: var(--p-sidebar-text);
   padding: var(--p-sidebar-padding);
   gap: var(--p-sidebar-padding);
 }

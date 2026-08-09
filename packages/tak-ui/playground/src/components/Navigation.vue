@@ -5,7 +5,11 @@ import { RouterLink } from 'vue-router';
 const navigationItems = [
   { label: 'Home', path: '/', icon: 'home' },
   { label: 'Components', path: '/components', icon: 'component' },
-  { label: 'Forms', path: '/components/form', icon: 'component' },
+  { label: 'Buttons', path: '/components/button' },
+  { label: 'Sliders', path: '/components/slider' },
+  { label: 'Toggles', path: '/components/toggle' },
+  { label: 'Inputs', path: '/components/input' },
+  { label: 'Forms', path: '/components/form' },
   { label: 'Themes', path: '/themes', icon: 'theme' },
 ];
 
@@ -20,7 +24,7 @@ const themeManager = useThemeManager();
         :as="{ component: RouterLink, props: { to: item.path } }"
         :label="item.label"
       >
-        <template #icon>
+        <template v-if="item.icon" #icon>
           <Icon :name="item.icon" />
         </template>
       </Button>

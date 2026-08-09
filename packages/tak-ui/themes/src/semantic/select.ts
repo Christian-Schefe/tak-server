@@ -1,18 +1,26 @@
-import type { Vector2 } from '.';
+import type { Rect, Switch } from '.';
 
-export interface SelectSemantic {
-  background: string;
-  'border-radius': string;
-  border: string;
-  'border-hover': string;
-  'border-focus': string;
-  padding: Vector2;
-  dropdown: SelectDropdownSemantic;
-  'filled-text': string;
-  'empty-text': string;
-  'icon-color': string;
-  'label-text-focus': string;
-}
+export type SelectSemantic = Switch<
+  'normal',
+  'hovered' | 'focused' | 'disabled',
+  {
+    background: string;
+    'border-radius': string;
+    'text-empty': string;
+    'text-filled': string;
+    padding: Rect;
+    width: string;
+    height: string;
+    outline: string;
+    label: {
+      top: string;
+      color: string;
+    };
+    'icon-padding': string;
+    'icon-color': string;
+    opacity: string;
+  }
+> & { dropdown: SelectDropdownSemantic };
 
 interface SelectDropdownSemantic {
   background: string;

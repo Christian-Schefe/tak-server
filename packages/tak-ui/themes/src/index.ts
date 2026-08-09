@@ -53,12 +53,6 @@ function traverseObject(
 function getVariableEntries(theme: Theme): { name: string; value: string }[] {
   const mergedTheme = mergePartialTheme(theme, defaultTheme);
   const variableEntries: { name: string; value: string }[] = [];
-  traverseObject(mergedTheme.colors, (key, value) => {
-    if (typeof value === 'string') {
-      const variableName = key.join('-').toLowerCase();
-      variableEntries.push({ name: variableName, value });
-    }
-  });
   traverseObject(mergedTheme.semantic, (key, value) => {
     if (typeof value === 'string') {
       const variableName = key.join('-').toLowerCase();
@@ -70,17 +64,11 @@ function getVariableEntries(theme: Theme): { name: string; value: string }[] {
 
 const cssPrefix = 'p-';
 
-function parseVariableReference(value: string, prefix: string, isDark: boolean): string {
-  const normalRegex = /\{([a-zA-Z0-9.-]+)\}/g;
-  const lightDarkRegex = /\{([a-zA-Z0-9.-]+)\|([a-zA-Z0-9.-]+)\}/g;
-  const result = value
-    .replace(normalRegex, (_, variablePath) => {
-      return `var(--${prefix}${variablePath})`;
-    })
-    .replace(lightDarkRegex, (_, lightPath, darkPath) => {
-      const variablePath = isDark ? darkPath : lightPath;
-      return `var(--${prefix}${variablePath})`;
-    });
+function parseLightDark(value: string, isDark: boolean): string {
+  const lightDarkRegex = /\{([^}]+)\|([^}]+)\}/g;
+  const result = value.replace(lightDarkRegex, (_, lightVal, darkVal) => {
+    return isDark ? darkVal : lightVal;
+  });
   return result;
 }
 
@@ -88,7 +76,7 @@ export function getThemeStyles(theme: Theme, isDark: boolean): Record<string, st
   const variableEntries = getVariableEntries(theme);
   const styles = variableEntries.map(({ name, value }) => {
     const fullName = `--${cssPrefix}${name}`;
-    return [fullName, parseVariableReference(value, cssPrefix, isDark)];
+    return [fullName, parseLightDark(value, isDark)];
   });
   return Object.fromEntries(styles);
 }

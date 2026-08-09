@@ -45,9 +45,37 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/components/button': RouteRecordInfo<
+      '/components/button',
+      '/components/button',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/components/form': RouteRecordInfo<
       '/components/form',
       '/components/form',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/components/input': RouteRecordInfo<
+      '/components/input',
+      '/components/input',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/components/slider': RouteRecordInfo<
+      '/components/slider',
+      '/components/slider',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/components/toggle': RouteRecordInfo<
+      '/components/toggle',
+      '/components/toggle',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -88,9 +116,41 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
+    'src/pages/components/button.vue': {
+      routes:
+        | '/components/button'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
     'src/pages/components/form.vue': {
       routes:
         | '/components/form'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/components/input.vue': {
+      routes:
+        | '/components/input'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/components/slider.vue': {
+      routes:
+        | '/components/slider'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/components/toggle.vue': {
+      routes:
+        | '/components/toggle'
       views:
         | never
       pathParamNames:

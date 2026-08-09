@@ -3,5 +3,6 @@ export interface CardSemantic {
   padding: string;
   gap: string;
   background: string;
+  text: string;
   border: string;
 }

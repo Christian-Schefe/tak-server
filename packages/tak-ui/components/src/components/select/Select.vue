@@ -21,6 +21,7 @@ const props = withDefaults(
     placeholder?: string;
     label?: string | undefined;
     placement?: Placement;
+    disabled?: boolean;
     cmp?: (a: T, b: T) => boolean;
   }>(),
   {
@@ -28,6 +29,7 @@ const props = withDefaults(
     placeholder: 'Placeholder',
     placement: 'bottom-start',
     label: undefined,
+    disabled: false,
     cmp: (a, b) => a === b,
   },
 );
@@ -62,11 +64,21 @@ function onPointerDownOutside(event: PointerEvent) {
 }
 
 function onSelectOption(optionValue: T) {
+  if (props.disabled) {
+    return;
+  }
   value.value =
     value.value === optionValue && props.allowEmptyWithDefault !== undefined
       ? props.allowEmptyWithDefault.default
       : optionValue;
   dropdownVisible.value = false;
+}
+
+function onToggleDropdown() {
+  if (props.disabled) {
+    return;
+  }
+  dropdownVisible.value = !dropdownVisible.value;
 }
 
 const zIndex = useOverlayZIndex(floating, dropdownVisible, 1);
@@ -82,8 +94,12 @@ onUnmounted(() => {
   <div
     ref="reference"
     class="p-select"
-    :class="{ 'p-select-open': dropdownVisible, 'p-select-with-label': !!label }"
-    @click="dropdownVisible = !dropdownVisible"
+    :class="{
+      'p-select-open': dropdownVisible,
+      'p-select-disabled': props.disabled,
+      'p-select-has-icon-prepend': !!$slots['icon-prepend'],
+    }"
+    @click="onToggleDropdown"
   >
     <div class="p-select-inner">
       <p v-if="label" class="p-select-label">{{ label }}</p>
@@ -96,7 +112,12 @@ onUnmounted(() => {
       </p>
       <p v-else class="p-select-optionlabel p-select-optionlabel-empty">{{ placeholder }}</p>
     </div>
-    <Icon class="p-select-icon" name="chevron-down" />
+    <div v-if="$slots['icon-prepend']" class="p-select-icon-prepend">
+      <slot name="icon-prepend" />
+    </div>
+    <div class="p-select-icon-append">
+      <Icon class="p-select-icon" name="chevron-down" />
+    </div>
   </div>
   <Teleport to="body">
     <Transition>
@@ -117,7 +138,7 @@ onUnmounted(() => {
     </Transition>
   </Teleport>
 </template>
-<style lang="css" scoped>
+<style lang="scss" scoped>
 .v-enter-active,
 .v-leave-active {
   transition: opacity 0.1s ease;
@@ -136,45 +157,78 @@ onUnmounted(() => {
 .v-leave-to .p-select-dropdown {
   transform: scale(0.9);
 }
+$states: (
+  'normal': '.p-select',
+  'hovered': '.p-select:hover',
+  'focused': '.p-select.p-select-open',
+  'disabled': '.p-select.p-select-disabled',
+);
+@each $state, $state-selector in $states {
+  #{$state-selector} {
+    background-color: var(--p-select-#{$state}-background, var(--p-select-normal-background));
+    border-radius: var(--p-select-#{$state}-border-radius, var(--p-select-normal-border-radius));
+    color: var(--p-select-#{$state}-text-empty, var(--p-select-normal-text-empty));
+    width: var(--p-select-#{$state}-width, var(--p-select-normal-width));
+    height: var(--p-select-#{$state}-height, var(--p-select-normal-height));
+    gap: var(--p-select-#{$state}-gap, var(--p-select-normal-gap));
+    outline: var(--p-select-#{$state}-outline, var(--p-select-normal-outline));
+
+    .p-select-inner {
+      color: var(--p-select-#{$state}-text-filled, var(--p-select-normal-text-filled));
+      padding-left: var(--p-select-#{$state}-padding-left, var(--p-select-normal-padding-left));
+      padding-right: var(--p-select-#{$state}-height, var(--p-select-normal-height));
+      padding-top: var(--p-select-#{$state}-padding-top, var(--p-select-normal-padding-top));
+      padding-bottom: var(
+        --p-select-#{$state}-padding-bottom,
+        var(--p-select-normal-padding-bottom)
+      );
+    }
+    .p-select-label {
+      left: var(--p-select-#{$state}-padding-left, var(--p-select-normal-padding-left));
+      top: var(--p-select-#{$state}-label-top, var(--p-select-normal-label-top));
+      color: var(--p-select-#{$state}-label-color, var(--p-select-normal-label-color));
+    }
+    .p-select-icon-prepend,
+    .p-select-icon-append {
+      width: var(--p-select-#{$state}-height, var(--p-select-normal-height));
+      height: var(--p-select-#{$state}-height, var(--p-select-normal-height));
+      padding: var(--p-select-#{$state}-icon-padding, var(--p-select-normal-icon-padding));
+    }
+    .p-select-icon {
+      color: var(--p-select-#{$state}-icon-color, var(--p-select-normal-icon-color));
+    }
+  }
+
+  #{$state-selector}.p-select-has-icon-prepend {
+    .p-select-inner {
+      padding-left: var(--p-select-#{$state}-height, var(--p-select-normal-height));
+    }
+    .p-select-label {
+      left: var(--p-select-#{$state}-height, var(--p-select-normal-height));
+    }
+  }
+}
 
 .p-select {
   display: flex;
   align-items: center;
-  color: var(--p-select-empty-text);
-  background-color: var(--p-select-background);
-  padding-left: var(--p-select-padding-x);
-  padding-right: var(--p-select-padding-x);
-  gap: var(--p-select-padding-x);
-  border: var(--p-select-border);
-  border-radius: var(--p-select-border-radius);
-  transition: border 0.2s ease-in-out;
+  transition: outline 0.1s ease-in-out;
   cursor: pointer;
   position: relative;
 }
 .p-select-inner {
   display: flex;
   flex-direction: column;
-  flex-grow: 1;
-  padding-top: var(--p-inputtext-padding-y);
-  padding-bottom: var(--p-inputtext-padding-y);
-}
-.p-select:hover {
-  border: var(--p-select-border-hover);
-}
-.p-select.p-select-open {
-  border: var(--p-select-border-focus);
-}
-.p-select.p-select-with-label .p-select-inner {
-  padding-top: calc(var(--p-select-padding-y) + 0.625rem);
+  width: 100%;
 }
 .p-select-dropdown {
   display: flex;
+  max-height: 16rem;
+  overflow-y: auto;
   background-color: var(--p-select-dropdown-background);
   padding: var(--p-select-dropdown-padding);
   border-radius: var(--p-select-dropdown-border-radius);
   box-shadow: var(--p-select-dropdown-box-shadow);
-  max-height: 16rem;
-  overflow-y: auto;
 }
 .p-select-dropdown-inner {
   height: 100%;
@@ -184,23 +238,32 @@ onUnmounted(() => {
 }
 .p-select-optionlabel {
   color: var(--p-select-filled-text);
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
   flex-grow: 1;
 }
 .p-select-optionlabel-empty {
   color: var(--p-select-empty-text);
-}
-.p-select-icon {
-  color: var(--p-select-icon-color);
 }
 .p-select-label {
   font-size: 0.625rem;
   line-height: 1;
   transition: color 0.2s ease-in-out;
   position: absolute;
-  top: var(--p-select-padding-y);
-  left: var(--p-select-padding-x);
 }
-.p-select.p-select-open .p-select-label {
-  color: var(--p-select-label-text-focus);
+.p-select-icon-prepend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  left: 0;
+}
+.p-select-icon-append {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+  right: 0;
 }
 </style>

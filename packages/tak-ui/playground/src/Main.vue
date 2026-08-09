@@ -20,7 +20,12 @@ watch(isMobile, (newIsMobile) => {
   <App>
     <template #top>
       <SideBar :visible="isMobile" direction="top">
-        <Button variant="text" icon-only @click="sidebarVisible = !sidebarVisible">
+        <Button
+          variant="text"
+          severity="secondary"
+          icon-only
+          @click="sidebarVisible = !sidebarVisible"
+        >
           <Icon :name="sidebarVisible ? 'close' : 'menu'" />
         </Button>
       </SideBar>
