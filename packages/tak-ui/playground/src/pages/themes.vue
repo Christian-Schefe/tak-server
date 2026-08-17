@@ -8,13 +8,13 @@ import {
   type DarkMode,
 } from '@tak-ui-lib/components';
 import type { Theme } from '@tak-ui-lib/themes';
-import { blueColorScheme } from '@tak-ui-lib/themes/src/theme/schemas.ts';
 import { createDefaultTheme } from '@tak-ui-lib/themes/src/theme/default.ts';
 import Page from '../components/Page.vue';
+import { materialColorScheme } from '@tak-ui-lib/themes/src/theme/schemas.ts';
 
 const themeManager = useThemeManager();
 
-const theme1: Theme = createDefaultTheme(blueColorScheme);
+const theme1: Theme = createDefaultTheme(materialColorScheme);
 
 const themeOptions = [
   { label: 'Default', value: { id: 'default' } },

@@ -19,10 +19,15 @@ export type ColorScheme = {
 
   surface: string;
   onSurface: string;
+
+  surfaceVariant: string;
   onSurfaceVariant: string;
 
   surfaceContainer: string;
   onSurfaceContainer: string;
+
+  surfaceContainerHighest: string;
+  surfaceContainerHighestHover: string;
 
   inverseSurface: string;
   onInverseSurface: string;
@@ -59,10 +64,17 @@ function lightDarkColorScheme(light: ColorScheme, dark: ColorScheme): ColorSchem
 
     surface: lightDark(light.surface, dark.surface),
     onSurface: lightDark(light.onSurface, dark.onSurface),
+    surfaceVariant: lightDark(light.surfaceVariant, dark.surfaceVariant),
     onSurfaceVariant: lightDark(light.onSurfaceVariant, dark.onSurfaceVariant),
 
     surfaceContainer: lightDark(light.surfaceContainer, dark.surfaceContainer),
     onSurfaceContainer: lightDark(light.onSurfaceContainer, dark.onSurfaceContainer),
+
+    surfaceContainerHighest: lightDark(light.surfaceContainerHighest, dark.surfaceContainerHighest),
+    surfaceContainerHighestHover: lightDark(
+      light.surfaceContainerHighestHover,
+      dark.surfaceContainerHighestHover,
+    ),
 
     inverseSurface: lightDark(light.inverseSurface, dark.inverseSurface),
     onInverseSurface: lightDark(light.onInverseSurface, dark.onInverseSurface),
@@ -71,67 +83,6 @@ function lightDarkColorScheme(light: ColorScheme, dark: ColorScheme): ColorSchem
     outlineVariant: lightDark(light.outlineVariant, dark.outlineVariant),
   };
 }
-
-const blueLightCS: ColorScheme = {
-  primary: '#2563EB',
-  primaryHover: '#1D4ED8',
-  primaryActive: '#133C9A',
-  onPrimary: '#FFFFFF',
-  primaryContainer: '#DBEAFE',
-  primaryContainerHover: '#BFDBFE',
-  onPrimaryContainer: '#1E3A8A',
-
-  secondary: '#5F6B7A',
-  secondaryHover: '#4B5563',
-  onSecondary: '#FFFFFF',
-  secondaryContainer: '#E5EAF0',
-  secondaryContainerHover: '#D6DCE4',
-  secondaryContainerActive: '#C0C9D4',
-  onSecondaryContainer: '#344054',
-
-  surface: '#F8FAFC',
-  onSurface: '#172033',
-  onSurfaceVariant: '#596579',
-  surfaceContainer: '#EEF2F6',
-  onSurfaceContainer: '#172033',
-
-  inverseSurface: '#202938',
-  onInverseSurface: '#F3F6FA',
-
-  outline: '#7B8798',
-  outlineVariant: '#CBD2DC',
-};
-
-const blueDarkCS: ColorScheme = {
-  primary: '#7AA7FF',
-  primaryHover: '#A8C4FF',
-  primaryActive: '#C0D9FF',
-  onPrimary: '#082E81',
-  primaryContainer: '#1746A2',
-  primaryContainerHover: '#1D4ED8',
-  onPrimaryContainer: '#DBEAFE',
-
-  secondary: '#B8C1CE',
-  secondaryHover: '#D0D7E0',
-  onSecondary: '#27313F',
-  secondaryContainer: '#3B4655',
-  secondaryContainerHover: '#4A5666',
-  secondaryContainerActive: '#5A677C',
-  onSecondaryContainer: '#E5EAF0',
-
-  surface: '#11161D',
-  onSurface: '#E8EDF3',
-  onSurfaceVariant: '#B1BAC7',
-  surfaceContainer: '#1B222C',
-  onSurfaceContainer: '#E8EDF3',
-
-  inverseSurface: '#E8EDF3',
-  onInverseSurface: '#202938',
-
-  outline: '#7E8998',
-  outlineVariant: '#424B58',
-};
-export const blueColorScheme = lightDarkColorScheme(blueLightCS, blueDarkCS);
 
 const materialLightCS: ColorScheme = {
   primary: '#6750A4',
@@ -154,10 +105,14 @@ const materialLightCS: ColorScheme = {
 
   surface: '#FEF7FF',
   onSurface: '#1D1B20',
+  surfaceVariant: '#E7E0EC',
   onSurfaceVariant: '#49454F',
 
   surfaceContainer: '#F3EDF7',
   onSurfaceContainer: '#1D1B20',
+
+  surfaceContainerHighest: '#E6E0E9',
+  surfaceContainerHighestHover: '#D9D2DD',
 
   inverseSurface: '#322F35',
   onInverseSurface: '#F5EFF7',
@@ -186,10 +141,14 @@ const materialDarkCS: ColorScheme = {
 
   surface: '#141218',
   onSurface: '#E6E0E9',
+  surfaceVariant: '#49454F',
   onSurfaceVariant: '#CAC4D0',
 
   surfaceContainer: '#211F26',
   onSurfaceContainer: '#E6E0E9',
+
+  surfaceContainerHighest: '#36343B',
+  surfaceContainerHighestHover: '#49454F',
 
   inverseSurface: '#E6E0E9',
   onInverseSurface: '#322F35',

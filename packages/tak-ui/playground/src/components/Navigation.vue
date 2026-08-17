@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Button, Icon, useThemeManager } from '@tak-ui-lib/components';
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRoute } from 'vue-router';
 
 const navigationItems = [
   { label: 'Home', path: '/', icon: 'home' },
@@ -13,6 +13,12 @@ const navigationItems = [
   { label: 'Themes', path: '/themes', icon: 'theme' },
 ];
 
+const route = useRoute();
+
+function isActive(path: string) {
+  return route.path === path;
+}
+
 const themeManager = useThemeManager();
 </script>
 <template>
@@ -20,7 +26,7 @@ const themeManager = useThemeManager();
     <template v-for="item in navigationItems" :key="item.path">
       <Button
         variant="text"
-        severity="secondary"
+        :severity="isActive(item.path) ? 'primary' : 'secondary'"
         :as="{ component: RouterLink, props: { to: item.path } }"
         :label="item.label"
       >

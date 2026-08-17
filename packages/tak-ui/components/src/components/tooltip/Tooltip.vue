@@ -86,11 +86,11 @@ const zIndex = useOverlayZIndex(floating, visible, 0);
 <style lang="css" scoped>
 .v-enter-active,
 .v-leave-active {
-  transition: opacity 0.1s ease;
+  transition: opacity 0.15s ease;
 }
 .v-enter-active .p-tooltip,
 .v-leave-active .p-tooltip {
-  transition: transform 0.1s ease;
+  transition: transform 0.15s ease;
 }
 
 .v-enter-from,

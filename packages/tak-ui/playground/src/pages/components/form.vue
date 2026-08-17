@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { Button, Card, Form, InputText } from '@tak-ui-lib/components';
-import Page from '../../components/Page.vue';
+import { Button, Form, InputText } from '@tak-ui-lib/components';
 import type { FormValidator } from '@tak-ui-lib/components/src/form.ts';
+import Page from '../../components/Page.vue';
 
 interface FormData {
   name: string;
@@ -26,15 +26,28 @@ const validator: FormValidator<FormData> = (data: Record<string, unknown>) => {
 <template>
   <Page>
     <h1>Forms</h1>
-    <Card>
-      <Form v-slot="form" :validator="validator" :initial-values="{ email: 'hi' }">
-        <div class="flex flex-col gap-2">
-          <InputText name="name" label="Name" :support-text="form.errors.name" />
-          <InputText name="email" label="Email" :support-text="form.errors.email" />
+    <Form v-slot="form" :validator="validator" :initial-values="{ email: 'hi' }">
+      <div class="flex flex-col gap-2">
+        <InputText
+          input-id="input1"
+          name="name"
+          label="Name"
+          :support-text="form.errors.name"
+          autocomplete="name"
+        />
+        <InputText
+          input-id="input2"
+          name="email"
+          label="Email"
+          :support-text="form.errors.email"
+          autocomplete="email"
+        />
+
+        <div class="flex gap-2">
           <Button type="reset" label="Reset" />
           <Button type="submit" label="Submit" />
         </div>
-      </Form>
-    </Card>
+      </div>
+    </Form>
   </Page>
 </template>

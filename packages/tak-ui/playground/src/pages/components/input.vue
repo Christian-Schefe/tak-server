@@ -27,13 +27,23 @@ const inputTextValue = ref('');
         input-id="input3"
       />
       <InputText v-model="inputTextValue" placeholder="Enter text" input-id="input4">
-        <template #icon-append>
-          <LuX v-if="inputTextValue" @click="inputTextValue = ''" />
+        <template v-if="inputTextValue" #icon-append>
+          <div
+            class="cursor-pointer absolute inset-0 z-10 flex items-center justify-center"
+            @click="inputTextValue = ''"
+          >
+            <LuX />
+          </div>
         </template>
       </InputText>
       <InputText v-model="inputTextValue" placeholder="Enter text" label="Label" input-id="input5">
-        <template #icon-append>
-          <LuX v-if="inputTextValue" @click="inputTextValue = ''" />
+        <template v-if="inputTextValue" #icon-append>
+          <div
+            class="cursor-pointer absolute inset-0 z-10 flex items-center justify-center"
+            @click="inputTextValue = ''"
+          >
+            <LuX />
+          </div>
         </template>
       </InputText>
     </div>
@@ -45,7 +55,10 @@ const inputTextValue = ref('');
         placeholder="Enter text"
         label="Label"
         input-id="input7"
-      />
+        support-text="Support text"
+        disabled
+        ><template #icon-prepend><LuSearch /></template
+      ></InputText>
     </div>
   </Page>
 </template>

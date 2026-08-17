@@ -50,14 +50,14 @@ const zIndex = useOverlayZIndex(floating, visible, 0);
 .p-sidebar.v-enter-active,
 .p-sidebar.v-leave-active {
   transition:
-    opacity 0.2s ease,
-    width 0.2s ease,
-    height 0.2s ease;
+    opacity 0.15s ease,
+    width 0.15s ease,
+    height 0.15s ease;
 }
 
 .p-sidebar.v-enter-active .p-sidebar-inner,
 .p-sidebar.v-leave-active .p-sidebar-inner {
-  transition: transform 0.2s ease;
+  transition: transform 0.15s ease;
 }
 
 .p-sidebar.v-enter-from.p-sidebar-overlay-true,

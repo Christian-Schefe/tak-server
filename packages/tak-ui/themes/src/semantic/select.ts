@@ -9,6 +9,7 @@ export type SelectSemantic = Switch<
     'text-empty': string;
     'text-filled': string;
     padding: Rect;
+    'padding-with-label': { top: string; bottom: string };
     width: string;
     height: string;
     outline: string;

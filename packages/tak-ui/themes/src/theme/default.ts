@@ -19,8 +19,8 @@ type LayoutScheme = {
 };
 
 const layoutScheme: LayoutScheme = {
-  borderRadius: '0.75rem',
-  borderRadiusSmall: '0.5rem',
+  borderRadius: '0.5rem',
+  borderRadiusSmall: '0.375rem',
 };
 
 export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
@@ -148,17 +148,22 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
 
   const defaultInputTextSemantic: InputTextSemantic = {
     normal: {
-      background: 'transparent',
+      background: colorScheme.surfaceContainerHighest,
       'border-radius': layoutScheme.borderRadiusSmall,
-      outline: `1px solid ${colorScheme.outline}`,
+      outline: '2px solid transparent',
+      border: 'none',
       'text-empty': colorScheme.onSurfaceVariant,
       'text-filled': colorScheme.onSurface,
       label: {
         color: colorScheme.onSurfaceVariant,
         top: '0.375rem',
       },
-      'icon-padding': '0.25rem',
-      padding: { left: '0.75rem', top: '0.875rem', right: '0.75rem', bottom: '0.25rem' },
+      icon: {
+        padding: '0.75rem',
+        color: colorScheme.onSurfaceVariant,
+      },
+      padding: { left: '0.75rem', top: '0.25rem', right: '0.75rem', bottom: '0.25rem' },
+      'padding-with-label': { top: '1rem', bottom: '0.25rem' },
       width: '16rem',
       height: '2.75rem',
       support: {
@@ -168,11 +173,15 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
       opacity: '1',
     },
     hovered: {
-      outline: `1px solid ${colorScheme.outline}`,
+      background: colorScheme.surfaceContainerHighestHover,
     },
     focused: {
+      background: colorScheme.surfaceContainerHighestHover,
       outline: `2px solid ${colorScheme.primary}`,
       label: {
+        color: colorScheme.primary,
+      },
+      icon: {
         color: colorScheme.primary,
       },
     },
@@ -218,6 +227,7 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
           background: colorScheme.secondaryContainer,
         },
         'border-radius': '1.25rem',
+        'border-radius-inner': '0.25rem',
       },
       handle: {
         width: '0.25rem',
@@ -266,30 +276,31 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
 
   const defaultSelectSemantic: SelectSemantic = {
     normal: {
-      background: 'transparent',
+      background: colorScheme.surfaceContainerHighest,
       'border-radius': layoutScheme.borderRadiusSmall,
       width: '16rem',
       height: '2.75rem',
-      outline: `1px solid ${colorScheme.outline}`,
+      outline: `2px solid transparent`,
       label: {
         color: colorScheme.onSurfaceVariant,
         top: '0.375rem',
       },
       'icon-padding': '0.25rem',
       'icon-color': colorScheme.onSurfaceVariant,
-      padding: { left: '0.75rem', top: '0.875rem', right: '0.75rem', bottom: '0.25rem' },
-
+      padding: { left: '0.75rem', top: '0.25rem', right: '0.75rem', bottom: '0.25rem' },
+      'padding-with-label': { top: '0.875rem', bottom: '0.25rem' },
       'text-empty': colorScheme.onSurfaceVariant,
       'text-filled': colorScheme.onSurface,
       opacity: '1',
     },
     hovered: {
-      outline: `1px solid ${colorScheme.outline}`,
+      background: colorScheme.surfaceContainerHighestHover,
     },
     disabled: {
       opacity: '0.5',
     },
     focused: {
+      background: colorScheme.surfaceContainerHighestHover,
       outline: `2px solid ${colorScheme.primary}`,
       label: {
         color: colorScheme.primary,
@@ -324,7 +335,7 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
     normal: {
       off: {
         track: {
-          background: colorScheme.surfaceContainer,
+          background: colorScheme.surfaceContainerHighest,
           border: `2px solid ${colorScheme.outline}`,
           'border-radius': '1.5rem',
         },
@@ -357,7 +368,7 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
     hovered: {
       off: {
         track: {
-          background: colorScheme.secondaryContainerHover,
+          background: colorScheme.surfaceContainerHighestHover,
         },
       },
       on: {
@@ -369,7 +380,7 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
     pressed: {
       off: {
         track: {
-          background: colorScheme.secondaryContainerHover,
+          background: colorScheme.surfaceContainerHighestHover,
         },
         handle: {
           width: '1.25rem',

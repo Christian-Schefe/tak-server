@@ -54,11 +54,11 @@ const zIndex = useOverlayZIndex(floating, visible, 1);
 <style lang="css" scoped>
 .v-enter-active,
 .v-leave-active {
-  transition: opacity 0.1s ease;
+  transition: opacity 0.15s ease;
 }
 .v-enter-active .p-dialog,
 .v-leave-active .p-dialog {
-  transition: transform 0.1s ease;
+  transition: transform 0.15s ease;
 }
 
 .v-enter-from,
@@ -119,8 +119,7 @@ const zIndex = useOverlayZIndex(floating, visible, 1);
 }
 .p-dialog-content {
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
+  min-height: 0;
   padding-left: var(--p-dialog-padding);
   padding-right: var(--p-dialog-padding);
 }

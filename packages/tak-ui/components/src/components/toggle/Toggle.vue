@@ -107,9 +107,9 @@ $variants: (
   width: 100%;
   height: 100%;
   transition:
-    background-color 0.2s ease,
-    border 0.2s ease,
-    border-radius 0.2s ease;
+    background-color 0.15s ease,
+    border 0.15s ease,
+    border-radius 0.15s ease;
 }
 
 .p-toggle:has(> .p-toggle-input:focus-visible) {
@@ -121,12 +121,12 @@ $variants: (
   top: 50%;
   position: absolute;
   transition:
-    left 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275),
-    background-color 0.2s ease,
-    width 0.2s ease,
-    height 0.2s ease,
-    border-radius 0.2s ease,
-    border 0.2s ease;
+    left 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+    background-color 0.15s ease,
+    width 0.15s ease,
+    height 0.15s ease,
+    border-radius 0.15s ease,
+    border 0.15s ease;
   transform: translate(-50%, -50%);
 }
 

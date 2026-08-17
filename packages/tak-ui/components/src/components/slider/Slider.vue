@@ -81,8 +81,8 @@ $states: (
       );
       left: var(--p-slider-#{$state}-track-gap, var(--p-slider-normal-track-gap));
       border-radius: var(
-        --p-slider-#{$state}-track-border-radius,
-        var(--p-slider-normal-track-border-radius)
+        --p-slider-#{$state}-track-border-radius-inner,
+        var(--p-slider-normal-track-border-radius-inner)
       );
     }
     .p-slider-track-filled-inner {
@@ -92,8 +92,8 @@ $states: (
       );
       right: var(--p-slider-#{$state}-track-gap, var(--p-slider-normal-track-gap));
       border-radius: var(
-        --p-slider-#{$state}-track-border-radius,
-        var(--p-slider-normal-track-border-radius)
+        --p-slider-#{$state}-track-border-radius-inner,
+        var(--p-slider-normal-track-border-radius-inner)
       );
     }
     .p-slider-handle {
@@ -147,6 +147,7 @@ $states: (
 .p-slider-track {
   position: relative;
   width: 100%;
+  overflow: hidden;
 }
 .p-slider-track-unfilled {
   position: absolute;
@@ -166,9 +167,9 @@ $states: (
   top: 0;
   bottom: 0;
   transition:
-    background-color 0.2s ease,
-    left 0.1s ease,
-    border-radius 0.2s ease;
+    background-color 0.15s ease,
+    left 0.15s ease,
+    border-radius 0.15s ease;
 }
 .p-slider-track-filled-inner {
   position: absolute;
@@ -176,9 +177,9 @@ $states: (
   left: 0;
   bottom: 0;
   transition:
-    background-color 0.2s ease,
-    right 0.1s ease,
-    border-radius 0.2s ease;
+    background-color 0.15s ease,
+    right 0.15s ease,
+    border-radius 0.15s ease;
 }
 .p-slider-handle {
   position: absolute;
@@ -186,10 +187,10 @@ $states: (
   left: 0;
   transform: translate(-50%, -50%);
   transition:
-    background-color 0.2s ease,
-    width 0.1s ease,
-    height 0.1s ease,
-    border-radius 0.2s ease;
+    background-color 0.15s ease,
+    width 0.15s ease,
+    height 0.15s ease,
+    border-radius 0.15s ease;
 }
 .p-slider:has(> .p-slider-input:focus-visible) .p-slider-handle {
   outline: var(--p-slider-focus-outline);

@@ -155,7 +155,7 @@ $severities: (
   }
 }
 .p-button-ripple-fadeout {
-  animation: fadeout-animation 0.1s linear;
+  animation: fadeout-animation 0.15s linear;
 }
 </style>
 <style lang="scss" scoped>
@@ -209,9 +209,9 @@ $severities: (
 .p-button {
   margin: 0;
   transition:
-    background-color 0.1s ease-in-out,
-    color 0.1s ease-in-out,
-    border 0.1s ease-in-out;
+    background-color 0.15s ease-in-out,
+    color 0.15s ease-in-out,
+    border 0.15s ease-in-out;
   position: relative;
   overflow: hidden;
   cursor: pointer;

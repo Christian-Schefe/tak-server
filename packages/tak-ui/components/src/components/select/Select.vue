@@ -97,6 +97,7 @@ onUnmounted(() => {
     :class="{
       'p-select-open': dropdownVisible,
       'p-select-disabled': props.disabled,
+      'p-select-has-label': !!label,
       'p-select-has-icon-prepend': !!$slots['icon-prepend'],
     }"
     @click="onToggleDropdown"
@@ -141,11 +142,11 @@ onUnmounted(() => {
 <style lang="scss" scoped>
 .v-enter-active,
 .v-leave-active {
-  transition: opacity 0.1s ease;
+  transition: opacity 0.15s ease;
 }
 .v-enter-active .p-select-dropdown,
 .v-leave-active .p-select-dropdown {
-  transition: transform 0.1s ease;
+  transition: transform 0.15s ease;
 }
 
 .v-enter-from,
@@ -197,6 +198,13 @@ $states: (
     .p-select-icon {
       color: var(--p-select-#{$state}-icon-color, var(--p-select-normal-icon-color));
     }
+
+    .p-select-optionlabel {
+      color: var(--p-select-#{$state}-text-filled, var(--p-select-normal-text-filled));
+    }
+    .p-select-optionlabel.p-select-optionlabel-empty {
+      color: var(--p-select-#{$state}-text-empty, var(--p-select-normal-text-empty));
+    }
   }
 
   #{$state-selector}.p-select-has-icon-prepend {
@@ -207,12 +215,28 @@ $states: (
       left: var(--p-select-#{$state}-height, var(--p-select-normal-height));
     }
   }
+
+  #{$state-selector}.p-select-has-label {
+    .p-select-inner {
+      padding-top: var(
+        --p-select-#{$state}-padding-with-label-top,
+        var(--p-select-normal-padding-with-label-top)
+      );
+      padding-bottom: var(
+        --p-select-#{$state}-padding-with-label-bottom,
+        var(--p-select-normal-padding-with-label-bottom)
+      );
+    }
+  }
 }
 
 .p-select {
   display: flex;
   align-items: center;
-  transition: outline 0.1s ease-in-out;
+  transition:
+    outline 0.15s ease-in-out,
+    background-color 0.15s ease-in-out,
+    color 0.15s ease-in-out;
   cursor: pointer;
   position: relative;
 }
@@ -237,19 +261,15 @@ $states: (
   gap: var(--p-select-dropdown-gap);
 }
 .p-select-optionlabel {
-  color: var(--p-select-filled-text);
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
   flex-grow: 1;
 }
-.p-select-optionlabel-empty {
-  color: var(--p-select-empty-text);
-}
 .p-select-label {
   font-size: 0.625rem;
   line-height: 1;
-  transition: color 0.2s ease-in-out;
+  transition: color 0.15s ease-in-out;
   position: absolute;
 }
 .p-select-icon-prepend {

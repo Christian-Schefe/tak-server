@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { InputAutoCompleteAttribute } from 'vue';
 import { useFormValue } from '../../form';
 
 const model = defineModel<string>({ default: '' });
@@ -10,6 +11,7 @@ const props = withDefaults(
     label?: string | undefined;
     inputId?: string | undefined;
     disabled?: boolean;
+    autocomplete?: InputAutoCompleteAttribute | undefined;
   }>(),
   {
     name: undefined,
@@ -18,6 +20,7 @@ const props = withDefaults(
     label: undefined,
     inputId: undefined,
     disabled: false,
+    autocomplete: undefined,
   },
 );
 const emit = defineEmits<{
@@ -37,6 +40,7 @@ useFormValue(model, () => props.name);
     class="p-inputtext-wrapper"
     :class="{
       'p-inputtext-disabled': disabled,
+      'p-inputtext-has-label': !!label,
       'p-inputtext-has-icon-prepend': !!$slots['icon-prepend'],
       'p-inputtext-has-icon-append': !!$slots['icon-append'],
     }"
@@ -49,6 +53,7 @@ useFormValue(model, () => props.name);
         class="p-inputtext-input"
         :placeholder="placeholder"
         :disabled="disabled"
+        :autocomplete="autocomplete"
         type="text"
         @change="onInputChange"
       />
@@ -74,6 +79,8 @@ $states: (
 );
 @each $state, $state-selector in $states {
   #{$state-selector} {
+    opacity: var(--p-inputtext-#{$state}-opacity, var(--p-inputtext-normal-opacity));
+
     .p-inputtext {
       background-color: var(
         --p-inputtext-#{$state}-background,
@@ -83,6 +90,7 @@ $states: (
         --p-inputtext-#{$state}-border-radius,
         var(--p-inputtext-normal-border-radius)
       );
+      border: var(--p-inputtext-#{$state}-border, var(--p-inputtext-normal-border));
       color: var(--p-inputtext-#{$state}-text-empty, var(--p-inputtext-normal-text-empty));
       width: var(--p-inputtext-#{$state}-width, var(--p-inputtext-normal-width));
       height: var(--p-inputtext-#{$state}-height, var(--p-inputtext-normal-height));
@@ -105,7 +113,7 @@ $states: (
         var(--p-inputtext-normal-padding-bottom)
       );
     }
-    .p-inputtext::placeholder {
+    .p-inputtext-input::placeholder {
       color: var(--p-inputtext-#{$state}-text-empty, var(--p-inputtext-normal-text-empty));
     }
     .p-inputtext-label {
@@ -122,6 +130,7 @@ $states: (
     }
     .p-inputtext-icon-prepend,
     .p-inputtext-icon-append {
+      color: var(--p-inputtext-#{$state}-icon-color, var(--p-inputtext-normal-icon-color));
       width: var(--p-inputtext-#{$state}-height, var(--p-inputtext-normal-height));
       height: var(--p-inputtext-#{$state}-height, var(--p-inputtext-normal-height));
       padding: var(--p-inputtext-#{$state}-icon-padding, var(--p-inputtext-normal-icon-padding));
@@ -139,6 +148,18 @@ $states: (
   #{$state-selector}.p-inputtext-has-icon-append {
     .p-inputtext-input {
       padding-right: var(--p-inputtext-#{$state}-height, var(--p-inputtext-normal-height));
+    }
+  }
+  #{$state-selector}.p-inputtext-has-label {
+    .p-inputtext-input {
+      padding-top: var(
+        --p-inputtext-#{$state}-padding-with-label-top,
+        var(--p-inputtext-normal-padding-with-label-top)
+      );
+      padding-bottom: var(
+        --p-inputtext-#{$state}-padding-with-label-bottom,
+        var(--p-inputtext-normal-padding-with-label-bottom)
+      );
     }
   }
 }
@@ -159,8 +180,8 @@ $states: (
   position: relative;
   align-items: center;
   transition:
-    outline-color 0.2s ease,
-    background-color 0.2s ease;
+    outline-color 0.15s ease,
+    background-color 0.15s ease;
 }
 .p-inputtext-container-inner {
   display: flex;
@@ -168,16 +189,20 @@ $states: (
   flex-grow: 1;
 }
 .p-inputtext-input {
-  width: 100%;
-  height: 100%;
   border: none;
   outline: none;
   margin: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
 }
 .p-inputtext-label {
   font-size: 0.625rem;
   line-height: 1;
-  transition: color 0.2s ease-in-out;
+  transition: color 0.15s ease-in-out;
   position: absolute;
 }
 .p-inputtext-icon-prepend {

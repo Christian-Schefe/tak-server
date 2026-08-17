@@ -9,6 +9,7 @@ export type SliderSemantic = Switch<
       gap: string;
       height: string;
       'border-radius': string;
+      'border-radius-inner': string;
     } & Record<'unfilled' | 'filled', { background: string }>;
     handle: {
       width: string;
