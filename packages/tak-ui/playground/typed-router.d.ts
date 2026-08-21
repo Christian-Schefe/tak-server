@@ -38,16 +38,23 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/components/': RouteRecordInfo<
-      '/components/',
-      '/components',
+    '/components/button': RouteRecordInfo<
+      '/components/button',
+      '/components/button',
       Record<never, never>,
       Record<never, never>,
       | never
     >,
-    '/components/button': RouteRecordInfo<
-      '/components/button',
-      '/components/button',
+    '/components/card': RouteRecordInfo<
+      '/components/card',
+      '/components/card',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/components/dialog': RouteRecordInfo<
+      '/components/dialog',
+      '/components/dialog',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -66,6 +73,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/components/select': RouteRecordInfo<
+      '/components/select',
+      '/components/select',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/components/slider': RouteRecordInfo<
       '/components/slider',
       '/components/slider',
@@ -76,6 +90,13 @@ declare module 'vue-router/auto-routes' {
     '/components/toggle': RouteRecordInfo<
       '/components/toggle',
       '/components/toggle',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/components/tooltip': RouteRecordInfo<
+      '/components/tooltip',
+      '/components/tooltip',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -108,17 +129,25 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
-    'src/pages/components/index.vue': {
+    'src/pages/components/button.vue': {
       routes:
-        | '/components/'
+        | '/components/button'
       views:
         | never
       pathParamNames:
         | never
     }
-    'src/pages/components/button.vue': {
+    'src/pages/components/card.vue': {
       routes:
-        | '/components/button'
+        | '/components/card'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/components/dialog.vue': {
+      routes:
+        | '/components/dialog'
       views:
         | never
       pathParamNames:
@@ -140,6 +169,14 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
+    'src/pages/components/select.vue': {
+      routes:
+        | '/components/select'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
     'src/pages/components/slider.vue': {
       routes:
         | '/components/slider'
@@ -151,6 +188,14 @@ declare module 'vue-router/auto-routes' {
     'src/pages/components/toggle.vue': {
       routes:
         | '/components/toggle'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/components/tooltip.vue': {
+      routes:
+        | '/components/tooltip'
       views:
         | never
       pathParamNames:

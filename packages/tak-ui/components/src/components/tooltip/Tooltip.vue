@@ -36,9 +36,9 @@ const {
   placement: () => props.placement,
   middleware: [
     offset(10),
-    flip({ padding: 5 }),
-    shift({ limiter: limitShift(), padding: 5 }),
-    arrow({ element: arrowEl, padding: 5 }),
+    flip({ padding: 10 }),
+    shift({ limiter: limitShift(), padding: 10 }),
+    arrow({ element: arrowEl, padding: 10 }),
   ],
   whileElementsMounted: autoUpdate,
 });

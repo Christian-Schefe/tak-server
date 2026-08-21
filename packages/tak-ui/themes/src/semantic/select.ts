@@ -21,11 +21,11 @@ export type SelectSemantic = Switch<
     'icon-color': string;
     opacity: string;
   }
-> & { dropdown: SelectDropdownSemantic };
-
-interface SelectDropdownSemantic {
-  background: string;
-  'border-radius': string;
-  'box-shadow': string;
-  padding: string;
-}
+> & {
+  dropdown: {
+    background: string;
+    'border-radius': string;
+    'box-shadow': string;
+    padding: string;
+  };
+};

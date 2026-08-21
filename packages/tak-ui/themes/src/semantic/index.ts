@@ -11,6 +11,7 @@ import type { TextSemantic } from './text';
 import type { ToggleSemantic } from './toggle';
 import type { TooltipSemantic } from './tooltip';
 import type { PartialDeep } from 'type-fest';
+import type { DropdownSemantic } from './dropdown';
 
 export interface ThemeSemantic {
   root: RootSemantic;
@@ -25,6 +26,7 @@ export interface ThemeSemantic {
   sidebar: SideBarSemantic;
   tooltip: TooltipSemantic;
   toggle: ToggleSemantic;
+  dropdown: DropdownSemantic;
 }
 
 export interface Vector2 {

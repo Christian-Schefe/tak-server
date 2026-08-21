@@ -23,11 +23,12 @@ export type ColorScheme = {
   surfaceVariant: string;
   onSurfaceVariant: string;
 
+  surfaceContainerLowest: string;
+  surfaceContainerLow: string;
   surfaceContainer: string;
-  onSurfaceContainer: string;
-
+  surfaceContainerHigh: string;
   surfaceContainerHighest: string;
-  surfaceContainerHighestHover: string;
+  onSurfaceContainer: string;
 
   inverseSurface: string;
   onInverseSurface: string;
@@ -67,14 +68,12 @@ function lightDarkColorScheme(light: ColorScheme, dark: ColorScheme): ColorSchem
     surfaceVariant: lightDark(light.surfaceVariant, dark.surfaceVariant),
     onSurfaceVariant: lightDark(light.onSurfaceVariant, dark.onSurfaceVariant),
 
+    surfaceContainerLowest: lightDark(light.surfaceContainerLowest, dark.surfaceContainerLowest),
+    surfaceContainerLow: lightDark(light.surfaceContainerLow, dark.surfaceContainerLow),
     surfaceContainer: lightDark(light.surfaceContainer, dark.surfaceContainer),
-    onSurfaceContainer: lightDark(light.onSurfaceContainer, dark.onSurfaceContainer),
-
+    surfaceContainerHigh: lightDark(light.surfaceContainerHigh, dark.surfaceContainerHigh),
     surfaceContainerHighest: lightDark(light.surfaceContainerHighest, dark.surfaceContainerHighest),
-    surfaceContainerHighestHover: lightDark(
-      light.surfaceContainerHighestHover,
-      dark.surfaceContainerHighestHover,
-    ),
+    onSurfaceContainer: lightDark(light.onSurfaceContainer, dark.onSurfaceContainer),
 
     inverseSurface: lightDark(light.inverseSurface, dark.inverseSurface),
     onInverseSurface: lightDark(light.onInverseSurface, dark.onInverseSurface),
@@ -108,11 +107,12 @@ const materialLightCS: ColorScheme = {
   surfaceVariant: '#E7E0EC',
   onSurfaceVariant: '#49454F',
 
+  surfaceContainerLowest: '#FFFFFF',
+  surfaceContainerLow: '#F7F2FA',
   surfaceContainer: '#F3EDF7',
-  onSurfaceContainer: '#1D1B20',
-
+  surfaceContainerHigh: '#ECE6F0',
   surfaceContainerHighest: '#E6E0E9',
-  surfaceContainerHighestHover: '#D9D2DD',
+  onSurfaceContainer: '#1D1B20',
 
   inverseSurface: '#322F35',
   onInverseSurface: '#F5EFF7',
@@ -144,11 +144,12 @@ const materialDarkCS: ColorScheme = {
   surfaceVariant: '#49454F',
   onSurfaceVariant: '#CAC4D0',
 
+  surfaceContainerLowest: '#0F0D13',
+  surfaceContainerLow: '#1D1B20',
   surfaceContainer: '#211F26',
-  onSurfaceContainer: '#E6E0E9',
-
+  surfaceContainerHigh: '#2B2930',
   surfaceContainerHighest: '#36343B',
-  surfaceContainerHighestHover: '#49454F',
+  onSurfaceContainer: '#E6E0E9',
 
   inverseSurface: '#E6E0E9',
   onInverseSurface: '#322F35',

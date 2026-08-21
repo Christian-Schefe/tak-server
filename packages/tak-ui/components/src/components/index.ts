@@ -3,6 +3,7 @@ export * from './button';
 export * from './buttongroup';
 export * from './card';
 export * from './dialog';
+export * from './dropdown';
 export * from './form';
 export * from './icon';
 export * from './inputnumber';
@@ -13,3 +14,4 @@ export * from './slider';
 export * from './themed';
 export * from './toggle';
 export * from './tooltip';
+

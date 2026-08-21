@@ -2,15 +2,27 @@
 import { Button, Icon, useThemeManager } from '@tak-ui-lib/components';
 import { RouterLink, useRoute } from 'vue-router';
 
-const navigationItems = [
-  { label: 'Home', path: '/', icon: 'home' },
-  { label: 'Components', path: '/components', icon: 'component' },
-  { label: 'Buttons', path: '/components/button' },
-  { label: 'Sliders', path: '/components/slider' },
-  { label: 'Toggles', path: '/components/toggle' },
-  { label: 'Inputs', path: '/components/input' },
-  { label: 'Forms', path: '/components/form' },
-  { label: 'Themes', path: '/themes', icon: 'theme' },
+defineEmits<{
+  navigate: [];
+}>();
+
+type NavigationItem = {
+  label: string;
+  path: string;
+  icon?: string;
+};
+
+const navigationItems: NavigationItem[] = [
+  {
+    label: 'Home',
+    path: '/',
+    icon: 'home',
+  },
+  {
+    label: 'Themes',
+    path: '/themes',
+    icon: 'theme',
+  },
 ];
 
 const route = useRoute();
@@ -23,12 +35,13 @@ const themeManager = useThemeManager();
 </script>
 <template>
   <div class="grow flex flex-col gap-2">
-    <template v-for="item in navigationItems" :key="item.path">
+    <template v-for="(item, index) in navigationItems" :key="index">
       <Button
         variant="text"
         :severity="isActive(item.path) ? 'primary' : 'secondary'"
         :as="{ component: RouterLink, props: { to: item.path } }"
         :label="item.label"
+        @click="$emit('navigate')"
       >
         <template v-if="item.icon" #icon>
           <Icon :name="item.icon" />

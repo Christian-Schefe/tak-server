@@ -18,8 +18,9 @@ const inputTextValue = ref('');
         label="Label"
         input-id="input2"
         support-text="Support text"
-        ><template #icon-prepend><LuSearch /></template
-      ></InputText>
+      >
+        <template #icon-prepend><LuSearch /></template>
+      </InputText>
       <InputText
         v-model="inputTextValue"
         placeholder="Enter text"

@@ -5,4 +5,5 @@ export interface CardSemantic {
   background: string;
   text: string;
   border: string;
+  'box-shadow': string;
 }

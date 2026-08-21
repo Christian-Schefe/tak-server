@@ -2,6 +2,7 @@ import type { FullTheme } from '.';
 import type { ButtonSemantic } from '../semantic/button';
 import type { CardSemantic } from '../semantic/card';
 import type { DialogSemantic } from '../semantic/dialog';
+import type { DropdownSemantic } from '../semantic/dropdown';
 import type { InputTextSemantic } from '../semantic/inputtext';
 import type { RootSemantic } from '../semantic/root';
 import type { ScrollbarSemantic } from '../semantic/scrollbar';
@@ -133,9 +134,10 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
     'border-radius': layoutScheme.borderRadius,
     padding: '1rem',
     gap: '1rem',
-    background: colorScheme.surfaceContainer,
+    background: colorScheme.surfaceContainerLow,
     text: colorScheme.onSurfaceContainer,
     border: `none`,
+    'box-shadow': '0 4px 6px rgba(0, 0, 0, 0.1)',
   };
 
   const defaultDialogSemantic: DialogSemantic = {
@@ -148,7 +150,7 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
 
   const defaultInputTextSemantic: InputTextSemantic = {
     normal: {
-      background: colorScheme.surfaceContainerHighest,
+      background: colorScheme.surfaceContainerHigh,
       'border-radius': layoutScheme.borderRadiusSmall,
       outline: '2px solid transparent',
       border: 'none',
@@ -173,10 +175,10 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
       opacity: '1',
     },
     hovered: {
-      background: colorScheme.surfaceContainerHighestHover,
+      background: colorScheme.surfaceContainerHighest,
     },
     focused: {
-      background: colorScheme.surfaceContainerHighestHover,
+      background: colorScheme.surfaceContainerHighest,
       outline: `2px solid ${colorScheme.primary}`,
       label: {
         color: colorScheme.primary,
@@ -276,7 +278,7 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
 
   const defaultSelectSemantic: SelectSemantic = {
     normal: {
-      background: colorScheme.surfaceContainerHighest,
+      background: colorScheme.surfaceContainerHigh,
       'border-radius': layoutScheme.borderRadiusSmall,
       width: '16rem',
       height: '2.75rem',
@@ -294,13 +296,13 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
       opacity: '1',
     },
     hovered: {
-      background: colorScheme.surfaceContainerHighestHover,
+      background: colorScheme.surfaceContainerHighest,
     },
     disabled: {
       opacity: '0.5',
     },
     focused: {
-      background: colorScheme.surfaceContainerHighestHover,
+      background: colorScheme.surfaceContainerHighest,
       outline: `2px solid ${colorScheme.primary}`,
       label: {
         color: colorScheme.primary,
@@ -308,7 +310,7 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
       'icon-color': colorScheme.primary,
     },
     dropdown: {
-      background: colorScheme.surface,
+      background: colorScheme.surfaceContainer,
       'border-radius': layoutScheme.borderRadius,
       'box-shadow': '0 4px 6px rgba(0, 0, 0, 0.1)',
       padding: '0.5rem',
@@ -335,7 +337,7 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
     normal: {
       off: {
         track: {
-          background: colorScheme.surfaceContainerHighest,
+          background: colorScheme.surfaceContainerHigh,
           border: `2px solid ${colorScheme.outline}`,
           'border-radius': '1.5rem',
         },
@@ -368,7 +370,7 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
     hovered: {
       off: {
         track: {
-          background: colorScheme.surfaceContainerHighestHover,
+          background: colorScheme.surfaceContainerHighest,
         },
       },
       on: {
@@ -380,7 +382,7 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
     pressed: {
       off: {
         track: {
-          background: colorScheme.surfaceContainerHighestHover,
+          background: colorScheme.surfaceContainerHighest,
         },
         handle: {
           width: '1.25rem',
@@ -405,6 +407,11 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
       'outline-offset': '2px',
     },
   };
+
+  const defaultDropdownSemantic: DropdownSemantic = {
+    'transform-enter-from': 'scale(0.9)',
+  };
+
   return {
     id: 'default',
     semantic: {
@@ -420,6 +427,7 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
       sidebar: defaultSideBarSemantic,
       tooltip: defaultTooltipSemantic,
       toggle: defaultToggleSemantic,
+      dropdown: defaultDropdownSemantic,
     },
   };
 }

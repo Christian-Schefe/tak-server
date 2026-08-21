@@ -1,16 +1,8 @@
 <script setup lang="ts" generic="T">
-import {
-  autoUpdate,
-  flip,
-  limitShift,
-  offset,
-  shift,
-  useFloating,
-  type Placement,
-} from '@floating-ui/vue';
-import { computed, onMounted, onUnmounted, ref, useTemplateRef } from 'vue';
-import { useOverlayZIndex } from '../../overlay';
+import { type Placement } from '@floating-ui/vue';
+import { computed, ref, useTemplateRef } from 'vue';
 import { Button } from '../button';
+import { Dropdown } from '../dropdown';
 import { Icon } from '../icon';
 
 const value = defineModel<T>({ required: true });
@@ -46,23 +38,6 @@ const optionLabel = computed(() => {
   return currentOption.value ? currentOption.value.label : null;
 });
 
-const reference = useTemplateRef<HTMLElement | null>('reference');
-const floating = useTemplateRef<HTMLElement | null>('floating');
-const { floatingStyles } = useFloating(reference, floating, {
-  placement: () => props.placement,
-  middleware: [offset(10), flip({ padding: 5 }), shift({ limiter: limitShift(), padding: 5 })],
-  whileElementsMounted: autoUpdate,
-});
-
-function onPointerDownOutside(event: PointerEvent) {
-  if (
-    reference.value?.contains(event.target as Node) !== true &&
-    floating.value?.contains(event.target as Node) !== true
-  ) {
-    dropdownVisible.value = false;
-  }
-}
-
 function onSelectOption(optionValue: T) {
   if (props.disabled) {
     return;
@@ -80,15 +55,7 @@ function onToggleDropdown() {
   }
   dropdownVisible.value = !dropdownVisible.value;
 }
-
-const zIndex = useOverlayZIndex(floating, dropdownVisible, 1);
-
-onMounted(() => {
-  document.addEventListener('pointerdown', onPointerDownOutside);
-});
-onUnmounted(() => {
-  document.removeEventListener('pointerdown', onPointerDownOutside);
-});
+const reference = useTemplateRef<HTMLElement | null>('reference');
 </script>
 <template>
   <div
@@ -120,44 +87,22 @@ onUnmounted(() => {
       <Icon class="p-select-icon" name="chevron-down" />
     </div>
   </div>
-  <Teleport to="body">
-    <Transition>
-      <div v-if="dropdownVisible" ref="floating" :style="{ ...floatingStyles, zIndex }">
-        <div class="p-select-dropdown">
-          <div class="p-select-dropdown-inner">
-            <Button
-              v-for="(option, index) in props.options"
-              :key="index"
-              :severity="value === option.value ? 'primary' : 'secondary'"
-              variant="text"
-              :label="option.label"
-              @click="onSelectOption(option.value)"
-            />
-          </div>
-        </div>
+  <Dropdown v-model="dropdownVisible" :reference="reference">
+    <div class="p-select-dropdown">
+      <div class="p-select-dropdown-inner">
+        <Button
+          v-for="(option, index) in props.options"
+          :key="index"
+          :severity="value === option.value ? 'primary' : 'secondary'"
+          variant="text"
+          :label="option.label"
+          @click="onSelectOption(option.value)"
+        />
       </div>
-    </Transition>
-  </Teleport>
+    </div>
+  </Dropdown>
 </template>
 <style lang="scss" scoped>
-.v-enter-active,
-.v-leave-active {
-  transition: opacity 0.15s ease;
-}
-.v-enter-active .p-select-dropdown,
-.v-leave-active .p-select-dropdown {
-  transition: transform 0.15s ease;
-}
-
-.v-enter-from,
-.v-leave-to {
-  opacity: 0;
-}
-
-.v-enter-from .p-select-dropdown,
-.v-leave-to .p-select-dropdown {
-  transform: scale(0.9);
-}
 $states: (
   'normal': '.p-select',
   'hovered': '.p-select:hover',
@@ -250,15 +195,14 @@ $states: (
   max-height: 16rem;
   overflow-y: auto;
   background-color: var(--p-select-dropdown-background);
-  padding: var(--p-select-dropdown-padding);
   border-radius: var(--p-select-dropdown-border-radius);
   box-shadow: var(--p-select-dropdown-box-shadow);
+  padding: var(--p-select-dropdown-padding);
 }
 .p-select-dropdown-inner {
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: var(--p-select-dropdown-gap);
 }
 .p-select-optionlabel {
   text-overflow: ellipsis;

@@ -12,7 +12,6 @@ const props = withDefaults(
   defineProps<{
     severity?: 'primary' | 'secondary' | undefined;
     variant?: 'filled' | 'text' | 'outlined' | undefined;
-    align?: 'start' | 'center' | 'end' | undefined;
     disabled?: boolean | undefined;
     iconOnly?: boolean | undefined;
     label?: string | undefined;
@@ -22,7 +21,6 @@ const props = withDefaults(
   {
     severity: 'primary',
     variant: 'filled',
-    align: 'start',
     disabled: false,
     iconOnly: false,
     label: undefined,
@@ -81,8 +79,6 @@ function handleClick(e: PointerEvent) {
 
 const buttonContentStyle = computed<StyleValue>(() => {
   return {
-    justifyContent:
-      props.align === 'start' ? 'flex-start' : props.align === 'end' ? 'flex-end' : 'center',
     width: props.iconOnly ? `var(--p-button-size)` : 'auto',
     height: props.iconOnly ? `var(--p-button-size)` : 'auto',
   };
@@ -110,6 +106,7 @@ const buttonContentStyle = computed<StyleValue>(() => {
       <slot>
         <p class="p-button-label">{{ label }}</p>
       </slot>
+      <slot name="icon-append" />
     </div>
   </component>
 </template>
@@ -244,5 +241,7 @@ $severities: (
 
 .p-button-label {
   font-weight: 600;
+  flex-grow: 1;
+  text-align: left;
 }
 </style>

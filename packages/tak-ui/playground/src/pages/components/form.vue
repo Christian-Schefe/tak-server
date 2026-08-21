@@ -27,7 +27,7 @@ const validator: FormValidator<FormData> = (data: Record<string, unknown>) => {
   <Page>
     <h1>Forms</h1>
     <Form v-slot="form" :validator="validator" :initial-values="{ email: 'hi' }">
-      <div class="flex flex-col gap-2">
+      <div class="flex flex-col gap-4">
         <InputText
           input-id="input1"
           name="name"

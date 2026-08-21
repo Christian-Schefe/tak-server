@@ -37,7 +37,7 @@ watch(isMobile, (newIsMobile) => {
         :overlay="isMobile"
         @update:visible="sidebarVisible = $event"
       >
-        <Navigation />
+        <Navigation @navigate="sidebarVisible = false" />
       </SideBar>
     </template>
     <RouterView />

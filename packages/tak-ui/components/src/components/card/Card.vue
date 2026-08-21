@@ -12,6 +12,7 @@
   padding: var(--p-card-padding);
   gap: var(--p-card-gap);
   border: var(--p-card-border);
+  box-shadow: var(--p-card-box-shadow);
   display: flex;
   flex-direction: column;
 }
