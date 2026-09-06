@@ -8,17 +8,15 @@ import {
   type DarkMode,
 } from '@tak-ui-lib/components';
 import type { Theme } from '@tak-ui-lib/themes';
-import { createDefaultTheme } from '@tak-ui-lib/themes/src/theme/default.ts';
 import Page from '../components/Page.vue';
-import { materialColorScheme } from '@tak-ui-lib/themes/src/theme/schemas.ts';
+import { createMaterialTheme, materialTheme } from '@tak-ui-lib/themes/src/theme/material/index.ts';
 
 const themeManager = useThemeManager();
 
-const theme1: Theme = createDefaultTheme(materialColorScheme);
-
-const themeOptions = [
-  { label: 'Default', value: { id: 'default' } },
-  { label: 'Blue', value: theme1 },
+const themeOptions: { label: string; value: Theme }[] = [
+  { label: 'Default', value: materialTheme },
+  { label: 'Blue', value: createMaterialTheme('#448AFF') },
+  { label: 'Warm', value: createMaterialTheme('#FFC107') },
 ];
 
 const darkModeOptions: { label: string; value: DarkMode }[] = [
@@ -39,7 +37,7 @@ const darkModeOptions: { label: string; value: DarkMode }[] = [
           :options="darkModeOptions"
           @update:model-value="themeManager.setDarkMode($event)"
         />
-        <template v-for="theme in themeOptions" :key="theme.value.id">
+        <template v-for="(theme, index) in themeOptions" :key="index">
           <Themed
             :theme="theme.value"
             :is-dark="themeManager.isDark.value"

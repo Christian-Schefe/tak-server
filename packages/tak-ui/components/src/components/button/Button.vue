@@ -101,6 +101,7 @@ const buttonContentStyle = computed<StyleValue>(() => {
     @click="handleClick"
     @pointerdown="handlePointerDown"
   >
+    <div class="p-button-state" />
     <div class="p-button-content" :style="buttonContentStyle">
       <slot name="icon" />
       <slot>
@@ -125,8 +126,12 @@ $severities: (
   @each $variant, $variant-selector in $variants {
     #{$variant-selector}#{$severity-selector} .p-button-ripple {
       background-color: var(
-        --p-button-pressed-#{$variant}-#{$severity}-background,
-        var(--p-button-normal-#{$variant}-#{$severity}-background)
+        --p-button-pressed-#{$variant}-#{$severity}-state-color,
+        var(--p-button-normal-#{$variant}-#{$severity}-state-color)
+      );
+      opacity: var(
+        --p-button-pressed-#{$variant}-#{$severity}-state-opacity,
+        var(--p-button-normal-#{$variant}-#{$severity}-state-opacity)
       );
     }
   }
@@ -187,6 +192,16 @@ $severities: (
           --p-button-#{$state}-#{$variant}-#{$severity}-border,
           var(--p-button-normal-#{$variant}-#{$severity}-border, none),
         );
+        .p-button-state {
+          background-color: var(
+            --p-button-#{$state}-#{$variant}-#{$severity}-state-color,
+            var(--p-button-normal-#{$variant}-#{$severity}-state-color),
+          );
+          opacity: var(
+            --p-button-#{$state}-#{$variant}-#{$severity}-state-opacity,
+            var(--p-button-normal-#{$variant}-#{$severity}-state-opacity),
+          );
+        }
       }
     }
   }
@@ -224,6 +239,20 @@ $severities: (
 .p-button-group .p-button:not(:first-child) {
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
+}
+
+.p-button .p-button-state {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  transition:
+    background-color 0.15s ease-in-out,
+    opacity 0.15s ease-in-out;
 }
 
 .p-button .p-button-content {

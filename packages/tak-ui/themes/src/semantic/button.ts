@@ -7,6 +7,10 @@ interface ButtonSemanticVariant {
 
 interface ButtonSemanticSeverity {
   background: string;
+  state: {
+    color: string;
+    opacity: string;
+  };
   text: string;
   border: string;
 }

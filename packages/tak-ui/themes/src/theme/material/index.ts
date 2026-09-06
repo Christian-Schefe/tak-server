@@ -1,18 +1,19 @@
-import type { FullTheme } from '.';
-import type { ButtonSemantic } from '../semantic/button';
-import type { CardSemantic } from '../semantic/card';
-import type { DialogSemantic } from '../semantic/dialog';
-import type { DropdownSemantic } from '../semantic/dropdown';
-import type { InputTextSemantic } from '../semantic/inputtext';
-import type { RootSemantic } from '../semantic/root';
-import type { ScrollbarSemantic } from '../semantic/scrollbar';
-import type { SelectSemantic } from '../semantic/select';
-import type { SideBarSemantic } from '../semantic/sidebar';
-import type { SliderSemantic } from '../semantic/slider';
-import type { TextSemantic } from '../semantic/text';
-import type { ToggleSemantic } from '../semantic/toggle';
-import type { TooltipSemantic } from '../semantic/tooltip';
-import { materialColorScheme, type ColorScheme } from './schemas';
+import type { FullTheme } from '..';
+import type { Theme } from '../..';
+import type { ButtonSemantic } from '../../semantic/button';
+import type { CardSemantic } from '../../semantic/card';
+import type { DialogSemantic } from '../../semantic/dialog';
+import type { DropdownSemantic } from '../../semantic/dropdown';
+import type { InputTextSemantic } from '../../semantic/inputtext';
+import type { RootSemantic } from '../../semantic/root';
+import type { ScrollbarSemantic } from '../../semantic/scrollbar';
+import type { SelectSemantic } from '../../semantic/select';
+import type { SideBarSemantic } from '../../semantic/sidebar';
+import type { SliderSemantic } from '../../semantic/slider';
+import type { TextSemantic } from '../../semantic/text';
+import type { ToggleSemantic } from '../../semantic/toggle';
+import type { TooltipSemantic } from '../../semantic/tooltip';
+import { createMaterialColorScheme, type ColorScheme } from './schema';
 
 type LayoutScheme = {
   borderRadius: string;
@@ -35,11 +36,19 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
       filled: {
         secondary: {
           background: colorScheme.secondaryContainer,
+          state: {
+            color: colorScheme.onSecondaryContainer,
+            opacity: '0',
+          },
           text: colorScheme.onSecondaryContainer,
           border: 'none',
         },
         primary: {
           background: colorScheme.primary,
+          state: {
+            color: colorScheme.onPrimary,
+            opacity: '0',
+          },
           text: colorScheme.onPrimary,
           border: 'none',
         },
@@ -47,11 +56,19 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
       text: {
         secondary: {
           background: 'transparent',
+          state: {
+            color: colorScheme.secondary,
+            opacity: '0',
+          },
           text: colorScheme.secondary,
           border: 'none',
         },
         primary: {
           background: 'transparent',
+          state: {
+            color: colorScheme.primary,
+            opacity: '0',
+          },
           text: colorScheme.primary,
           border: 'none',
         },
@@ -59,11 +76,19 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
       outlined: {
         secondary: {
           background: 'transparent',
+          state: {
+            color: colorScheme.secondary,
+            opacity: '0',
+          },
           text: colorScheme.secondary,
           border: `1px solid ${colorScheme.secondary}`,
         },
         primary: {
           background: 'transparent',
+          state: {
+            color: colorScheme.primary,
+            opacity: '0',
+          },
           text: colorScheme.primary,
           border: `1px solid ${colorScheme.primary}`,
         },
@@ -72,52 +97,76 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
     hovered: {
       filled: {
         secondary: {
-          background: colorScheme.secondaryContainerHover,
+          state: {
+            opacity: '0.1',
+          },
         },
         primary: {
-          background: colorScheme.primaryHover,
+          state: {
+            opacity: '0.1',
+          },
         },
       },
       text: {
         secondary: {
-          background: `color-mix(in srgb, ${colorScheme.secondaryContainerHover} 10%, transparent)`,
+          state: {
+            opacity: '0.1',
+          },
         },
         primary: {
-          background: `color-mix(in srgb, ${colorScheme.primaryHover} 10%, transparent)`,
+          state: {
+            opacity: '0.1',
+          },
         },
       },
       outlined: {
         secondary: {
-          background: `color-mix(in srgb, ${colorScheme.secondaryContainerHover} 10%, transparent)`,
+          state: {
+            opacity: '0.1',
+          },
         },
         primary: {
-          background: `color-mix(in srgb, ${colorScheme.primaryHover} 10%, transparent)`,
+          state: {
+            opacity: '0.1',
+          },
         },
       },
     },
     pressed: {
       filled: {
         secondary: {
-          background: colorScheme.secondaryContainerActive,
+          state: {
+            opacity: '0.2',
+          },
         },
         primary: {
-          background: colorScheme.primaryActive,
+          state: {
+            opacity: '0.2',
+          },
         },
       },
       text: {
         secondary: {
-          background: `color-mix(in srgb, ${colorScheme.secondary} 10%, transparent)`,
+          state: {
+            opacity: '0.2',
+          },
         },
         primary: {
-          background: `color-mix(in srgb, ${colorScheme.primary} 10%, transparent)`,
+          state: {
+            opacity: '0.2',
+          },
         },
       },
       outlined: {
         secondary: {
-          background: `color-mix(in srgb, ${colorScheme.secondary} 10%, transparent)`,
+          state: {
+            opacity: '0.2',
+          },
         },
         primary: {
-          background: `color-mix(in srgb, ${colorScheme.primary} 10%, transparent)`,
+          state: {
+            opacity: '0.2',
+          },
         },
       },
     },
@@ -135,7 +184,7 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
     padding: '1rem',
     gap: '1rem',
     background: colorScheme.surfaceContainerLow,
-    text: colorScheme.onSurfaceContainer,
+    text: colorScheme.onSurface,
     border: `none`,
     'box-shadow': '0 4px 6px rgba(0, 0, 0, 0.1)',
   };
@@ -239,32 +288,13 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
       },
       opacity: '1',
     },
-    hovered: {
-      track: {
-        filled: {
-          background: colorScheme.primaryHover,
-        },
-        unfilled: {
-          background: colorScheme.secondaryContainerHover,
-        },
-      },
-      handle: {
-        background: colorScheme.primaryHover,
-      },
-    },
+    hovered: {},
     pressed: {
       track: {
         gap: '0.375rem',
-        filled: {
-          background: colorScheme.primaryHover,
-        },
-        unfilled: {
-          background: colorScheme.secondaryContainerHover,
-        },
       },
       handle: {
         width: '0.125rem',
-        background: colorScheme.primaryHover,
       },
     },
     disabled: {
@@ -319,7 +349,7 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
 
   const defaultSideBarSemantic: SideBarSemantic = {
     background: colorScheme.surfaceContainer,
-    text: colorScheme.onSurfaceContainer,
+    text: colorScheme.onSurface,
     border: 'none',
     padding: '0.5rem',
     'mask-background': 'rgba(0, 0, 0, 0.5)',
@@ -337,7 +367,7 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
     normal: {
       off: {
         track: {
-          background: colorScheme.surfaceContainerHigh,
+          background: colorScheme.surfaceContainerHighest,
           border: `2px solid ${colorScheme.outline}`,
           'border-radius': '1.5rem',
         },
@@ -367,32 +397,15 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
         height: '1.875rem',
       },
     },
-    hovered: {
-      off: {
-        track: {
-          background: colorScheme.surfaceContainerHighest,
-        },
-      },
-      on: {
-        track: {
-          background: colorScheme.primaryHover,
-        },
-      },
-    },
+    hovered: {},
     pressed: {
       off: {
-        track: {
-          background: colorScheme.surfaceContainerHighest,
-        },
         handle: {
           width: '1.25rem',
           height: '1.25rem',
         },
       },
       on: {
-        track: {
-          background: colorScheme.primaryHover,
-        },
         handle: {
           width: '1.5rem',
           height: '1.5rem',
@@ -413,7 +426,6 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
   };
 
   return {
-    id: 'default',
     semantic: {
       root: defaultRootSemantic,
       text: defaultTextSemantic,
@@ -431,4 +443,11 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
     },
   };
 }
-export const defaultTheme: FullTheme = createDefaultTheme(materialColorScheme);
+export const materialTheme: Theme = createMaterialTheme('#6750A4');
+
+export function createMaterialTheme(sourceColor: string): Theme {
+  return {
+    light: createDefaultTheme(createMaterialColorScheme(sourceColor, false)),
+    dark: createDefaultTheme(createMaterialColorScheme(sourceColor, true)),
+  };
+}

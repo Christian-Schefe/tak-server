@@ -48,10 +48,10 @@ function handleInput(event: InputEvent) {
     <div class="p-slider-inner">
       <div class="p-slider-track">
         <div class="p-slider-track-unfilled" :style="{ left: `${offset * 100}%` }">
-          <div class="p-slider-track-unfilled-inner" />
+          <div class="p-slider-track-unfilled-inner"></div>
         </div>
         <div class="p-slider-track-filled" :style="{ right: `${100 - offset * 100}%` }">
-          <div class="p-slider-track-filled-inner" />
+          <div class="p-slider-track-filled-inner"></div>
         </div>
       </div>
       <div class="p-slider-handle" :style="{ left: `${offset * 100}%` }" />

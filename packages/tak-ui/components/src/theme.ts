@@ -1,12 +1,11 @@
-import { applyTheme, type Theme } from '@tak-ui-lib/themes';
+import { applyTheme, materialTheme, type Theme } from '@tak-ui-lib/themes';
 import { useMediaQuery } from '@vueuse/core';
 import { computed, inject, ref, watch, type App, type InjectionKey, type Ref } from 'vue';
-
 export type DarkMode = 'dark' | 'light' | 'system';
 
 export class ThemeManager {
   current = ref<{ theme: Theme; darkMode: DarkMode }>({
-    theme: { id: 'default' },
+    theme: materialTheme,
     darkMode: 'system',
   });
   isDark: Ref<boolean>;
