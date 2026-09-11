@@ -23,14 +23,10 @@ export class IconManager {
 
 const IconKey: InjectionKey<IconManager> = Symbol('IconManager');
 
-export interface IconOptions {
-  icons?: Record<string, Icon>;
-}
-
-export function provideIconManager(app: App, options?: IconOptions) {
+export function provideIconManager(app: App, icons?: Record<string, Icon>) {
   const iconManager = new IconManager();
-  if (options?.icons) {
-    iconManager.registerIcons(options.icons);
+  if (icons) {
+    iconManager.registerIcons(icons);
   }
   app.provide(IconKey, iconManager);
 }

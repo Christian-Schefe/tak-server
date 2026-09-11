@@ -1,9 +1,14 @@
 import { type App, type EffectScope, effectScope } from 'vue';
-import { provideThemeManager } from './theme';
-import { provideIconManager, type IconOptions } from './icons';
+import { provideThemeManager, type DarkMode, type Theme } from './theme';
+import { provideIconManager } from './icons';
 import { provideOverlayManager } from './overlay';
+import type { Icon } from '@tak-ui-lib/icons';
 
-type PluginOptions = IconOptions;
+type PluginOptions = {
+  icons?: Record<string, Icon>;
+  theme?: Theme;
+  darkMode?: DarkMode;
+};
 
 export interface TakUI {
   effectScope: EffectScope;
@@ -16,8 +21,12 @@ export function createTakUI(): TakUI {
     effectScope: scope,
     install(app: App, options?: PluginOptions) {
       scope.run(() => {
-        provideThemeManager(app);
-        provideIconManager(app, options);
+        provideThemeManager(
+          app,
+          options?.theme ?? { light: {}, dark: {} },
+          options?.darkMode ?? 'system',
+        );
+        provideIconManager(app, options?.icons);
         provideOverlayManager(app);
       });
     },

@@ -1,0 +1,123 @@
+$variants: (
+  'filled': '.p-button-filled',
+  'text': '.p-button-text',
+  'outlined': '.p-button-outlined',
+);
+$severities: (
+  'primary': '.p-button-primary',
+  'secondary': '.p-button-secondary',
+);
+
+.p-button-ripple {
+  position: absolute;
+  border-radius: 50%;
+  transform: scale(2.5);
+  pointer-events: none;
+  animation: ripple-animation 0.2s linear;
+  opacity: var(--p-button-pressed-state-opacity);
+}
+@keyframes ripple-animation {
+  from {
+    transform: scale(0);
+  }
+  to {
+    transform: scale(2.5);
+  }
+}
+@keyframes fadeout-animation {
+  to {
+    opacity: 0;
+  }
+}
+.p-button-ripple-fadeout {
+  animation: fadeout-animation 0.15s linear;
+}
+
+.p-button-group .p-button:not(:last-child) {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.p-button-group .p-button:not(:first-child) {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.p-button {
+  margin: 0;
+  transition:
+    background-color 0.15s ease-in-out,
+    color 0.15s ease-in-out,
+    border 0.15s ease-in-out;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  border-radius: var(--p-button-border-radius);
+  padding: var(--p-button-padding) calc(var(--p-button-padding) + 0.25rem);
+
+  @each $severity, $severity-selector in $severities {
+    @each $variant, $variant-selector in $variants {
+      &#{$variant-selector}#{$severity-selector} {
+        background-color: var(--p-button-#{$variant}-#{$severity}-background);
+        color: var(--p-button-#{$variant}-#{$severity}-text);
+        border: var(--p-button-#{$variant}-#{$severity}-border);
+        .p-button-state {
+          background-color: var(--p-button-#{$variant}-#{$severity}-state-color);
+        }
+        .p-button-ripple {
+          background-color: var(--p-button-#{$variant}-#{$severity}-state-color);
+        }
+      }
+    }
+  }
+
+  &:hover:not(:disabled) .p-button-state {
+    opacity: var(--p-button-hover-state-opacity);
+  }
+  &:active:not(:disabled) .p-button-state {
+    opacity: var(--p-button-pressed-state-opacity);
+  }
+
+  &:disabled {
+    cursor: unset;
+    opacity: var(--p-button-disabled-opacity);
+  }
+
+  &:focus-visible {
+    outline: var(--p-button-focus-outline);
+    outline-offset: var(--p-button-focus-outline-offset);
+  }
+
+  &.p-button-icon-only {
+    padding: var(--p-button-padding);
+  }
+
+  .p-button-state {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    opacity: 0;
+    transition:
+      background-color 0.15s ease-in-out,
+      opacity 0.15s ease-in-out;
+  }
+
+  .p-button-content {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1;
+    position: relative;
+    gap: var(--p-button-gap);
+  }
+
+  .p-button-label {
+    font-weight: 600;
+    flex-grow: 1;
+    text-align: left;
+  }
+}

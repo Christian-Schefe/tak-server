@@ -29,7 +29,6 @@
   "dependencies": {
     "@floating-ui/vue": "^2.0.1",
     "@tak-ui-lib/icons": "workspace:*",
-    "@tak-ui-lib/themes": "workspace:*",
     "@vueuse/core": "^14.3.0",
     "vue": "^3.5.40",
     "vue-component-type-helpers": "^3.3.7"

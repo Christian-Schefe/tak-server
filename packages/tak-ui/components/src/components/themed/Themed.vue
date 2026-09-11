@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { getThemeStyles, type Theme } from '@tak-ui-lib/themes';
 import { computed, type StyleValue } from 'vue';
+import { getThemeStyles, type Theme } from '../../theme';
 
 const props = defineProps<{
   theme: Theme;

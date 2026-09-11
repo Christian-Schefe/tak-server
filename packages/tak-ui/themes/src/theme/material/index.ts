@@ -1,19 +1,26 @@
-import type { FullTheme } from '..';
+import {
+  argbFromHex,
+  DynamicScheme,
+  Hct,
+  hexFromArgb,
+  Variant,
+} from '@material/material-color-utilities';
 import type { Theme } from '../..';
-import type { ButtonSemantic } from '../../semantic/button';
-import type { CardSemantic } from '../../semantic/card';
-import type { DialogSemantic } from '../../semantic/dialog';
-import type { DropdownSemantic } from '../../semantic/dropdown';
-import type { InputTextSemantic } from '../../semantic/inputtext';
-import type { RootSemantic } from '../../semantic/root';
-import type { ScrollbarSemantic } from '../../semantic/scrollbar';
-import type { SelectSemantic } from '../../semantic/select';
-import type { SideBarSemantic } from '../../semantic/sidebar';
-import type { SliderSemantic } from '../../semantic/slider';
-import type { TextSemantic } from '../../semantic/text';
-import type { ToggleSemantic } from '../../semantic/toggle';
-import type { TooltipSemantic } from '../../semantic/tooltip';
-import { createMaterialColorScheme, type ColorScheme } from './schema';
+import { createButtonTokens, type ButtonTokens } from './button';
+import type { CardSemantic } from './semantic/card';
+import type { DialogSemantic } from './semantic/dialog';
+import type { DropdownSemantic } from './semantic/dropdown';
+import type { InputTextSemantic } from './semantic/inputtext';
+import type { RootSemantic } from './semantic/root';
+import type { ScrollbarSemantic } from './semantic/scrollbar';
+import type { SelectSemantic } from './semantic/select';
+import type { SideBarSemantic } from './semantic/sidebar';
+import type { SliderSemantic } from './semantic/slider';
+import type { TextSemantic } from './semantic/text';
+import type { ToggleSemantic } from './semantic/toggle';
+import type { TooltipSemantic } from './semantic/tooltip';
+
+import './style.scss';
 
 type LayoutScheme = {
   borderRadius: string;
@@ -25,166 +32,15 @@ const layoutScheme: LayoutScheme = {
   borderRadiusSmall: '0.375rem',
 };
 
-export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
-  const defaultButtonSemantic: ButtonSemantic = {
-    normal: {
-      'border-radius': layoutScheme.borderRadiusSmall,
-      size: '1.5rem',
-      padding: '0.5rem',
-      gap: '0.5rem',
-      opacity: '1',
-      filled: {
-        secondary: {
-          background: colorScheme.secondaryContainer,
-          state: {
-            color: colorScheme.onSecondaryContainer,
-            opacity: '0',
-          },
-          text: colorScheme.onSecondaryContainer,
-          border: 'none',
-        },
-        primary: {
-          background: colorScheme.primary,
-          state: {
-            color: colorScheme.onPrimary,
-            opacity: '0',
-          },
-          text: colorScheme.onPrimary,
-          border: 'none',
-        },
-      },
-      text: {
-        secondary: {
-          background: 'transparent',
-          state: {
-            color: colorScheme.secondary,
-            opacity: '0',
-          },
-          text: colorScheme.secondary,
-          border: 'none',
-        },
-        primary: {
-          background: 'transparent',
-          state: {
-            color: colorScheme.primary,
-            opacity: '0',
-          },
-          text: colorScheme.primary,
-          border: 'none',
-        },
-      },
-      outlined: {
-        secondary: {
-          background: 'transparent',
-          state: {
-            color: colorScheme.secondary,
-            opacity: '0',
-          },
-          text: colorScheme.secondary,
-          border: `1px solid ${colorScheme.secondary}`,
-        },
-        primary: {
-          background: 'transparent',
-          state: {
-            color: colorScheme.primary,
-            opacity: '0',
-          },
-          text: colorScheme.primary,
-          border: `1px solid ${colorScheme.primary}`,
-        },
-      },
-    },
-    hovered: {
-      filled: {
-        secondary: {
-          state: {
-            opacity: '0.1',
-          },
-        },
-        primary: {
-          state: {
-            opacity: '0.1',
-          },
-        },
-      },
-      text: {
-        secondary: {
-          state: {
-            opacity: '0.1',
-          },
-        },
-        primary: {
-          state: {
-            opacity: '0.1',
-          },
-        },
-      },
-      outlined: {
-        secondary: {
-          state: {
-            opacity: '0.1',
-          },
-        },
-        primary: {
-          state: {
-            opacity: '0.1',
-          },
-        },
-      },
-    },
-    pressed: {
-      filled: {
-        secondary: {
-          state: {
-            opacity: '0.2',
-          },
-        },
-        primary: {
-          state: {
-            opacity: '0.2',
-          },
-        },
-      },
-      text: {
-        secondary: {
-          state: {
-            opacity: '0.2',
-          },
-        },
-        primary: {
-          state: {
-            opacity: '0.2',
-          },
-        },
-      },
-      outlined: {
-        secondary: {
-          state: {
-            opacity: '0.2',
-          },
-        },
-        primary: {
-          state: {
-            opacity: '0.2',
-          },
-        },
-      },
-    },
-    disabled: {
-      opacity: '0.5',
-    },
-    focus: {
-      outline: `2px solid ${colorScheme.outline}`,
-      'outline-offset': '2px',
-    },
-  };
+export function createDefaultTheme(theme: DynamicScheme) {
+  const defaultButtonSemantic: ButtonTokens = createButtonTokens(theme);
 
   const defaultCardSemantic: CardSemantic = {
     'border-radius': layoutScheme.borderRadius,
     padding: '1rem',
     gap: '1rem',
-    background: colorScheme.surfaceContainerLow,
-    text: colorScheme.onSurface,
+    background: hexFromArgb(theme.surfaceContainerLow),
+    text: hexFromArgb(theme.onSurface),
     border: `none`,
     'box-shadow': '0 4px 6px rgba(0, 0, 0, 0.1)',
   };
@@ -192,26 +48,26 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
   const defaultDialogSemantic: DialogSemantic = {
     'border-radius': layoutScheme.borderRadius,
     'box-shadow': '0 4px 6px rgba(0, 0, 0, 0.1)',
-    background: colorScheme.surface,
+    background: hexFromArgb(theme.surface),
     padding: '1rem',
     'mask-background': 'rgba(0, 0, 0, 0.5)',
   };
 
   const defaultInputTextSemantic: InputTextSemantic = {
     normal: {
-      background: colorScheme.surfaceContainerHigh,
+      background: hexFromArgb(theme.surfaceContainerHigh),
       'border-radius': layoutScheme.borderRadiusSmall,
       outline: '2px solid transparent',
       border: 'none',
-      'text-empty': colorScheme.onSurfaceVariant,
-      'text-filled': colorScheme.onSurface,
+      'text-empty': hexFromArgb(theme.onSurfaceVariant),
+      'text-filled': hexFromArgb(theme.onSurface),
       label: {
-        color: colorScheme.onSurfaceVariant,
+        color: hexFromArgb(theme.onSurfaceVariant),
         top: '0.375rem',
       },
       icon: {
         padding: '0.75rem',
-        color: colorScheme.onSurfaceVariant,
+        color: hexFromArgb(theme.onSurfaceVariant),
       },
       padding: { left: '0.75rem', top: '0.25rem', right: '0.75rem', bottom: '0.25rem' },
       'padding-with-label': { top: '1rem', bottom: '0.25rem' },
@@ -219,21 +75,21 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
       height: '2.75rem',
       support: {
         padding: '0.25rem 0.75rem',
-        color: colorScheme.onSurfaceVariant,
+        color: hexFromArgb(theme.onSurfaceVariant),
       },
       opacity: '1',
     },
     hovered: {
-      background: colorScheme.surfaceContainerHighest,
+      background: hexFromArgb(theme.surfaceContainerHighest),
     },
     focused: {
-      background: colorScheme.surfaceContainerHighest,
-      outline: `2px solid ${colorScheme.primary}`,
+      background: hexFromArgb(theme.surfaceContainerHighest),
+      outline: `2px solid ${hexFromArgb(theme.primary)}`,
       label: {
-        color: colorScheme.primary,
+        color: hexFromArgb(theme.primary),
       },
       icon: {
-        color: colorScheme.primary,
+        color: hexFromArgb(theme.primary),
       },
     },
     disabled: {
@@ -242,8 +98,8 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
   };
 
   const defaultScrollbarSemantic: ScrollbarSemantic = {
-    track: colorScheme.surface,
-    thumb: colorScheme.outline,
+    track: hexFromArgb(theme.surface),
+    thumb: hexFromArgb(theme.outline),
   };
 
   const defaultTextSemantic: TextSemantic = {
@@ -262,8 +118,8 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
   };
 
   const defaultRootSemantic: RootSemantic = {
-    background: colorScheme.surface,
-    text: colorScheme.onSurface,
+    background: hexFromArgb(theme.surface),
+    text: hexFromArgb(theme.onSurface),
   };
   const defaultSliderSemantic: SliderSemantic = {
     normal: {
@@ -272,10 +128,10 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
         gap: '0.75rem',
         height: '1.25rem',
         filled: {
-          background: colorScheme.primary,
+          background: hexFromArgb(theme.primary),
         },
         unfilled: {
-          background: colorScheme.secondaryContainer,
+          background: hexFromArgb(theme.secondaryContainer),
         },
         'border-radius': '1.25rem',
         'border-radius-inner': '0.25rem',
@@ -283,7 +139,7 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
       handle: {
         width: '0.25rem',
         height: '2.5rem',
-        background: colorScheme.primary,
+        background: hexFromArgb(theme.primary),
         'border-radius': '1rem',
       },
       opacity: '1',
@@ -301,46 +157,46 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
       opacity: '0.5',
     },
     focus: {
-      outline: `2px solid ${colorScheme.outline}`,
+      outline: `2px solid ${hexFromArgb(theme.outline)}`,
       'outline-offset': '2px',
     },
   };
 
   const defaultSelectSemantic: SelectSemantic = {
     normal: {
-      background: colorScheme.surfaceContainerHigh,
+      background: hexFromArgb(theme.surfaceContainerHigh),
       'border-radius': layoutScheme.borderRadiusSmall,
       width: '16rem',
       height: '2.75rem',
       outline: `2px solid transparent`,
       label: {
-        color: colorScheme.onSurfaceVariant,
+        color: hexFromArgb(theme.onSurfaceVariant),
         top: '0.375rem',
       },
       'icon-padding': '0.25rem',
-      'icon-color': colorScheme.onSurfaceVariant,
+      'icon-color': hexFromArgb(theme.onSurfaceVariant),
       padding: { left: '0.75rem', top: '0.25rem', right: '0.75rem', bottom: '0.25rem' },
       'padding-with-label': { top: '0.875rem', bottom: '0.25rem' },
-      'text-empty': colorScheme.onSurfaceVariant,
-      'text-filled': colorScheme.onSurface,
+      'text-empty': hexFromArgb(theme.onSurfaceVariant),
+      'text-filled': hexFromArgb(theme.onSurface),
       opacity: '1',
     },
     hovered: {
-      background: colorScheme.surfaceContainerHighest,
+      background: hexFromArgb(theme.surfaceContainerHighest),
     },
     disabled: {
       opacity: '0.5',
     },
     focused: {
-      background: colorScheme.surfaceContainerHighest,
-      outline: `2px solid ${colorScheme.primary}`,
+      background: hexFromArgb(theme.surfaceContainerHighest),
+      outline: `2px solid ${hexFromArgb(theme.primary)}`,
       label: {
-        color: colorScheme.primary,
+        color: hexFromArgb(theme.primary),
       },
-      'icon-color': colorScheme.primary,
+      'icon-color': hexFromArgb(theme.primary),
     },
     dropdown: {
-      background: colorScheme.surfaceContainer,
+      background: hexFromArgb(theme.surfaceContainer),
       'border-radius': layoutScheme.borderRadius,
       'box-shadow': '0 4px 6px rgba(0, 0, 0, 0.1)',
       padding: '0.5rem',
@@ -348,16 +204,16 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
   };
 
   const defaultSideBarSemantic: SideBarSemantic = {
-    background: colorScheme.surfaceContainer,
-    text: colorScheme.onSurface,
+    background: hexFromArgb(theme.surfaceContainer),
+    text: hexFromArgb(theme.onSurface),
     border: 'none',
     padding: '0.5rem',
     'mask-background': 'rgba(0, 0, 0, 0.5)',
   };
 
   const defaultTooltipSemantic: TooltipSemantic = {
-    background: colorScheme.inverseSurface,
-    text: colorScheme.onInverseSurface,
+    background: hexFromArgb(theme.inverseSurface),
+    text: hexFromArgb(theme.inverseOnSurface),
     'border-radius': layoutScheme.borderRadius,
     'box-shadow': '0 4px 6px rgba(0, 0, 0, 0.1)',
     padding: '0.5rem',
@@ -367,27 +223,27 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
     normal: {
       off: {
         track: {
-          background: colorScheme.surfaceContainerHighest,
-          border: `2px solid ${colorScheme.outline}`,
+          background: hexFromArgb(theme.surfaceContainerHighest),
+          border: `2px solid ${hexFromArgb(theme.outline)}`,
           'border-radius': '1.5rem',
         },
         handle: {
           width: '0.875rem',
           height: '0.875rem',
-          background: colorScheme.outline,
+          background: hexFromArgb(theme.outline),
           'border-radius': '1rem',
         },
       },
       on: {
         track: {
-          background: colorScheme.primary,
+          background: hexFromArgb(theme.primary),
           border: '2px solid transparent',
           'border-radius': '1.5rem',
         },
         handle: {
           width: '1.25rem',
           height: '1.25rem',
-          background: colorScheme.onPrimary,
+          background: hexFromArgb(theme.onPrimary),
           'border-radius': '1rem',
         },
       },
@@ -416,7 +272,7 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
       opacity: '0.5',
     },
     focus: {
-      outline: `2px solid ${colorScheme.outline}`,
+      outline: `2px solid ${hexFromArgb(theme.outline)}`,
       'outline-offset': '2px',
     },
   };
@@ -426,28 +282,38 @@ export function createDefaultTheme(colorScheme: ColorScheme): FullTheme {
   };
 
   return {
-    semantic: {
-      root: defaultRootSemantic,
-      text: defaultTextSemantic,
-      button: defaultButtonSemantic,
-      card: defaultCardSemantic,
-      dialog: defaultDialogSemantic,
-      inputtext: defaultInputTextSemantic,
-      scrollbar: defaultScrollbarSemantic,
-      slider: defaultSliderSemantic,
-      select: defaultSelectSemantic,
-      sidebar: defaultSideBarSemantic,
-      tooltip: defaultTooltipSemantic,
-      toggle: defaultToggleSemantic,
-      dropdown: defaultDropdownSemantic,
-    },
+    root: defaultRootSemantic,
+    text: defaultTextSemantic,
+    button: defaultButtonSemantic,
+    card: defaultCardSemantic,
+    dialog: defaultDialogSemantic,
+    inputtext: defaultInputTextSemantic,
+    scrollbar: defaultScrollbarSemantic,
+    slider: defaultSliderSemantic,
+    select: defaultSelectSemantic,
+    sidebar: defaultSideBarSemantic,
+    tooltip: defaultTooltipSemantic,
+    toggle: defaultToggleSemantic,
+    dropdown: defaultDropdownSemantic,
   };
 }
+
 export const materialTheme: Theme = createMaterialTheme('#6750A4');
 
 export function createMaterialTheme(sourceColor: string): Theme {
   return {
-    light: createDefaultTheme(createMaterialColorScheme(sourceColor, false)),
-    dark: createDefaultTheme(createMaterialColorScheme(sourceColor, true)),
+    light: createDefaultTheme(createMaterialDynamicTheme(sourceColor, false)),
+    dark: createDefaultTheme(createMaterialDynamicTheme(sourceColor, true)),
   };
+}
+
+export function createMaterialDynamicTheme(sourceColor: string, isDark: boolean): DynamicScheme {
+  const themeColor = Hct.fromInt(argbFromHex(sourceColor));
+  const theme = new DynamicScheme({
+    sourceColorHct: themeColor,
+    variant: Variant.TONAL_SPOT,
+    contrastLevel: 0,
+    isDark,
+  });
+  return theme;
 }
