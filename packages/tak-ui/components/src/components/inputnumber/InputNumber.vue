@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { triggerRef } from 'vue';
-import { InputText } from '../inputtext';
+import { InputText } from '..';
 
 const model = defineModel<number>({ default: 0 });
 withDefaults(

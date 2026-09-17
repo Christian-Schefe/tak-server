@@ -16,7 +16,7 @@ const themeStyles = computed<StyleValue>(() => {
 </template>
 <style lang="css" scoped>
 .p-themed {
-  background-color: var(--p-color-background);
-  color: var(--p-color-text);
+  background-color: var(--p-root-background);
+  color: var(--p-root-text);
 }
 </style>

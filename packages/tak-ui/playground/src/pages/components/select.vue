@@ -33,5 +33,12 @@ import Page from '../../components/Page.vue';
       :options="Array.from({ length: 100 }, (_, i) => ({ label: `Option ${i + 1}`, value: i + 1 }))"
       :allow-empty-with-default="{ default: undefined }"
     />
+    <Select
+      :model-value="undefined"
+      placeholder="Select an option"
+      :options="Array.from({ length: 100 }, (_, i) => ({ label: `Option ${i + 1}`, value: i + 1 }))"
+      :allow-empty-with-default="{ default: undefined }"
+      disabled
+    />
   </Page>
 </template>

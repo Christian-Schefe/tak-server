@@ -5,7 +5,7 @@ import './style.css';
 
 import { createTakUI } from '@tak-ui-lib/components';
 import { LuComponent, LuHome, LuMoon, LuPaintbrush, LuSun } from 'vue-icons-plus/lu';
-import { materialTheme } from '@tak-ui-lib/themes';
+import { materialTheme } from '@tak-ui-lib/material';
 
 const app = createApp(Main);
 app.use(router);

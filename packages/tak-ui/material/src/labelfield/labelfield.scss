@@ -1,0 +1,118 @@
+.p-labelfield {
+  display: flex;
+  flex-direction: column;
+
+  &.p-labelfield-disabled {
+    opacity: var(--p-labelfield-disabled-opacity);
+  }
+
+  &.p-labelfield-has-icon-prepend {
+    .p-labelfield-slot {
+      padding-left: var(--p-labelfield-height);
+    }
+    .p-labelfield-label {
+      left: var(--p-labelfield-height);
+    }
+  }
+
+  &.p-labelfield-has-icon-append {
+    .p-labelfield-slot {
+      padding-right: var(--p-labelfield-height);
+    }
+  }
+
+  &.p-labelfield-has-label {
+    .p-labelfield-slot {
+      padding-top: var(--p-labelfield-padding-with-label-top);
+      padding-bottom: var(--p-labelfield-padding-with-label-bottom);
+    }
+  }
+
+  .p-labelfield-support-text {
+    font-size: 0.75rem;
+    line-height: 1;
+    color: var(--p-labelfield-support-color);
+    padding: var(--p-labelfield-support-padding);
+  }
+
+  .p-labelfield-inner {
+    margin: 0;
+    display: flex;
+    max-width: 100%;
+    position: relative;
+    align-items: center;
+    background-color: var(--p-labelfield-background);
+    border-radius: var(--p-labelfield-border-radius);
+    width: var(--p-labelfield-width);
+    height: var(--p-labelfield-height);
+    gap: var(--p-labelfield-gap);
+    outline: var(--p-labelfield-outline);
+    transition:
+      outline-color 0.15s ease,
+      background-color 0.15s ease;
+  }
+  &:focus-within {
+    .p-labelfield-inner {
+      outline: var(--p-labelfield-focus-outline);
+    }
+    .p-labelfield-label {
+      color: var(--p-labelfield-label-focus-color);
+    }
+    .p-labelfield-icon-prepend,
+    .p-labelfield-icon-append {
+      color: var(--p-labelfield-icon-focus-color);
+    }
+  }
+
+  .p-labelfield-container-inner {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+  }
+  .p-labelfield-slot {
+    border: none;
+    outline: none;
+    margin: 0;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1;
+    color: var(--p-labelfield-text-filled);
+    padding-left: var(--p-labelfield-padding-left);
+    padding-right: var(--p-labelfield-padding-right);
+    padding-top: var(--p-labelfield-padding-top);
+    padding-bottom: var(--p-labelfield-padding-bottom);
+
+    &::placeholder {
+      color: var(--p-labelfield-text-empty);
+    }
+  }
+  .p-labelfield-label {
+    font-size: 0.625rem;
+    line-height: 1;
+    transition: color 0.15s ease-in-out;
+    position: absolute;
+    left: var(--p-labelfield-padding-left);
+    top: var(--p-labelfield-label-top);
+    color: var(--p-labelfield-label-color);
+  }
+  .p-labelfield-icon-prepend,
+  .p-labelfield-icon-append {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: absolute;
+    color: var(--p-labelfield-icon-color);
+    width: var(--p-labelfield-height);
+    height: var(--p-labelfield-height);
+    padding: var(--p-labelfield-icon-padding);
+  }
+  .p-labelfield-icon-prepend {
+    left: 0;
+  }
+  .p-labelfield-icon-append {
+    right: 0;
+  }
+}

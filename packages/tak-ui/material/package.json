@@ -1,5 +1,5 @@
 {
-  "name": "@tak-ui-lib/themes",
+  "name": "@tak-ui-lib/material",
   "module": "src/index.ts",
   "types": "src/index.ts",
   "type": "module",

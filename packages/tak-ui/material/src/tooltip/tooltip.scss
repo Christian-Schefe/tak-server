@@ -1,0 +1,33 @@
+.v-enter-active,
+.v-leave-active {
+  transition: opacity 0.15s ease;
+}
+.v-enter-active .p-tooltip,
+.v-leave-active .p-tooltip {
+  transition: transform 0.15s ease;
+}
+
+.v-enter-from,
+.v-leave-to {
+  opacity: 0;
+}
+
+.v-enter-from .p-tooltip,
+.v-leave-to .p-tooltip {
+  transform: scale(0.9);
+}
+
+.p-tooltip-arrow {
+  position: absolute;
+  width: 0.5rem;
+  height: 0.5rem;
+  background-color: var(--p-tooltip-background);
+}
+
+.p-tooltip {
+  background-color: var(--p-tooltip-background);
+  color: var(--p-tooltip-text);
+  padding: var(--p-tooltip-padding);
+  border-radius: var(--p-tooltip-border-radius);
+  box-shadow: var(--p-tooltip-box-shadow);
+}

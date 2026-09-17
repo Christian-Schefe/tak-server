@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { InputText } from '@tak-ui-lib/components';
+import { InputText, LabelField } from '@tak-ui-lib/components';
 import { ref } from 'vue';
 import { LuSearch, LuX } from 'vue-icons-plus/lu';
 import Page from '../../components/Page.vue';
@@ -11,6 +11,9 @@ const inputTextValue = ref('');
     <h1>Input Text</h1>
     <h2>Normal</h2>
     <div class="flex gap-2 items-start flex-wrap">
+      <LabelField label="Label">
+        <p>Test</p>
+      </LabelField>
       <InputText placeholder="Enter text" label="Label" input-id="input1" />
       <InputText
         v-model="inputTextValue"

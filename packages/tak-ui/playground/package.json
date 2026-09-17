@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@tak-ui-lib/components": "workspace:*",
-    "@tak-ui-lib/themes": "workspace:*",
+    "@tak-ui-lib/material": "workspace:*",
     "@vueuse/core": "^14.3.0",
     "tailwindcss": "^4.3.3",
     "vue": "^3.5.39",

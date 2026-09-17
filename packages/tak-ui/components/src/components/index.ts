@@ -8,10 +8,10 @@ export * from './form';
 export * from './icon';
 export * from './inputnumber';
 export * from './inputtext';
+export * from './labelfield';
 export * from './select';
 export * from './sidebar';
 export * from './slider';
 export * from './themed';
 export * from './toggle';
 export * from './tooltip';
-

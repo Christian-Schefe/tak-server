@@ -1,0 +1,86 @@
+$variants: (
+  'off': '',
+  'on': '.p-toggle-on',
+);
+
+.p-toggle {
+  position: relative;
+  width: var(--p-toggle-track-width);
+  height: var(--p-toggle-track-height);
+
+  @each $variant, $variant-selector in $variants {
+    &#{$variant-selector} {
+      .p-toggle-track {
+        background-color: var(--p-toggle-track-#{$variant}-background);
+        border: var(--p-toggle-track-#{$variant}-border);
+      }
+      .p-toggle-handle {
+        width: var(--p-toggle-handle-#{$variant}-size);
+        height: var(--p-toggle-handle-#{$variant}-size);
+        background-color: var(--p-toggle-handle-#{$variant}-background);
+      }
+    }
+    &:active:not(.p-toggle-disabled) {
+      &#{$variant-selector} {
+        .p-toggle-handle {
+          width: var(--p-toggle-handle-#{$variant}-pressed-size);
+          height: var(--p-toggle-handle-#{$variant}-pressed-size);
+        }
+      }
+    }
+  }
+
+  &.p-toggle-disabled {
+    opacity: var(--p-toggle-disabled-opacity);
+    .p-toggle-input {
+      cursor: unset;
+    }
+  }
+
+  .p-toggle-handle {
+    left: calc(var(--p-toggle-track-height) / 2);
+  }
+  &.p-toggle-on .p-toggle-handle {
+    left: calc(100% - var(--p-toggle-track-height) / 2);
+  }
+
+  .p-toggle-track {
+    width: 100%;
+    height: 100%;
+    border-radius: var(--p-toggle-track-border-radius);
+    transition:
+      background-color 0.15s ease,
+      border 0.15s ease;
+  }
+
+  &:has(> .p-toggle-input:focus-visible) {
+    .p-toggle-track {
+      outline: var(--p-toggle-focus-outline);
+      outline-offset: var(--p-toggle-focus-outline-offset);
+    }
+  }
+
+  .p-toggle-handle {
+    top: 50%;
+    position: absolute;
+    border-radius: var(--p-toggle-handle-border-radius);
+    transition:
+      left 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+      background-color 0.15s ease,
+      width 0.15s ease,
+      height 0.15s ease,
+      border 0.15s ease;
+    transform: translate(-50%, -50%);
+  }
+
+  .p-toggle-input {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    opacity: 0;
+    z-index: 1;
+    cursor: pointer;
+  }
+}

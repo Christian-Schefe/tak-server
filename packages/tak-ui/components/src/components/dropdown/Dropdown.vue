@@ -62,24 +62,3 @@ onUnmounted(() => {
     </Transition>
   </Teleport>
 </template>
-<style lang="css" scoped>
-.v-enter-active,
-.v-leave-active {
-  transition: opacity 0.15s ease;
-}
-
-.v-enter-active .p-dropdown,
-.v-leave-active .p-dropdown {
-  transition: transform 0.15s ease;
-}
-
-.v-enter-from,
-.v-leave-to {
-  opacity: 0;
-}
-
-.v-enter-from .p-dropdown,
-.v-leave-to .p-dropdown {
-  transform: var(--p-dropdown-transform-enter-from);
-}
-</style>
