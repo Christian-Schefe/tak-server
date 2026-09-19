@@ -1,11 +1,7 @@
 <script setup lang="ts">
 import { useChatHistory, useSendChatMessage, type ChatMessageConversation } from '@/api/chat';
 import { areTimestampsDifferentMinutes } from '@/utils/time';
-import { Form, type FormFieldState, type FormSubmitEvent } from '@primevue/forms';
 import { isToday } from 'date-fns';
-import Button from 'primevue/button';
-import ScrollPanel from 'primevue/scrollpanel';
-import Textarea from 'primevue/textarea';
 import { computed, useTemplateRef, watch } from 'vue';
 import { LuSend } from 'vue-icons-plus/lu';
 import VueMarkdown from 'vue-markdown-render';

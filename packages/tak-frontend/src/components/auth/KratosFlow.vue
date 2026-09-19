@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useKratosFlow, type KratosFlowType } from '@/features/auth.ts';
-import Skeleton from 'primevue/skeleton';
 import KratosForm from './KratosForm.vue';
 
 const props = withDefaults(

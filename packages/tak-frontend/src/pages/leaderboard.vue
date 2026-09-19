@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { usePlayerLeaderboard } from '@/api/player';
 import PlayerLabel from '@/components/PlayerLabel.vue';
-import Paginator from 'primevue/paginator';
 import { ref } from 'vue';
 
 const first = ref(0);

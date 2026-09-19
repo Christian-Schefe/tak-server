@@ -30,9 +30,8 @@ import {
   type TakGameSettings,
 } from '@/tak-core';
 import { actionFromString, actionToString, gameResultFromString } from '@/tak-core/ptn';
+import { Button } from '@tak-ui-lib/components';
 import { produce } from 'immer';
-import Button from 'primevue/button';
-import Divider from 'primevue/divider';
 import { computed, markRaw, ref, watch } from 'vue';
 import { LuSettings } from 'vue-icons-plus/lu';
 import { useRoute } from 'vue-router';

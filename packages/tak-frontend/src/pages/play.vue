@@ -3,7 +3,7 @@ import { useAccount } from '@/api/auth';
 import { useAcceptSeek, useCreateSeek, useDeleteSeek, useSeeks, type SeekInfo } from '@/api/seek';
 import CreateSeekModal from '@/components/CreateSeekModal.vue';
 import SeekSummary from '@/components/SeekSummary.vue';
-import Button from 'primevue/button';
+import { Button } from '@tak-ui-lib/components';
 import { computed, ref } from 'vue';
 
 const { data: seeks } = useSeeks();
@@ -50,7 +50,7 @@ const createSeekDialogVisible = ref(false);
       <div class="flex items-center">
         <h1 class="text-2xl font-semibold">Your Seeks</h1>
         <div class="grow"></div>
-        <Button label="Create Seek" size="small" @click="createSeekDialogVisible = true" />
+        <Button label="Create Seek" @click="createSeekDialogVisible = true" />
       </div>
       <SeekSummary
         v-for="seek in seekData.ownSeeks"

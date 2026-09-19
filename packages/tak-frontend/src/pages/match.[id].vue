@@ -7,7 +7,6 @@ import GameSummary from '@/components/GameSummary.vue';
 import MatchReadyTagOrButton from '@/components/MatchReadyTagOrButton.vue';
 import MatchSummary from '@/components/MatchSummary.vue';
 import { gameResultFromString } from '@/tak-core/ptn';
-import Tag from 'primevue/tag';
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 

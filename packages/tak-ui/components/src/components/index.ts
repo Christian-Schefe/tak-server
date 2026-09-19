@@ -1,4 +1,5 @@
 export * from './app';
+export * from './badge';
 export * from './button';
 export * from './buttongroup';
 export * from './card';

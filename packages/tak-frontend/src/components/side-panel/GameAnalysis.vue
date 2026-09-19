@@ -2,7 +2,7 @@
 import { checkEngineSettings, evaluatePosition, initializeEngine, stopEngine } from '@/api/engine';
 import { type TakAction, type TakBaseGame } from '@/tak-core';
 import { actionFromString } from '@/tak-core/ptn';
-import Button from 'primevue/button';
+import { Button } from '@tak-ui-lib/components';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
 export interface EvalVariation {

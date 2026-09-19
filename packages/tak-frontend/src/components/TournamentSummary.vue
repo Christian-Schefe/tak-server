@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Tournament } from '@/api/tournaments.ts';
 import { timeControlToString } from '@/utils/time.ts';
-import Button from 'primevue/button';
+import { Button } from '@tak-ui-lib/components';
 import { Fa6ChessBoard } from 'vue-icons-plus/fa6';
 import { LuClock, LuEye, LuScale, LuSwords } from 'vue-icons-plus/lu';
 

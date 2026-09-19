@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import type { TakBaseGame } from '@/tak-core/base.ts';
 import type { TakAction, TakBaseGameSettings, TakGame, TakPlayer } from '@/tak-core/index.ts';
-import Button from 'primevue/button';
-import Dialog from 'primevue/dialog';
 import { ref } from 'vue';
 import { LuComputer, LuInfo, LuMessageCircle, LuSettings } from 'vue-icons-plus/lu';
 import GameSettingsConfigure from './GameSettingsConfigure.vue';
@@ -12,6 +10,7 @@ import GameClock from './GameClock.vue';
 import MoveHistory from './MoveHistory.vue';
 import type { IconType } from 'vue-icons-plus/lib';
 import type { SidePanelSection, SidePanelSectionType } from '@/features/sidePanel.ts';
+import { Button, Dialog } from '@tak-ui-lib/components';
 
 defineProps<{
   game: TakBaseGame;
@@ -72,19 +71,7 @@ const icons: Record<SidePanelSectionType, IconType> = {
       </template>
     </Button>
   </div>
-  <Dialog
-    v-model:visible="visible"
-    dismissable-mask
-    :header="openDialog ? sectionNames[openDialog.type] : ''"
-    :draggable="false"
-    modal
-    :style="{
-      width: '90vw',
-      maxWidth: '600px',
-      height: openDialog && growingSection[openDialog.type] ? '90vh' : undefined,
-      maxHeight: '800px',
-    }"
-  >
+  <Dialog v-model:visible="visible" :header="openDialog ? sectionNames[openDialog.type] : ''">
     <GameSettingsConfigure
       v-if="openDialog?.type === 'configure'"
       @apply="$emit('settingsSubmit', $event)"

@@ -15,10 +15,9 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
-    "@eslint/js": "^10.0.1",
+    "@tak-ui-lib/components": "workspace:*",
+    "@tak-ui-lib/material": "workspace:*",
     "@ory/client": "^1.22.37",
-    "@primeuix/themes": "^2.0.3",
-    "@primevue/forms": "^4.5.5",
     "@tailwindcss/vite": "^4.2.4",
     "@tanstack/vue-query": "^5.100.8",
     "@tresjs/cientos": "^5.7.0",
@@ -36,9 +35,7 @@
     "immer": "^11.1.4",
     "jwt-decode": "^4.0.0",
     "pinia": "^3.0.4",
-    "primevue": "^4.5.5",
     "tailwindcss": "^4.2.4",
-    "tailwindcss-primeui": "^0.6.1",
     "three": "^0.184.0",
     "three-stdlib": "^2.36.1",
     "typescript-eslint": "^8.59.1",

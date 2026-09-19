@@ -4,11 +4,6 @@ import { themes } from '@/features/appTheme';
 import { board2dThemes } from '@/features/board2dThemes';
 import { board3dPiecePresets, board3dTilesPresets } from '@/features/board3dResources';
 import { ninja2dThemes } from '@/features/ninjaThemes';
-import Divider from 'primevue/divider';
-import IftaLabel from 'primevue/iftalabel';
-import Select from 'primevue/select';
-import Slider from 'primevue/slider';
-import ToggleButton from 'primevue/togglebutton';
 import { computed } from 'vue';
 
 const settingsStore = useSettingsStore();

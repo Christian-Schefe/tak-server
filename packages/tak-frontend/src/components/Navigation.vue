@@ -1,39 +1,34 @@
 <script setup lang="ts">
 import { useAccount } from '@/api/auth';
-import PlayerLabel from '@/components/PlayerLabel.vue';
-import { breakpointsTailwind, useBreakpoints } from '@vueuse/core';
-import Button from 'primevue/button';
-import Drawer from 'primevue/drawer';
-import { computed, ref, watch } from 'vue';
+import { useGames } from '@/api/game';
+import { useSeeks } from '@/api/seek';
+import { Button } from '@tak-ui-lib/components';
+import { computed } from 'vue';
 import {
   LuLogIn,
-  LuMenu,
+  LuMedal,
   LuPlay,
   LuPuzzle,
   LuSettings,
   LuTrophy,
   LuTv,
   LuUser,
-  LuZoomIn,
   LuUsers,
-  LuMedal,
+  LuZoomIn,
 } from 'vue-icons-plus/lu';
-import Divider from 'primevue/divider';
-import Badge from 'primevue/badge';
-import { useGames } from '@/api/game';
-import { useSeeks } from '@/api/seek';
+import { RouterLink, useRoute } from 'vue-router';
+import PlayerLabel from './PlayerLabel.vue';
 
-type MenuItem =
-  | {
-      type: undefined;
-      label: string;
-      icon: string;
-      routerLink: string;
-      badge?: string;
-    }
-  | {
-      type: 'separator';
-    };
+interface MenuItem {
+  label: string;
+  icon: string;
+  path: string;
+  badge?: string;
+}
+
+defineEmits<{
+  navigate: [];
+}>();
 
 const { data: account } = useAccount();
 
@@ -63,7 +58,7 @@ const items = computed<MenuItem[]>(() => {
     {
       label: 'Play',
       icon: 'play',
-      routerLink: '/play',
+      path: '/play',
       badge:
         opponentSeekCount.value !== undefined
           ? `${opponentSeekCount.value.toString()} Seeks`
@@ -72,48 +67,45 @@ const items = computed<MenuItem[]>(() => {
     {
       label: 'Watch',
       icon: 'watch',
-      routerLink: '/watch',
+      path: '/watch',
       badge: games.value ? `${games.value.length.toString()} Games` : undefined,
     },
     {
       label: 'Analysis',
       icon: 'analysis',
-      routerLink: '/analysis',
+      path: '/analysis',
     },
     {
       label: 'Community',
       icon: 'community',
-      routerLink: '/community',
+      path: '/community',
     },
     {
       label: 'Leaderboard',
       icon: 'leaderboard',
-      routerLink: '/leaderboard',
+      path: '/leaderboard',
     },
     {
       label: 'Puzzles',
       icon: 'puzzle',
-      routerLink: '/puzzle',
+      path: '/puzzle',
     },
     {
       label: 'Tournaments',
       icon: 'tournament',
-      routerLink: '/tournaments',
-    },
-    {
-      type: 'separator',
+      path: '/tournaments',
     },
     {
       label: 'Settings',
       icon: 'settings',
-      routerLink: '/settings',
+      path: '/settings',
     },
     ...(account.value !== undefined && !account.value.isGuest
       ? [
           {
             label: 'Account',
             icon: 'account',
-            routerLink: '/account',
+            path: '/account',
           },
         ]
       : []),
@@ -122,89 +114,43 @@ const items = computed<MenuItem[]>(() => {
           {
             label: 'Login',
             icon: 'login',
-            routerLink: '/login',
+            path: '/login',
           },
         ]
       : []),
   ];
 });
 
-const breakpoint = useBreakpoints(breakpointsTailwind);
+const route = useRoute();
 
-const drawerVisibleToggle = ref(false);
-const drawerToggleable = breakpoint.smaller('lg');
-const drawerVisible = computed(() => {
-  if (drawerToggleable.value) {
-    return drawerVisibleToggle.value;
-  }
-  return true;
-});
-watch(drawerToggleable, (isSmaller) => {
-  if (!isSmaller) {
-    drawerVisibleToggle.value = false;
-  }
-});
+function isActive(path: string) {
+  return route.path === path;
+}
 </script>
 
 <template>
-  <div
-    class="w-full h-full flex items-center lg:hidden border-b bg-content border-surface z-10000 relative"
-  >
-    <Button
-      class="aspect-square! h-full!"
-      severity="secondary"
-      variant="text"
-      @click="drawerVisibleToggle = !drawerVisibleToggle"
-    >
-      <LuMenu class="w-5 h-5" />
-    </Button>
-    <RouterLink class="text-2xl font-bold ml-2 my-2" to="/" :draggable="false">Playtak</RouterLink>
-  </div>
-  <Drawer
-    :visible="drawerVisible"
-    :modal="drawerToggleable"
-    class="w-54!"
-    @update:visible="drawerVisibleToggle = $event"
-  >
-    <template #container>
-      <RouterLink v-if="!drawerToggleable" class="p-2 w-full" to="/">
-        <div class="w-full p-2">
-          <img class="w-full pt-2 px-4 dark:invert" src="/logo.svg" />
-        </div>
-      </RouterLink>
-      <div v-else class="h-12"></div>
-      <div class="grow flex flex-col p-2 gap-1 items-stretch">
-        <template v-for="(item, index) in items" :key="index">
-          <Button v-slot="slotProps" as-child variant="text" severity="contrast">
-            <RouterLink
-              v-if="item.type !== 'separator'"
-              v-ripple
-              :class="slotProps.class"
-              class="flex items-center gap-2 cursor-pointer"
-              :to="item.routerLink"
-              :draggable="false"
-            >
-              <component :is="icons[item.icon]" class="mr-2 w-5 h-5"></component>
-              <p class="grow text-left">
-                {{ item.label }}
-              </p>
-              <Badge v-if="item.badge" :value="item.badge" size="small"></Badge>
-            </RouterLink>
-            <div v-else class="px-2">
-              <Divider />
-            </div>
-          </Button>
-        </template>
-        <div class="grow"></div>
-        <div class="p-2">
-          <PlayerLabel
-            v-if="account"
-            :pid="account.accountId"
-            type="account"
-            :show-rating="false"
-          />
-        </div>
+  <div class="grow flex flex-col gap-2">
+    <RouterLink class="p-2 w-full" to="/">
+      <div class="w-full p-2">
+        <img class="w-full pt-2 px-4 dark:invert" src="/logo.svg" />
       </div>
+    </RouterLink>
+    <template v-for="(item, index) in items" :key="index">
+      <Button
+        variant="text"
+        :severity="isActive(item.path) ? 'primary' : 'secondary'"
+        :as="{ component: RouterLink, props: { to: item.path } }"
+        :label="item.label"
+        @click="$emit('navigate')"
+      >
+        <template v-if="item.icon" #icon>
+          <component :is="icons[item.icon]" />
+        </template>
+      </Button>
     </template>
-  </Drawer>
+    <div class="grow"></div>
+    <div class="p-2">
+      <PlayerLabel v-if="account" :pid="account.accountId" type="account" :show-rating="false" />
+    </div>
+  </div>
 </template>

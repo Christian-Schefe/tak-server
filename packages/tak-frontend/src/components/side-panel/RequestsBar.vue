@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import type { GameRequest, GameRequests, GameRequestType } from '@/api/game';
 import type { TakPlayer } from '@/tak-core';
-import Button from 'primevue/button';
-import ButtonGroup from 'primevue/buttongroup';
+import { Button, ButtonGroup } from '@tak-ui-lib/components';
 import { computed } from 'vue';
 import { LuHeartHandshake, LuUndo2, LuCheck, LuClock } from 'vue-icons-plus/lu';
 

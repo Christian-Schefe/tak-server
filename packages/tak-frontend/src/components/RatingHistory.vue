@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { useRatingHistory } from '@/api/player';
 import { endOfDay, startOfDay, subDays, subYears } from 'date-fns';
-import Chart from 'primevue/chart';
-import Select from 'primevue/select';
 import { computed, ref } from 'vue';
 import type { ChartConfiguration } from 'chart.js';
+import { Select } from '@tak-ui-lib/components';
 
 const props = defineProps<{
   playerId: string;
@@ -137,12 +136,7 @@ const ratingHistory = computed(() => {
 </script>
 <template>
   <div class="flex flex-col gap-4">
-    <Select
-      v-model="ratingRange"
-      :options="ratingRangeOptions"
-      option-label="label"
-      option-value="value"
-    />
+    <Select v-model="ratingRange" :options="ratingRangeOptions" />
     <Chart
       type="line"
       :data="ratingHistory.data"

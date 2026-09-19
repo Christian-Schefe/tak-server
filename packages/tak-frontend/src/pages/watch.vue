@@ -3,7 +3,6 @@ import { useGames } from '@/api/game';
 import { useGameHistory, type GameHistory } from '@/api/gameHistory';
 import GameSummary from '@/components/GameSummary.vue';
 import { gameResultFromString } from '@/tak-core/ptn';
-import Paginator from 'primevue/paginator';
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 

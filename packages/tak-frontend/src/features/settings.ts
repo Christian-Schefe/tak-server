@@ -1,15 +1,9 @@
-import {
-  darkModeOptions,
-  primeVueThemeIds,
-  themes,
-  type DarkModeOption,
-  type PrimeVueThemeId,
-} from '@/features/appTheme';
+import { appThemeIds, darkModeOptions, themes, type AppThemeId } from '@/features/appTheme';
 import { board2dThemeIds } from '@/features/board2dThemes';
 import { board3dPiecePresets, board3dTilesPresets } from '@/features/board3dResources';
 import { ninja2dThemes } from '@/features/ninjaThemes';
-import { usePreset } from '@primeuix/themes';
-import { useMediaQuery, useStorage } from '@vueuse/core';
+import { useThemeManager, type DarkMode } from '@tak-ui-lib/components';
+import { useStorage } from '@vueuse/core';
 import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
 import { z } from 'zod';
@@ -19,7 +13,7 @@ function enumOrDefault<T extends string>(values: readonly T[], defaultValue: T) 
 }
 
 const settingsSchema = z.object({
-  theme: enumOrDefault(primeVueThemeIds, 'default'),
+  theme: enumOrDefault(appThemeIds, 'default'),
   darkMode: enumOrDefault(darkModeOptions, 'system'),
   boardType: enumOrDefault(['ninja', '2d', '3d'], '2d'),
   boardTypeSettings: z.object({
@@ -106,21 +100,15 @@ export const useSettingsStore = defineStore('settings', () => {
     { immediate: true, deep: true },
   );
 
-  const prefersDark = useMediaQuery('(prefers-color-scheme: dark)');
-  watch(prefersDark, () => {
-    if (settings.value.darkMode === 'system') {
-      applyDarkMode('system');
-    }
-  });
+  const themeManager = useThemeManager();
 
-  function applyTheme(themeId: PrimeVueThemeId) {
+  function applyTheme(themeId: AppThemeId) {
     const theme = themes[themeId];
-    usePreset(theme.primengTheme);
+    themeManager.setTheme(theme.theme);
   }
 
-  function applyDarkMode(mode: DarkModeOption) {
-    const isDark = mode === 'dark' || (mode === 'system' && prefersDark.value);
-    document.documentElement.classList.toggle('dark-mode', isDark);
+  function applyDarkMode(mode: DarkMode) {
+    themeManager.setDarkMode(mode);
   }
 
   function initializeSettings() {
@@ -128,12 +116,12 @@ export const useSettingsStore = defineStore('settings', () => {
     applyDarkMode(settings.value.darkMode);
   }
 
-  function setTheme(themeId: PrimeVueThemeId) {
+  function setTheme(themeId: AppThemeId) {
     settings.value.theme = themeId;
     applyTheme(themeId);
   }
 
-  function setDarkMode(mode: DarkModeOption) {
+  function setDarkMode(mode: DarkMode) {
     settings.value.darkMode = mode;
     applyDarkMode(mode);
   }

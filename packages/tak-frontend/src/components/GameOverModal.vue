@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { useMatchSetPlayerReady } from '@/api/match';
 import type { TakGameResult } from '@/tak-core';
-import Button from 'primevue/button';
-import Dialog from 'primevue/dialog';
+import { Button, Dialog } from '@tak-ui-lib/components';
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -59,14 +58,7 @@ function rematch() {
 }
 </script>
 <template>
-  <Dialog
-    v-model:visible="visible"
-    dismissable-mask
-    header="Game Over"
-    :draggable="false"
-    modal
-    :style="{ width: '90vw', maxWidth: '600px' }"
-  >
+  <Dialog v-model:visible="visible" header="Game Over">
     <div class="w-full h-[30vh] flex flex-col">
       <div class="w-full grow">
         <p>{{ resultText }}</p>

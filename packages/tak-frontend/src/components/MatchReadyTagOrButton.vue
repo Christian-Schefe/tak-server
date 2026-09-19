@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import Button from 'primevue/button';
-import Tag from 'primevue/tag';
+import { Button } from '@tak-ui-lib/components';
 
 defineProps<{
   isOnline: boolean;

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useCreateTournament, useTournaments } from '@/api/tournaments';
 import TournamentSummary from '@/components/TournamentSummary.vue';
-import Button from 'primevue/button';
+import { Button } from '@tak-ui-lib/components';
 import { useRouter } from 'vue-router';
 
 const { data: tournaments } = useTournaments();

@@ -6,10 +6,6 @@ import GameAnalysis from './GameAnalysis.vue';
 import MoveHistory from './MoveHistory.vue';
 import type { TakBaseGame } from '@/tak-core/base.ts';
 import type { TakAction, TakBaseGameSettings, TakGame, TakPlayer } from '@/tak-core/index.ts';
-import Accordion from 'primevue/accordion';
-import AccordionPanel from 'primevue/accordionpanel';
-import AccordionHeader from 'primevue/accordionheader';
-import AccordionContent from 'primevue/accordioncontent';
 import GameClock from './GameClock.vue';
 import type { SidePanelSection, SidePanelSectionType } from '@/features/sidePanel.ts';
 

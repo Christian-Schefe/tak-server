@@ -2,12 +2,12 @@
 import type { GameMetadata } from '@/api/game';
 import { type TakGameState, type TakPlayer } from '@/tak-core/index.ts';
 import { timeControlToString } from '@/utils/time.ts';
-import Button from 'primevue/button';
 import { computed } from 'vue';
 import { Fa6ChessBoard } from 'vue-icons-plus/fa6';
 import { LuCalendar, LuClock, LuEye, LuScale } from 'vue-icons-plus/lu';
 import GameSettingsPopover from './GameSettingsPopover.vue';
 import PlayerLabel from './PlayerLabel.vue';
+import { Button } from '@tak-ui-lib/components';
 
 const props = defineProps<{
   gameMetadata: GameMetadata;

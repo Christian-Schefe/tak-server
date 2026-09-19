@@ -13,11 +13,6 @@ import {
 import MatchSummary from '@/components/MatchSummary.vue';
 import PlayerLabel from '@/components/PlayerLabel.vue';
 import TournamentSummary from '@/components/TournamentSummary.vue';
-import Button from 'primevue/button';
-import Tab from 'primevue/tab';
-import TabList from 'primevue/tablist';
-import Tabs from 'primevue/tabs';
-import Tag from 'primevue/tag';
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 

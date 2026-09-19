@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { InputAutoCompleteAttribute } from 'vue';
+import type { InputAutoCompleteAttribute, InputTypeHTMLAttribute } from 'vue';
 import { LabelField } from '..';
 import { useFormValue } from '../../form';
 
@@ -12,7 +12,10 @@ const props = withDefaults(
     label?: string | undefined;
     inputId?: string | undefined;
     disabled?: boolean;
+    required?: boolean;
+    hidden?: boolean;
     autocomplete?: InputAutoCompleteAttribute | undefined;
+    type?: InputTypeHTMLAttribute | undefined;
   }>(),
   {
     name: undefined,
@@ -21,7 +24,10 @@ const props = withDefaults(
     label: undefined,
     inputId: undefined,
     disabled: false,
+    required: false,
+    hidden: false,
     autocomplete: undefined,
+    type: 'text',
   },
 );
 const emit = defineEmits<{
@@ -37,7 +43,13 @@ function onInputChange(event: Event) {
 useFormValue(model, () => props.name);
 </script>
 <template>
-  <LabelField :label="label" :label-for="inputId" :support-text="supportText" :disabled="disabled">
+  <LabelField
+    :label="label"
+    :label-for="inputId"
+    :support-text="supportText"
+    :disabled="disabled"
+    :hidden="hidden"
+  >
     <input
       :id="inputId"
       v-model="model"
@@ -45,8 +57,10 @@ useFormValue(model, () => props.name);
       class="p-inputtext"
       :placeholder="placeholder"
       :disabled="disabled"
+      :required="required"
       :autocomplete="autocomplete"
-      type="text"
+      :hidden="hidden"
+      :type="type"
       @change="onInputChange"
     />
     <template v-if="$slots['icon-prepend']" #icon-prepend>

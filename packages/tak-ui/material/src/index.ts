@@ -13,6 +13,7 @@ import './style.scss';
 import { createToggleTokens } from './toggle';
 import { createLabelFieldTokens } from './labelfield';
 import { createSelectTextTokens } from './select';
+import { createBadgeTokens } from './badge';
 
 function createDefaultTheme(theme: DynamicScheme) {
   return {
@@ -28,6 +29,7 @@ function createDefaultTheme(theme: DynamicScheme) {
     dropdown: createDropdownTokens(),
     labelfield: createLabelFieldTokens(theme),
     select: createSelectTextTokens(theme),
+    badge: createBadgeTokens(theme),
   };
 }
 

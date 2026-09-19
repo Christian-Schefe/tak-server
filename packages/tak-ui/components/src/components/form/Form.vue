@@ -17,7 +17,10 @@ const emit = defineEmits<{
 
 const { ctx: formCtx, resetForm } = provideFormContext(() => props.initialValues);
 
-function onSubmit() {
+function onSubmit(event: SubmitEvent) {
+  if (event.submitter instanceof HTMLButtonElement && event.submitter.name !== '') {
+    formCtx.value.data[event.submitter.name] = event.submitter.value;
+  }
   const result = props.validator(formCtx.value.data);
   if (result.type === 'success') {
     formCtx.value.errors = {};

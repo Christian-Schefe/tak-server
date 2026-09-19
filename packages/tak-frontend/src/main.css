@@ -1,6 +1,5 @@
 @import 'tailwindcss';
-@import 'tailwindcss-primeui';
-@custom-variant dark (&:where(.dark-mode, .dark-mode *));
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @font-face {
   font-family: 'Inter';
@@ -10,10 +9,14 @@
   font-display: swap;
 }
 
-html {
+:root {
   font-family: 'Inter', sans-serif;
 }
 
-.bg-content {
-  background-color: var(--p-content-background);
+h1 {
+  @apply text-2xl font-semibold;
+}
+
+h2 {
+  @apply text-lg font-semibold;
 }

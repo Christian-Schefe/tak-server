@@ -2,6 +2,10 @@
   display: flex;
   flex-direction: column;
 
+  &.p-labelfield-hidden {
+    display: none;
+  }
+
   &.p-labelfield-disabled {
     opacity: var(--p-labelfield-disabled-opacity);
   }
@@ -38,12 +42,10 @@
   .p-labelfield-inner {
     margin: 0;
     display: flex;
-    max-width: 100%;
     position: relative;
     align-items: center;
     background-color: var(--p-labelfield-background);
     border-radius: var(--p-labelfield-border-radius);
-    width: var(--p-labelfield-width);
     height: var(--p-labelfield-height);
     gap: var(--p-labelfield-gap);
     outline: var(--p-labelfield-outline);

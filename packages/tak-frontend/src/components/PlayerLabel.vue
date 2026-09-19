@@ -3,8 +3,7 @@ import { useIsAccountOnline } from '@/api/account';
 import { useAccountOrPlayerInfo } from '@/api/player';
 import { useProfile, useProfilePictureUrl } from '@/api/profile';
 import FlagIcon from '@/components/FlagIcon.vue';
-import OverlayBadge from 'primevue/overlaybadge';
-import Skeleton from 'primevue/skeleton';
+import { Badge } from '@tak-ui-lib/components';
 
 const props = withDefaults(
   defineProps<{
@@ -40,9 +39,9 @@ const isOnline = useIsAccountOnline(() => playerInfo.value?.accountId);
     :draggable="false"
     class="flex gap-2 items-center justify-start hover:underline"
   >
-    <OverlayBadge v-if="showProfilePicture && isOnline === true" severity="success">
+    <Badge v-if="showProfilePicture && isOnline === true" severity="primary">
       <img :src="avatarSrc" alt="Profile Picture" class="w-8 h-8 rounded-sm pointer-events-none" />
-    </OverlayBadge>
+    </Badge>
     <img
       v-else-if="showProfilePicture"
       :src="avatarSrc"

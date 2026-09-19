@@ -1,8 +1,5 @@
 <script setup lang="ts">
 import { getDefaultReserve, type TakBaseGameSettings } from '@/tak-core';
-import { Form, type FormSubmitEvent } from '@primevue/forms';
-import Button from 'primevue/button';
-import SelectButton from 'primevue/selectbutton';
 import { ref } from 'vue';
 import { z } from 'zod';
 

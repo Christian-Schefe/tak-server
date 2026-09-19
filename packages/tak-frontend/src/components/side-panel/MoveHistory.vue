@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import type { TakBaseGame } from '@/tak-core';
 import { actionToString, gameResultToString } from '@/tak-core/ptn';
-import Button from 'primevue/button';
-import ButtonGroup from 'primevue/buttongroup';
-import ScrollPanel from 'primevue/scrollpanel';
+import { Button, ButtonGroup } from '@tak-ui-lib/components';
 import { computed, onBeforeUnmount, onMounted } from 'vue';
 import { LuChevronLeft, LuChevronRight, LuChevronsLeft, LuChevronsRight } from 'vue-icons-plus/lu';
 
@@ -99,7 +97,7 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <div class="h-full flex flex-col gap-2">
-    <ScrollPanel class="h-0 grow">
+    <div class="h-0 grow overflow-y-auto">
       <div
         v-for="(row, rowIndex) in historyItems"
         :key="rowIndex"
@@ -128,7 +126,7 @@ onBeforeUnmount(() => {
           </div>
         </template>
       </div>
-    </ScrollPanel>
+    </div>
     <div class="flex justify-center gap-2">
       <ButtonGroup>
         <Button class="w-8! h-8! p-1!" severity="secondary" @click="onClickMove(0)">

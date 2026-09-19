@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import Card from 'primevue/card';
+import { Card } from '@tak-ui-lib/components';
 import { Fa6Discord } from 'vue-icons-plus/fa6';
 import { LuGraduationCap } from 'vue-icons-plus/lu';
 </script>
@@ -7,30 +7,26 @@ import { LuGraduationCap } from 'vue-icons-plus/lu';
 <template>
   <div class="w-full mx-auto max-w-6xl p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
     <Card class="w-full parallax-bg">
-      <template #content>
-        <a
-          class="w-full h-40 flex items-center justify-center cursor-pointer hover:underline text-white"
-          href="https://ustak.org/play-beautiful-game-tak/"
-        >
-          <div class="flex items-center gap-2 text-3xl font-semibold">
-            <LuGraduationCap class="w-10 h-10" />
-            <p>Learn to play Tak</p>
-          </div>
-        </a>
-      </template>
+      <a
+        class="w-full h-40 flex items-center justify-center cursor-pointer hover:underline text-white"
+        href="https://ustak.org/play-beautiful-game-tak/"
+      >
+        <div class="flex items-center gap-2 text-3xl font-semibold">
+          <LuGraduationCap class="w-10 h-10" />
+          <p>Learn to play Tak</p>
+        </div>
+      </a>
     </Card>
     <Card class="w-full discord-bg">
-      <template #content>
-        <a
-          class="w-full h-40 flex items-center justify-center cursor-pointer hover:underline text-white"
-          href="https://discord.gg/2xEt42X"
-        >
-          <div class="flex items-center gap-2 text-3xl font-semibold">
-            <Fa6Discord class="w-10 h-10" />
-            <p>Join our community</p>
-          </div>
-        </a>
-      </template>
+      <a
+        class="w-full h-40 flex items-center justify-center cursor-pointer hover:underline text-white"
+        href="https://discord.gg/2xEt42X"
+      >
+        <div class="flex items-center gap-2 text-3xl font-semibold">
+          <Fa6Discord class="w-10 h-10" />
+          <p>Join our community</p>
+        </div>
+      </a>
     </Card>
   </div>
 </template>

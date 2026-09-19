@@ -10,12 +10,12 @@ import {
 } from '@/tak-core';
 import { TakGameUI, type TakUIPiece, type TakUITile } from '@/tak-core/ui';
 import { produce } from 'immer';
-import Button from 'primevue/button';
 import { computed, ref, shallowRef, watch, type ShallowRef } from 'vue';
 import Board2DPiece from './Board2DPiece.vue';
 import Board2DTile from './Board2DTile.vue';
 import { useSettingsStore } from '@/features/settings.ts';
 import { board2dThemes } from '@/features/board2dThemes.ts';
+import { Button } from '@tak-ui-lib/components';
 
 const emit = defineEmits<{
   (e: 'action', action: TakAction): void;
@@ -195,7 +195,6 @@ const boardTheme = computed(
       <div class="w-full h-[10%] xl:h-[5%]">
         <div class="w-full h-full grid grid-cols-3 gap-2 pt-2 font-mono">
           <Button
-            fluid
             :severity="currentVariant === 'flat' ? undefined : 'secondary'"
             :disabled="canPlace === null || !canPlace.flat"
             @click="currentVariant = 'flat'"
@@ -203,7 +202,6 @@ const boardTheme = computed(
             Flat
           </Button>
           <Button
-            fluid
             :severity="currentVariant === 'standing' ? undefined : 'secondary'"
             :disabled="canPlace === null || !canPlace.standing"
             @click="currentVariant = 'standing'"
@@ -211,7 +209,6 @@ const boardTheme = computed(
             Wall
           </Button>
           <Button
-            fluid
             :severity="currentVariant === 'capstone' ? undefined : 'secondary'"
             :disabled="canPlace === null || !canPlace.capstone"
             @click="currentVariant = 'capstone'"

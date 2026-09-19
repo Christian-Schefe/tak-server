@@ -1,10 +1,8 @@
 <script setup lang="ts">
 import type { UiNode } from '@ory/client';
-import Button from 'primevue/button';
-import InputText from 'primevue/inputtext';
-import Password from 'primevue/password';
-import IftaLabel from 'primevue/iftalabel';
+import { Button, InputText } from '@tak-ui-lib/components';
 import { computed } from 'vue';
+import { RouterLink } from 'vue-router';
 
 const props = defineProps<{
   node: UiNode;
@@ -23,11 +21,11 @@ const autocomplete = computed(() => {
 </script>
 
 <template>
-  <Button v-if="node.attributes.node_type === 'a'" v-slot="slotProps" as-child fluid>
-    <RouterLink v-ripple :class="slotProps.class" :to="node.attributes.href">
-      {{ node.meta.label?.text }}
-    </RouterLink>
-  </Button>
+  <Button
+    v-if="node.attributes.node_type === 'a'"
+    :as="{ component: RouterLink, props: { to: node.attributes.href } }"
+    :label="node.meta.label?.text"
+  />
   <Button
     v-else-if="
       node.attributes.node_type === 'input' &&
@@ -37,7 +35,6 @@ const autocomplete = computed(() => {
     :type="node.attributes.type"
     :value="node.attributes.value"
     :label="node.meta.label?.text"
-    fluid
   />
   <InputText
     v-else-if="node.attributes.node_type === 'input' && node.attributes.type === 'hidden'"
@@ -47,45 +44,25 @@ const autocomplete = computed(() => {
     :disabled="node.attributes.disabled"
     :required="node.attributes.required ?? false"
     hidden
-    fluid
   />
-  <IftaLabel
+  <InputText
     v-else-if="node.attributes.node_type === 'input' && node.attributes.type === 'password'"
-  >
-    <Password
-      :input-id="`kratos-input-${node.attributes.name}`"
-      :name="node.attributes.name"
-      :type="node.attributes.type"
-      :disabled="node.attributes.disabled"
-      :required="node.attributes.required ?? false"
-      :feedback="false"
-      toggle-mask
-      :pt="{
-        pcInputText: {
-          root: {
-            autocomplete: autocomplete,
-          },
-        },
-      }"
-      fluid
-    />
-    <label :for="`kratos-input-${node.attributes.name}`"
-      >{{ node.meta.label?.text }}{{ node.attributes.required === true ? ' *' : '' }}</label
-    >
-  </IftaLabel>
-  <IftaLabel v-else-if="node.attributes.node_type === 'input'">
-    <InputText
-      :id="`kratos-input-${node.attributes.name}`"
-      :name="node.attributes.name"
-      :type="node.attributes.type"
-      :autocomplete="autocomplete"
-      :disabled="node.attributes.disabled"
-      :required="node.attributes.required ?? false"
-      fluid
-    />
-    <label :for="`kratos-input-${node.attributes.name}`"
-      >{{ node.meta.label?.text }}{{ node.attributes.required === true ? ' *' : '' }}</label
-    >
-  </IftaLabel>
+    :input-id="`kratos-input-${node.attributes.name}`"
+    :name="node.attributes.name"
+    :type="node.attributes.type"
+    :disabled="node.attributes.disabled"
+    :required="node.attributes.required ?? false"
+    :label="`${node.meta.label?.text}${node.attributes.required === true ? ' *' : ''}`"
+  />
+  <InputText
+    v-else-if="node.attributes.node_type === 'input'"
+    :input-id="`kratos-input-${node.attributes.name}`"
+    :name="node.attributes.name"
+    :type="node.attributes.type"
+    :autocomplete="autocomplete"
+    :disabled="node.attributes.disabled"
+    :required="node.attributes.required ?? false"
+    :label="`${node.meta.label?.text}${node.attributes.required === true ? ' *' : ''}`"
+  />
   <p v-else-if="node.attributes.node_type === 'text'">{{ node.attributes.text }}</p>
 </template>

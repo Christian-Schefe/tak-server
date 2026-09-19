@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import type { UiContainer, UiNode } from '@ory/client';
-import { Form, type FormSubmitEvent } from '@primevue/forms';
-import Message from 'primevue/message';
 import { computed } from 'vue';
 import KratosNode from './KratosNode.vue';
+import { Form } from '@tak-ui-lib/components';
 
 const emit = defineEmits<{
   (e: 'submit', value: unknown): void;
@@ -52,12 +51,8 @@ const nodes = computed(() => {
   return Object.entries(groups);
 });
 
-function submit(event: FormSubmitEvent) {
-  const button = (event.originalEvent as SubmitEvent).submitter as HTMLButtonElement;
-  if (button.name) {
-    event.values[button.name] = button.value;
-  }
-  emit('submit', event.values);
+function submit(data: Record<string, unknown>) {
+  emit('submit', data);
 }
 </script>
 
@@ -67,6 +62,7 @@ function submit(event: FormSubmitEvent) {
       v-for="[group, groupNodes] in nodes"
       :key="group"
       :initial-values="groupNodes.initialValues"
+      :validator="(data) => ({ type: 'success', data })"
       @submit="submit"
     >
       <div class="flex flex-col items-stretch gap-2">

@@ -10,12 +10,14 @@ type PropsOf<T> = T extends Component
 
 const props = withDefaults(
   defineProps<{
-    severity?: 'primary' | 'secondary' | undefined;
+    severity?: 'primary' | 'secondary' | 'danger' | undefined;
     variant?: 'filled' | 'text' | 'outlined' | undefined;
     disabled?: boolean | undefined;
     iconOnly?: boolean | undefined;
     label?: string | undefined;
     type?: 'button' | 'submit' | 'reset';
+    name?: string | undefined;
+    value?: string | undefined;
     as?: undefined | { component: T; props: PropsOf<T> };
   }>(),
   {
@@ -25,6 +27,8 @@ const props = withDefaults(
     iconOnly: false,
     label: undefined,
     type: 'button',
+    name: undefined,
+    value: undefined,
     as: undefined,
   },
 );
@@ -86,6 +90,8 @@ function handleClick(e: PointerEvent) {
     :disabled="disabled"
     :draggable="false"
     :type="type"
+    :name="name"
+    :value="value"
     v-bind="props.as?.props"
     @click="handleClick"
     @pointerdown="handlePointerDown"

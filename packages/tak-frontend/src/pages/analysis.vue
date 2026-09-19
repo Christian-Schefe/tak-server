@@ -6,8 +6,8 @@ import SidePanelMobile from '@/components/side-panel/SidePanelMobile.vue';
 import type { SidePanelSection } from '@/features/sidePanel';
 import { usePlayGameActionSound } from '@/features/sound';
 import { TakBaseGame, type TakAction, type TakBaseGameSettings } from '@/tak-core';
+import { Button } from '@tak-ui-lib/components';
 import { produce } from 'immer';
-import Button from 'primevue/button';
 import { computed, ref, shallowRef, type ShallowRef } from 'vue';
 import { LuSettings, LuUndo2 } from 'vue-icons-plus/lu';
 

@@ -1,15 +1,6 @@
 <script setup lang="ts">
 import { type CreateSeekPayload } from '@/api/seek';
 import { getDefaultReserve } from '@/tak-core';
-import { Form, type FormSubmitEvent } from '@primevue/forms';
-import { zodResolver } from '@primevue/forms/resolvers/zod';
-import Button from 'primevue/button';
-import Dialog from 'primevue/dialog';
-import IftaLabel from 'primevue/iftalabel';
-import InputNumber from 'primevue/inputnumber';
-import Message from 'primevue/message';
-import SelectButton from 'primevue/selectbutton';
-import Slider from 'primevue/slider';
 import { ref } from 'vue';
 import { z } from 'zod';
 

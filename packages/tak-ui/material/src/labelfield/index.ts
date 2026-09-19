@@ -14,7 +14,6 @@ export type LabelFieldTokens = {
     left: string;
   };
   'padding-with-label': { top: string; bottom: string };
-  width: string;
   height: string;
   outline: string;
   'focus-outline': string;
@@ -45,8 +44,7 @@ export function createLabelFieldTokens(theme: DynamicScheme): LabelFieldTokens {
     'text-filled': hexFromArgb(theme.onSurface),
     padding: { left: '0.75rem', top: '0.25rem', right: '0.75rem', bottom: '0.25rem' },
     'padding-with-label': { top: '1rem', bottom: '0.25rem' },
-    width: '16rem',
-    height: '2.75rem',
+    height: '3rem',
     outline: `2px solid transparent`,
     'focus-outline': `2px solid ${hexFromArgb(theme.primary)}`,
     label: {

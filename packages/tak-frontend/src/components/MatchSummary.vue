@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import type { MatchDetail } from '@/api/match.ts';
 import { timeControlToString } from '@/utils/time.ts';
-import Button from 'primevue/button';
 import { Fa6ChessBoard } from 'vue-icons-plus/fa6';
 import { LuClock, LuEye, LuScale } from 'vue-icons-plus/lu';
 import GameSettingsPopover from './GameSettingsPopover.vue';
 import PlayerLabel from './PlayerLabel.vue';
+import { Button } from '@tak-ui-lib/components';
 
 defineProps<{
   matchDetail: MatchDetail;

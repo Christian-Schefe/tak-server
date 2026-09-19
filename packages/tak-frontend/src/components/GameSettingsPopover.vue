@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import type { GameSettings } from '@/api/game';
 import { isDefaultReserve } from '@/tak-core';
-import Button from 'primevue/button';
-import Popover from 'primevue/popover';
+import { Button } from '@tak-ui-lib/components';
 import { computed, useTemplateRef } from 'vue';
 import { Fa6RegChessPawn, Fa6RegChessQueen } from 'vue-icons-plus/fa6';
 import { LuInfo, LuPlay } from 'vue-icons-plus/lu';
