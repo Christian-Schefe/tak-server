@@ -20,11 +20,7 @@ const props = withDefaults(
   },
 );
 
-const {
-  data: playerInfo,
-  isError,
-  isLoading,
-} = useAccountOrPlayerInfo(
+const { data: playerInfo, isError } = useAccountOrPlayerInfo(
   () => props.pid,
   () => props.type,
 );
@@ -39,7 +35,7 @@ const isOnline = useIsAccountOnline(() => playerInfo.value?.accountId);
     :draggable="false"
     class="flex gap-2 items-center justify-start hover:underline"
   >
-    <Badge v-if="showProfilePicture && isOnline === true" severity="primary">
+    <Badge v-if="showProfilePicture && isOnline === true">
       <img :src="avatarSrc" alt="Profile Picture" class="w-8 h-8 rounded-sm pointer-events-none" />
     </Badge>
     <img
@@ -49,8 +45,7 @@ const isOnline = useIsAccountOnline(() => playerInfo.value?.accountId);
       class="w-8 h-8 rounded-sm pointer-events-none"
     />
 
-    <Skeleton v-if="isLoading" border-radius="4px" class="h-8! grow" />
-    <span v-else class="text-left text-ellipsis overflow-hidden text-nowrap">
+    <span class="text-left text-ellipsis overflow-hidden text-nowrap">
       {{ playerInfo?.displayName ?? (isError ? 'Unknown Player' : '') }}
       <span
         v-if="

@@ -26,9 +26,4 @@ async function onSubmit(data: unknown) {
 
 <template>
   <KratosForm v-if="flow" :ui="flow.ui" @submit="(data) => void onSubmit(data)"></KratosForm>
-  <div v-else class="flex flex-col gap-4 w-full h-60">
-    <Skeleton width="100%" border-radius="4px" class="flex-1" />
-    <Skeleton width="100%" border-radius="4px" class="flex-1" />
-    <Skeleton width="100%" border-radius="4px" class="flex-1" />
-  </div>
 </template>

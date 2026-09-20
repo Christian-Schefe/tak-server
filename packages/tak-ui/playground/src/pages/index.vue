@@ -29,6 +29,7 @@ const components = [
   },
   { label: 'Toggle', link: '/components/toggle' },
   { label: 'Card', link: '/components/card' },
+  { label: 'Badge', link: '/components/badge' },
 ];
 </script>
 <template>

@@ -10,7 +10,8 @@ import {
 import FlagIcon from '@/components/FlagIcon.vue';
 import PlayerStats from '@/components/PlayerStats.vue';
 import RatingHistory from '@/components/RatingHistory.vue';
-import { countryArray } from '@/utils/flags';
+import { countryOptions } from '@/utils/flags';
+import { Button, Dialog, Form, Select } from '@tak-ui-lib/components';
 import { computed, ref } from 'vue';
 import { LuPen } from 'vue-icons-plus/lu';
 import { useRoute } from 'vue-router';
@@ -57,52 +58,35 @@ function onUpdateProfile(event: FormSubmitEvent) {
 </script>
 <template>
   <div class="w-full mx-auto max-w-6xl p-4 flex flex-col gap-4">
-    <Card>
-      <template #content>
-        <div class="flex flex-row gap-4">
-          <div
-            class="w-32 h-full aspect-square rounded-lg p-0 overflow-hidden flex items-center justify-center"
-          >
-            <img
-              v-if="avatarUrl !== undefined"
-              :src="avatarUrl"
-              alt="Player Avatar"
-              class="w-full h-full pointer-events-none"
-            />
-            <Skeleton v-else class="h-full! w-full!" />
-          </div>
-          <div v-if="playerInfo" class="flex flex-col grow">
-            <div class="font-bold text-2xl flex items-center gap-2">
-              <h1>{{ playerInfo.displayName }}</h1>
-              <FlagIcon :country="profile?.country ?? undefined" />
-            </div>
-            <p class="text-muted-color mb-4">@{{ playerInfo.username }}</p>
-          </div>
-          <div v-if="canEditProfile">
-            <Button severity="secondary" class="aspect-square" @click="editDialogVisible = true">
-              <template #icon><LuPen class="w-5 h-5" /></template>
-            </Button>
-          </div>
+    <div class="flex flex-row gap-4">
+      <div
+        class="w-32 h-full aspect-square rounded-lg p-0 overflow-hidden flex items-center justify-center"
+      >
+        <img
+          v-if="avatarUrl !== undefined"
+          :src="avatarUrl"
+          alt="Player Avatar"
+          class="w-full h-full pointer-events-none"
+        />
+      </div>
+      <div v-if="playerInfo" class="flex flex-col grow">
+        <div class="font-bold text-2xl flex items-center gap-2">
+          <h1>{{ playerInfo.displayName }}</h1>
+          <FlagIcon :country="profile?.country ?? undefined" />
         </div>
-      </template>
-    </Card>
+        <p class="text-muted-color mb-4">@{{ playerInfo.username }}</p>
+      </div>
+      <div v-if="canEditProfile">
+        <Button severity="secondary" class="aspect-square" @click="editDialogVisible = true">
+          <template #icon><LuPen class="w-5 h-5" /></template>
+        </Button>
+      </div>
+    </div>
     <PlayerStats :player-id="route.params.id" />
-    <Card>
-      <template #title>Rating History</template>
-      <template #content>
-        <RatingHistory :player-id="route.params.id" />
-      </template>
-    </Card>
+    <h1>Rating History</h1>
+    <RatingHistory :player-id="route.params.id" />
   </div>
-  <Dialog
-    v-model:visible="editDialogVisible"
-    modal
-    dismissable-mask
-    header="Your Profile"
-    :draggable="false"
-    :style="{ width: '50vw' }"
-    :breakpoints="{ '1199px': '75vw', '575px': '90vw' }"
-  >
+  <Dialog v-model:visible="editDialogVisible" header="Your Profile">
     <div class="w-full flex flex-col items-center gap-4">
       <div
         class="w-64 h-64 rounded-lg border border-surface overflow-hidden flex items-center justify-center"
@@ -113,7 +97,6 @@ function onUpdateProfile(event: FormSubmitEvent) {
           alt="Profile Picture"
           class="w-full h-full pointer-events-none"
         />
-        <Skeleton v-else class="h-full! w-full!" />
       </div>
       <FileUpload
         :multiple="false"
@@ -133,24 +116,8 @@ function onUpdateProfile(event: FormSubmitEvent) {
         class="w-full max-w-100 flex flex-col"
         @submit="onUpdateProfile"
       >
-        <IftaLabel>
-          <Select
-            name="country"
-            :options="countryArray"
-            option-label="name"
-            option-value="code"
-            filter
-            fluid
-          ></Select>
-          <label>Country</label>
-        </IftaLabel>
-        <Button
-          type="submit"
-          label="Update Profile"
-          class="mt-4"
-          :disabled="isUpdatingProfile"
-          fluid
-        />
+        <Select model-value="" name="country" :options="countryOptions" label="Country"></Select>
+        <Button type="submit" label="Update Profile" :disabled="isUpdatingProfile" />
       </Form>
     </div>
   </Dialog>

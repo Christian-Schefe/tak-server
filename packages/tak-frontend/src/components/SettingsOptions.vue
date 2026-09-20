@@ -1,17 +1,20 @@
 <script setup lang="ts">
-import { useSettingsStore } from '@/features/settings';
-import { themes } from '@/features/appTheme';
-import { board2dThemes } from '@/features/board2dThemes';
+import { themes, type AppThemeId } from '@/features/appTheme';
+import { board2dThemes, type Board2dThemeId } from '@/features/board2dThemes';
 import { board3dPiecePresets, board3dTilesPresets } from '@/features/board3dResources';
 import { ninja2dThemes } from '@/features/ninjaThemes';
+import { useSettingsStore } from '@/features/settings';
+import { Select, Slider, type DarkMode } from '@tak-ui-lib/components';
 import { computed } from 'vue';
 
 const settingsStore = useSettingsStore();
 
-const themeOptions = Object.entries(themes).map(([key, theme]) => ({
-  label: theme.name,
-  value: key,
-}));
+const themeOptions: { label: string; value: AppThemeId }[] = Object.entries(themes).map(
+  ([key, theme]) => ({
+    label: theme.name,
+    value: key as AppThemeId,
+  }),
+);
 const themeModel = computed({
   get: () => settingsStore.settings.theme,
   set: (value) => {
@@ -19,11 +22,11 @@ const themeModel = computed({
   },
 });
 
-const darkModeOptions = Object.entries({
+const darkModeOptions: { value: DarkMode; label: string }[] = Object.entries({
   system: 'System',
   light: 'Light',
   dark: 'Dark',
-}).map(([value, label]) => ({ value, label }));
+}).map(([value, label]) => ({ value: value as DarkMode, label }));
 const darkModeModel = computed({
   get: () => settingsStore.settings.darkMode,
   set: (value) => {
@@ -31,7 +34,7 @@ const darkModeModel = computed({
   },
 });
 
-const audioVolumeModel = computed<number | number[]>({
+const audioVolumeModel = computed<number>({
   get: () => settingsStore.settings.audioVolume,
   set: (value) => {
     if (typeof value !== 'number') return;
@@ -39,7 +42,7 @@ const audioVolumeModel = computed<number | number[]>({
   },
 });
 
-const boardOptions = [
+const boardOptions: { label: string; value: 'ninja' | '2d' | '3d' }[] = [
   { label: '2D', value: '2d' },
   { label: '3D', value: '3d' },
   { label: 'Ninja', value: 'ninja' },
@@ -51,9 +54,11 @@ const boardModel = computed({
   },
 });
 
-const board2dThemeOptions = Object.entries(board2dThemes).map(([id, theme]) => ({
+const board2dThemeOptions: { label: string; value: Board2dThemeId }[] = Object.entries(
+  board2dThemes,
+).map(([id, theme]) => ({
   label: theme.name,
-  value: id,
+  value: id as Board2dThemeId,
 }));
 const board2dThemeModel = computed({
   get: () => settingsStore.settings.boardTypeSettings['2d'].theme,
@@ -62,10 +67,9 @@ const board2dThemeModel = computed({
   },
 });
 
-const board2dAxisLabelSize = computed<number | number[]>({
+const board2dAxisLabelSize = computed<number>({
   get: () => settingsStore.settings.boardTypeSettings['2d'].axisLabelSize,
   set: (value) => {
-    if (typeof value !== 'number') return;
     settingsStore.settings.boardTypeSettings['2d'].axisLabelSize = value;
   },
 });
@@ -133,10 +137,9 @@ const board3dTilesPresetModel = computed({
   },
 });
 
-const board3dPieceScale = computed<number | number[]>({
+const board3dPieceScale = computed<number>({
   get: () => settingsStore.settings.boardTypeSettings['3d'].pieceScale,
   set: (value) => {
-    if (typeof value !== 'number') return;
     settingsStore.settings.boardTypeSettings['3d'].pieceScale = value;
   },
 });
@@ -144,26 +147,8 @@ const board3dPieceScale = computed<number | number[]>({
 <template>
   <div class="flex flex-col gap-4 w-full">
     <Divider>General Settings</Divider>
-    <IftaLabel>
-      <Select
-        v-model="themeModel"
-        :options="themeOptions"
-        option-label="label"
-        option-value="value"
-        fluid
-      />
-      <label>Theme</label>
-    </IftaLabel>
-    <IftaLabel>
-      <Select
-        v-model="darkModeModel"
-        :options="darkModeOptions"
-        option-label="label"
-        option-value="value"
-        fluid
-      />
-      <label>Color Scheme</label>
-    </IftaLabel>
+    <Select v-model="themeModel" :options="themeOptions" label="Theme" />
+    <Select v-model="darkModeModel" :options="darkModeOptions" label="Color Scheme" />
     <div class="grid gap-4 items-center" :style="{ gridTemplateColumns: 'auto 1fr auto' }">
       <p>Audio Volume</p>
       <Slider v-model="audioVolumeModel" :min="0" :max="1" :step="0.01" />
@@ -171,30 +156,12 @@ const board3dPieceScale = computed<number | number[]>({
         {{ typeof audioVolumeModel === 'number' ? (audioVolumeModel * 100).toFixed(0) : '' }}%
       </p>
     </div>
-    <IftaLabel>
-      <Select
-        v-model="boardModel"
-        :options="boardOptions"
-        option-label="label"
-        option-value="value"
-        fluid
-      />
-      <label>Board Type</label>
-    </IftaLabel>
+    <Select v-model="boardModel" :options="boardOptions" label="Board Type" />
     <Divider>{{
       { '2d': '2D Settings', '3d': '3D Settings', ninja: 'Ninja Settings' }[boardModel]
     }}</Divider>
     <template v-if="boardModel === '2d'">
-      <IftaLabel>
-        <Select
-          v-model="board2dThemeModel"
-          :options="board2dThemeOptions"
-          option-label="label"
-          option-value="value"
-          fluid
-        ></Select>
-        <label>Theme</label>
-      </IftaLabel>
+      <Select v-model="board2dThemeModel" :options="board2dThemeOptions" label="Theme"></Select>
       <div class="grid gap-2 items-center" :style="{ gridTemplateColumns: 'auto 1fr' }">
         <ToggleButton
           v-model="board2dAxisLabels"
@@ -210,26 +177,16 @@ const board3dPieceScale = computed<number | number[]>({
       </div>
     </template>
     <template v-else-if="boardModel === 'ninja'">
-      <IftaLabel>
-        <Select
-          v-model="boardNinjaThemeModel"
-          :options="boardNinjaThemeOptions"
-          option-label="label"
-          option-value="value"
-          fluid
-        ></Select>
-        <label>Theme</label>
-      </IftaLabel>
-      <IftaLabel>
-        <Select
-          v-model="boardNinjaAxisLabels"
-          :options="boardNinjaAxisLabelOptions"
-          option-label="label"
-          option-value="value"
-          fluid
-        ></Select>
-        <label>Axis Labels</label>
-      </IftaLabel>
+      <Select
+        v-model="boardNinjaThemeModel"
+        :options="boardNinjaThemeOptions"
+        label="Theme"
+      ></Select>
+      <Select
+        v-model="boardNinjaAxisLabels"
+        :options="boardNinjaAxisLabelOptions"
+        label="Axis Labels"
+      ></Select>
       <ToggleButton
         v-model="boardNinjaAnimateBoard"
         :pt="{
@@ -242,26 +199,16 @@ const board3dPieceScale = computed<number | number[]>({
       />
     </template>
     <template v-else-if="boardModel === '3d'">
-      <IftaLabel>
-        <Select
-          v-model="board3dPiecePresetModel"
-          :options="board3dPiecePresetOptions"
-          option-label="label"
-          option-value="value"
-          fluid
-        ></Select>
-        <label>Piece Preset</label>
-      </IftaLabel>
-      <IftaLabel>
-        <Select
-          v-model="board3dTilesPresetModel"
-          :options="board3dTilesPresetOptions"
-          option-label="label"
-          option-value="value"
-          fluid
-        ></Select>
-        <label>Tiles Preset</label>
-      </IftaLabel>
+      <Select
+        v-model="board3dPiecePresetModel"
+        :options="board3dPiecePresetOptions"
+        label="Piece Preset"
+      ></Select>
+      <Select
+        v-model="board3dTilesPresetModel"
+        :options="board3dTilesPresetOptions"
+        label="Tiles Preset"
+      ></Select>
       <div class="grid gap-4 items-center" :style="{ gridTemplateColumns: 'auto 1fr auto' }">
         <p>Piece Scale</p>
         <Slider

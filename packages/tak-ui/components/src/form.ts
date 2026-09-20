@@ -13,23 +13,27 @@ import {
 export interface FormContext {
   data: Record<string, unknown>;
   errors: Record<string, string | undefined>;
+  reset: () => void;
 }
 
-export type FormValidator<T> = (
-  data: Record<string, unknown>,
-) => { type: 'success'; data: T } | { type: 'error'; errors: Record<string, string> };
+export type FormValidatorResult<T> =
+  | { type: 'success'; data: T }
+  | { type: 'error'; errors: Record<string, string> };
+
+export type FormValidator<T> = (data: Record<string, unknown>) => FormValidatorResult<T>;
 
 export const FormKey: InjectionKey<Ref<FormContext>> = Symbol('FormContext');
 
 export function provideFormContext(
   initialData: MaybeRefOrGetter<Record<string, unknown> | undefined>,
 ) {
-  const ctx = ref<FormContext>({ data: { ...toValue(initialData) }, errors: {} });
   function resetForm() {
-    ctx.value = { data: { ...toValue(initialData) }, errors: {} };
+    ctx.value = { data: { ...toValue(initialData) }, errors: {}, reset: resetForm };
   }
+  const ctx = ref<FormContext>({ data: { ...toValue(initialData) }, errors: {}, reset: resetForm });
+
   provide(FormKey, ctx);
-  return { ctx, resetForm };
+  return ctx;
 }
 
 export function useFormValue(value: Ref<unknown>, name: MaybeRefOrGetter<string | undefined>) {

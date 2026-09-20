@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { type CreateSeekPayload } from '@/api/seek';
 import { getDefaultReserve } from '@/tak-core';
+import { Button, Dialog, Form, Slider } from '@tak-ui-lib/components';
 import { ref } from 'vue';
 import { z } from 'zod';
 
@@ -76,14 +77,7 @@ const initialValues = ref<CreateSeekFormData>({
 const resolver = zodResolver(createSeekFormSchema);
 </script>
 <template>
-  <Dialog
-    v-model:visible="visible"
-    dismissable-mask
-    header="Create Seek"
-    :draggable="false"
-    modal
-    :style="{ width: '90vw', maxWidth: '600px' }"
-  >
+  <Dialog v-model:visible="visible" header="Create Seek">
     <Form v-slot="$form" :resolver="resolver" :initial-values="initialValues" @submit="onSubmit">
       <div class="w-full flex flex-col gap-1">
         <p class="text-sm text-muted-color-emphasis text-nowrap mt-3">Play as</p>

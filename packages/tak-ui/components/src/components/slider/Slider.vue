@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useFormValue } from '../../form';
 
 const props = withDefaults(
   defineProps<{
@@ -7,12 +8,14 @@ const props = withDefaults(
     max?: number;
     step?: number | undefined;
     disabled?: boolean;
+    name?: string | undefined;
   }>(),
   {
     min: 0,
     max: 100,
     step: undefined,
     disabled: false,
+    name: undefined,
   },
 );
 const value = defineModel<number>({ default: 0 });
@@ -32,6 +35,8 @@ function handleInput(event: InputEvent) {
     }
   }
 }
+
+useFormValue(value, () => props.name);
 </script>
 <template>
   <div class="p-slider" :class="{ 'p-slider-disabled': disabled }">

@@ -146,6 +146,11 @@ function isActive(path: string) {
         <template v-if="item.icon" #icon>
           <component :is="icons[item.icon]" />
         </template>
+        <template v-if="item.badge" #icon-append>
+          <span class="ml-2">
+            <span class="text-xs">{{ item.badge }}</span>
+          </span>
+        </template>
       </Button>
     </template>
     <div class="grow"></div>

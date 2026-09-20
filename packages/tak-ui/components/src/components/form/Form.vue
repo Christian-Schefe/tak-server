@@ -4,7 +4,7 @@ import { provideFormContext, type FormValidator } from '../../form';
 const props = withDefaults(
   defineProps<{
     validator: FormValidator<T>;
-    initialValues?: Partial<T> | undefined;
+    initialValues?: Record<string, unknown> | undefined;
   }>(),
   {
     initialValues: undefined,
@@ -15,7 +15,7 @@ const emit = defineEmits<{
   submit: [data: T];
 }>();
 
-const { ctx: formCtx, resetForm } = provideFormContext(() => props.initialValues);
+const formCtx = provideFormContext(() => props.initialValues);
 
 function onSubmit(event: SubmitEvent) {
   if (event.submitter instanceof HTMLButtonElement && event.submitter.name !== '') {
@@ -23,7 +23,7 @@ function onSubmit(event: SubmitEvent) {
   }
   const result = props.validator(formCtx.value.data);
   if (result.type === 'success') {
-    formCtx.value.errors = {};
+    formCtx.value.reset();
     emit('submit', result.data);
   } else {
     formCtx.value.errors = result.errors;
@@ -31,7 +31,7 @@ function onSubmit(event: SubmitEvent) {
 }
 
 function onReset() {
-  resetForm();
+  formCtx.value.reset();
 }
 </script>
 <template>

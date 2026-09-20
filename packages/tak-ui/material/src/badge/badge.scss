@@ -1,28 +1,25 @@
-$severities: (
-  'primary': '.p-badge-primary',
-  'error': '.p-badge-error',
-);
-
 .p-badge {
-  @each $severity, $severity-selector in $severities {
-    &#{$severity-selector} .p-badge-label {
-      background-color: var(--p-badge-#{$severity}-background);
-      color: var(--p-badge-#{$severity}-color);
-    }
-  }
-
   position: relative;
+  width: fit-content;
 
   .p-badge-label {
     position: absolute;
     top: 0;
     right: 0;
-    min-height: 0.5rem;
-    min-width: 0.5rem;
     transform: translate(50%, -50%);
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: var(--p-badge-border-radius);
+    background-color: var(--p-badge-background);
+    color: var(--p-badge-text);
+    border-radius: calc(infinity * 1px);
+    padding: var(--p-badge-padding);
+    font-weight: 600;
+    font-size: 0.75rem;
+  }
+
+  &.p-badge-with-label .p-badge-label {
+    min-width: 1.125rem;
+    padding: var(--p-badge-padding-with-label);
   }
 }

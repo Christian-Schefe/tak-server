@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useChatHistory, useSendChatMessage, type ChatMessageConversation } from '@/api/chat';
 import { areTimestampsDifferentMinutes } from '@/utils/time';
+import { Button, Form, InputText, type FormValidatorResult } from '@tak-ui-lib/components';
 import { isToday } from 'date-fns';
 import { computed, useTemplateRef, watch } from 'vue';
 import { LuSend } from 'vue-icons-plus/lu';
@@ -63,10 +64,8 @@ function maybeSendMessage(message: unknown) {
   return false;
 }
 
-function onSendMessage(event: FormSubmitEvent) {
-  const formData = event.values as { chatMessage: unknown };
-  maybeSendMessage(formData.chatMessage);
-  event.reset();
+function onSendMessage(values: { chatMessage: unknown }) {
+  maybeSendMessage(values.chatMessage);
 }
 
 watch(messages, (newMessages, oldMessages) => {
@@ -96,68 +95,57 @@ function scrollToMessage(messageId: number) {
     }
   }, 10);
 }
-function textareaKeydown(
-  event: KeyboardEvent,
-  formValues: Record<string, FormFieldState> & {
-    reset: () => void;
-  },
-) {
-  if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault();
-    maybeSendMessage(formValues.chatMessage?.value);
-    formValues.reset();
+
+function validateForm(data: Record<string, unknown>): FormValidatorResult<{ chatMessage: string }> {
+  const message = data.chatMessage;
+  if (typeof message !== 'string' || message.trim() === '') {
+    return { type: 'error', errors: { chatMessage: 'Message cannot be empty' } };
   }
+  return { type: 'success', data: { chatMessage: message } };
 }
 </script>
 <template>
   <div class="flex flex-col h-full gap-2">
-    <div class="h-0 grow flex flex-col">
-      <ScrollPanel class="h-0 grow">
-        <div ref="messageContainer" class="flex flex-col items-center">
-          <Button
-            v-if="hasNextPage"
-            label="Load More"
-            variant="text"
-            :disabled="isFetchingNextPage"
-            @click="void fetchNextPage()"
-          ></Button>
-          <div
-            v-for="message in messages"
-            :key="message.messageId"
-            :class="`message-${message.messageId}`"
-            class="w-full flex flex-col mt-4"
-          >
-            <div class="flex items-center gap-4">
-              <PlayerLabel
-                :pid="message.sender"
-                type="account"
-                :show-flag="false"
-                :show-rating="false"
-              />
-              <p v-if="message.formattedTimestamp" class="text-sm text-muted-color">
-                {{ message.formattedTimestamp }}
-              </p>
-            </div>
-            <div class="pl-10 w-full text-muted-color markdown-body">
-              <VueMarkdown :source="message.message" />
-            </div>
+    <div class="h-0 grow flex flex-col overflow-y-auto">
+      <div ref="messageContainer" class="flex flex-col items-center">
+        <Button
+          v-if="hasNextPage"
+          label="Load More"
+          variant="text"
+          :disabled="isFetchingNextPage"
+          @click="void fetchNextPage()"
+        ></Button>
+        <div
+          v-for="message in messages"
+          :key="message.messageId"
+          :class="`message-${message.messageId}`"
+          class="w-full flex flex-col mt-4"
+        >
+          <div class="flex items-center gap-4">
+            <PlayerLabel
+              :pid="message.sender"
+              type="account"
+              :show-flag="false"
+              :show-rating="false"
+            />
+            <p v-if="message.formattedTimestamp" class="text-sm text-muted-color">
+              {{ message.formattedTimestamp }}
+            </p>
+          </div>
+          <div class="pl-10 w-full text-muted-color markdown-body">
+            <VueMarkdown :source="message.message" />
           </div>
         </div>
-      </ScrollPanel>
+      </div>
     </div>
-    <Form v-slot="$form" class="h-10 flex gap-2 w-full items-end" @submit="onSendMessage">
-      <Textarea
-        name="chatMessage"
-        rows="1"
-        auto-resize
-        cols="30"
-        class="resize-none w-0 grow z-1"
-        @keydown="(event) => textareaKeydown(event, $form)"
-      ></Textarea>
-      <Button class="h-10! w-10! p-0!" type="submit">
-        <template #icon>
-          <LuSend />
-        </template>
+    <Form
+      :validator="validateForm"
+      class="flex gap-2 w-full items-end"
+      @submit="onSendMessage"
+    >
+      <InputText class="grow" name="chatMessage"></InputText>
+      <Button icon-only type="submit">
+        <LuSend />
       </Button>
     </Form>
   </div>

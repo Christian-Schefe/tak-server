@@ -5,6 +5,7 @@ import { Button } from '../button';
 import { Dropdown } from '../dropdown';
 import { Icon } from '../icon';
 import { LabelField } from '..';
+import { useFormValue } from '../../form';
 
 const value = defineModel<T>({ required: true });
 const props = withDefaults(
@@ -15,6 +16,7 @@ const props = withDefaults(
     label?: string | undefined;
     placement?: Placement;
     disabled?: boolean;
+    name?: string | undefined;
     cmp?: (a: T, b: T) => boolean;
   }>(),
   {
@@ -23,6 +25,7 @@ const props = withDefaults(
     placement: 'bottom-start',
     label: undefined,
     disabled: false,
+    name: undefined,
     cmp: (a, b) => a === b,
   },
 );
@@ -57,6 +60,8 @@ function onToggleDropdown() {
   dropdownVisible.value = !dropdownVisible.value;
 }
 const reference = useTemplateRef<HTMLElement | null>('reference');
+
+useFormValue(value, () => props.name);
 </script>
 <template>
   <LabelField :label="label" :disabled="disabled">

@@ -29,14 +29,8 @@ export function useProfilePictureUrl(accountId: MaybeRefOrGetter<string | undefi
   const { data: profile } = useProfile(accountId);
   return computed(() => {
     const accId = toValue(accountId);
-    if (accId === undefined) {
-      return undefined;
-    }
     const val = profile.value;
-    if (!val) {
-      return undefined;
-    }
-    if (val.profilePictureVersion === null) {
+    if (accId === undefined || !val || val.profilePictureVersion === null) {
       return '/fallback/default_user.webp';
     }
     return getProfilePictureUrl(accId, val.profilePictureVersion);

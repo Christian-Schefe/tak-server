@@ -20,9 +20,9 @@ export function useSanitizedFlagSVG(country: MaybeRefOrGetter<string | undefined
   });
 }
 
-export const countryArray = Object.entries(countries)
-  .map(([code, country]) => ({
-    code,
-    name: country.name,
+export const countryOptions = Object.entries(countries)
+  .map(([value, country]) => ({
+    value,
+    label: country.name,
   }))
-  .sort((a, b) => a.name.localeCompare(b.name));
+  .sort((a, b) => a.label.localeCompare(b.label));
