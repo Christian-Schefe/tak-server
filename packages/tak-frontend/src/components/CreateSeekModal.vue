@@ -1,8 +1,17 @@
 <script setup lang="ts">
 import { type CreateSeekPayload } from '@/api/seek';
 import { getDefaultReserve } from '@/tak-core';
-import { Button, Dialog, Form, Slider } from '@tak-ui-lib/components';
-import { ref } from 'vue';
+import { zodFormValidator } from '@/utils/forms';
+import {
+  Button,
+  createFormContext,
+  Dialog,
+  Form,
+  InputNumber,
+  Select,
+  Slider,
+} from '@tak-ui-lib/components';
+import { ref, watch } from 'vue';
 import { z } from 'zod';
 
 const visible = defineModel<boolean>({ required: true });
@@ -35,70 +44,70 @@ const createSeekFormSchema = z.object({
 
 type CreateSeekFormData = z.infer<typeof createSeekFormSchema>;
 
-function onSubmit(event: FormSubmitEvent) {
-  const formData = createSeekFormSchema.safeParse(event.values);
-  if (formData.success) {
-    const defaultReserve = getDefaultReserve(formData.data.boardSize);
-    const payload: CreateSeekPayload = {
-      gameSettings: {
-        boardSize: formData.data.boardSize,
-        pieces: formData.data.pieces ?? defaultReserve.pieces,
-        capstones: formData.data.capstones ?? defaultReserve.capstones,
-        halfKomi: formData.data.halfKomi,
-        opening: formData.data.opening,
-        timeSettings: {
-          type: 'realtime',
-          contingentMs: (formData.data.contingentMinutes ?? 15) * 60 * 1000,
-          incrementMs: (formData.data.incrementSeconds ?? 10) * 1000,
-          extra: null,
-        },
+function onSubmit(formData: CreateSeekFormData) {
+  const defaultReserve = getDefaultReserve(formData.boardSize);
+  const payload: CreateSeekPayload = {
+    gameSettings: {
+      boardSize: formData.boardSize,
+      pieces: formData.pieces ?? defaultReserve.pieces,
+      capstones: formData.capstones ?? defaultReserve.capstones,
+      halfKomi: formData.halfKomi,
+      opening: formData.opening,
+      timeSettings: {
+        type: 'realtime',
+        contingentMs: (formData.contingentMinutes ?? 15) * 60 * 1000,
+        incrementMs: (formData.incrementSeconds ?? 10) * 1000,
+        extra: null,
       },
-      isRated: formData.data.isRated,
-      color: formData.data.color,
-    };
-    emit('create', payload);
-  } else {
-    console.error('Invalid form data', formData.error);
-  }
+    },
+    isRated: formData.isRated,
+    color: formData.color,
+  };
+  emit('create', payload);
   visible.value = false;
 }
-const initialValues = ref<CreateSeekFormData>({
+
+const initialFormValues: Partial<CreateSeekFormData> = {
   boardSize: 6,
   isRated: true,
-  contingentMinutes: undefined,
-  incrementSeconds: undefined,
+  contingentMinutes: 15,
+  incrementSeconds: 10,
   pieces: undefined,
   capstones: undefined,
-  halfKomi: 4,
+  halfKomi: 0,
   opening: 'swap',
   color: 'random',
-});
+};
 
-const resolver = zodResolver(createSeekFormSchema);
+const halfKomiValue = ref(0);
+const boardSizeValue = ref(6);
+
+const validator = zodFormValidator(createSeekFormSchema);
+
+const formCtx = createFormContext(() => initialFormValues);
+watch(visible, (newVisible) => {
+  if (!newVisible) {
+    formCtx.value.reset();
+  }
+});
 </script>
 <template>
   <Dialog v-model:visible="visible" header="Create Seek">
-    <Form v-slot="$form" :resolver="resolver" :initial-values="initialValues" @submit="onSubmit">
-      <div class="w-full flex flex-col gap-1">
-        <p class="text-sm text-muted-color-emphasis text-nowrap mt-3">Play as</p>
-        <SelectButton
+    <Form v-model="formCtx" :validator="validator" @submit="onSubmit">
+      <div class="w-full flex flex-col gap-2">
+        <Select
+          :model-value="'random'"
           name="color"
-          :allow-empty="false"
-          option-label="label"
-          option-value="value"
           :options="[
             { label: 'Random', value: 'random' },
             { label: 'White', value: 'white' },
             { label: 'Black', value: 'black' },
           ]"
-          fluid
+          label="Play as"
         />
-        <p class="text-sm text-muted-color-emphasis text-nowrap mt-3">Board Size</p>
-        <SelectButton
+        <Select
+          :model-value="boardSizeValue"
           name="boardSize"
-          :allow-empty="false"
-          option-label="label"
-          option-value="value"
           :options="[
             { label: '3x3', value: 3 },
             { label: '4x4', value: 4 },
@@ -107,121 +116,88 @@ const resolver = zodResolver(createSeekFormSchema);
             { label: '7x7', value: 7 },
             { label: '8x8', value: 8 },
           ]"
-          fluid
+          label="Board Size"
+          @update:model-value="boardSizeValue = $event ?? 6"
         />
 
         <p class="text-sm text-muted-color-emphasis text-nowrap mt-3">Komi</p>
         <div
-          class="grid items-center gap-2 justify-start p-2"
+          class="grid items-center gap-2 justify-start"
           :style="{ gridTemplateColumns: '1fr 90px' }"
         >
-          <Slider name="halfKomi" :min="0" :max="20" :step="1" />
-          <p class="text-right border-surface font-mono">{{ $form.halfKomi?.value * 0.5 }} komi</p>
+          <Slider v-model="halfKomiValue" name="halfKomi" :min="0" :max="20" :step="1" />
+          <p class="text-right border-surface font-mono">{{ halfKomiValue * 0.5 }} komi</p>
         </div>
 
-        <p class="text-sm text-muted-color-emphasis text-nowrap mt-3">Time Control</p>
         <div class="w-full grid grid-cols-2 gap-2">
           <div class="flex flex-col gap-2">
-            <IftaLabel>
-              <InputNumber
-                input-id="contingentMinutes"
-                name="contingentMinutes"
-                placeholder="15"
-                fluid
-              />
-              <label for="contingentMinutes">Contingent Time (minutes)</label>
-            </IftaLabel>
-            <Message
-              v-if="$form.contingentMinutes?.invalid"
-              severity="error"
-              size="small"
-              variant="simple"
-              >{{ $form.contingentMinutes.error?.message }}</Message
-            >
+            <InputNumber
+              input-id="contingentMinutes"
+              name="contingentMinutes"
+              placeholder="15"
+              label="Contingent Time (minutes)"
+            />
+            <p v-if="formCtx.errors.contingentMinutes">
+              {{ formCtx.errors.contingentMinutes }}
+            </p>
           </div>
           <div class="flex flex-col gap-2">
-            <IftaLabel>
-              <InputNumber
-                input-id="incrementSeconds"
-                name="incrementSeconds"
-                placeholder="10"
-                fluid
-              />
-              <label for="incrementSeconds">Increment (seconds)</label>
-            </IftaLabel>
-            <Message
-              v-if="$form.incrementSeconds?.invalid"
-              severity="error"
-              size="small"
-              variant="simple"
-              >{{ $form.incrementSeconds.error?.message }}</Message
-            >
+            <InputNumber
+              input-id="incrementSeconds"
+              name="incrementSeconds"
+              placeholder="10"
+              label="Increment (seconds)"
+            />
+            <p v-if="formCtx.errors.incrementSeconds">
+              {{ formCtx.errors.incrementSeconds }}
+            </p>
           </div>
         </div>
 
-        <p class="text-sm text-muted-color-emphasis text-nowrap mt-3">Reserve</p>
         <div class="w-full grid grid-cols-2 gap-2">
           <div class="flex flex-col gap-2">
-            <IftaLabel>
-              <InputNumber
-                input-id="pieces"
-                name="pieces"
-                :placeholder="getDefaultReserve($form.boardSize?.value).pieces.toString()"
-                fluid
-              />
-              <label for="pieces">Pieces</label>
-            </IftaLabel>
-            <Message v-if="$form.pieces?.invalid" severity="error" size="small" variant="simple">{{
-              $form.pieces.error?.message
-            }}</Message>
+            <InputNumber
+              input-id="pieces"
+              name="pieces"
+              :placeholder="getDefaultReserve(boardSizeValue).pieces.toString()"
+              label="Pieces"
+            />
+            <p v-if="formCtx.errors.pieces">
+              {{ formCtx.errors.pieces }}
+            </p>
           </div>
           <div class="flex flex-col gap-2">
-            <IftaLabel>
-              <InputNumber
-                input-id="capstones"
-                name="capstones"
-                :placeholder="getDefaultReserve($form.boardSize?.value).capstones.toString()"
-                fluid
-              />
-              <label for="capstones">Capstones</label>
-            </IftaLabel>
-            <Message
-              v-if="$form.capstones?.invalid"
-              severity="error"
-              size="small"
-              variant="simple"
-              >{{ $form.capstones.error?.message }}</Message
-            >
+            <InputNumber
+              input-id="capstones"
+              name="capstones"
+              :placeholder="getDefaultReserve(boardSizeValue).capstones.toString()"
+              label="Capstones"
+            />
+            <p v-if="formCtx.errors.capstones">
+              {{ formCtx.errors.capstones }}
+            </p>
           </div>
         </div>
-
-        <p class="text-sm text-muted-color-emphasis text-nowrap mt-3">Opening</p>
-        <SelectButton
+        <Select
+          :model-value="'swap'"
           name="opening"
-          :allow-empty="false"
-          option-label="label"
-          option-value="value"
           :options="[
             { label: 'Swap', value: 'swap' },
             { label: 'No Swap', value: 'noSwap' },
             { label: 'Double Stack', value: 'doubleStack' },
           ]"
-          fluid
+          label="Opening"
         />
-
-        <p class="text-sm text-muted-color-emphasis text-nowrap mt-3">Rated</p>
-        <SelectButton
+        <Select
+          :model-value="true"
           name="isRated"
-          :allow-empty="false"
-          option-label="label"
-          option-value="value"
           :options="[
             { label: 'Rated', value: true },
             { label: 'Unrated', value: false },
           ]"
-          fluid
+          label="Rated"
         />
-        <div class="col-span-2 w-full grid grid-cols-2 gap-2 pt-12">
+        <div class="col-span-2 w-full flex justify-end gap-2 pt-12">
           <Button label="Cancel" severity="secondary" @click="visible = false" />
           <Button type="submit" label="Create Seek" />
         </div>

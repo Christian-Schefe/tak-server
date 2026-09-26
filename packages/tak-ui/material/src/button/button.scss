@@ -51,7 +51,7 @@ $severities: (
   position: relative;
   overflow: hidden;
   cursor: pointer;
-  border-radius: var(--p-button-border-radius);
+  border-radius: calc(infinity * 1px);
   padding: var(--p-button-padding) calc(var(--p-button-padding) + 0.25rem);
 
   @each $severity, $severity-selector in $severities {

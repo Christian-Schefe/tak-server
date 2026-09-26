@@ -1,50 +1,59 @@
 <script setup lang="ts">
 import { triggerRef } from 'vue';
 import { InputText } from '..';
+import { useFormValue } from '../../form';
 
-const model = defineModel<number>({ default: 0 });
-withDefaults(
+const model = defineModel<number | undefined>({ default: undefined });
+
+const props = withDefaults(
   defineProps<{
     placeholder?: string | undefined;
     label?: string | undefined;
     inputId?: string | undefined;
+    name?: string | undefined;
+    mode?: 'decimal' | 'integer';
   }>(),
   {
     placeholder: undefined,
     label: undefined,
     inputId: undefined,
+    name: undefined,
+    mode: 'integer',
   },
 );
 
-function isPartialNumber(value: string): boolean {
-  return value === '' || value === '-' || value === '.' || value === '-.';
-}
-function tryParseFloat(value: string): number | null {
-  const parsedValue = parseFloat(value);
+function tryParseNumber(value: string): number | null {
+  const parsedValue = props.mode === 'integer' ? parseInt(value, 10) : parseFloat(value);
   return isNaN(parsedValue) ? null : parsedValue;
 }
 
 function onTextChange(text: string) {
-  if (isPartialNumber(text)) {
+  if (text === '') {
+    model.value = undefined;
     return;
   }
-  const parsedValue = tryParseFloat(text);
+  const parsedValue = tryParseNumber(text);
   if (parsedValue !== null) {
     model.value = parsedValue;
   }
 }
 function onTextCommit(text: string) {
-  const newValue = tryParseFloat(text) ?? 0;
-  model.value = newValue;
+  const parsedValue = tryParseNumber(text);
+  if (parsedValue !== null) {
+    model.value = parsedValue;
+  }
   triggerRef(model);
 }
+useFormValue(model, () => props.name);
 </script>
 <template>
   <InputText
-    :model-value="model.toString()"
+    :model-value="model?.toString() ?? ''"
     :placeholder="placeholder"
     :label="label"
     :input-id="inputId"
+    :name="name"
+    disable-form-value
     @update:model-value="onTextChange"
     @change="onTextCommit"
   >

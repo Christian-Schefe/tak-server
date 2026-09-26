@@ -15,7 +15,7 @@ const innerDialogVisible = ref(false);
       <Button label="Open Dialog" @click="dialogVisible = true" />
       <Dialog v-model:visible="dialogVisible" :header="'Hello'.repeat(30)">
         <Select
-          :model-value="undefined"
+          :model-value="1"
           :options="[
             { label: 'Option 1 Option 1 Option 1 Option 1', value: 1 },
             { label: 'Option 2', value: 2 },
@@ -23,10 +23,8 @@ const innerDialogVisible = ref(false);
           ]"
         />
         <p v-for="i in 70" :key="i">Content {{ i }}</p>
-        <template #footer>
-          <Button label="Cancel" @click="dialogVisible = false" />
-          <Button label="Confirm" severity="primary" @click="dialogVisible = false" />
-        </template>
+        <Button label="Cancel" @click="dialogVisible = false" />
+        <Button label="Confirm" severity="primary" @click="dialogVisible = false" />
       </Dialog>
       <Button label="Open Nested Dialogs" @click="outerDialogVisible = true" />
       <Dialog v-model:visible="outerDialogVisible" :header="'Outer Dialog'">
@@ -35,7 +33,7 @@ const innerDialogVisible = ref(false);
         <Dialog v-model:visible="innerDialogVisible" :header="'Inner Dialog'">
           <p>This is the inner dialog.</p>
           <Select
-            :model-value="undefined"
+            :model-value="1"
             :options="[
               { label: 'Option 1 Option 1 Option 1 Option 1', value: 1 },
               { label: 'Option 2', value: 2 },

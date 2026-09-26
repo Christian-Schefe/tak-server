@@ -16,6 +16,7 @@ const props = withDefaults(
     hidden?: boolean;
     autocomplete?: InputAutoCompleteAttribute | undefined;
     type?: InputTypeHTMLAttribute | undefined;
+    disableFormValue?: boolean | undefined;
   }>(),
   {
     name: undefined,
@@ -28,6 +29,7 @@ const props = withDefaults(
     hidden: false,
     autocomplete: undefined,
     type: 'text',
+    disableFormValue: false,
   },
 );
 const emit = defineEmits<{
@@ -40,7 +42,7 @@ function onInputChange(event: Event) {
   emit('change', target.value);
 }
 
-useFormValue(model, () => props.name);
+useFormValue(model, () => (props.disableFormValue ? undefined : props.name));
 </script>
 <template>
   <LabelField

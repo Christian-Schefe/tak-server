@@ -1,21 +1,18 @@
-<script setup lang="ts" generic="T">
-import { provideFormContext, type FormValidator } from '../../form';
+<script setup lang="ts" generic="T extends object">
+import { provide } from 'vue';
+import { FormKey, type FormContext, type FormValidator } from '../../form';
 
-const props = withDefaults(
-  defineProps<{
-    validator: FormValidator<T>;
-    initialValues?: Record<string, unknown> | undefined;
-  }>(),
-  {
-    initialValues: undefined,
-  },
-);
+const formCtx = defineModel<FormContext>({ required: true });
+
+const props = defineProps<{
+  validator: FormValidator<T>;
+}>();
 
 const emit = defineEmits<{
   submit: [data: T];
 }>();
 
-const formCtx = provideFormContext(() => props.initialValues);
+provide(FormKey, formCtx);
 
 function onSubmit(event: SubmitEvent) {
   if (event.submitter instanceof HTMLButtonElement && event.submitter.name !== '') {
@@ -36,6 +33,6 @@ function onReset() {
 </script>
 <template>
   <form @submit.prevent="onSubmit" @reset.prevent="onReset">
-    <slot v-bind="formCtx" />
+    <slot />
   </form>
 </template>

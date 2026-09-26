@@ -6,6 +6,7 @@ withDefaults(
     labelFor?: string | undefined;
     disabled?: boolean;
     hidden?: boolean;
+    focused?: boolean;
   }>(),
   {
     supportText: undefined,
@@ -13,6 +14,7 @@ withDefaults(
     labelFor: undefined,
     disabled: false,
     hidden: false,
+    focused: false,
   },
 );
 </script>
@@ -21,6 +23,7 @@ withDefaults(
     class="p-labelfield"
     :class="{
       'p-labelfield-disabled': disabled,
+      'p-labelfield-focused': focused,
       'p-labelfield-hidden': hidden,
       'p-labelfield-has-label': !!label,
       'p-labelfield-has-icon-prepend': !!$slots['icon-prepend'],

@@ -14,9 +14,12 @@ const props = withDefaults(
     header: undefined,
   },
 );
+
+const inner = useTemplateRef<HTMLElement | null>('inner');
+
 const visible = defineModel<boolean>('visible', { default: false });
-function onClickMask() {
-  if (props.dismissable) {
+function onClickMask(event: PointerEvent) {
+  if (props.dismissable && inner.value?.contains(event.target as Node) !== true) {
     visible.value = false;
   }
 }
@@ -31,9 +34,9 @@ const zIndex = useOverlayZIndex(floating, visible, 1);
         ref="floating"
         class="p-dialog-mask"
         :style="{ zIndex }"
-        @click="onClickMask"
+        @pointerdown="onClickMask"
       >
-        <div class="p-dialog" @click.stop>
+        <div ref="inner" class="p-dialog">
           <div class="p-dialog-header">
             <slot name="header">
               <p class="p-dialog-header-title">{{ header }}</p>
@@ -42,9 +45,6 @@ const zIndex = useOverlayZIndex(floating, visible, 1);
           </div>
           <div class="p-dialog-content">
             <slot />
-          </div>
-          <div v-if="$slots['footer']" class="p-dialog-footer">
-            <slot name="footer" />
           </div>
         </div>
       </div>

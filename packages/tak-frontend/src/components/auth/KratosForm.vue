@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { UiContainer, UiNode } from '@ory/client';
-import { computed } from 'vue';
+import { computed, type Ref } from 'vue';
 import KratosNode from './KratosNode.vue';
-import { Form } from '@tak-ui-lib/components';
+import { createFormContext, Form, type FormContext } from '@tak-ui-lib/components';
 
 const emit = defineEmits<{
   (e: 'submit', value: unknown): void;
@@ -51,17 +51,28 @@ const nodes = computed(() => {
   return Object.entries(groups);
 });
 
-function submit(data: Record<string, unknown>) {
+function submit(data: object) {
   emit('submit', data);
 }
+
+const formCtxs = computed(() =>
+  nodes.value.map(
+    ([group, groupNodes]) =>
+      [group, groupNodes, createFormContext(() => groupNodes.initialValues)] as [
+        string,
+        NodeGroup,
+        Ref<FormContext>,
+      ],
+  ),
+);
 </script>
 
 <template>
   <div class="flex flex-col items-stretch gap-4">
     <Form
-      v-for="[group, groupNodes] in nodes"
+      v-for="[group, groupNodes, ctx] in formCtxs"
       :key="group"
-      :initial-values="groupNodes.initialValues"
+      v-model="ctx.value"
       :validator="(data) => ({ type: 'success', data })"
       @submit="submit"
     >
@@ -71,13 +82,8 @@ function submit(data: Record<string, unknown>) {
     </Form>
   </div>
   <div v-if="ui.messages && ui.messages.length > 0" class="flex flex-col items-stretch gap-2">
-    <Message
-      v-for="item in ui.messages"
-      :key="item.id"
-      :severity="item.type === 'error' ? 'error' : 'info'"
-      size="small"
-      variant="simple"
-      >{{ item.text }}</Message
-    >
+    <p v-for="item in ui.messages" :key="item.id">
+      {{ item.text }}
+    </p>
   </div>
 </template>

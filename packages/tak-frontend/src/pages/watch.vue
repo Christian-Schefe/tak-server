@@ -2,6 +2,7 @@
 import { useGames } from '@/api/game';
 import { useGameHistory, type GameHistory } from '@/api/gameHistory';
 import GameSummary from '@/components/GameSummary.vue';
+import Page from '@/components/Page.vue';
 import { gameResultFromString } from '@/tak-core/ptn';
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
@@ -28,7 +29,7 @@ const lastGameHistory = computed<GameHistory | undefined>((prevGames) => {
 });
 </script>
 <template>
-  <div class="w-full mx-auto max-w-4xl p-2 pt-4 flex flex-col gap-6">
+  <Page>
     <div class="flex flex-col gap-2">
       <h1 class="text-2xl font-semibold">Live Games</h1>
       <GameSummary
@@ -54,5 +55,5 @@ const lastGameHistory = computed<GameHistory | undefined>((prevGames) => {
         :total-records="lastGameHistory?.totalCount"
       />
     </div>
-  </div>
+  </Page>
 </template>

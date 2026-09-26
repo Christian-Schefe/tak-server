@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import Page from '@/components/Page.vue';
 import SettingsOptions from '@/components/SettingsOptions.vue';
 </script>
 
 <template>
-  <h1>Settings</h1>
-  <div class="max-w-xl mx-auto">
+  <Page>
+    <h1>Settings</h1>
     <SettingsOptions />
-  </div>
+  </Page>
 </template>

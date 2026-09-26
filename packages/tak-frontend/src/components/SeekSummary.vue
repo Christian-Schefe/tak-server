@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import type { SeekInfo } from '@/api/seek.ts';
+import { getDefaultReserve } from '@/tak-core/index.ts';
 import { timeControlToString } from '@/utils/time.ts';
-import { Fa6ChessBoard } from 'vue-icons-plus/fa6';
-import { LuClock, LuContrast, LuScale, LuSwords, LuTrash } from 'vue-icons-plus/lu';
-import GameSettingsPopover from './GameSettingsPopover.vue';
+import { Button, Card } from '@tak-ui-lib/components';
+import { computed } from 'vue';
+import { Fa6ChessBoard, Fa6RegChessPawn, Fa6RegChessQueen } from 'vue-icons-plus/fa6';
+import { LuClock, LuContrast, LuPlay, LuScale, LuSwords, LuTrash } from 'vue-icons-plus/lu';
 import PlayerLabel from './PlayerLabel.vue';
-import { Button } from '@tak-ui-lib/components';
 
-defineProps<{
+const props = defineProps<{
   seek: SeekInfo;
   action: 'accept' | 'delete';
 }>();
@@ -21,9 +22,29 @@ const colorNames: Record<string, string | undefined> = {
   white: 'White',
   random: 'Random',
 };
+
+const isFlatsSpecial = computed(() => {
+  const { boardSize, pieces } = props.seek.gameSettings;
+  return getDefaultReserve(boardSize).pieces !== pieces;
+});
+
+const isCapstonesSpecial = computed(() => {
+  const { boardSize, capstones } = props.seek.gameSettings;
+  return getDefaultReserve(boardSize).capstones !== capstones;
+});
+
+const isOpeningSpecial = computed(() => {
+  return props.seek.gameSettings.opening !== 'swap';
+});
+
+const openingNames: Record<string, string | undefined> = {
+  swap: 'Swap',
+  noSwap: 'No Swap',
+  doubleStack: 'Double Stack',
+};
 </script>
 <template>
-  <div class="grow flex flex-col gap-2 p-2 bg-content rounded-md">
+  <Card>
     <div class="flex gap-2">
       <div class="flex flex-col gap-2 justify-center">
         <PlayerLabel :pid="seek.creatorId" type="player"></PlayerLabel>
@@ -31,12 +52,9 @@ const colorNames: Record<string, string | undefined> = {
       <Tag v-if="!seek.isRated" severity="warn">Unrated</Tag>
       <div class="grow" />
 
-      <GameSettingsPopover :settings="seek.gameSettings" />
-      <Button class="w-8! h-8! p-1!" severity="secondary" @click="$emit('click')">
-        <template #icon>
-          <LuTrash v-if="action === 'delete'" />
-          <LuSwords v-else />
-        </template>
+      <Button severity="secondary" icon-only @click="$emit('click')">
+        <LuTrash v-if="action === 'delete'" />
+        <LuSwords v-else />
       </Button>
     </div>
 
@@ -57,6 +75,18 @@ const colorNames: Record<string, string | undefined> = {
         <LuClock class="text-primary" />
         {{ timeControlToString(seek.gameSettings.timeSettings) }}
       </div>
+      <div v-if="isFlatsSpecial" class="flex items-center gap-2 justify-start">
+        <Fa6RegChessPawn class="text-primary" />
+        {{ seek.gameSettings.pieces }} Flat{{ seek.gameSettings.pieces !== 1 ? 's' : '' }}
+      </div>
+      <div v-if="isCapstonesSpecial" class="flex items-center gap-2 justify-start">
+        <Fa6RegChessQueen class="text-primary" />
+        {{ seek.gameSettings.capstones }} Capstone{{ seek.gameSettings.capstones !== 1 ? 's' : '' }}
+      </div>
+      <div v-if="isOpeningSpecial" class="flex items-center gap-2 justify-start">
+        <LuPlay class="text-primary" />
+        {{ openingNames[seek.gameSettings.opening] }}
+      </div>
     </div>
-  </div>
+  </Card>
 </template>

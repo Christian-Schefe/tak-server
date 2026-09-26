@@ -4,7 +4,7 @@ import { board2dThemes, type Board2dThemeId } from '@/features/board2dThemes';
 import { board3dPiecePresets, board3dTilesPresets } from '@/features/board3dResources';
 import { ninja2dThemes } from '@/features/ninjaThemes';
 import { useSettingsStore } from '@/features/settings';
-import { Select, Slider, type DarkMode } from '@tak-ui-lib/components';
+import { Select, Slider, Toggle, type DarkMode } from '@tak-ui-lib/components';
 import { computed } from 'vue';
 
 const settingsStore = useSettingsStore();
@@ -97,7 +97,7 @@ const boardNinjaAxisLabelOptions = [
   { label: 'None', value: 'none' },
   { label: 'Small', value: 'small' },
   { label: 'Large', value: 'normal' },
-];
+] as const;
 
 const boardNinjaAxisLabels = computed({
   get: () => settingsStore.settings.boardTypeSettings.ninja.axisLabels,
@@ -146,7 +146,7 @@ const board3dPieceScale = computed<number>({
 </script>
 <template>
   <div class="flex flex-col gap-4 w-full">
-    <Divider>General Settings</Divider>
+    <h2>General Settings</h2>
     <Select v-model="themeModel" :options="themeOptions" label="Theme" />
     <Select v-model="darkModeModel" :options="darkModeOptions" label="Color Scheme" />
     <div class="grid gap-4 items-center" :style="{ gridTemplateColumns: 'auto 1fr auto' }">
@@ -157,22 +157,12 @@ const board3dPieceScale = computed<number>({
       </p>
     </div>
     <Select v-model="boardModel" :options="boardOptions" label="Board Type" />
-    <Divider>{{
-      { '2d': '2D Settings', '3d': '3D Settings', ninja: 'Ninja Settings' }[boardModel]
-    }}</Divider>
+    <h2>{{ { '2d': '2D Settings', '3d': '3D Settings', ninja: 'Ninja Settings' }[boardModel] }}</h2>
     <template v-if="boardModel === '2d'">
       <Select v-model="board2dThemeModel" :options="board2dThemeOptions" label="Theme"></Select>
-      <div class="grid gap-2 items-center" :style="{ gridTemplateColumns: 'auto 1fr' }">
-        <ToggleButton
-          v-model="board2dAxisLabels"
-          :pt="{
-            root: {
-              draggable: false,
-            },
-          }"
-          on-label="Axis Labels"
-          off-label="Axis Labels"
-        />
+      <div class="grid gap-2 items-center" :style="{ gridTemplateColumns: 'auto auto 1fr' }">
+        <p>Axis Labels</p>
+        <Toggle v-model="board2dAxisLabels" />
         <Slider v-model="board2dAxisLabelSize" :disabled="!board2dAxisLabels" />
       </div>
     </template>
@@ -187,16 +177,8 @@ const board3dPieceScale = computed<number>({
         :options="boardNinjaAxisLabelOptions"
         label="Axis Labels"
       ></Select>
-      <ToggleButton
-        v-model="boardNinjaAnimateBoard"
-        :pt="{
-          root: {
-            draggable: false,
-          },
-        }"
-        on-label="Animations On"
-        off-label="Animations Off"
-      />
+      <p>Animations</p>
+      <Toggle v-model="boardNinjaAnimateBoard" />
     </template>
     <template v-else-if="boardModel === '3d'">
       <Select

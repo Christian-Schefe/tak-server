@@ -45,10 +45,10 @@ const { floatingStyles } = useFloating(referenceRef, floating, {
 const zIndex = useOverlayZIndex(floating, dropdownVisible, 1);
 
 onMounted(() => {
-  document.addEventListener('pointerdown', onPointerDownOutside);
+  window.addEventListener('pointerdown', onPointerDownOutside);
 });
 onUnmounted(() => {
-  document.removeEventListener('pointerdown', onPointerDownOutside);
+  window.removeEventListener('pointerdown', onPointerDownOutside);
 });
 </script>
 <template>

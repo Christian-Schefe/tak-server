@@ -2,6 +2,7 @@
 import { useAccount } from '@/api/auth';
 import { useAcceptSeek, useCreateSeek, useDeleteSeek, useSeeks, type SeekInfo } from '@/api/seek';
 import CreateSeekModal from '@/components/CreateSeekModal.vue';
+import Page from '@/components/Page.vue';
 import SeekSummary from '@/components/SeekSummary.vue';
 import { Button } from '@tak-ui-lib/components';
 import { computed, ref } from 'vue';
@@ -45,7 +46,7 @@ function onDeleteSeek(seekId: string) {
 const createSeekDialogVisible = ref(false);
 </script>
 <template>
-  <div class="w-full mx-auto max-w-4xl p-2 pt-4 flex flex-col gap-6">
+  <Page>
     <div class="flex flex-col gap-2">
       <div class="flex items-center">
         <h1 class="text-2xl font-semibold">Your Seeks</h1>
@@ -74,6 +75,6 @@ const createSeekDialogVisible = ref(false);
       ></SeekSummary>
       <p v-if="!seekData.otherSeeks.length" class="text-muted-color">No seeks available.</p>
     </div>
-  </div>
+  </Page>
   <CreateSeekModal v-model="createSeekDialogVisible" @create="createSeek" />
 </template>

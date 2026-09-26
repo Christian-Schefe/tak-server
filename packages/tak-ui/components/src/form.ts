@@ -1,7 +1,6 @@
 import {
   computed,
   inject,
-  provide,
   ref,
   toValue,
   watch,
@@ -12,7 +11,7 @@ import {
 
 export interface FormContext {
   data: Record<string, unknown>;
-  errors: Record<string, string | undefined>;
+  errors: Record<string, string>;
   reset: () => void;
 }
 
@@ -24,15 +23,17 @@ export type FormValidator<T> = (data: Record<string, unknown>) => FormValidatorR
 
 export const FormKey: InjectionKey<Ref<FormContext>> = Symbol('FormContext');
 
-export function provideFormContext(
+export function createFormContext(
   initialData: MaybeRefOrGetter<Record<string, unknown> | undefined>,
 ) {
-  function resetForm() {
-    ctx.value = { data: { ...toValue(initialData) }, errors: {}, reset: resetForm };
+  function reset() {
+    ctx.value.data = { ...toValue(initialData) };
   }
-  const ctx = ref<FormContext>({ data: { ...toValue(initialData) }, errors: {}, reset: resetForm });
-
-  provide(FormKey, ctx);
+  const ctx = ref<FormContext>({
+    data: { ...toValue(initialData) },
+    errors: {},
+    reset,
+  });
   return ctx;
 }
 
@@ -40,10 +41,10 @@ export function useFormValue(value: Ref<unknown>, name: MaybeRefOrGetter<string 
   const ctx = inject(FormKey, undefined);
   const formValue = computed(() => {
     const nameValue = toValue(name);
-    if (!ctx || nameValue === undefined) {
+    if (!ctx || nameValue === undefined || !(nameValue in ctx.value.data)) {
       return undefined;
     }
-    return ctx.value.data[nameValue];
+    return { value: ctx.value.data[nameValue] };
   });
   watch(
     () => toValue(value),
@@ -58,12 +59,10 @@ export function useFormValue(value: Ref<unknown>, name: MaybeRefOrGetter<string 
   watch(
     formValue,
     (newFormValue) => {
-      if (value.value === newFormValue) {
-        return;
+      if (newFormValue !== undefined && newFormValue.value !== value.value) {
+        value.value = newFormValue.value;
       }
-      value.value = newFormValue;
     },
     { immediate: true },
   );
-  return value;
 }

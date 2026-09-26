@@ -6,6 +6,8 @@ export interface DialogTokens {
   background: string;
   padding: string;
   'mask-background': string;
+  'font-size': string;
+  'line-height': string;
 }
 
 export function createDialogTokens(theme: DynamicScheme): DialogTokens {
@@ -15,5 +17,7 @@ export function createDialogTokens(theme: DynamicScheme): DialogTokens {
     background: hexFromArgb(theme.surface),
     padding: '1rem',
     'mask-background': 'rgba(0, 0, 0, 0.5)',
+    'font-size': '1.25rem',
+    'line-height': '1.25rem',
   };
 }

@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import type { GameMetadata } from '@/api/game';
-import { type TakGameState, type TakPlayer } from '@/tak-core/index.ts';
+import { getDefaultReserve, type TakGameState, type TakPlayer } from '@/tak-core/index.ts';
 import { timeControlToString } from '@/utils/time.ts';
+import { Button, Card } from '@tak-ui-lib/components';
 import { computed } from 'vue';
-import { Fa6ChessBoard } from 'vue-icons-plus/fa6';
-import { LuCalendar, LuClock, LuEye, LuScale } from 'vue-icons-plus/lu';
-import GameSettingsPopover from './GameSettingsPopover.vue';
+import { Fa6ChessBoard, Fa6RegChessPawn, Fa6RegChessQueen } from 'vue-icons-plus/fa6';
+import { LuCalendar, LuClock, LuEye, LuPlay, LuScale } from 'vue-icons-plus/lu';
 import PlayerLabel from './PlayerLabel.vue';
-import { Button } from '@tak-ui-lib/components';
 
 const props = defineProps<{
   gameMetadata: GameMetadata;
@@ -56,10 +55,30 @@ const resultColor: Record<string, string | undefined> = {
   '1/2': 'bg-surface-200 dark:bg-surface-700',
   '': '',
 };
+
+const isFlatsSpecial = computed(() => {
+  const { boardSize, pieces } = props.gameMetadata.gameSettings;
+  return getDefaultReserve(boardSize).pieces !== pieces;
+});
+
+const isCapstonesSpecial = computed(() => {
+  const { boardSize, capstones } = props.gameMetadata.gameSettings;
+  return getDefaultReserve(boardSize).capstones !== capstones;
+});
+
+const isOpeningSpecial = computed(() => {
+  return props.gameMetadata.gameSettings.opening !== 'swap';
+});
+
+const openingNames: Record<string, string | undefined> = {
+  swap: 'Swap',
+  noSwap: 'No Swap',
+  doubleStack: 'Double Stack',
+};
 </script>
 <template>
-  <div class="grow flex flex-col gap-2 p-2 bg-content rounded-md">
-    <div class="flex gap-2">
+  <Card>
+    <div class="flex items-start gap-2">
       <div v-if="resultArr" class="w-8 h-18 grid grid-rows-2 rounded-md overflow-hidden text-sm">
         <div
           v-for="(res, index) in resultArr"
@@ -74,11 +93,8 @@ const resultColor: Record<string, string | undefined> = {
         <PlayerLabel :pid="gameMetadata.playerIds.white" type="player"></PlayerLabel>
         <PlayerLabel :pid="gameMetadata.playerIds.black" type="player"></PlayerLabel>
       </div>
-      <GameSettingsPopover v-if="hideGameSettings !== true" :settings="gameMetadata.gameSettings" />
-      <Button class="w-8! h-8! p-1!" severity="secondary" @click="$emit('click')">
-        <template #icon>
-          <LuEye />
-        </template>
+      <Button severity="secondary" icon-only @click="$emit('click')">
+        <LuEye />
       </Button>
     </div>
 
@@ -110,6 +126,31 @@ const resultColor: Record<string, string | undefined> = {
         <LuScale class="text-primary" />
         {{ gameMetadata.gameSettings.halfKomi * 0.5 }} komi
       </div>
+      <div
+        v-if="hideGameSettings !== true && isFlatsSpecial"
+        class="flex items-center gap-2 justify-start"
+      >
+        <Fa6RegChessPawn class="text-primary" />
+        {{ gameMetadata.gameSettings.pieces }} Flat{{
+          gameMetadata.gameSettings.pieces !== 1 ? 's' : ''
+        }}
+      </div>
+      <div
+        v-if="hideGameSettings !== true && isCapstonesSpecial"
+        class="flex items-center gap-2 justify-start"
+      >
+        <Fa6RegChessQueen class="text-primary" />
+        {{ gameMetadata.gameSettings.capstones }} Capstone{{
+          gameMetadata.gameSettings.capstones !== 1 ? 's' : ''
+        }}
+      </div>
+      <div
+        v-if="hideGameSettings !== true && isOpeningSpecial"
+        class="flex items-center gap-2 justify-start"
+      >
+        <LuPlay class="text-primary" />
+        {{ openingNames[gameMetadata.gameSettings.opening] }}
+      </div>
     </div>
-  </div>
+  </Card>
 </template>

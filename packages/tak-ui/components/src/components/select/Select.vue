@@ -1,4 +1,4 @@
-<script setup lang="ts" generic="T">
+<script setup lang="ts" generic="T, AllowEmpty extends boolean = false">
 import { type Placement } from '@floating-ui/vue';
 import { computed, ref, useTemplateRef } from 'vue';
 import { Button } from '../button';
@@ -7,11 +7,14 @@ import { Icon } from '../icon';
 import { LabelField } from '..';
 import { useFormValue } from '../../form';
 
-const value = defineModel<T>({ required: true });
+// eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+type MaybeT = AllowEmpty extends true ? T | undefined : T;
+
+const value = defineModel<MaybeT>({ required: true });
 const props = withDefaults(
   defineProps<{
-    options: { value: T; label: string }[];
-    allowEmptyWithDefault?: { default: T } | undefined;
+    options: readonly { value: T; label: string }[];
+    allowEmpty?: AllowEmpty | undefined;
     placeholder?: string;
     label?: string | undefined;
     placement?: Placement;
@@ -20,7 +23,7 @@ const props = withDefaults(
     cmp?: (a: T, b: T) => boolean;
   }>(),
   {
-    allowEmptyWithDefault: undefined,
+    allowEmpty: undefined,
     placeholder: 'Placeholder',
     placement: 'bottom-start',
     label: undefined,
@@ -33,9 +36,11 @@ const props = withDefaults(
 const dropdownVisible = ref(false);
 
 const currentOption = computed(() => {
-  return props.options.find((option) => {
-    return props.cmp(option.value, value.value);
-  });
+  const val = value.value;
+  if (val === undefined) {
+    return undefined;
+  }
+  return props.options.find((option) => props.cmp(option.value, val));
 });
 
 const optionLabel = computed(() => {
@@ -46,10 +51,10 @@ function onSelectOption(optionValue: T) {
   if (props.disabled) {
     return;
   }
-  value.value =
-    value.value === optionValue && props.allowEmptyWithDefault !== undefined
-      ? props.allowEmptyWithDefault.default
-      : optionValue;
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+  value.value = (
+    value.value === optionValue && props.allowEmpty === true ? undefined : optionValue
+  ) as MaybeT;
   dropdownVisible.value = false;
 }
 
@@ -64,7 +69,7 @@ const reference = useTemplateRef<HTMLElement | null>('reference');
 useFormValue(value, () => props.name);
 </script>
 <template>
-  <LabelField :label="label" :disabled="disabled">
+  <LabelField :label="label" :disabled="disabled" :focused="dropdownVisible">
     <div
       ref="reference"
       class="p-select"

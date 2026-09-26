@@ -4,7 +4,6 @@ export type ButtonVariant = 'filled' | 'text' | 'outlined';
 export type ButtonSeverity = 'primary' | 'secondary';
 
 export type ButtonTokens = {
-  'border-radius': string;
   padding: string;
   gap: string;
   'hover-state-opacity': string;
@@ -27,8 +26,7 @@ export type ButtonTokens = {
 
 export function createButtonTokens(theme: DynamicScheme): ButtonTokens {
   return {
-    'border-radius': '0.375rem',
-    padding: '0.5rem',
+    padding: '1rem',
     gap: '0.5rem',
     'hover-state-opacity': '0.1',
     'pressed-state-opacity': '0.2',
