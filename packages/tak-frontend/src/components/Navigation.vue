@@ -129,7 +129,7 @@ function isActive(path: string) {
 </script>
 
 <template>
-  <div class="grow flex flex-col gap-2">
+  <div class="grow flex flex-col">
     <RouterLink class="p-2 w-full" to="/">
       <div class="w-full p-2">
         <img class="w-full pt-2 px-4 dark:invert" src="/logo.svg" />

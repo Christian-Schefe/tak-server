@@ -47,34 +47,30 @@ const createSeekDialogVisible = ref(false);
 </script>
 <template>
   <Page>
-    <div class="flex flex-col gap-2">
-      <div class="flex items-center">
-        <h1 class="text-2xl font-semibold">Your Seeks</h1>
-        <div class="grow"></div>
-        <Button label="Create Seek" @click="createSeekDialogVisible = true" />
-      </div>
-      <SeekSummary
-        v-for="seek in seekData.ownSeeks"
-        :key="seek.seek.id"
-        :seek="seek.seek"
-        :action="'delete'"
-        @click="onDeleteSeek(seek.seek.id)"
-      ></SeekSummary>
-      <p v-if="!seekData.ownSeeks.length" class="text-muted-color">
-        You have no active seeks. Click "Create Seek" to create a new one.
-      </p>
+    <div class="flex items-center">
+      <h1 class="text-2xl font-semibold">Your Seeks</h1>
+      <div class="grow"></div>
+      <Button label="Create Seek" @click="createSeekDialogVisible = true" />
     </div>
-    <div class="flex flex-col gap-2">
-      <h1 class="text-2xl font-semibold">Seeks</h1>
-      <SeekSummary
-        v-for="seek in seekData.otherSeeks"
-        :key="seek.seek.id"
-        :seek="seek.seek"
-        :action="'accept'"
-        @click="onAcceptSeek(seek.seek.id)"
-      ></SeekSummary>
-      <p v-if="!seekData.otherSeeks.length" class="text-muted-color">No seeks available.</p>
-    </div>
+    <SeekSummary
+      v-for="seek in seekData.ownSeeks"
+      :key="seek.seek.id"
+      :seek="seek.seek"
+      :action="'delete'"
+      @click="onDeleteSeek(seek.seek.id)"
+    ></SeekSummary>
+    <p v-if="!seekData.ownSeeks.length">
+      You have no active seeks. Click "Create Seek" to create a new one.
+    </p>
+    <h1 class="text-2xl font-semibold">Seeks</h1>
+    <SeekSummary
+      v-for="seek in seekData.otherSeeks"
+      :key="seek.seek.id"
+      :seek="seek.seek"
+      :action="'accept'"
+      @click="onAcceptSeek(seek.seek.id)"
+    ></SeekSummary>
+    <p v-if="!seekData.otherSeeks.length">No seeks available.</p>
   </Page>
   <CreateSeekModal v-model="createSeekDialogVisible" @create="createSeek" />
 </template>

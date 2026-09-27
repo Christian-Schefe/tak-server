@@ -8,13 +8,16 @@ import {
   useUploadProfilePicture,
 } from '@/api/profile';
 import FlagIcon from '@/components/FlagIcon.vue';
+import Page from '@/components/Page.vue';
 import PlayerStats from '@/components/PlayerStats.vue';
 import RatingHistory from '@/components/RatingHistory.vue';
 import { countryOptions } from '@/utils/flags';
-import { Button, Dialog, Form, Select } from '@tak-ui-lib/components';
-import { computed, ref } from 'vue';
-import { LuPen } from 'vue-icons-plus/lu';
+import { zodFormValidator } from '@/utils/forms';
+import { Button, useFormContext, Dialog, Form, Select } from '@tak-ui-lib/components';
+import { computed, ref, useTemplateRef } from 'vue';
+import { LuPen, LuPlus } from 'vue-icons-plus/lu';
 import { useRoute } from 'vue-router';
+import z from 'zod';
 
 const route = useRoute('/player.[id]');
 
@@ -31,36 +34,60 @@ const canEditProfile = computed(() => {
 });
 
 const editDialogVisible = ref(false);
+const profilePictureDialogVisible = ref(false);
 
 const { mutate: uploadProfilePicture, isPending: isUploadingProfilePicture } =
   useUploadProfilePicture();
 
 const { mutate: updateProfile, isPending: isUpdatingProfile } = useUpdateProfile();
 
-function onUpload(uploadEvent: FileUploadSelectEvent) {
+function onUpload(uploadEvent: Event) {
   if (!playerInfo.value) {
     return;
   }
-  const file = uploadEvent.files[0] as File | undefined;
+  const target = uploadEvent.target as HTMLInputElement;
+  const file = target.files?.[0];
   if (!file) {
     return;
   }
   uploadProfilePicture({ accountId: playerInfo.value.accountId, file });
 }
 
-function onUpdateProfile(event: FormSubmitEvent) {
+function onUpdateProfile(event: { country: string | null }) {
   if (!playerInfo.value) {
     return;
   }
-  const country = event.values.country as string | null;
-  updateProfile({ accountId: playerInfo.value.accountId, country });
+  updateProfile({ accountId: playerInfo.value.accountId, country: event.country });
+}
+
+const formCtx = useFormContext(() => ({
+  country: profile.value?.country ?? null,
+}));
+
+const validator = zodFormValidator(
+  z.object({
+    country: z.string().nullable(),
+  }),
+);
+
+const profilePictureInput = useTemplateRef<HTMLInputElement>('profilePictureInput');
+function openProfilePictureSelect() {
+  profilePictureInput.value?.click();
+}
+
+function onClickProfilePicture() {
+  if (!canEditProfile.value) {
+    return;
+  }
+  profilePictureDialogVisible.value = true;
 }
 </script>
 <template>
-  <div class="w-full mx-auto max-w-6xl p-4 flex flex-col gap-4">
+  <Page>
     <div class="flex flex-row gap-4">
       <div
-        class="w-32 h-full aspect-square rounded-lg p-0 overflow-hidden flex items-center justify-center"
+        class="w-32 h-full aspect-square rounded-lg p-0 overflow-hidden flex items-center justify-center cursor-pointer"
+        @click="onClickProfilePicture"
       >
         <img
           v-if="avatarUrl !== undefined"
@@ -74,23 +101,42 @@ function onUpdateProfile(event: FormSubmitEvent) {
           <h1>{{ playerInfo.displayName }}</h1>
           <FlagIcon :country="profile?.country ?? undefined" />
         </div>
-        <p class="text-muted-color mb-4">@{{ playerInfo.username }}</p>
+        <p class="mb-4">@{{ playerInfo.username }}</p>
       </div>
       <div v-if="canEditProfile">
-        <Button severity="secondary" class="aspect-square" @click="editDialogVisible = true">
-          <template #icon><LuPen class="w-5 h-5" /></template>
+        <Button severity="secondary" variant="text" icon-only @click="editDialogVisible = true">
+          <LuPen />
         </Button>
       </div>
     </div>
     <PlayerStats :player-id="route.params.id" />
     <h1>Rating History</h1>
     <RatingHistory :player-id="route.params.id" />
-  </div>
+  </Page>
   <Dialog v-model:visible="editDialogVisible" header="Your Profile">
+    <Form v-model="formCtx" :validator="validator" @submit="onUpdateProfile">
+      <div class="w-full flex flex-col gap-4">
+        <Select model-value="" name="country" :options="countryOptions" label="Country"></Select>
+        <div class="flex justify-end gap-2">
+          <Button
+            severity="secondary"
+            variant="text"
+            label="Cancel"
+            @click="editDialogVisible = false"
+          />
+          <Button
+            type="submit"
+            variant="text"
+            label="Update Profile"
+            :disabled="isUpdatingProfile"
+          />
+        </div>
+      </div>
+    </Form>
+  </Dialog>
+  <Dialog v-model:visible="profilePictureDialogVisible" header="Profile Picture">
     <div class="w-full flex flex-col items-center gap-4">
-      <div
-        class="w-64 h-64 rounded-lg border border-surface overflow-hidden flex items-center justify-center"
-      >
+      <div class="w-64 h-64 rounded-lg overflow-hidden flex items-center justify-center">
         <img
           v-if="avatarUrl !== undefined && !isUploadingProfilePicture"
           :src="avatarUrl"
@@ -98,27 +144,17 @@ function onUpdateProfile(event: FormSubmitEvent) {
           class="w-full h-full pointer-events-none"
         />
       </div>
-      <FileUpload
-        :multiple="false"
+      <Button label="Change Picture" @click="openProfilePictureSelect">
+        <template #icon><LuPlus /></template>
+      </Button>
+      <input
+        ref="profilePictureInput"
+        class="hidden"
+        type="file"
         accept="image/*"
-        :max-file-size="1000000"
-        custom-upload
-        mode="basic"
-        :auto="true"
-        @select="onUpload"
-      >
-      </FileUpload>
-      <p class="text-muted-color text-center">
-        Recommended size: 256x256 pixels<br />Maximum file size: 1MB
-      </p>
-      <Form
-        :initial-values="{ country: profile?.country || null }"
-        class="w-full max-w-100 flex flex-col"
-        @submit="onUpdateProfile"
-      >
-        <Select model-value="" name="country" :options="countryOptions" label="Country"></Select>
-        <Button type="submit" label="Update Profile" :disabled="isUpdatingProfile" />
-      </Form>
+        :disabled="isUploadingProfilePicture"
+        @change="onUpload($event)"
+      />
     </div>
   </Dialog>
 </template>

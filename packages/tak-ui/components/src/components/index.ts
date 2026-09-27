@@ -10,6 +10,7 @@ export * from './icon';
 export * from './inputnumber';
 export * from './inputtext';
 export * from './labelfield';
+export * from './paginator';
 export * from './select';
 export * from './sidebar';
 export * from './slider';

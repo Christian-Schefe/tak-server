@@ -3,9 +3,8 @@ import type { MatchDetail } from '@/api/match.ts';
 import { timeControlToString } from '@/utils/time.ts';
 import { Fa6ChessBoard } from 'vue-icons-plus/fa6';
 import { LuClock, LuEye, LuScale } from 'vue-icons-plus/lu';
-import GameSettingsPopover from './GameSettingsPopover.vue';
 import PlayerLabel from './PlayerLabel.vue';
-import { Button } from '@tak-ui-lib/components';
+import { Button, Card } from '@tak-ui-lib/components';
 
 defineProps<{
   matchDetail: MatchDetail;
@@ -17,8 +16,8 @@ defineEmits<{
 }>();
 </script>
 <template>
-  <div class="grow flex flex-col gap-2 p-2 bg-content rounded-md">
-    <div class="flex gap-2">
+  <Card>
+    <div class="flex gap-2 items-start">
       <div class="w-8 h-18 grid grid-rows-2 rounded-md overflow-hidden text-sm">
         <div
           v-for="(res, index) in [matchDetail.player1.score, matchDetail.player2.score]"
@@ -32,14 +31,8 @@ defineEmits<{
         <PlayerLabel :pid="matchDetail.player1.playerId" type="player"></PlayerLabel>
         <PlayerLabel :pid="matchDetail.player2.playerId" type="player"></PlayerLabel>
       </div>
-      <GameSettingsPopover
-        v-if="hideGameSettings !== true"
-        :settings="matchDetail.settings.gameSettings"
-      />
-      <Button class="w-8! h-8! p-1!" severity="secondary" @click="$emit('click')">
-        <template #icon>
-          <LuEye />
-        </template>
+      <Button icon-only variant="text" severity="secondary" @click="$emit('click')">
+        <LuEye />
       </Button>
     </div>
 
@@ -62,5 +55,5 @@ defineEmits<{
         {{ matchDetail.settings.gameSettings.halfKomi * 0.5 }} komi
       </div>
     </div>
-  </div>
+  </Card>
 </template>

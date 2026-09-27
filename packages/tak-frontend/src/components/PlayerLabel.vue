@@ -53,7 +53,7 @@ const isOnline = useIsAccountOnline(() => playerInfo.value?.accountId);
           playerInfo?.participationRating !== undefined &&
           playerInfo.participationRating !== null
         "
-        class="text-muted-color text-sm font-mono"
+        class="text-sm font-mono"
       >
         {{ ' ' }}({{ playerInfo.participationRating.toFixed(0) }})
       </span>

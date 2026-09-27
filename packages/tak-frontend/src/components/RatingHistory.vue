@@ -2,7 +2,7 @@
 import { useRatingHistory } from '@/api/player';
 import { endOfDay, startOfDay, subDays, subYears } from 'date-fns';
 import { computed, ref } from 'vue';
-import type { ChartConfiguration } from 'chart.js';
+import { type ChartConfiguration } from 'chart.js';
 import { Select } from '@tak-ui-lib/components';
 
 const props = defineProps<{

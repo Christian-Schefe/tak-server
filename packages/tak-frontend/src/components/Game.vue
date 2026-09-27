@@ -4,6 +4,7 @@ import type { TakAction, TakBaseGame, TakPlayer } from '@/tak-core';
 import Board2D from './board/board-2d/Board2D.vue';
 import Board3D from './board/board-3d/Board3D.vue';
 import BoardNinja from './board/board-ninja/BoardNinja.vue';
+import { Card } from '@tak-ui-lib/components';
 
 export type GameMode =
   | { type: 'local' }
@@ -48,13 +49,9 @@ const props = defineProps<{
       >
       </BoardNinja>
     </div>
-    <div class="w-full h-20 xl:hidden bg-content border border-surface rounded-md flex">
-      <slot name="mobile"></slot>
-    </div>
-    <div
-      class="max-xl:hidden w-full xl:w-140 bg-content border border-surface rounded-md flex flex-col overflow-hidden xl:overflow-y-auto"
-    >
+
+    <Card class="max-xl:hidden w-full xl:w-140 flex flex-col overflow-hidden xl:overflow-y-auto">
       <slot name="desktop"></slot>
-    </div>
+    </Card>
   </div>
 </template>

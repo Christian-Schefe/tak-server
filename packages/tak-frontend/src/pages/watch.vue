@@ -4,6 +4,7 @@ import { useGameHistory, type GameHistory } from '@/api/gameHistory';
 import GameSummary from '@/components/GameSummary.vue';
 import Page from '@/components/Page.vue';
 import { gameResultFromString } from '@/tak-core/ptn';
+import { Paginator } from '@tak-ui-lib/components';
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -15,12 +16,12 @@ function onWatchGame(gameId: string) {
   void router.push(`/online/${gameId}`);
 }
 
-const first = ref(0);
-const rows = ref(20);
+const currentPage = ref(1);
+const pageSize = 1;
 
 const { data: gameHistory } = useGameHistory(() => ({
-  page: Math.floor(first.value / rows.value) + 1,
-  pageSize: rows.value,
+  page: currentPage.value,
+  pageSize,
 }));
 
 const lastGameHistory = computed<GameHistory | undefined>((prevGames) => {
@@ -30,29 +31,28 @@ const lastGameHistory = computed<GameHistory | undefined>((prevGames) => {
 </script>
 <template>
   <Page>
-    <div class="flex flex-col gap-2">
-      <h1 class="text-2xl font-semibold">Live Games</h1>
-      <GameSummary
-        v-for="game in games"
-        :key="game.id"
-        :game-metadata="game"
-        @click="onWatchGame(game.id)"
-      ></GameSummary>
-      <p v-if="!games?.length" class="text-muted-color">No live games available.</p>
-    </div>
-    <div class="flex flex-col gap-2">
-      <h1 class="text-2xl font-semibold">Past Games</h1>
-      <GameSummary
-        v-for="game in lastGameHistory?.items"
-        :key="game.id"
-        :game-metadata="game"
-        :result="gameResultFromString(game.result ?? '') ?? { type: 'ongoing' }"
-        @click="onWatchGame(game.id)"
-      ></GameSummary>
+    <h1 class="text-2xl font-semibold">Live Games</h1>
+    <GameSummary
+      v-for="game in games"
+      :key="game.id"
+      :game-metadata="game"
+      @click="onWatchGame(game.id)"
+    ></GameSummary>
+    <p v-if="!games?.length">No live games available.</p>
+
+    <h1 class="text-2xl font-semibold">Past Games</h1>
+    <GameSummary
+      v-for="game in lastGameHistory?.items"
+      :key="game.id"
+      :game-metadata="game"
+      :result="gameResultFromString(game.result ?? '') ?? { type: 'ongoing' }"
+      @click="onWatchGame(game.id)"
+    ></GameSummary>
+    <div class="flex items-center justify-center">
       <Paginator
-        v-model:first="first"
-        v-model:rows="rows"
-        :total-records="lastGameHistory?.totalCount"
+        v-model="currentPage"
+        :items-per-page="pageSize"
+        :total-items="lastGameHistory?.totalCount ?? 0"
       />
     </div>
   </Page>

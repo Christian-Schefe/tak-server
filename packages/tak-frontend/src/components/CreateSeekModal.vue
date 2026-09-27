@@ -4,7 +4,7 @@ import { getDefaultReserve } from '@/tak-core';
 import { zodFormValidator } from '@/utils/forms';
 import {
   Button,
-  createFormContext,
+  useFormContext,
   Dialog,
   Form,
   InputNumber,
@@ -84,7 +84,7 @@ const boardSizeValue = ref(6);
 
 const validator = zodFormValidator(createSeekFormSchema);
 
-const formCtx = createFormContext(() => initialFormValues);
+const formCtx = useFormContext(() => initialFormValues);
 watch(visible, (newVisible) => {
   if (!newVisible) {
     formCtx.value.reset();
@@ -94,7 +94,7 @@ watch(visible, (newVisible) => {
 <template>
   <Dialog v-model:visible="visible" header="Create Seek">
     <Form v-model="formCtx" :validator="validator" @submit="onSubmit">
-      <div class="w-full flex flex-col gap-2">
+      <div class="w-full flex flex-col gap-4">
         <Select
           :model-value="'random'"
           name="color"
@@ -106,7 +106,7 @@ watch(visible, (newVisible) => {
           label="Play as"
         />
         <Select
-          :model-value="boardSizeValue"
+          v-model="boardSizeValue"
           name="boardSize"
           :options="[
             { label: '3x3', value: 3 },
@@ -117,16 +117,14 @@ watch(visible, (newVisible) => {
             { label: '8x8', value: 8 },
           ]"
           label="Board Size"
-          @update:model-value="boardSizeValue = $event ?? 6"
         />
 
-        <p class="text-sm text-muted-color-emphasis text-nowrap mt-3">Komi</p>
         <div
           class="grid items-center gap-2 justify-start"
           :style="{ gridTemplateColumns: '1fr 90px' }"
         >
           <Slider v-model="halfKomiValue" name="halfKomi" :min="0" :max="20" :step="1" />
-          <p class="text-right border-surface font-mono">{{ halfKomiValue * 0.5 }} komi</p>
+          <p class="text-right font-mono">{{ halfKomiValue * 0.5 }} komi</p>
         </div>
 
         <div class="w-full grid grid-cols-2 gap-2">
@@ -197,9 +195,9 @@ watch(visible, (newVisible) => {
           ]"
           label="Rated"
         />
-        <div class="col-span-2 w-full flex justify-end gap-2 pt-12">
-          <Button label="Cancel" severity="secondary" @click="visible = false" />
-          <Button type="submit" label="Create Seek" />
+        <div class="col-span-2 w-full flex justify-end gap-2">
+          <Button label="Cancel" variant="text" severity="secondary" @click="visible = false" />
+          <Button type="submit" variant="text" label="Create Seek" />
         </div>
       </div>
     </Form>

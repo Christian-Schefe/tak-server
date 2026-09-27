@@ -1,16 +1,15 @@
 <script setup lang="ts">
+import type { SidePanelSection, SidePanelSectionType } from '@/features/sidePanel.ts';
 import type { TakBaseGame } from '@/tak-core/base.ts';
 import type { TakAction, TakBaseGameSettings, TakGame, TakPlayer } from '@/tak-core/index.ts';
+import { Button, Dialog } from '@tak-ui-lib/components';
 import { ref } from 'vue';
-import { LuComputer, LuInfo, LuMessageCircle, LuSettings } from 'vue-icons-plus/lu';
-import GameSettingsConfigure from './GameSettingsConfigure.vue';
+import type { IconType } from 'vue-icons-plus/lib';
+import { LuComputer, LuInfo, LuMessageCircle } from 'vue-icons-plus/lu';
 import ChatPanel from './ChatPanel.vue';
 import GameAnalysis from './GameAnalysis.vue';
 import GameClock from './GameClock.vue';
 import MoveHistory from './MoveHistory.vue';
-import type { IconType } from 'vue-icons-plus/lib';
-import type { SidePanelSection, SidePanelSectionType } from '@/features/sidePanel.ts';
-import { Button, Dialog } from '@tak-ui-lib/components';
 
 defineProps<{
   game: TakBaseGame;
@@ -27,7 +26,6 @@ defineEmits<{
 }>();
 
 const sectionNames: Record<SidePanelSectionType, string> = {
-  configure: 'Configure',
   analysis: 'Analysis',
   game_info: 'Game Info',
   full_game_info: 'Game Info',
@@ -37,16 +35,7 @@ const sectionNames: Record<SidePanelSectionType, string> = {
 const openDialog = ref<SidePanelSection | null>(null);
 const visible = ref(false);
 
-const growingSection: Record<SidePanelSectionType, boolean> = {
-  configure: false,
-  analysis: false,
-  game_info: true,
-  full_game_info: true,
-  chat: true,
-};
-
 const icons: Record<SidePanelSectionType, IconType> = {
-  configure: LuSettings,
   analysis: LuComputer,
   game_info: LuInfo,
   full_game_info: LuInfo,
@@ -72,10 +61,6 @@ const icons: Record<SidePanelSectionType, IconType> = {
     </Button>
   </div>
   <Dialog v-model:visible="visible" :header="openDialog ? sectionNames[openDialog.type] : ''">
-    <GameSettingsConfigure
-      v-if="openDialog?.type === 'configure'"
-      @apply="$emit('settingsSubmit', $event)"
-    ></GameSettingsConfigure>
     <GameAnalysis
       v-if="openDialog?.type === 'analysis'"
       :game="game"

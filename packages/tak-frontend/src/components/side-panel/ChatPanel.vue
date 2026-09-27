@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { useChatHistory, useSendChatMessage, type ChatMessageConversation } from '@/api/chat';
+import { zodFormValidator } from '@/utils/forms.ts';
 import { areTimestampsDifferentMinutes } from '@/utils/time';
-import { Button, Form, InputText, type FormValidatorResult } from '@tak-ui-lib/components';
+import { Button, useFormContext, Form, InputText } from '@tak-ui-lib/components';
 import { isToday } from 'date-fns';
 import { computed, useTemplateRef, watch } from 'vue';
 import { LuSend } from 'vue-icons-plus/lu';
 import VueMarkdown from 'vue-markdown-render';
+import z from 'zod';
 import PlayerLabel from '../PlayerLabel.vue';
 
 const props = defineProps<{
@@ -64,7 +66,7 @@ function maybeSendMessage(message: unknown) {
   return false;
 }
 
-function onSendMessage(values: { chatMessage: unknown }) {
+function onSendMessage(values: { chatMessage: string }) {
   maybeSendMessage(values.chatMessage);
 }
 
@@ -96,13 +98,13 @@ function scrollToMessage(messageId: number) {
   }, 10);
 }
 
-function validateForm(data: Record<string, unknown>): FormValidatorResult<{ chatMessage: string }> {
-  const message = data.chatMessage;
-  if (typeof message !== 'string' || message.trim() === '') {
-    return { type: 'error', errors: { chatMessage: 'Message cannot be empty' } };
-  }
-  return { type: 'success', data: { chatMessage: message } };
-}
+const validator = zodFormValidator(
+  z.object({
+    chatMessage: z.string().min(1, 'Message cannot be empty'),
+  }),
+);
+
+const formCtx = useFormContext(() => ({ chatMessage: '' }));
 </script>
 <template>
   <div class="flex flex-col h-full gap-2">
@@ -128,18 +130,19 @@ function validateForm(data: Record<string, unknown>): FormValidatorResult<{ chat
               :show-flag="false"
               :show-rating="false"
             />
-            <p v-if="message.formattedTimestamp" class="text-sm text-muted-color">
+            <p v-if="message.formattedTimestamp" class="text-sm">
               {{ message.formattedTimestamp }}
             </p>
           </div>
-          <div class="pl-10 w-full text-muted-color markdown-body">
+          <div class="pl-10 w-full markdown-body">
             <VueMarkdown :source="message.message" />
           </div>
         </div>
       </div>
     </div>
     <Form
-      :validator="validateForm"
+      v-model="formCtx"
+      :validator="validator"
       class="flex gap-2 w-full items-end"
       @submit="onSendMessage"
     >

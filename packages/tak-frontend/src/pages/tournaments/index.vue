@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useCreateTournament, useTournaments } from '@/api/tournaments';
+import Page from '@/components/Page.vue';
 import TournamentSummary from '@/components/TournamentSummary.vue';
 import { Button } from '@tak-ui-lib/components';
 import { useRouter } from 'vue-router';
@@ -44,17 +45,19 @@ function goToTournament(tournamentId: string) {
 }
 </script>
 <template>
-  <div class="w-full mx-auto max-w-4xl p-2 pt-4 flex flex-col gap-6">
-    <div class="flex flex-col gap-2">
-      <h1 class="text-2xl font-semibold">Tournaments</h1>
-      <TournamentSummary
-        v-for="tournament in tournaments"
-        :key="tournament.metadata.id"
-        :tournament="tournament"
-        @click="goToTournament(tournament.metadata.id)"
-      ></TournamentSummary>
-      <p v-if="!tournaments?.length" class="text-muted-color">No tournaments available.</p>
-      <Button severity="secondary" @click="createTournament()">Create Test Tournament</Button>
-    </div>
-  </div>
+  <Page>
+    <h1 class="text-2xl font-semibold">Tournaments</h1>
+    <TournamentSummary
+      v-for="tournament in tournaments"
+      :key="tournament.metadata.id"
+      :tournament="tournament"
+      @click="goToTournament(tournament.metadata.id)"
+    ></TournamentSummary>
+    <p v-if="!tournaments?.length">No tournaments available.</p>
+    <Button
+      severity="secondary"
+      label="Create Test Tournament"
+      @click="createTournament()"
+    ></Button>
+  </Page>
 </template>

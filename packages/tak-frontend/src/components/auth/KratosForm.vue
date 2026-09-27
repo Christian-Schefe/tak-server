@@ -2,7 +2,7 @@
 import type { UiContainer, UiNode } from '@ory/client';
 import { computed, type Ref } from 'vue';
 import KratosNode from './KratosNode.vue';
-import { createFormContext, Form, type FormContext } from '@tak-ui-lib/components';
+import { useFormContext, Form, type FormContext } from '@tak-ui-lib/components';
 
 const emit = defineEmits<{
   (e: 'submit', value: unknown): void;
@@ -58,7 +58,7 @@ function submit(data: object) {
 const formCtxs = computed(() =>
   nodes.value.map(
     ([group, groupNodes]) =>
-      [group, groupNodes, createFormContext(() => groupNodes.initialValues)] as [
+      [group, groupNodes, useFormContext(() => groupNodes.initialValues)] as [
         string,
         NodeGroup,
         Ref<FormContext>,

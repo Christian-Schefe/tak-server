@@ -108,13 +108,13 @@ const adjustedVariations = computed(() => {
         displayEvaluation: string;
       })
     | null
-  )[] = ([] = variations.value.map((variation) => ({
+  )[] = variations.value.map((variation) => ({
     ...variation,
     displayMoves: variation.moves.slice(0, 12).join(' '),
     displayEvaluation:
       (variation.evaluation > 0 ? '+' : variation.evaluation < 0 ? '-' : '') +
       (Math.abs(variation.evaluation) / 10).toFixed(1),
-  })));
+  }));
   while (variationData.length < 3) {
     variationData.push(null);
   }
@@ -162,5 +162,5 @@ function onClickVariation(variation: EvalVariation) {
       <div v-else class="h-6.5"></div>
     </div>
   </div>
-  <p v-else class="text-muted-color">No analysis available.</p>
+  <p v-else>No analysis available.</p>
 </template>

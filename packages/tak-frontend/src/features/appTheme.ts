@@ -11,9 +11,17 @@ export const themes = {
     name: 'Default',
     theme: materialTheme,
   },
-  castle: {
+  sky: {
     name: 'Sky',
-    theme: createMaterialTheme('#2233FF'),
+    theme: createMaterialTheme('#57AEEB'),
+  },
+  lava: {
+    name: 'Lava',
+    theme: createMaterialTheme('#FF5733'),
+  },
+  forest: {
+    name: 'Forest',
+    theme: createMaterialTheme('#228B22'),
   },
 } as const;
 export type AppThemeId = keyof typeof themes;

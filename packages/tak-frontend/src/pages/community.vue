@@ -1,5 +1,6 @@
 <script lang="ts" setup>
 import { useOnlineAccounts } from '@/api/account';
+import Page from '@/components/Page.vue';
 import PlayerLabel from '@/components/PlayerLabel.vue';
 import ChatPanel from '@/components/side-panel/ChatPanel.vue';
 import { Card } from '@tak-ui-lib/components';
@@ -13,7 +14,7 @@ const onlineAccountIds = computed(() => {
 });
 </script>
 <template>
-  <div class="w-full mx-auto max-w-6xl p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+  <Page>
     <Card class="w-full">
       <h2>Online Players</h2>
       <div class="flex flex-col gap-2">
@@ -31,5 +32,5 @@ const onlineAccountIds = computed(() => {
         <ChatPanel :conversation="{ type: 'global' }" />
       </div>
     </Card>
-  </div>
+  </Page>
 </template>

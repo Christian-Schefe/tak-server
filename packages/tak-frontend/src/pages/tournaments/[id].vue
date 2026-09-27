@@ -11,8 +11,10 @@ import {
   useTournament,
 } from '@/api/tournaments';
 import MatchSummary from '@/components/MatchSummary.vue';
+import Page from '@/components/Page.vue';
 import PlayerLabel from '@/components/PlayerLabel.vue';
 import TournamentSummary from '@/components/TournamentSummary.vue';
+import { Button } from '@tak-ui-lib/components';
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -119,7 +121,7 @@ const tournamentStatusSeverities = {
 };
 </script>
 <template>
-  <div class="w-full mx-auto max-w-4xl p-2 pt-4 flex flex-col gap-6">
+  <Page>
     <div v-if="tournament" class="flex flex-col gap-2">
       <div class="flex items-center gap-4">
         <h1 class="text-2xl font-semibold">{{ tournament.metadata.name }}</h1>
@@ -216,5 +218,5 @@ const tournamentStatusSeverities = {
         "
       />
     </div>
-  </div>
+  </Page>
 </template>

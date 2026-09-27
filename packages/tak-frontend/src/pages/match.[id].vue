@@ -84,7 +84,7 @@ function goToGame(gameId: string) {
         hide-game-settings
         @click="goToGame(game.id)"
       ></GameSummary>
-      <p v-if="!matchGames?.length" class="text-muted-color">No live games available.</p>
+      <p v-if="!matchGames?.length">No live games available.</p>
     </div>
   </div>
 </template>

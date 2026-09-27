@@ -1,7 +1,7 @@
 import { hexFromArgb, type DynamicScheme } from '@material/material-color-utilities';
 
 export type ButtonVariant = 'filled' | 'text' | 'outlined';
-export type ButtonSeverity = 'primary' | 'secondary';
+export type ButtonSeverity = 'primary' | 'secondary' | 'danger';
 
 export type ButtonTokens = {
   padding: string;
@@ -46,6 +46,12 @@ export function createButtonTokens(theme: DynamicScheme): ButtonTokens {
         border: 'none',
         'state-color': hexFromArgb(theme.onSecondary),
       },
+      danger: {
+        background: hexFromArgb(theme.error),
+        text: hexFromArgb(theme.onError),
+        border: 'none',
+        'state-color': hexFromArgb(theme.onError),
+      },
     },
     text: {
       primary: {
@@ -60,6 +66,12 @@ export function createButtonTokens(theme: DynamicScheme): ButtonTokens {
         border: 'none',
         'state-color': hexFromArgb(theme.secondary),
       },
+      danger: {
+        background: 'transparent',
+        text: hexFromArgb(theme.error),
+        border: 'none',
+        'state-color': hexFromArgb(theme.error),
+      },
     },
     outlined: {
       primary: {
@@ -73,6 +85,12 @@ export function createButtonTokens(theme: DynamicScheme): ButtonTokens {
         text: hexFromArgb(theme.secondary),
         border: `1px solid ${hexFromArgb(theme.secondary)}`,
         'state-color': hexFromArgb(theme.secondary),
+      },
+      danger: {
+        background: 'transparent',
+        text: hexFromArgb(theme.error),
+        border: `1px solid ${hexFromArgb(theme.error)}`,
+        'state-color': hexFromArgb(theme.error),
       },
     },
   };

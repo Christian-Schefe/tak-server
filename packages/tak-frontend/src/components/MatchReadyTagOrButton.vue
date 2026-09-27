@@ -14,12 +14,12 @@ defineEmits<{
   <Button
     v-if="isButton"
     :label="isOnline ? (isReady ? 'Ready' : 'Not Ready') : 'Offline'"
-    :severity="isOnline ? (isReady ? 'success' : 'danger') : 'secondary'"
+    :severity="isOnline ? (isReady ? 'primary' : 'danger') : 'secondary'"
     @click="$emit('toggleReady')"
   />
   <Tag
     v-else
     :value="isOnline ? (isReady ? 'Ready' : 'Not Ready') : 'Offline'"
-    :severity="isOnline ? (isReady ? 'success' : 'danger') : 'secondary'"
+    :severity="isOnline ? (isReady ? 'primary' : 'danger') : 'secondary'"
   />
 </template>

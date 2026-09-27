@@ -8,9 +8,6 @@ export type SidePanelSection =
       conversation?: ChatMessageConversation;
     }
   | {
-      type: 'configure';
-    }
-  | {
       type: 'analysis';
     }
   | {

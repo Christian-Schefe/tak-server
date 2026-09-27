@@ -12,9 +12,7 @@ const authStore = useAuthStore();
     <div class="flex flex-col items-stretch gap-2">
       <KratosFlow v-if="authStore.authState.type === 'logged_out'" flow-type="registration" />
       <p v-else>You are already logged in.</p>
-      <RouterLink to="/login" class="mt-4 text-muted-color">
-        Already have an account? Login here.
-      </RouterLink>
+      <RouterLink to="/login" class="mt-4"> Already have an account? Login here. </RouterLink>
     </div>
   </Page>
 </template>

@@ -23,17 +23,30 @@ export type FormValidator<T> = (data: Record<string, unknown>) => FormValidatorR
 
 export const FormKey: InjectionKey<Ref<FormContext>> = Symbol('FormContext');
 
-export function createFormContext(
-  initialData: MaybeRefOrGetter<Record<string, unknown> | undefined>,
-) {
+export function useFormContext(initialData: MaybeRefOrGetter<Record<string, unknown> | undefined>) {
   function reset() {
-    ctx.value.data = { ...toValue(initialData) };
+    ctx.value = {
+      data: { ...toValue(initialData) },
+      errors: {},
+      reset,
+    };
   }
   const ctx = ref<FormContext>({
     data: { ...toValue(initialData) },
     errors: {},
     reset,
   });
+  watch(
+    () => toValue(initialData),
+    (newInitialData) => {
+      ctx.value = {
+        data: { ...newInitialData },
+        errors: {},
+        reset,
+      };
+    },
+    { immediate: true },
+  );
   return ctx;
 }
 

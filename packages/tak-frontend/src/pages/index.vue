@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import Page from '@/components/Page.vue';
 import { Card } from '@tak-ui-lib/components';
 import { Fa6Discord } from 'vue-icons-plus/fa6';
 import { LuGraduationCap } from 'vue-icons-plus/lu';
 </script>
 
 <template>
-  <div class="w-full mx-auto max-w-6xl p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+  <Page>
     <Card class="w-full parallax-bg">
       <a
         class="w-full h-40 flex items-center justify-center cursor-pointer hover:underline text-white"
@@ -28,7 +29,7 @@ import { LuGraduationCap } from 'vue-icons-plus/lu';
         </div>
       </a>
     </Card>
-  </div>
+  </Page>
 </template>
 <style lang="css" scoped>
 .parallax-bg {

@@ -16,7 +16,7 @@ export function createSelectTextTokens(theme: DynamicScheme): SelectTextTokens {
     'text-empty': hexFromArgb(theme.onSurfaceVariant),
     'text-filled': hexFromArgb(theme.onSurface),
     dropdown: {
-      background: hexFromArgb(theme.surface),
+      background: hexFromArgb(theme.surfaceContainerLow),
       'border-radius': '0.375rem',
       'box-shadow': '0 4px 6px rgba(0, 0, 0, 0.1)',
       padding: '0.5rem',

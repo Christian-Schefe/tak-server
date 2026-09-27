@@ -20,9 +20,7 @@ function onLogout() {
         <p>You are already logged in.</p>
         <Button @click="onLogout">Logout</Button>
       </div>
-      <RouterLink to="/register" class="mt-4 text-muted-color">
-        Don't have an account? Register here.
-      </RouterLink>
+      <RouterLink to="/register" class="mt-4"> Don't have an account? Register here. </RouterLink>
     </div>
   </Page>
 </template>

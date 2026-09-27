@@ -96,7 +96,7 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <div class="h-full flex flex-col gap-2">
+  <div class="grow flex flex-col gap-2">
     <div class="h-0 grow overflow-y-auto">
       <div
         v-for="(row, rowIndex) in historyItems"
@@ -129,25 +129,25 @@ onBeforeUnmount(() => {
     </div>
     <div class="flex justify-center gap-2">
       <ButtonGroup>
-        <Button class="w-8! h-8! p-1!" severity="secondary" @click="onClickMove(0)">
-          <template #icon><LuChevronsLeft /></template>
+        <Button icon-only severity="secondary" @click="onClickMove(0)">
+          <LuChevronsLeft />
         </Button>
         <Button
-          class="w-8! h-8! p-1!"
+          icon-only
           severity="secondary"
           @click="onClickMove((plyIndex ?? game.actionHistory.length) - 1)"
         >
-          <template #icon><LuChevronLeft /></template>
+          <LuChevronLeft />
         </Button>
         <Button
-          class="w-8! h-8! p-1!"
+          icon-only
           severity="secondary"
           @click="onClickMove((plyIndex ?? game.actionHistory.length) + 1)"
         >
-          <template #icon><LuChevronRight /></template>
+          <LuChevronRight />
         </Button>
-        <Button class="w-8! h-8! p-1!" severity="secondary" @click="onClickMove(null)">
-          <template #icon><LuChevronsRight /></template>
+        <Button icon-only severity="secondary" @click="onClickMove(null)">
+          <LuChevronsRight />
         </Button>
       </ButtonGroup>
     </div>
