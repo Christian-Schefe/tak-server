@@ -1,16 +1,5 @@
 <script setup lang="ts">
 import type { GameMode } from '@/components/Game.vue';
-import { useSettingsStore } from '@/features/settings.ts';
-import {
-  baseGameSettingsEquals,
-  type TakAction,
-  type TakBaseGame,
-  type TakPlayer,
-  type TakPos,
-  type TakVariant,
-} from '@/tak-core';
-import type { TakUITile } from '@/tak-core/ui';
-import { TakGame3DUI, type TakUI3DPiece } from '@/tak-core/ui3d';
 import {
   getBoardModelPath,
   getBoardTilesTexturePath,
@@ -22,6 +11,16 @@ import {
   useSRGBTexture,
   useTablePreset,
 } from '@/features/board3dResources.ts';
+import { useSettingsStore } from '@/features/settings.ts';
+import {
+  type TakAction,
+  type TakBaseGame,
+  type TakPlayer,
+  type TakPos,
+  type TakVariant,
+} from '@/tak-core';
+import type { TakUITile } from '@/tak-core/ui2d.ts';
+import { TakGame3DUI, type TakUI3DPiece } from '@/tak-core/ui3d';
 import { OrbitControls } from '@tresjs/cientos';
 import { TresCanvas, type TresPointerEvent } from '@tresjs/core';
 import { BloomPmndrs, EffectComposerPmndrs, FXAAPmndrs } from '@tresjs/post-processing';
@@ -42,31 +41,13 @@ const props = defineProps<{
   mode: GameMode;
 }>();
 
-function computeNewGame(
-  oldGameUi: TakGame3DUI | undefined,
-  newGame: TakBaseGame,
-  newPlyIndex: number | null,
-) {
-  let shownGame = newGame;
-  if (newPlyIndex !== null) {
-    shownGame = shownGame.clone();
-    shownGame.trimToPlyIndex(newPlyIndex);
-  }
-  return oldGameUi && baseGameSettingsEquals(oldGameUi.actualGame.settings, shownGame.settings)
-    ? produce(oldGameUi, (gameUi) => {
-        gameUi.updateGame(shownGame);
-        return gameUi;
-      })
-    : new TakGame3DUI(shownGame);
-}
-
 const gameUi = shallowRef<TakGame3DUI>(
-  computeNewGame(undefined, props.game, props.plyIndex),
+  new TakGame3DUI(props.game, props.plyIndex),
 ) as ShallowRef<TakGame3DUI>;
 watch(
   () => [props.game, props.plyIndex] as const,
   ([newGame, newPlyIndex]) => {
-    gameUi.value = computeNewGame(gameUi.value, newGame, newPlyIndex);
+    gameUi.value = new TakGame3DUI(newGame, newPlyIndex);
   },
 );
 

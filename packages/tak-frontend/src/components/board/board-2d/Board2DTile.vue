@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useSettingsStore } from '@/features/settings';
 import type { TakGameResult, TakPos } from '@/tak-core';
-import type { TakUITile } from '@/tak-core/ui';
+import type { TakUITile } from '@/tak-core/ui2d';
 import { board2dThemes } from '@/features/board2dThemes';
 import Color from 'colorjs.io';
 import { computed } from 'vue';

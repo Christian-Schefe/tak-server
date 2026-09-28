@@ -2,7 +2,7 @@
 import { checkEngineSettings, evaluatePosition, initializeEngine, stopEngine } from '@/api/engine';
 import { type TakAction, type TakBaseGame } from '@/tak-core';
 import { actionFromString } from '@/tak-core/ptn';
-import { Button } from '@tak-ui-lib/components';
+import { Card } from '@tak-ui-lib/components';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
 export interface EvalVariation {
@@ -60,7 +60,7 @@ const shownGame = computed(() => {
 });
 
 const isEvaluationSupported = computed(() => {
-  return evaluationSupported.value === true && shownGame.value.isOngoing();
+  return evaluationSupported.value === true;
 });
 
 watch([hasLoaded, () => shownGame.value.settings], ([newHasLoaded, newSettings]) => {
@@ -133,34 +133,39 @@ function onClickVariation(variation: EvalVariation) {
 }
 </script>
 <template>
-  <div
-    v-if="isEvaluationSupported"
-    class="w-full flex flex-col mt-1 p-0.5 gap-1 bg-surface-100 dark:bg-surface-800 rounded-sm border border-surface"
-  >
-    <div
-      v-for="(item, index) in adjustedVariations"
-      :key="index"
-      class="flex flex-row items-center gap-2"
-    >
-      <Button
-        v-if="item"
-        severity="secondary"
-        class="w-full! h-6.5! p-0! text-left! cursor-pointer flex items-center gap-2"
-        @click="onClickVariation(item)"
-      >
-        <span
-          :class="`px-1 py-0.5 font-bold rounded-sm font-mono text-sm border border-surface ${item.evaluation >= 0 ? 'bg-surface-0 text-surface-800' : 'bg-surface-950 text-surface-100'}`"
+  <Card>
+    <h2>Analysis</h2>
+    <div v-if="isEvaluationSupported" class="flex flex-col gap-2">
+      <div v-for="(item, index) in adjustedVariations" :key="index" class="flex items-center gap-2">
+        <button
+          v-if="item"
+          class="w-full h-6.5 p-0 text-left cursor-pointer flex items-center gap-2"
+          @click="onClickVariation(item)"
         >
-          {{ item.displayEvaluation }}
-        </span>
-        <span
-          class="w-0 grow font-mono text-sm text-nowrap overflow-hidden text-ellipsis text-color"
-        >
-          {{ item.displayMoves }}
-        </span>
-      </Button>
-      <div v-else class="h-6.5"></div>
+          <span
+            :class="`px-1 py-0.5 font-bold rounded-sm font-mono text-sm ${item.evaluation >= 0 ? 'evaluation-positive' : 'evaluation-negative'}`"
+          >
+            {{ item.displayEvaluation }}
+          </span>
+          <span class="w-0 grow font-mono text-sm text-nowrap overflow-hidden text-ellipsis">
+            {{ item.displayMoves }}
+          </span>
+        </button>
+        <div v-else class="h-6.5"></div>
+      </div>
     </div>
-  </div>
-  <p v-else>No analysis available.</p>
+    <p v-else>No analysis available.</p>
+  </Card>
 </template>
+<style lang="css" scoped>
+.evaluation-positive {
+  background-color: var(--p-color-primary);
+  color: var(--p-color-onprimary);
+  border: 1px solid transparent;
+}
+.evaluation-negative {
+  background-color: var(--p-color-surface);
+  color: var(--p-color-onsurface);
+  border: 1px solid var(--p-color-outline);
+}
+</style>

@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import Game from '@/components/Game.vue';
 import SettingsModal from '@/components/SettingsModal.vue';
+import GameAnalysis from '@/components/side-panel/GameAnalysis.vue';
 import GameSettingsConfigureDialog from '@/components/side-panel/GameSettingsConfigureDialog.vue';
-import SidePanelAccordion from '@/components/side-panel/SidePanelAccordion.vue';
-import SidePanelMobile from '@/components/side-panel/SidePanelMobile.vue';
-import type { SidePanelSection } from '@/features/sidePanel';
+import MoveHistory from '@/components/side-panel/MoveHistory.vue';
 import { usePlayGameActionSound } from '@/features/sound';
 import { TakBaseGame, type TakAction, type TakBaseGameSettings } from '@/tak-core';
-import { Button } from '@tak-ui-lib/components';
+import { Button, Card } from '@tak-ui-lib/components';
 import { produce } from 'immer';
 import { computed, ref, shallowRef, type ShallowRef } from 'vue';
 import { LuSettings, LuUndo2, LuWrench } from 'vue-icons-plus/lu';
@@ -35,6 +34,13 @@ function onAction(action: TakAction) {
   });
 }
 
+function onAnalysisAction(action: TakAction) {
+  if (plyIndex.value !== null) {
+    return;
+  }
+  onAction(action);
+}
+
 usePlayGameActionSound(game);
 
 function onSettingsSubmit(settings: TakBaseGameSettings) {
@@ -53,14 +59,12 @@ function onUndo() {
 }
 
 const canUndo = computed(() => game.value.canUndoAction());
-
-const sidePanelSections: SidePanelSection[] = [{ type: 'analysis' }, { type: 'game_info' }];
 </script>
 
 <template>
   <Game :game="game" :ply-index="plyIndex" :mode="{ type: 'local' }" @action="onAction">
-    <template #desktop>
-      <div class="w-full p-2 border-b border-surface flex">
+    <Card>
+      <div class="w-full flex">
         <Button variant="text" severity="secondary" icon-only @click="settingsVisible = true">
           <LuSettings />
         </Button>
@@ -70,28 +74,18 @@ const sidePanelSections: SidePanelSection[] = [{ type: 'analysis' }, { type: 'ga
         <Button variant="text" severity="secondary" :disabled="!canUndo" icon-only @click="onUndo">
           <LuUndo2 />
         </Button>
-        <SettingsModal v-model="settingsVisible"></SettingsModal>
-        <GameSettingsConfigureDialog
-          v-model="configureVisible"
-          @apply="onSettingsSubmit"
-        ></GameSettingsConfigureDialog>
       </div>
-      <SidePanelAccordion
-        v-model:ply-index="plyIndex"
-        :game="game"
-        :sections="sidePanelSections"
-        @settings-submit="onSettingsSubmit"
-        @analysis-action="onAction"
-      ></SidePanelAccordion>
-    </template>
-    <template #mobile>
-      <SidePanelMobile
-        v-model:ply-index="plyIndex"
-        :game="game"
-        :sections="sidePanelSections"
-        @settings-submit="onSettingsSubmit"
-        @analysis-action="onAction"
-      />
-    </template>
+    </Card>
+    <SettingsModal v-model="settingsVisible"></SettingsModal>
+    <GameSettingsConfigureDialog
+      v-model="configureVisible"
+      @apply="onSettingsSubmit"
+    ></GameSettingsConfigureDialog>
+    <GameAnalysis :game="game" :ply-index="plyIndex" @action="onAnalysisAction"></GameAnalysis>
+    <MoveHistory
+      :game="game"
+      :ply-index="plyIndex"
+      @update-ply-index="plyIndex = $event"
+    ></MoveHistory>
   </Game>
 </template>

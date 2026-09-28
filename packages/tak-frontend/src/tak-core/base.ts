@@ -244,9 +244,7 @@ export class TakBaseGame {
     this.reserves = newGame.reserves;
     this.boardHashHistory = newGame.boardHashHistory;
     this.actionHistory = newGame.actionHistory;
-    // Don't overwrite gameResult, undo is only possible on ongoing games,
-    // and trimming is also used on finished games to trim the history,
-    // but the gameResult should remain the same.
+    this.gameResult = newGame.gameResult;
   }
 }
 

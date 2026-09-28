@@ -46,49 +46,55 @@ function onClickMoreTime() {
   <div class="grow flex gap-2">
     <ButtonGroup>
       <Button
-        class="w-10! h-10!"
+        icon-only
+        :variant="requests.otherPlayer.drawOffered ? 'filled' : 'text'"
         :severity="requests.thisPlayer.drawOffered ? 'danger' : 'secondary'"
         @click="onClickDraw"
       >
-        <template #icon><LuHeartHandshake></LuHeartHandshake></template>
+        <LuHeartHandshake></LuHeartHandshake>
       </Button>
       <Button
         v-if="requests.otherPlayer.drawOffered"
-        class="w-10! h-10!"
+        variant="filled"
+        icon-only
         @click="emit('acceptRequest', 'draw')"
       >
-        <template #icon><LuCheck></LuCheck></template>
+        <LuCheck></LuCheck>
       </Button>
     </ButtonGroup>
     <ButtonGroup>
       <Button
-        class="w-10! h-10!"
+        icon-only
+        :variant="requests.otherPlayer.undoRequested ? 'filled' : 'text'"
         :severity="requests.thisPlayer.undoRequested ? 'danger' : 'secondary'"
         @click="onClickUndo"
       >
-        <template #icon><LuUndo2></LuUndo2></template>
+        <LuUndo2></LuUndo2>
       </Button>
       <Button
         v-if="requests.otherPlayer.undoRequested"
-        class="w-10! h-10!"
+        icon-only
+        variant="filled"
         @click="emit('acceptRequest', 'undo')"
       >
-        <template #icon><LuCheck></LuCheck></template>
+        <LuCheck></LuCheck>
       </Button> </ButtonGroup
     ><ButtonGroup>
       <Button
-        class="w-10! h-10!"
+        icon-only
+        :variant="requests.otherPlayer.moreTimeOffered ? 'filled' : 'text'"
         :severity="requests.thisPlayer.moreTimeOffered ? 'danger' : 'secondary'"
         @click="onClickMoreTime"
       >
-        <template #icon><LuClock></LuClock></template>
+        <LuClock></LuClock>
       </Button>
       <Button
         v-if="requests.otherPlayer.moreTimeOffered"
-        class="w-10! h-10!"
+        variant="filled"
+        icon-only
         @click="emit('acceptRequest', 'moreTime')"
       >
-        <template #icon><LuCheck></LuCheck></template>
+        <LuCheck></LuCheck>
       </Button>
     </ButtonGroup>
   </div>

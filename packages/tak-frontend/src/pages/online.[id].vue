@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useAccount } from '@/api/auth';
-import type { ChatMessageConversation } from '@/api/chat';
+import { type ChatMessageConversation } from '@/api/chat';
 import {
   useAcceptGameRequest,
   useGameStatus,
@@ -15,10 +15,11 @@ import { usePlayerInfos } from '@/api/player';
 import Game, { type GameMode } from '@/components/Game.vue';
 import GameOverModal from '@/components/GameOverModal.vue';
 import SettingsModal from '@/components/SettingsModal.vue';
+import ChatPanel from '@/components/side-panel/ChatPanel.vue';
+import GameAnalysis from '@/components/side-panel/GameAnalysis.vue';
+import GameClock from '@/components/side-panel/GameClock.vue';
+import MoveHistory from '@/components/side-panel/MoveHistory.vue';
 import RequestsBar from '@/components/side-panel/RequestsBar.vue';
-import SidePanelAccordion from '@/components/side-panel/SidePanelAccordion.vue';
-import SidePanelMobile from '@/components/side-panel/SidePanelMobile.vue';
-import type { SidePanelSection } from '@/features/sidePanel';
 import { usePlayGameActionSound } from '@/features/sound';
 import { useWebSocketStore } from '@/features/websocket';
 import {
@@ -30,7 +31,7 @@ import {
   type TakGameSettings,
 } from '@/tak-core';
 import { actionFromString, actionToString, gameResultFromString } from '@/tak-core/ptn';
-import { Button } from '@tak-ui-lib/components';
+import { Button, Card } from '@tak-ui-lib/components';
 import { produce } from 'immer';
 import { computed, markRaw, ref, watch } from 'vue';
 import { LuSettings } from 'vue-icons-plus/lu';
@@ -224,17 +225,6 @@ const chatConversation = computed<ChatMessageConversation | undefined>(() => {
       return undefined;
   }
 });
-
-const sidePanelSections = computed<SidePanelSection[]>(() => {
-  const chatSection: SidePanelSection = {
-    type: 'chat',
-    conversation: chatConversation.value,
-  };
-  if (gameData.value && gameData.value.mode.type === 'spectator') {
-    return [{ type: 'analysis' }, { type: 'full_game_info' }, chatSection];
-  }
-  return [{ type: 'full_game_info' }, chatSection];
-});
 </script>
 
 <template>
@@ -245,20 +235,14 @@ const sidePanelSections = computed<SidePanelSection[]>(() => {
     :mode="gameData.mode"
     @action="onAction"
   >
-    <template #desktop>
-      <div class="w-full p-2 border-b border-surface flex">
-        <Button
-          class="w-10! h-10!"
-          variant="text"
-          severity="secondary"
-          @click="settingsVisible = true"
-        >
-          <template #icon><LuSettings></LuSettings></template>
+    <Card>
+      <div class="w-full flex">
+        <Button icon-only variant="text" severity="secondary" @click="settingsVisible = true">
+          <LuSettings />
         </Button>
         <template
           v-if="gameData.mode.type === 'online' && gameData.status.status.type === 'ongoing'"
         >
-          <Divider layout="vertical" class="mx-2!"></Divider>
           <RequestsBar
             :white-requests="gameData.status.status.whiteRequests"
             :black-requests="gameData.status.status.blackRequests"
@@ -268,7 +252,6 @@ const sidePanelSections = computed<SidePanelSection[]>(() => {
           />
         </template>
         <template v-if="gameData.status.status.type !== 'ongoing'">
-          <Divider layout="vertical" class="mx-2!"></Divider>
           <Button label="View Result" severity="secondary" @click="gameOverDialogVisible = true" />
         </template>
         <SettingsModal v-model="settingsVisible"></SettingsModal>
@@ -282,22 +265,23 @@ const sidePanelSections = computed<SidePanelSection[]>(() => {
           :match-id="gameData.status.matchId"
         />
       </div>
-      <SidePanelAccordion
-        v-model:ply-index="plyIndex"
-        :game="gameData.game.base"
-        :full-game="gameData.game"
-        :player-ids="gameData.status.playerIds"
-        :sections="sidePanelSections"
-      ></SidePanelAccordion>
-    </template>
-    <template #mobile>
-      <SidePanelMobile
-        v-model:ply-index="plyIndex"
-        :game="gameData.game.base"
-        :full-game="gameData.game"
-        :player-ids="gameData.status.playerIds"
-        :sections="sidePanelSections"
-      />
-    </template>
+    </Card>
+    <GameAnalysis :game="gameData.game.base" :ply-index="plyIndex"></GameAnalysis>
+    <ChatPanel v-if="chatConversation" :conversation="chatConversation" />
+    <GameClock
+      :game="gameData.game"
+      player="white"
+      :player-id="gameData.status.playerIds.white"
+    ></GameClock>
+    <GameClock
+      :game="gameData.game"
+      player="black"
+      :player-id="gameData.status.playerIds.black"
+    ></GameClock>
+    <MoveHistory
+      :game="gameData.game.base"
+      :ply-index="plyIndex"
+      @update-ply-index="plyIndex = $event"
+    ></MoveHistory>
   </Game>
 </template>

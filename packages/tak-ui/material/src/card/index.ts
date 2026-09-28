@@ -12,7 +12,7 @@ export interface CardTokens {
 
 export function createCardTokens(theme: DynamicScheme): CardTokens {
   return {
-    'border-radius': '0.5rem',
+    'border-radius': '0.75rem',
     padding: '1rem',
     gap: '1rem',
     background: hexFromArgb(theme.surfaceContainerLow),

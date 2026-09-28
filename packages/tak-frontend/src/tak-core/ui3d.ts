@@ -1,6 +1,5 @@
 import { current, immerable, isDraft } from 'immer';
 import {
-  baseGameSettingsEquals,
   dirFromAdjacent,
   isValidPos,
   offsetPos,
@@ -47,9 +46,11 @@ export class TakGame3DUI {
   pieceByKind: Record<TakPlayer, Record<'capstone' | 'flat', TakUI3DPiece[]>>;
   tiles: TakUI3DTile[];
   partialAction: PartialAction | null;
+  plyIndex: number | null = null;
 
-  constructor(game: TakBaseGame) {
+  constructor(game: TakBaseGame, plyIndex: number | null) {
     this.actualGame = game;
+    this.plyIndex = plyIndex;
     this.pieceByKind = { black: { capstone: [], flat: [] }, white: { capstone: [], flat: [] } };
     this.partialAction = null;
     this.pieces = [];
@@ -106,24 +107,14 @@ export class TakGame3DUI {
     this.onGameUpdate();
   }
 
-  updateGame(game: TakBaseGame) {
-    if (this.actualGame === game) {
-      return;
-    }
-
-    if (!baseGameSettingsEquals(this.actualGame.settings, game.settings)) {
-      throw new Error('Cannot update game with different settings');
-    }
-
-    this.actualGame = game;
-    this.partialAction = null;
-    this.onGameUpdate();
-  }
-
   private onGameUpdate() {
     const shownGame = isDraft(this.actualGame)
       ? current(this.actualGame).clone()
       : this.actualGame.clone();
+
+    if (this.plyIndex !== null) {
+      shownGame.trimToPlyIndex(this.plyIndex);
+    }
 
     const partialAction = partialActionToAction(this.partialAction);
     if (partialAction) {

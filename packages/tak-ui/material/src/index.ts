@@ -1,4 +1,10 @@
-import { argbFromHex, DynamicScheme, Hct, Variant } from '@material/material-color-utilities';
+import {
+  argbFromHex,
+  DynamicScheme,
+  Hct,
+  hexFromArgb,
+  Variant,
+} from '@material/material-color-utilities';
 import { createButtonTokens } from './button';
 import { createTooltipTokens } from './tooltip';
 
@@ -17,6 +23,37 @@ import { createBadgeTokens } from './badge';
 
 function createDefaultTheme(theme: DynamicScheme) {
   return {
+    color: {
+      primary: hexFromArgb(theme.primary),
+      onPrimary: hexFromArgb(theme.onPrimary),
+      primaryContainer: hexFromArgb(theme.primaryContainer),
+      onPrimaryContainer: hexFromArgb(theme.onPrimaryContainer),
+      secondary: hexFromArgb(theme.secondary),
+      onSecondary: hexFromArgb(theme.onSecondary),
+      secondaryContainer: hexFromArgb(theme.secondaryContainer),
+      onSecondaryContainer: hexFromArgb(theme.onSecondaryContainer),
+      tertiary: hexFromArgb(theme.tertiary),
+      onTertiary: hexFromArgb(theme.onTertiary),
+      tertiaryContainer: hexFromArgb(theme.tertiaryContainer),
+      onTertiaryContainer: hexFromArgb(theme.onTertiaryContainer),
+      error: hexFromArgb(theme.error),
+      onError: hexFromArgb(theme.onError),
+      errorContainer: hexFromArgb(theme.errorContainer),
+      onErrorContainer: hexFromArgb(theme.onErrorContainer),
+      background: hexFromArgb(theme.background),
+      onBackground: hexFromArgb(theme.onBackground),
+      surface: hexFromArgb(theme.surface),
+      onSurface: hexFromArgb(theme.onSurface),
+      surfaceVariant: hexFromArgb(theme.surfaceVariant),
+      onSurfaceVariant: hexFromArgb(theme.onSurfaceVariant),
+      outline: hexFromArgb(theme.outline),
+      outlineVariant: hexFromArgb(theme.outlineVariant),
+      shadow: hexFromArgb(theme.shadow),
+      scrim: hexFromArgb(theme.scrim),
+      inverseSurface: hexFromArgb(theme.inverseSurface),
+      inverseOnSurface: hexFromArgb(theme.inverseOnSurface),
+      inversePrimary: hexFromArgb(theme.inversePrimary),
+    },
     root: createRootTokens(theme),
     button: createButtonTokens(theme),
     card: createCardTokens(theme),

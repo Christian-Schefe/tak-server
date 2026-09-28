@@ -18,7 +18,6 @@ export interface TakUIPiece {
   height: number;
   isFloating: boolean;
   zPriority: number | null;
-  deleted: boolean;
   buriedPieceCount: number;
   canBePicked: boolean;
 }
@@ -35,13 +34,15 @@ export class TakGameUI {
   [immerable] = true;
 
   actualGame: TakBaseGame;
+  plyIndex: number | null = null;
   pieces: Record<string, TakUIPiece | undefined>;
   priorityPieces: string[];
   tiles: TakUITile[];
   partialAction: PartialAction | null;
 
-  constructor(game: TakBaseGame) {
+  constructor(game: TakBaseGame, plyIndex: number | null, previousGameUI?: TakGameUI) {
     this.actualGame = game;
+    this.plyIndex = plyIndex;
     this.pieces = {};
     this.priorityPieces = [];
     this.partialAction = null;
@@ -58,36 +59,41 @@ export class TakGameUI {
         });
       }
     }
-    this.onGameUpdate();
-  }
 
-  updateGame(game: TakBaseGame) {
-    if (this.actualGame === game) {
-      return;
-    }
-    const isSteppingForwardOne =
-      game.actionHistory.length === this.actualGame.actionHistory.length + 1;
-    const isSteppingBackOne =
-      game.actionHistory.length === this.actualGame.actionHistory.length - 1;
+    if (previousGameUI) {
+      const effectivePlyIndex = plyIndex ?? game.actionHistory.length;
+      const effectivePreviousPlyIndex =
+        previousGameUI.plyIndex ?? previousGameUI.actualGame.actionHistory.length;
+      const isSteppingForwardOne = effectivePlyIndex === effectivePreviousPlyIndex + 1;
+      const isSteppingBackOne = effectivePlyIndex === effectivePreviousPlyIndex - 1;
 
-    this.priorityPieces = (
-      isSteppingForwardOne
-        ? (game.actionHistory[game.actionHistory.length - 1]?.pieceIds ?? [])
+      console.log(
+        'isSteppingForwardOne',
+        isSteppingForwardOne,
+        ' isSteppingBackOne',
+        isSteppingBackOne,
+      );
+
+      this.priorityPieces = isSteppingForwardOne
+        ? getLastActionPiecesInOrder(game)
         : isSteppingBackOne
-          ? (this.actualGame.actionHistory[this.actualGame.actionHistory.length - 1]?.pieceIds ??
-            [])
-          : []
-    ).map((id) => id.uuid);
+          ? getLastActionPiecesInOrder(previousGameUI.actualGame)
+          : [];
+    }
 
-    this.actualGame = game;
-    this.partialAction = null;
     this.onGameUpdate();
   }
 
   private onGameUpdate() {
-    const shownGame = isDraft(this.actualGame)
+    const trimmedGame = isDraft(this.actualGame)
       ? current(this.actualGame).clone()
       : this.actualGame.clone();
+
+    if (this.plyIndex !== null) {
+      trimmedGame.trimToPlyIndex(this.plyIndex);
+    }
+
+    const shownGame = trimmedGame.clone();
 
     const partialAction = partialActionToAction(this.partialAction);
     if (partialAction) {
@@ -103,7 +109,7 @@ export class TakGameUI {
         this.partialAction.take - this.partialAction.drops.reduce((acc, drop) => acc + drop, 0),
     };
 
-    const size = this.actualGame.board.size;
+    const size = trimmedGame.board.size;
 
     const clickOptions = [];
 
@@ -129,10 +135,9 @@ export class TakGameUI {
       }
     }
 
-    const isOngoing = !this.actualGame.gameResult;
+    const isOngoing = !trimmedGame.gameResult;
 
-    const presentIds = new Set<string>();
-
+    this.pieces = {};
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const stack = shownGame.board.getStack({ x, y });
@@ -162,17 +167,12 @@ export class TakGameUI {
               pos,
               height,
               isFloating: floatingHeightThreshold !== null && height >= floatingHeightThreshold,
-              deleted: false,
             };
-            if (arePiecesDifferent(this.pieces[id], newPiece)) {
-              this.pieces[id] = newPiece;
-            }
-            presentIds.add(id);
+            this.pieces[id] = newPiece;
           }
           hoverable &&=
-            this.actualGame.actionHistory.length >= 2 &&
-            stack.composition[stack.composition.length - 1]?.player ===
-              this.actualGame.currentPlayer;
+            trimmedGame.actionHistory.length >= 2 &&
+            stack.composition[stack.composition.length - 1]?.player === trimmedGame.currentPlayer;
         }
 
         const newTile: TakUITile = {
@@ -188,19 +188,8 @@ export class TakGameUI {
       }
     }
 
-    for (const id of Object.keys(this.pieces)) {
-      if (this.pieces[id] !== undefined && !presentIds.has(id)) {
-        if (this.pieces[id].deleted) {
-          // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-          delete this.pieces[id];
-        } else {
-          this.pieces[id].deleted = true;
-        }
-      }
-    }
-
-    if (this.actualGame.actionHistory.length >= 1) {
-      const lastAction = this.actualGame.actionHistory[this.actualGame.actionHistory.length - 1];
+    if (trimmedGame.actionHistory.length >= 1) {
+      const lastAction = trimmedGame.actionHistory[trimmedGame.actionHistory.length - 1];
       if (lastAction?.action.type === 'place') {
         const lastActionPosIndex = lastAction.action.pos.y * size + lastAction.action.pos.x;
         const lastActionTile = this.tiles[lastActionPosIndex];
@@ -355,22 +344,6 @@ interface PartialAction {
   drops: number[];
   pos: TakPos;
   dir: TakDir | null;
-}
-
-function arePiecesDifferent(piece: TakUIPiece | undefined, newData: TakUIPiece): boolean {
-  return (
-    !piece ||
-    piece.player !== newData.player ||
-    piece.variant !== newData.variant ||
-    piece.pos.x !== newData.pos.x ||
-    piece.pos.y !== newData.pos.y ||
-    piece.height !== newData.height ||
-    piece.isFloating !== newData.isFloating ||
-    piece.zPriority !== newData.zPriority ||
-    piece.deleted !== newData.deleted ||
-    piece.buriedPieceCount !== newData.buriedPieceCount ||
-    piece.canBePicked !== newData.canBePicked
-  );
 }
 
 function areTilesDifferent(tile: TakUITile | undefined, newTile: TakUITile): boolean {

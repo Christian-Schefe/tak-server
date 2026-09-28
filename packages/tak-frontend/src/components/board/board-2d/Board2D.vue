@@ -1,21 +1,20 @@
 <script setup lang="ts">
 import type { GameMode } from '@/components/Game.vue';
+import { board2dThemes } from '@/features/board2dThemes.ts';
+import { useSettingsStore } from '@/features/settings.ts';
 import {
-  baseGameSettingsEquals,
   type TakAction,
   type TakBaseGame,
   type TakPlayer,
   type TakPos,
   type TakVariant,
 } from '@/tak-core';
-import { TakGameUI, type TakUIPiece, type TakUITile } from '@/tak-core/ui';
+import { TakGameUI, type TakUIPiece, type TakUITile } from '@/tak-core/ui2d.ts';
+import { Button } from '@tak-ui-lib/components';
 import { produce } from 'immer';
 import { computed, ref, shallowRef, watch, type ShallowRef } from 'vue';
 import Board2DPiece from './Board2DPiece.vue';
 import Board2DTile from './Board2DTile.vue';
-import { useSettingsStore } from '@/features/settings.ts';
-import { board2dThemes } from '@/features/board2dThemes.ts';
-import { Button } from '@tak-ui-lib/components';
 
 const emit = defineEmits<{
   (e: 'action', action: TakAction): void;
@@ -27,31 +26,13 @@ const props = defineProps<{
   mode: GameMode;
 }>();
 
-function computeNewGame(
-  oldGameUi: TakGameUI | undefined,
-  newGame: TakBaseGame,
-  newPlyIndex: number | null,
-) {
-  let shownGame = newGame;
-  if (newPlyIndex !== null) {
-    shownGame = shownGame.clone();
-    shownGame.trimToPlyIndex(newPlyIndex);
-  }
-  return oldGameUi && baseGameSettingsEquals(oldGameUi.actualGame.settings, shownGame.settings)
-    ? produce(oldGameUi, (gameUi) => {
-        gameUi.updateGame(shownGame);
-        return gameUi;
-      })
-    : new TakGameUI(shownGame);
-}
-
 const gameUi = shallowRef<TakGameUI>(
-  computeNewGame(undefined, props.game, props.plyIndex),
+  new TakGameUI(props.game, props.plyIndex),
 ) as ShallowRef<TakGameUI>;
 watch(
   () => [props.game, props.plyIndex] as const,
   ([newGame, newPlyIndex]) => {
-    gameUi.value = computeNewGame(gameUi.value, newGame, newPlyIndex);
+    gameUi.value = new TakGameUI(newGame, newPlyIndex, gameUi.value);
   },
 );
 
@@ -184,12 +165,14 @@ const boardTheme = computed(
           ></Board2DTile>
         </div>
         <div class="absolute inset-0 pointer-events-none">
-          <Board2DPiece
-            v-for="piece in pieceData"
-            :key="piece.id"
-            :piece="piece.data"
-            :board-size="gameUi.actualGame.settings.boardSize"
-          ></Board2DPiece>
+          <TransitionGroup>
+            <Board2DPiece
+              v-for="piece in pieceData"
+              :key="piece.id"
+              :piece="piece.data"
+              :board-size="gameUi.actualGame.settings.boardSize"
+            ></Board2DPiece>
+          </TransitionGroup>
         </div>
       </div>
       <div class="w-full h-[10%] xl:h-[5%]">

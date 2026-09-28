@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { useSettingsStore } from '@/features/settings';
-import type { TakUIPiece } from '@/tak-core/ui';
 import { board2dThemes } from '@/features/board2dThemes';
-import { computed, onMounted, ref } from 'vue';
+import { useSettingsStore } from '@/features/settings';
+import type { TakUIPiece } from '@/tak-core/ui2d';
+import { computed } from 'vue';
 
 const props = defineProps<{
   piece: TakUIPiece;
@@ -30,8 +30,7 @@ const transformData = computed(() => {
   const yTransform =
     (props.boardSize - 1 - piece.pos.y) * 100 - actualHeight * 7 + (piece.canBePicked ? 0 : 35);
 
-  const hidden =
-    piece.deleted || (!piece.canBePicked && piece.buriedPieceCount - height >= buriedLimit);
+  const hidden = !piece.canBePicked && piece.buriedPieceCount - height >= buriedLimit;
 
   return {
     zIndex,
@@ -79,15 +78,6 @@ const styleData = computed(() => {
     outlineWidth: boardTheme.value.pieces.border,
   };
 });
-
-const hasTickedOnce = ref(false);
-const show = computed(() => hasTickedOnce.value && !transformData.value.hidden);
-
-onMounted(() => {
-  setTimeout(() => {
-    hasTickedOnce.value = true;
-  });
-});
 </script>
 <template>
   <div
@@ -96,26 +86,43 @@ onMounted(() => {
       width: `${transformData.size}%`,
       height: `${transformData.size}%`,
       zIndex: transformData.zIndex,
-      opacity: show ? 1 : 0,
       transition: 'transform 0.2s ease, opacity 0.2s ease',
     }"
     class="absolute flex items-center justify-center"
   >
     <div
-      :class="`transition-transform outline ${piece.player === 'white' ? 'bg-surface-50 outline-surface-900' : 'bg-surface-900 outline-surface-50'}`"
+      class="inner-piece"
       :style="{
+        transition: 'transform 0.2s ease, width 0.2s ease, height 0.2s ease, opacity 0.2s ease',
         width: `${styleData.width * 100}%`,
         height: `${styleData.height * 100}%`,
-        borderBottomLeftRadius: styleData.borderRadius,
-        borderBottomRightRadius: styleData.borderRadius,
-        borderTopLeftRadius: styleData.borderRadius,
-        borderTopRightRadius: styleData.borderRadius,
-        transform: `rotate(${styleData.rotation}deg) scale(${show ? 1 : 0.8})`,
-        backgroundColor: styleData.backgroundColor,
-        outlineColor: styleData.outlineColor,
-        outlineWidth: styleData.outlineWidth,
-        transition: ' width 0.2s ease, height 0.2s ease, transform 0.2s ease',
+        opacity: transformData.hidden ? 0 : 1,
       }"
-    ></div>
+    >
+      <div
+        class="outline w-full h-full"
+        :style="{
+          borderBottomLeftRadius: styleData.borderRadius,
+          borderBottomRightRadius: styleData.borderRadius,
+          borderTopLeftRadius: styleData.borderRadius,
+          borderTopRightRadius: styleData.borderRadius,
+          transform: `rotate(${styleData.rotation}deg)`,
+          backgroundColor: styleData.backgroundColor,
+          outlineColor: styleData.outlineColor,
+          outlineWidth: styleData.outlineWidth,
+          transition: 'transform 0.2s ease',
+        }"
+      ></div>
+    </div>
   </div>
 </template>
+<style lang="css" scoped>
+.v-enter-from,
+.v-leave-to {
+  opacity: 0;
+}
+.v-enter-from .inner-piece,
+.v-leave-to .inner-piece {
+  transform: scale(0.8);
+}
+</style>

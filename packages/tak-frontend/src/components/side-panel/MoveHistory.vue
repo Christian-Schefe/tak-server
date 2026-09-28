@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { TakBaseGame } from '@/tak-core';
 import { actionToString, gameResultToString } from '@/tak-core/ptn';
-import { Button, ButtonGroup } from '@tak-ui-lib/components';
+import { Button, ButtonGroup, Card } from '@tak-ui-lib/components';
 import { computed, onBeforeUnmount, onMounted } from 'vue';
 import { LuChevronLeft, LuChevronRight, LuChevronsLeft, LuChevronsRight } from 'vue-icons-plus/lu';
 
@@ -96,7 +96,8 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
-  <div class="grow flex flex-col gap-2">
+  <Card class="grow">
+    <h2>Move History</h2>
     <div class="h-0 grow overflow-y-auto">
       <div
         v-for="(row, rowIndex) in historyItems"
@@ -151,5 +152,5 @@ onBeforeUnmount(() => {
         </Button>
       </ButtonGroup>
     </div>
-  </div>
+  </Card>
 </template>

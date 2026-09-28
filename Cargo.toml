@@ -19,6 +19,7 @@ members = [
     "crates/tak-core",
     "crates/tak-main",
     "crates/tak-server-app",
+    "crates/tak-wasm-engine",
 ]
 resolver = "3"
 
