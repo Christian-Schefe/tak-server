@@ -52,9 +52,9 @@ const openingNames: Record<string, string | undefined> = {
       <Tag v-if="!seek.isRated" severity="warn">Unrated</Tag>
       <div class="grow" />
 
-      <Button severity="secondary" variant="text" icon-only @click="$emit('click')">
-        <LuTrash v-if="action === 'delete'" />
-        <LuSwords v-else />
+      <Button size="small" severity="secondary" variant="text" icon-only @click="$emit('click')">
+        <LuTrash v-if="action === 'delete'" size="1lh" />
+        <LuSwords v-else size="1lh" />
       </Button>
     </div>
 

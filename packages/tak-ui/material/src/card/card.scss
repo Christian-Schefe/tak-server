@@ -1,11 +1,22 @@
+$variants: (
+  'filled': '.p-card-filled',
+  'elevated': '.p-card-elevated',
+  'outlined': '.p-card-outlined',
+);
+
 .p-card {
-  background-color: var(--p-card-background);
-  color: var(--p-card-text);
   border-radius: var(--p-card-border-radius);
   padding: var(--p-card-padding);
   gap: var(--p-card-gap);
-  border: var(--p-card-border);
-  box-shadow: var(--p-card-box-shadow);
   display: flex;
   flex-direction: column;
+
+  @each $variant, $variant-selector in $variants {
+    &#{$variant-selector} {
+      background-color: var(--p-card-#{$variant}-background);
+      color: var(--p-card-#{$variant}-text);
+      border: var(--p-card-#{$variant}-border);
+      box-shadow: var(--p-card-#{$variant}-box-shadow);
+    }
+  }
 }

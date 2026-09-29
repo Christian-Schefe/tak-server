@@ -10,10 +10,11 @@ type PropsOf<T> = T extends Component
 
 const props = withDefaults(
   defineProps<{
-    severity?: 'primary' | 'secondary' | 'danger' | undefined;
-    variant?: 'filled' | 'text' | 'outlined' | undefined;
-    disabled?: boolean | undefined;
-    iconOnly?: boolean | undefined;
+    severity?: 'primary' | 'secondary' | 'tertiary' | 'danger';
+    variant?: 'filled' | 'text' | 'outlined' | 'tonal';
+    size?: 'small' | 'medium';
+    disabled?: boolean;
+    iconOnly?: boolean;
     label?: string | undefined;
     type?: 'button' | 'submit' | 'reset';
     name?: string | undefined;
@@ -23,6 +24,7 @@ const props = withDefaults(
   {
     severity: 'primary',
     variant: 'filled',
+    size: 'medium',
     disabled: false,
     iconOnly: false,
     label: undefined,
@@ -85,6 +87,7 @@ function handleClick(e: PointerEvent) {
     :class="[
       `p-button-${props.variant}`,
       `p-button-${props.severity}`,
+      `p-button-${props.size}`,
       { 'p-button-disabled': props.disabled, 'p-button-icon-only': props.iconOnly },
     ]"
     :disabled="disabled"
@@ -98,11 +101,15 @@ function handleClick(e: PointerEvent) {
   >
     <div class="p-button-state" />
     <div class="p-button-content">
-      <slot name="icon" />
-      <slot>
-        <p class="p-button-label">{{ label }}</p>
-      </slot>
-      <slot name="icon-append" />
+      <span v-if="$slots['icon']">
+        <slot name="icon" />
+      </span>
+      <p class="p-button-label">
+        <slot>{{ label }}</slot>
+      </p>
+      <span v-if="$slots['icon-append']">
+        <slot name="icon-append" />
+      </span>
     </div>
   </component>
 </template>

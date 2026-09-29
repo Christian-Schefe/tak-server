@@ -51,38 +51,46 @@ const formValidator = zodFormValidator(configureFormSchema);
       :validator="formValidator"
       @submit="onSubmit"
     >
-      <Select
-        :model-value="6"
-        name="boardSize"
-        :options="[
-          { label: '3x3', value: 3 },
-          { label: '4x4', value: 4 },
-          { label: '5x5', value: 5 },
-          { label: '6x6', value: 6 },
-          { label: '7x7', value: 7 },
-          { label: '8x8', value: 8 },
-        ]"
-      >
-      </Select>
-      <Select
-        :model-value="4"
-        name="halfKomi"
-        :options="[
-          { label: '0 komi', value: 0 },
-          { label: '2 komi', value: 4 },
-        ]"
-      >
-      </Select>
-      <Select
-        model-value="swap"
-        name="opening"
-        :options="[
-          { label: 'Swap', value: 'swap' },
-          { label: 'No Swap', value: 'noSwap' },
-          { label: 'Double Stack', value: 'doubleStack' },
-        ]"
-      />
-      <Button type="submit" label="Apply"></Button>
+      <div class="flex flex-col gap-4">
+        <Select
+          :model-value="6"
+          name="boardSize"
+          :options="[
+            { label: '3x3', value: 3 },
+            { label: '4x4', value: 4 },
+            { label: '5x5', value: 5 },
+            { label: '6x6', value: 6 },
+            { label: '7x7', value: 7 },
+            { label: '8x8', value: 8 },
+          ]"
+          label="Board Size"
+        >
+        </Select>
+        <Select
+          :model-value="4"
+          name="halfKomi"
+          :options="[
+            { label: '0 komi', value: 0 },
+            { label: '2 komi', value: 4 },
+          ]"
+          label="Komi"
+        >
+        </Select>
+        <Select
+          model-value="swap"
+          name="opening"
+          :options="[
+            { label: 'Swap', value: 'swap' },
+            { label: 'No Swap', value: 'noSwap' },
+            { label: 'Double Stack', value: 'doubleStack' },
+          ]"
+          label="Opening"
+        />
+        <div class="flex justify-end gap-2">
+          <Button type="button" label="Cancel" variant="text" @click="visible = false"></Button>
+          <Button type="submit" label="Apply"></Button>
+        </div>
+      </div>
     </Form>
   </Dialog>
 </template>

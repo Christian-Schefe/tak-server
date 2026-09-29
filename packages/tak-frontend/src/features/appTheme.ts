@@ -11,6 +11,10 @@ export const themes = {
     name: 'Default',
     theme: materialTheme,
   },
+  neutral: {
+    name: 'Neutral',
+    theme: createMaterialTheme('#9E9E9E', 'monochrome'),
+  },
   sky: {
     name: 'Sky',
     theme: createMaterialTheme('#57AEEB'),

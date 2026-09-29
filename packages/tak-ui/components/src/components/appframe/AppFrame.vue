@@ -32,7 +32,6 @@
   flex-grow: 1;
   display: flex;
   flex-direction: column;
-  overflow: auto;
-  scrollbar-gutter: stable both-edges;
+  overflow: hidden;
 }
 </style>

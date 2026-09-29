@@ -2,8 +2,8 @@
 import { checkEngineSettings, evaluatePosition, initializeEngine, stopEngine } from '@/api/engine';
 import { type TakAction, type TakBaseGame } from '@/tak-core';
 import { actionFromString } from '@/tak-core/ptn';
-import { Card } from '@tak-ui-lib/components';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import CollapseCard from './CollapseCard.vue';
 
 export interface EvalVariation {
   evaluation: number;
@@ -60,7 +60,7 @@ const shownGame = computed(() => {
 });
 
 const isEvaluationSupported = computed(() => {
-  return evaluationSupported.value === true;
+  return evaluationSupported.value === true && shownGame.value.isOngoing();
 });
 
 watch([hasLoaded, () => shownGame.value.settings], ([newHasLoaded, newSettings]) => {
@@ -133,8 +133,7 @@ function onClickVariation(variation: EvalVariation) {
 }
 </script>
 <template>
-  <Card>
-    <h2>Analysis</h2>
+  <CollapseCard title="Analysis">
     <div v-if="isEvaluationSupported" class="flex flex-col gap-2">
       <div v-for="(item, index) in adjustedVariations" :key="index" class="flex items-center gap-2">
         <button
@@ -155,7 +154,7 @@ function onClickVariation(variation: EvalVariation) {
       </div>
     </div>
     <p v-else>No analysis available.</p>
-  </Card>
+  </CollapseCard>
 </template>
 <style lang="css" scoped>
 .evaluation-positive {

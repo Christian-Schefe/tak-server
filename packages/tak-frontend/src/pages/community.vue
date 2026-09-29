@@ -26,11 +26,6 @@ const onlineAccountIds = computed(() => {
         />
       </div>
     </Card>
-    <Card class="w-full">
-      <h2>Global Chat</h2>
-      <div class="h-100">
-        <ChatPanel :conversation="{ type: 'global' }" />
-      </div>
-    </Card>
+    <ChatPanel :conversation="{ type: 'global' }" />
   </Page>
 </template>

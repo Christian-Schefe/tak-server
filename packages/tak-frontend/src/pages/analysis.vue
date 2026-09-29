@@ -65,13 +65,32 @@ const canUndo = computed(() => game.value.canUndoAction());
   <Game :game="game" :ply-index="plyIndex" :mode="{ type: 'local' }" @action="onAction">
     <Card>
       <div class="w-full flex">
-        <Button variant="text" severity="secondary" icon-only @click="settingsVisible = true">
+        <Button
+          size="small"
+          variant="text"
+          severity="secondary"
+          icon-only
+          @click="settingsVisible = true"
+        >
           <LuSettings />
         </Button>
-        <Button variant="text" severity="secondary" icon-only @click="configureVisible = true">
+        <Button
+          size="small"
+          variant="text"
+          severity="secondary"
+          icon-only
+          @click="configureVisible = true"
+        >
           <LuWrench />
         </Button>
-        <Button variant="text" severity="secondary" :disabled="!canUndo" icon-only @click="onUndo">
+        <Button
+          size="small"
+          variant="text"
+          severity="secondary"
+          :disabled="!canUndo"
+          icon-only
+          @click="onUndo"
+        >
           <LuUndo2 />
         </Button>
       </div>

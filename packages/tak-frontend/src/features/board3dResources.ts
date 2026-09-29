@@ -213,6 +213,7 @@ export function useSRGBTexture(path: MaybeRefOrGetter<string>) {
   const { state: texture } = useTexture(computed(() => toValue(path)));
   watch(texture, () => {
     texture.value.colorSpace = SRGBColorSpace;
+    texture.value.anisotropy = 8;
   });
   return texture;
 }

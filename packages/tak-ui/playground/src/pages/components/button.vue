@@ -68,5 +68,14 @@ const severities = ['primary', 'secondary'] as const;
         <Button label="Button 3" />
       </ButtonGroup>
     </div>
+    <h2>Button Sizes</h2>
+    <div class="flex gap-2 items-center flex-wrap">
+      <template v-for="size in ['small', 'medium']" :key="size">
+        <Button :size="size" :label="`${size}`" />
+        <Button :size="size" :label="`${size}`" icon-only>
+          <LuAlarmClock size="1lh" />
+        </Button>
+      </template>
+    </div>
   </Page>
 </template>

@@ -47,6 +47,7 @@ function onClickMoreTime() {
     <ButtonGroup>
       <Button
         icon-only
+        size="small"
         :variant="requests.otherPlayer.drawOffered ? 'filled' : 'text'"
         :severity="requests.thisPlayer.drawOffered ? 'danger' : 'secondary'"
         @click="onClickDraw"
@@ -56,6 +57,7 @@ function onClickMoreTime() {
       <Button
         v-if="requests.otherPlayer.drawOffered"
         variant="filled"
+        size="small"
         icon-only
         @click="emit('acceptRequest', 'draw')"
       >
@@ -65,6 +67,7 @@ function onClickMoreTime() {
     <ButtonGroup>
       <Button
         icon-only
+        size="small"
         :variant="requests.otherPlayer.undoRequested ? 'filled' : 'text'"
         :severity="requests.thisPlayer.undoRequested ? 'danger' : 'secondary'"
         @click="onClickUndo"
@@ -74,6 +77,7 @@ function onClickMoreTime() {
       <Button
         v-if="requests.otherPlayer.undoRequested"
         icon-only
+        size="small"
         variant="filled"
         @click="emit('acceptRequest', 'undo')"
       >
@@ -82,6 +86,7 @@ function onClickMoreTime() {
     ><ButtonGroup>
       <Button
         icon-only
+        size="small"
         :variant="requests.otherPlayer.moreTimeOffered ? 'filled' : 'text'"
         :severity="requests.thisPlayer.moreTimeOffered ? 'danger' : 'secondary'"
         @click="onClickMoreTime"
@@ -90,6 +95,7 @@ function onClickMoreTime() {
       </Button>
       <Button
         v-if="requests.otherPlayer.moreTimeOffered"
+        size="small"
         variant="filled"
         icon-only
         @click="emit('acceptRequest', 'moreTime')"

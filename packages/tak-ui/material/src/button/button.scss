@@ -1,12 +1,20 @@
+@use '../text';
+
 $variants: (
   'filled': '.p-button-filled',
   'text': '.p-button-text',
   'outlined': '.p-button-outlined',
+  'tonal': '.p-button-tonal',
 );
 $severities: (
   'primary': '.p-button-primary',
   'secondary': '.p-button-secondary',
+  'tertiary': '.p-button-tertiary',
   'danger': '.p-button-danger',
+);
+$sizes: (
+  'small': '.p-button-small',
+  'medium': '.p-button-medium',
 );
 
 .p-button-ripple {
@@ -53,7 +61,6 @@ $severities: (
   overflow: hidden;
   cursor: pointer;
   border-radius: calc(infinity * 1px);
-  padding: var(--p-button-padding) calc(var(--p-button-padding) + 0.25rem);
 
   @each $severity, $severity-selector in $severities {
     @each $variant, $variant-selector in $variants {
@@ -71,6 +78,25 @@ $severities: (
     }
   }
 
+  @each $size, $size-selector in $sizes {
+    &#{$size-selector} {
+      padding: var(--p-button-#{$size}-padding);
+      .p-button-content {
+        gap: var(--p-button-#{$size}-gap);
+      }
+      &.p-button-icon-only {
+        padding: var(--p-button-#{$size}-padding-icon-only);
+      }
+    }
+  }
+
+  &.p-button-small {
+    @include text.text-small;
+  }
+  &.p-button-medium {
+    @include text.text-medium;
+  }
+
   &:hover:not(:disabled) .p-button-state {
     opacity: var(--p-button-hover-state-opacity);
   }
@@ -86,10 +112,6 @@ $severities: (
   &:focus-visible {
     outline: var(--p-button-focus-outline);
     outline-offset: var(--p-button-focus-outline-offset);
-  }
-
-  &.p-button-icon-only {
-    padding: var(--p-button-padding);
   }
 
   .p-button-state {

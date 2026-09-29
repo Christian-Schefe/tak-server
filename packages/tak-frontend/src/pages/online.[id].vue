@@ -236,8 +236,14 @@ const chatConversation = computed<ChatMessageConversation | undefined>(() => {
     @action="onAction"
   >
     <Card>
-      <div class="w-full flex">
-        <Button icon-only variant="text" severity="secondary" @click="settingsVisible = true">
+      <div class="w-full flex gap-2">
+        <Button
+          size="small"
+          icon-only
+          variant="text"
+          severity="secondary"
+          @click="settingsVisible = true"
+        >
           <LuSettings />
         </Button>
         <template
@@ -252,19 +258,24 @@ const chatConversation = computed<ChatMessageConversation | undefined>(() => {
           />
         </template>
         <template v-if="gameData.status.status.type !== 'ongoing'">
-          <Button label="View Result" severity="secondary" @click="gameOverDialogVisible = true" />
+          <Button
+            size="small"
+            label="View Result"
+            severity="secondary"
+            @click="gameOverDialogVisible = true"
+          />
         </template>
-        <SettingsModal v-model="settingsVisible"></SettingsModal>
-        <GameOverModal
-          v-model="gameOverDialogVisible"
-          :result="
-            gameData.status.status.type === 'ended'
-              ? gameResultFromString(gameData.status.status.result)
-              : { type: 'aborted' }
-          "
-          :match-id="gameData.status.matchId"
-        />
       </div>
+      <SettingsModal v-model="settingsVisible"></SettingsModal>
+      <GameOverModal
+        v-model="gameOverDialogVisible"
+        :result="
+          gameData.status.status.type === 'ended'
+            ? gameResultFromString(gameData.status.status.result)
+            : { type: 'aborted' }
+        "
+        :match-id="gameData.status.matchId"
+      />
     </Card>
     <GameAnalysis :game="gameData.game.base" :ply-index="plyIndex"></GameAnalysis>
     <ChatPanel v-if="chatConversation" :conversation="chatConversation" />

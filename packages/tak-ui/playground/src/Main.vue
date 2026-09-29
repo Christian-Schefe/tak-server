@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { App, Button, Icon, SideBar } from '@tak-ui-lib/components';
+import { AppFrame, Button, Icon, SideBar } from '@tak-ui-lib/components';
 import { breakpointsTailwind, useBreakpoints } from '@vueuse/core';
 import { ref, watch } from 'vue';
 import Navigation from './components/Navigation.vue';
@@ -17,7 +17,7 @@ watch(isMobile, (newIsMobile) => {
 </script>
 
 <template>
-  <App>
+  <AppFrame>
     <template #top>
       <SideBar :visible="isMobile" direction="top">
         <Button
@@ -41,5 +41,5 @@ watch(isMobile, (newIsMobile) => {
       </SideBar>
     </template>
     <RouterView />
-  </App>
+  </AppFrame>
 </template>

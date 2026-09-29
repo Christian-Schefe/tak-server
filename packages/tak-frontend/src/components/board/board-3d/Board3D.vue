@@ -25,7 +25,7 @@ import { OrbitControls } from '@tresjs/cientos';
 import { TresCanvas, type TresPointerEvent } from '@tresjs/core';
 import { BloomPmndrs, EffectComposerPmndrs, FXAAPmndrs } from '@tresjs/post-processing';
 import { produce } from 'immer';
-import { MOUSE, PCFShadowMap, type DirectionalLight } from 'three';
+import { AgXToneMapping, MOUSE, PCFShadowMap, type DirectionalLight } from 'three';
 import { computed, ref, shallowRef, watch, type ShallowRef } from 'vue';
 import Board3DBoard from './Board3DBoard.vue';
 import Board3DPiece from './Board3DPiece.vue';
@@ -315,7 +315,14 @@ const gltfs = computed(() => {
 <template>
   <div class="w-full h-full min-h-[60vh] relative">
     <div :class="`absolute inset-0 rounded-md overflow-hidden transition-opacity`">
-      <TresCanvas clear-color="#000000" :clear-alpha="0" shadows :shadow-map-type="PCFShadowMap">
+      <TresCanvas
+        clear-color="#000000"
+        :clear-alpha="0"
+        shadows
+        :shadow-map-type="PCFShadowMap"
+        :tone-mapping="AgXToneMapping"
+        :tone-mapping-exposure="1.0"
+      >
         <TresGroup>
           <Board3DPiece
             v-for="piece in pieceData"
@@ -419,13 +426,13 @@ const gltfs = computed(() => {
         </OrbitControls>
         <Suspense>
           <EffectComposerPmndrs>
-            <FXAAPmndrs />
             <BloomPmndrs
               :intensity="1.0"
               :luminance-threshold="0.9"
               :luminance-smoothing="0.1"
               mipmap-blur
             />
+            <FXAAPmndrs />
           </EffectComposerPmndrs>
         </Suspense>
       </TresCanvas>

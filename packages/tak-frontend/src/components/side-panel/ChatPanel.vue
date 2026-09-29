@@ -2,13 +2,14 @@
 import { useChatHistory, useSendChatMessage, type ChatMessageConversation } from '@/api/chat';
 import { zodFormValidator } from '@/utils/forms.ts';
 import { areTimestampsDifferentMinutes } from '@/utils/time';
-import { Button, useFormContext, Form, InputText, Card } from '@tak-ui-lib/components';
+import { Button, Form, InputText, useFormContext } from '@tak-ui-lib/components';
 import { isToday } from 'date-fns';
 import { computed, useTemplateRef, watch } from 'vue';
 import { LuSend } from 'vue-icons-plus/lu';
 import VueMarkdown from 'vue-markdown-render';
 import z from 'zod';
 import PlayerLabel from '../PlayerLabel.vue';
+import CollapseCard from './CollapseCard.vue';
 
 const props = defineProps<{
   conversation: ChatMessageConversation;
@@ -107,8 +108,7 @@ const validator = zodFormValidator(
 const formCtx = useFormContext(() => ({ chatMessage: '' }));
 </script>
 <template>
-  <Card class="grow">
-    <h2>Chat</h2>
+  <CollapseCard title="Chat" grow>
     <div class="h-0 grow flex flex-col overflow-y-auto">
       <div ref="messageContainer" class="flex flex-col items-center">
         <Button
@@ -152,7 +152,7 @@ const formCtx = useFormContext(() => ({ chatMessage: '' }));
         <LuSend />
       </Button>
     </Form>
-  </Card>
+  </CollapseCard>
 </template>
 <style lang="css">
 .markdown-body p {

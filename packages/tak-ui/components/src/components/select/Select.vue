@@ -78,7 +78,7 @@ useFormValue(value, () => props.name);
         'p-select-empty': optionLabel === null,
         'p-select-disabled': disabled,
       }"
-      @click="onToggleDropdown"
+      @pointerdown="onToggleDropdown"
     >
       <p class="p-select-optionlabel">
         {{ optionLabel !== null ? optionLabel : placeholder }}
@@ -97,8 +97,9 @@ useFormValue(value, () => props.name);
         <Button
           v-for="(option, index) in props.options"
           :key="index"
-          :severity="value === option.value ? 'primary' : 'secondary'"
-          variant="text"
+          size="small"
+          :severity="value === option.value ? 'tertiary' : 'secondary'"
+          :variant="value === option.value ? 'tonal' : 'text'"
           :label="option.label"
           @click="onSelectOption(option.value)"
         />

@@ -93,7 +93,7 @@ const openingNames: Record<string, string | undefined> = {
         <PlayerLabel :pid="gameMetadata.playerIds.white" type="player"></PlayerLabel>
         <PlayerLabel :pid="gameMetadata.playerIds.black" type="player"></PlayerLabel>
       </div>
-      <Button severity="secondary" variant="text" icon-only @click="$emit('click')">
+      <Button size="small" severity="secondary" variant="text" icon-only @click="$emit('click')">
         <LuEye />
       </Button>
     </div>

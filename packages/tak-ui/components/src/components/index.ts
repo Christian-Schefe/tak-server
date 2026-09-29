@@ -1,4 +1,4 @@
-export * from './app';
+export * from './appframe';
 export * from './badge';
 export * from './button';
 export * from './buttongroup';

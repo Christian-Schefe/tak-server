@@ -49,7 +49,7 @@ const props = defineProps<{
       </BoardNinja>
     </div>
 
-    <div class="w-full xl:w-140 flex flex-col gap-4 overflow-hidden xl:overflow-y-auto">
+    <div class="w-full xl:w-140 flex flex-col gap-4 xl:overflow-y-auto">
       <slot></slot>
     </div>
   </div>

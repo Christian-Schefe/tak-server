@@ -18,7 +18,7 @@ export function createDialogTokens(theme: DynamicScheme): DialogTokens {
     background: hexFromArgb(theme.surfaceContainerLow),
     text: hexFromArgb(theme.onSurface),
     padding: '1rem',
-    'mask-background': 'rgba(0, 0, 0, 0.5)',
+    'mask-background': `${hexFromArgb(theme.scrim)}80`,
     'font-size': '1.25rem',
     'line-height': '2rem',
   };

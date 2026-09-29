@@ -77,18 +77,49 @@ export type Theme = {
 
 export const materialTheme: Theme = createMaterialTheme('#6750A4');
 
-export function createMaterialTheme(sourceColor: string): Theme {
+type MaterialThemeMode =
+  | 'tonal'
+  | 'monochrome'
+  | 'vibrant'
+  | 'expressive'
+  | 'rainbow'
+  | 'fruit_salad';
+
+function themeModeToVariant(mode: MaterialThemeMode): Variant {
+  switch (mode) {
+    case 'tonal':
+      return Variant.TONAL_SPOT;
+    case 'monochrome':
+      return Variant.MONOCHROME;
+    case 'vibrant':
+      return Variant.VIBRANT;
+    case 'expressive':
+      return Variant.EXPRESSIVE;
+    case 'rainbow':
+      return Variant.RAINBOW;
+    case 'fruit_salad':
+      return Variant.FRUIT_SALAD;
+  }
+}
+
+export function createMaterialTheme(sourceColor: string, mode: MaterialThemeMode = 'tonal'): Theme {
   return {
-    light: createDefaultTheme(createMaterialDynamicTheme(sourceColor, false)),
-    dark: createDefaultTheme(createMaterialDynamicTheme(sourceColor, true)),
+    light: createDefaultTheme(createMaterialDynamicTheme(sourceColor, false, mode)),
+    dark: createDefaultTheme(createMaterialDynamicTheme(sourceColor, true, mode)),
   };
 }
 
-function createMaterialDynamicTheme(sourceColor: string, isDark: boolean): DynamicScheme {
+function createMaterialDynamicTheme(
+  sourceColor: string,
+  isDark: boolean,
+  mode: MaterialThemeMode,
+): DynamicScheme {
+  const variant = themeModeToVariant(mode);
   const themeColor = Hct.fromInt(argbFromHex(sourceColor));
   const theme = new DynamicScheme({
     sourceColorHct: themeColor,
-    variant: Variant.TONAL_SPOT,
+    specVersion: '2025',
+    variant,
     contrastLevel: 0,
     isDark,
   });

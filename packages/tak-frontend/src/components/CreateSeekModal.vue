@@ -196,8 +196,8 @@ watch(visible, (newVisible) => {
           label="Rated"
         />
         <div class="col-span-2 w-full flex justify-end gap-2">
-          <Button label="Cancel" variant="text" severity="secondary" @click="visible = false" />
-          <Button type="submit" variant="text" label="Create Seek" />
+          <Button label="Cancel" variant="text" @click="visible = false" />
+          <Button type="submit" label="Create" />
         </div>
       </div>
     </Form>

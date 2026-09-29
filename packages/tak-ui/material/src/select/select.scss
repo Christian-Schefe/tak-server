@@ -36,8 +36,22 @@
   padding: var(--p-select-dropdown-padding);
 
   .p-select-dropdown-inner {
+    min-width: var(--p-select-dropdown-min-width);
     height: 100%;
     display: flex;
     flex-direction: column;
+    align-items: stretch;
+  }
+
+  .p-button {
+    border-radius: var(--p-select-dropdown-button-border-radius);
+  }
+  .p-button:first-child {
+    border-top-left-radius: var(--p-select-dropdown-button-border-radius-end);
+    border-top-right-radius: var(--p-select-dropdown-button-border-radius-end);
+  }
+  .p-button:last-child {
+    border-bottom-left-radius: var(--p-select-dropdown-button-border-radius-end);
+    border-bottom-right-radius: var(--p-select-dropdown-button-border-radius-end);
   }
 }

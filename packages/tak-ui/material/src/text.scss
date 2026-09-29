@@ -1,0 +1,9 @@
+@mixin text-small {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+@mixin text-medium {
+  font-size: 1rem;
+  line-height: 1.5rem;
+}

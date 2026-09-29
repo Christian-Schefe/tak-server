@@ -108,13 +108,15 @@ export class TakGame3DUI {
   }
 
   private onGameUpdate() {
-    const shownGame = isDraft(this.actualGame)
+    const trimmedGame = isDraft(this.actualGame)
       ? current(this.actualGame).clone()
       : this.actualGame.clone();
 
     if (this.plyIndex !== null) {
-      shownGame.trimToPlyIndex(this.plyIndex);
+      trimmedGame.trimToPlyIndex(this.plyIndex);
     }
+
+    const shownGame = trimmedGame.clone();
 
     const partialAction = partialActionToAction(this.partialAction);
     if (partialAction) {
@@ -129,7 +131,7 @@ export class TakGame3DUI {
         this.partialAction.take - this.partialAction.drops.reduce((acc, drop) => acc + drop, 0),
     };
 
-    const size = this.actualGame.board.size;
+    const size = trimmedGame.board.size;
 
     const clickOptions = [];
 
@@ -155,7 +157,7 @@ export class TakGame3DUI {
       }
     }
 
-    const isOngoing = !this.actualGame.gameResult;
+    const isOngoing = !trimmedGame.gameResult;
 
     const presentIds: TakPieceId[] = [];
 
@@ -193,9 +195,8 @@ export class TakGame3DUI {
             presentIds.push(pieceId);
           }
           hoverable &&=
-            this.actualGame.actionHistory.length >= 2 &&
-            stack.composition[stack.composition.length - 1]?.player ===
-              this.actualGame.currentPlayer;
+            trimmedGame.actionHistory.length >= 2 &&
+            stack.composition[stack.composition.length - 1]?.player === trimmedGame.currentPlayer;
         }
 
         const newTile: TakUI3DTile = {
@@ -256,8 +257,8 @@ export class TakGame3DUI {
       }
     }
 
-    if (this.actualGame.actionHistory.length >= 1) {
-      const lastAction = this.actualGame.actionHistory[this.actualGame.actionHistory.length - 1];
+    if (trimmedGame.actionHistory.length >= 1) {
+      const lastAction = trimmedGame.actionHistory[trimmedGame.actionHistory.length - 1];
       if (lastAction?.action.type === 'place') {
         const posIndex = lastAction.action.pos.y * size + lastAction.action.pos.x;
         const lastActionTile = this.tiles[posIndex];
