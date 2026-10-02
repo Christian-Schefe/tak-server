@@ -14,6 +14,7 @@ export * from './paginator';
 export * from './select';
 export * from './sidebar';
 export * from './slider';
+export * from './tag';
 export * from './themed';
 export * from './toggle';
 export * from './tooltip';

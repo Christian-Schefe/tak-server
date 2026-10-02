@@ -109,7 +109,7 @@ const formCtx = useFormContext(() => ({ chatMessage: '' }));
 </script>
 <template>
   <CollapseCard title="Chat" grow>
-    <div class="h-0 grow flex flex-col overflow-y-auto">
+    <div class="h-0 min-h-32 grow flex flex-col overflow-y-auto">
       <div ref="messageContainer" class="flex flex-col items-center">
         <Button
           v-if="hasNextPage"

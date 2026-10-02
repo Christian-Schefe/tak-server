@@ -17,7 +17,7 @@ function onWatchGame(gameId: string) {
 }
 
 const currentPage = ref(1);
-const pageSize = 1;
+const pageSize = 5;
 
 const { data: gameHistory } = useGameHistory(() => ({
   page: currentPage.value,

@@ -3,7 +3,7 @@ import { useAccount } from '@/api/auth';
 import { useGames } from '@/api/game';
 import { useSeeks } from '@/api/seek';
 import { Button } from '@tak-ui-lib/components';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import {
   LuLogIn,
   LuMedal,
@@ -18,6 +18,7 @@ import {
 } from 'vue-icons-plus/lu';
 import { RouterLink, useRoute } from 'vue-router';
 import PlayerLabel from './PlayerLabel.vue';
+import SettingsModal from './SettingsModal.vue';
 
 interface MenuItem {
   label: string;
@@ -38,10 +39,7 @@ const icons: Record<string, unknown> = {
   community: LuUsers,
   puzzle: LuPuzzle,
   tournament: LuTrophy,
-  settings: LuSettings,
-  account: LuUser,
   analysis: LuZoomIn,
-  login: LuLogIn,
   leaderboard: LuMedal,
 };
 
@@ -52,6 +50,8 @@ const opponentSeekCount = computed(() => {
   if (!seeks.value || !account.value) return undefined;
   return seeks.value.filter((seek) => seek.creatorId !== account.value.playerId).length;
 });
+
+const settingsVisible = ref(false);
 
 const items = computed<MenuItem[]>(() => {
   return [
@@ -95,29 +95,6 @@ const items = computed<MenuItem[]>(() => {
       icon: 'tournament',
       path: '/tournaments',
     },
-    {
-      label: 'Settings',
-      icon: 'settings',
-      path: '/settings',
-    },
-    ...(account.value !== undefined && !account.value.isGuest
-      ? [
-          {
-            label: 'Account',
-            icon: 'account',
-            path: '/account',
-          },
-        ]
-      : []),
-    ...(account.value !== undefined && account.value.isGuest
-      ? [
-          {
-            label: 'Login',
-            icon: 'login',
-            path: '/login',
-          },
-        ]
-      : []),
   ];
 });
 
@@ -154,8 +131,40 @@ function isActive(path: string) {
       </Button>
     </template>
     <div class="grow"></div>
+    <div class="p-2 flex">
+      <Button
+        size="small"
+        variant="text"
+        severity="secondary"
+        icon-only
+        @click="settingsVisible = true"
+      >
+        <LuSettings />
+      </Button>
+      <Button
+        v-if="account !== undefined && !account.isGuest"
+        size="small"
+        variant="text"
+        severity="secondary"
+        :as="{ component: RouterLink, props: { to: '/account' } }"
+        icon-only
+      >
+        <LuUser />
+      </Button>
+      <Button
+        v-if="account !== undefined && account.isGuest"
+        size="small"
+        variant="text"
+        severity="secondary"
+        :as="{ component: RouterLink, props: { to: '/login' } }"
+        icon-only
+      >
+        <LuLogIn />
+      </Button>
+    </div>
     <div class="p-2">
       <PlayerLabel v-if="account" :pid="account.accountId" type="account" :show-rating="false" />
     </div>
   </div>
+  <SettingsModal v-model="settingsVisible" />
 </template>

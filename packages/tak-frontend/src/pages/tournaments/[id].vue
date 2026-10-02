@@ -14,7 +14,7 @@ import MatchSummary from '@/components/MatchSummary.vue';
 import Page from '@/components/Page.vue';
 import PlayerLabel from '@/components/PlayerLabel.vue';
 import TournamentSummary from '@/components/TournamentSummary.vue';
-import { Button } from '@tak-ui-lib/components';
+import { Button, Tag } from '@tak-ui-lib/components';
 import { computed, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -115,10 +115,10 @@ const tournamentStatusLabels = {
   completed: 'Completed',
 };
 const tournamentStatusSeverities = {
-  upcoming: 'info',
-  ongoing: 'warn',
-  completed: 'success',
-};
+  upcoming: 'secondary',
+  ongoing: 'danger',
+  completed: 'primary',
+} as const;
 </script>
 <template>
   <Page>
@@ -126,7 +126,7 @@ const tournamentStatusSeverities = {
       <div class="flex items-center gap-4">
         <h1 class="text-2xl font-semibold">{{ tournament.metadata.name }}</h1>
         <Tag
-          :value="tournamentStatusLabels[tournament.status.type]"
+          :label="tournamentStatusLabels[tournament.status.type]"
           :severity="tournamentStatusSeverities[tournament.status.type]"
         />
         <div class="grow"></div>
@@ -170,13 +170,9 @@ const tournamentStatusSeverities = {
     <div v-if="tournament && tournament.status.type !== 'upcoming'" class="flex flex-col gap-2">
       <h1 class="text-2xl font-semibold">Rounds</h1>
       <div class="rounded-md overflow-hidden">
-        <Tabs v-model:value="currentRound">
-          <TabList>
-            <Tab v-for="(_, index) in tournament.rounds" :key="index" :value="index">
-              Round {{ index + 1 }}
-            </Tab>
-          </TabList>
-        </Tabs>
+        <Button v-for="(_, index) in tournament.rounds" :key="index" @click="currentRound = index">
+          Round {{ index + 1 }}
+        </Button>
       </div>
       <MatchSummary
         v-for="match in roundData"

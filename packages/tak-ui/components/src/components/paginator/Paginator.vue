@@ -42,10 +42,17 @@ const shownPages = computed(() => {
       <Button
         :severity="page === currentPage ? 'primary' : 'secondary'"
         :variant="page === currentPage ? 'filled' : 'text'"
+        size="small"
         icon-only
         @click="currentPage = page"
-        ><span class="w-6 h-6">{{ page }}</span></Button
+        >{{ page }}</Button
       >
     </template>
   </div>
 </template>
+<style lang="css">
+.p-paginator .p-button .p-button-label {
+  width: 1lh;
+  text-align: center;
+}
+</style>

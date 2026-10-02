@@ -1,0 +1,25 @@
+@use '../text';
+
+$severities: (
+  'primary': '.p-tag-primary',
+  'secondary': '.p-tag-secondary',
+  'tertiary': '.p-tag-tertiary',
+  'danger': '.p-tag-danger',
+);
+
+.p-tag {
+  @include text.text-small;
+
+  display: inline-flex;
+  align-items: center;
+  padding: var(--p-tag-padding);
+  border-radius: var(--p-tag-border-radius);
+  font-weight: 600;
+
+  @each $severity, $severity-selector in $severities {
+    &#{$severity-selector} {
+      background-color: var(--p-tag-#{$severity}-background);
+      color: var(--p-tag-#{$severity}-text);
+    }
+  }
+}

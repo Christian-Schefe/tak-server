@@ -57,17 +57,19 @@ function handlePointerDown(e: PointerEvent) {
     ripple.style.top = `${e.clientY - rect.top - size / 2}px`;
     ripple.className = 'p-button-ripple';
 
+    const destroyFunc = () => {
+      if (!ripple.isConnected) {
+        return;
+      }
+      ripple.classList.add('p-button-ripple-fadeout');
+      ripple.addEventListener('animationend', () => {
+        ripple.remove();
+      });
+    };
+
     button.appendChild(ripple);
-    window.addEventListener(
-      'pointerup',
-      () => {
-        ripple.classList.add('p-button-ripple-fadeout');
-        ripple.addEventListener('animationend', () => {
-          ripple.remove();
-        });
-      },
-      { once: true },
-    );
+    window.addEventListener('pointerup', destroyFunc, { once: true });
+    window.addEventListener('pointercancel', destroyFunc, { once: true });
   }
 }
 

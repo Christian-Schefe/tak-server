@@ -1,9 +1,23 @@
 <script setup lang="ts">
 import { useRatingHistory } from '@/api/player';
+import { Select } from '@tak-ui-lib/components';
+import {
+  Chart,
+  Legend,
+  LinearScale,
+  LineElement,
+  PointElement,
+  TimeScale,
+  Title,
+  Tooltip,
+  type ChartData,
+  type ChartOptions,
+} from 'chart.js';
 import { endOfDay, startOfDay, subDays, subYears } from 'date-fns';
 import { computed, ref } from 'vue';
-import { type ChartConfiguration } from 'chart.js';
-import { Select } from '@tak-ui-lib/components';
+import { Line } from 'vue-chartjs';
+
+Chart.register(TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 const props = defineProps<{
   playerId: string;
@@ -68,10 +82,10 @@ const ratingHistory = computed(() => {
     }))
     .reverse();
   const documentStyle = getComputedStyle(document.documentElement);
-  const primaryColor = documentStyle.getPropertyValue('--p-primary-color');
+  const primaryColor = documentStyle.getPropertyValue('--p-color-primary');
 
-  const textColorSecondary = documentStyle.getPropertyValue('--p-text-muted-color');
-  const surfaceBorder = documentStyle.getPropertyValue('--p-content-border-color');
+  const textColor = documentStyle.getPropertyValue('--p-color-onsurface');
+  const borderColor = documentStyle.getPropertyValue('--p-color-outline');
 
   const yMin = dataEntries.length > 0 ? Math.min(...dataEntries.map((d) => d.y)) : undefined;
   const yMax = dataEntries.length > 0 ? Math.max(...dataEntries.map((d) => d.y)) : undefined;
@@ -79,69 +93,74 @@ const ratingHistory = computed(() => {
   const nearestSmallerHundred = (num: number) => Math.floor(num / 100) * 100;
   const nearestLargerHundred = (num: number) => Math.ceil(num / 100) * 100;
 
-  const config: ChartConfiguration = {
-    type: 'line',
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: {
-          type: 'time',
-          time: {
-            minUnit: 'day',
-          },
-          min: selectedRange.value.from ? selectedRange.value.from.getTime() : undefined,
-          max: selectedRange.value.to.getTime(),
-          ticks: {
-            color: textColorSecondary,
-          },
-          grid: {
-            color: surfaceBorder,
-          },
+  const options: ChartOptions<'line'> = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      x: {
+        type: 'time',
+        time: {
+          minUnit: 'day',
         },
-        y: {
-          beginAtZero: false,
-          min: yMin !== undefined ? nearestSmallerHundred(yMin - 10) : undefined,
-          max: yMax !== undefined ? nearestLargerHundred(yMax + 10) : undefined,
-          ticks: {
-            color: textColorSecondary,
-          },
-          grid: {
-            color: surfaceBorder,
-          },
+        min: selectedRange.value.from ? selectedRange.value.from.getTime() : undefined,
+        max: selectedRange.value.to.getTime(),
+        ticks: {
+          color: textColor,
+        },
+        grid: {
+          color: borderColor,
+        },
+        border: {
+          color: borderColor,
         },
       },
-      plugins: {
-        legend: {
-          display: false,
+      y: {
+        beginAtZero: false,
+        min: yMin !== undefined ? nearestSmallerHundred(yMin - 10) : undefined,
+        max: yMax !== undefined ? nearestLargerHundred(yMax + 10) : undefined,
+        ticks: {
+          color: textColor,
         },
-      },
-      interaction: {
-        mode: 'nearest',
-        intersect: false,
+        grid: {
+          color: borderColor,
+        },
+        border: {
+          color: borderColor,
+        },
       },
     },
-    data: {
-      datasets: [
-        {
-          borderColor: primaryColor,
-          data: dataEntries,
-          stepped: true,
-        },
-      ],
+    plugins: {
+      legend: {
+        display: false,
+      },
+    },
+    interaction: {
+      mode: 'nearest',
+      intersect: false,
     },
   };
-  return config;
+
+  const chartData: ChartData<'line'> = {
+    datasets: [
+      {
+        borderColor: primaryColor,
+        data: dataEntries,
+        stepped: true,
+      },
+    ],
+  };
+
+  return {
+    data: chartData,
+    options,
+  };
 });
 </script>
 <template>
   <div class="flex flex-col gap-4">
     <Select v-model="ratingRange" :options="ratingRangeOptions" />
-    <Chart
-      type="line"
-      :data="ratingHistory.data"
-      :options="ratingHistory.options"
-      class="h-64"
-    ></Chart>
+    <div class="w-full h-64">
+      <Line :data="ratingHistory.data" :options="ratingHistory.options"></Line>
+    </div>
   </div>
 </template>

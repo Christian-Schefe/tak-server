@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { usePlayerInfo, usePlayerStats } from '@/api/player';
-import { LuHash, LuTrophy, LuSwords, LuFlame } from 'vue-icons-plus/lu';
-import { computed } from 'vue';
 import { Card } from '@tak-ui-lib/components';
+import { LuFlame, LuHash, LuSwords, LuTrophy } from 'vue-icons-plus/lu';
 
 const props = defineProps<{
   playerId: string;
@@ -10,34 +9,6 @@ const props = defineProps<{
 
 const { data: playerInfo } = usePlayerInfo(() => props.playerId);
 const { data: stats } = usePlayerStats(() => props.playerId);
-
-const wdlItems = computed(() => {
-  if (!stats.value) {
-    return [];
-  }
-  const sum = stats.value.gamesWon + stats.value.gamesDrawn + stats.value.gamesLost;
-  const safeSum = sum === 0 ? 1 : sum;
-  const winPercent = Math.round((stats.value.gamesWon * 100) / safeSum);
-  const lossPercent = Math.round((stats.value.gamesLost * 100) / safeSum);
-  const drawPercent = sum === 0 ? 0 : 100 - winPercent - lossPercent;
-  return [
-    {
-      label: `${stats.value.gamesWon.toString()} Win${stats.value.gamesWon !== 1 ? 's' : ''}`,
-      value: winPercent,
-      color: 'var(--p-green-500)',
-    },
-    {
-      label: `${stats.value.gamesDrawn.toString()} Draw${stats.value.gamesDrawn !== 1 ? 's' : ''}`,
-      value: drawPercent,
-      color: 'var(--p-neutral-400)',
-    },
-    {
-      label: `${stats.value.gamesLost.toString()} Loss${stats.value.gamesLost !== 1 ? 'es' : ''}`,
-      value: lossPercent,
-      color: 'var(--p-red-500)',
-    },
-  ];
-});
 </script>
 
 <template>
@@ -73,12 +44,4 @@ const wdlItems = computed(() => {
       </div>
     </Card>
   </div>
-  <MeterGroup
-    :value="wdlItems"
-    :dt="{
-      meters: {
-        size: '1rem',
-      },
-    }"
-  ></MeterGroup>
 </template>

@@ -15,10 +15,10 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
-    "@tak-ui-lib/components": "workspace:*",
-    "@tak-ui-lib/material": "workspace:*",
     "@ory/client": "^1.22.37",
     "@tailwindcss/vite": "^4.2.4",
+    "@tak-ui-lib/components": "workspace:*",
+    "@tak-ui-lib/material": "workspace:*",
     "@tanstack/vue-query": "^5.100.8",
     "@tresjs/cientos": "^5.7.0",
     "@tresjs/core": "^5.8.0",
@@ -40,6 +40,7 @@
     "three-stdlib": "^2.36.1",
     "typescript-eslint": "^8.59.1",
     "vue": "^3.5.32",
+    "vue-chartjs": "^5.3.4",
     "vue-icons-plus": "^0.1.9",
     "vue-markdown-render": "^2.3.0",
     "vue-router": "^5.0.4",

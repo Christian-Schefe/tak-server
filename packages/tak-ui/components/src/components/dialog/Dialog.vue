@@ -41,7 +41,9 @@ const zIndex = useOverlayZIndex(floating, visible, 1);
             <slot name="header">
               <p class="p-dialog-header-title">{{ header }}</p>
             </slot>
-            <Button icon-only variant="text" @click="visible = false"><Icon name="close" /></Button>
+            <Button size="small" icon-only variant="text" @click="visible = false"
+              ><Icon name="close"
+            /></Button>
           </div>
           <div class="p-dialog-content">
             <slot />

@@ -6,6 +6,7 @@ import Page from '@/components/Page.vue';
 import SeekSummary from '@/components/SeekSummary.vue';
 import { Button } from '@tak-ui-lib/components';
 import { computed, ref } from 'vue';
+import { LuPlus } from 'vue-icons-plus/lu';
 
 const { data: seeks } = useSeeks();
 
@@ -47,11 +48,7 @@ const createSeekDialogVisible = ref(false);
 </script>
 <template>
   <Page>
-    <div class="flex items-center">
-      <h1 class="text-2xl font-semibold">Your Seeks</h1>
-      <div class="grow"></div>
-      <Button label="Create Seek" @click="createSeekDialogVisible = true" />
-    </div>
+    <h1 class="text-2xl font-semibold">Your Seeks</h1>
     <SeekSummary
       v-for="seek in seekData.ownSeeks"
       :key="seek.seek.id"
@@ -62,6 +59,11 @@ const createSeekDialogVisible = ref(false);
     <p v-if="!seekData.ownSeeks.length">
       You have no active seeks. Click "Create Seek" to create a new one.
     </p>
+    <div class="flex justify-center">
+      <Button label="Create Seek" @click="createSeekDialogVisible = true"
+        ><template #icon><LuPlus /></template
+      ></Button>
+    </div>
     <h1 class="text-2xl font-semibold">Seeks</h1>
     <SeekSummary
       v-for="seek in seekData.otherSeeks"

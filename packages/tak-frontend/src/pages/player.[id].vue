@@ -11,6 +11,7 @@ import FlagIcon from '@/components/FlagIcon.vue';
 import Page from '@/components/Page.vue';
 import PlayerStats from '@/components/PlayerStats.vue';
 import RatingHistory from '@/components/RatingHistory.vue';
+import WinDrawLossChart from '@/components/WinDrawLossChart.vue';
 import { countryOptions } from '@/utils/flags';
 import { zodFormValidator } from '@/utils/forms';
 import { Button, useFormContext, Dialog, Form, Select } from '@tak-ui-lib/components';
@@ -112,6 +113,8 @@ function onClickProfilePicture() {
     <PlayerStats :player-id="route.params.id" />
     <h1>Rating History</h1>
     <RatingHistory :player-id="route.params.id" />
+    <h1>Win-Draw-Loss</h1>
+    <WinDrawLossChart :player-id="route.params.id" />
   </Page>
   <Dialog v-model:visible="editDialogVisible" header="Your Profile">
     <Form v-model="formCtx" :validator="validator" @submit="onUpdateProfile">

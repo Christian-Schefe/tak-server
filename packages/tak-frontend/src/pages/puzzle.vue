@@ -4,6 +4,7 @@ import Page from '@/components/Page.vue';
 
 <template>
   <Page>
-    <h1>Puzzles Coming Soon</h1>
+    <h1>Puzzles</h1>
+    <p>Coming Soon...</p>
   </Page>
 </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button } from '@tak-ui-lib/components';
+import { Button, Tag } from '@tak-ui-lib/components';
 
 defineProps<{
   isOnline: boolean;
@@ -19,7 +19,7 @@ defineEmits<{
   />
   <Tag
     v-else
-    :value="isOnline ? (isReady ? 'Ready' : 'Not Ready') : 'Offline'"
+    :label="isOnline ? (isReady ? 'Ready' : 'Not Ready') : 'Offline'"
     :severity="isOnline ? (isReady ? 'primary' : 'danger') : 'secondary'"
   />
 </template>

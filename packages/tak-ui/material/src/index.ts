@@ -8,18 +8,19 @@ import {
 import { createButtonTokens } from './button';
 import { createTooltipTokens } from './tooltip';
 
+import { createBadgeTokens } from './badge';
 import { createCardTokens } from './card';
 import { createDialogTokens } from './dialog';
 import { createDropdownTokens } from './dropdown';
 import { createInputTextTokens } from './inputtext';
+import { createLabelFieldTokens } from './labelfield';
 import { createRootTokens } from './root';
+import { createSelectTokens } from './select';
 import { createSideBarTokens } from './sidebar';
 import { createSliderTokens } from './slider';
 import './style.scss';
+import { createTagTokens } from './tag';
 import { createToggleTokens } from './toggle';
-import { createLabelFieldTokens } from './labelfield';
-import { createSelectTextTokens } from './select';
-import { createBadgeTokens } from './badge';
 
 function createDefaultTheme(theme: DynamicScheme) {
   return {
@@ -46,6 +47,11 @@ function createDefaultTheme(theme: DynamicScheme) {
       onSurface: hexFromArgb(theme.onSurface),
       surfaceVariant: hexFromArgb(theme.surfaceVariant),
       onSurfaceVariant: hexFromArgb(theme.onSurfaceVariant),
+      surfaceContainerHighest: hexFromArgb(theme.surfaceContainerHighest),
+      surfaceContainerHigh: hexFromArgb(theme.surfaceContainerHigh),
+      surfaceContainer: hexFromArgb(theme.surfaceContainer),
+      surfaceContainerLow: hexFromArgb(theme.surfaceContainerLow),
+      surfaceContainerLowest: hexFromArgb(theme.surfaceContainerLowest),
       outline: hexFromArgb(theme.outline),
       outlineVariant: hexFromArgb(theme.outlineVariant),
       shadow: hexFromArgb(theme.shadow),
@@ -65,8 +71,9 @@ function createDefaultTheme(theme: DynamicScheme) {
     toggle: createToggleTokens(theme),
     dropdown: createDropdownTokens(),
     labelfield: createLabelFieldTokens(theme),
-    select: createSelectTextTokens(theme),
+    select: createSelectTokens(theme),
     badge: createBadgeTokens(theme),
+    tag: createTagTokens(theme),
   };
 }
 

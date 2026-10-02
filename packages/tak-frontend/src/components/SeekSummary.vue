@@ -2,7 +2,7 @@
 import type { SeekInfo } from '@/api/seek.ts';
 import { getDefaultReserve } from '@/tak-core/index.ts';
 import { timeControlToString } from '@/utils/time.ts';
-import { Button, Card } from '@tak-ui-lib/components';
+import { Button, Card, Tag } from '@tak-ui-lib/components';
 import { computed } from 'vue';
 import { Fa6ChessBoard, Fa6RegChessPawn, Fa6RegChessQueen } from 'vue-icons-plus/fa6';
 import { LuClock, LuContrast, LuPlay, LuScale, LuSwords, LuTrash } from 'vue-icons-plus/lu';
@@ -45,11 +45,11 @@ const openingNames: Record<string, string | undefined> = {
 </script>
 <template>
   <Card>
-    <div class="flex gap-2">
+    <div class="flex items-start gap-2">
       <div class="flex flex-col gap-2 justify-center">
         <PlayerLabel :pid="seek.creatorId" type="player"></PlayerLabel>
       </div>
-      <Tag v-if="!seek.isRated" severity="warn">Unrated</Tag>
+      <Tag v-if="!seek.isRated" severity="primary">Unrated</Tag>
       <div class="grow" />
 
       <Button size="small" severity="secondary" variant="text" icon-only @click="$emit('click')">

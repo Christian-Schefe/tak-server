@@ -1,6 +1,6 @@
 import { DynamicScheme, hexFromArgb } from '@material/material-color-utilities';
 
-export type SelectTextTokens = {
+export type SelectTokens = {
   'text-empty': string;
   'text-filled': string;
   dropdown: {
@@ -14,7 +14,7 @@ export type SelectTextTokens = {
   };
 };
 
-export function createSelectTextTokens(theme: DynamicScheme): SelectTextTokens {
+export function createSelectTokens(theme: DynamicScheme): SelectTokens {
   return {
     'text-empty': hexFromArgb(theme.onSurfaceVariant),
     'text-filled': hexFromArgb(theme.onSurface),

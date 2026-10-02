@@ -7,6 +7,7 @@ import GameSummary from '@/components/GameSummary.vue';
 import MatchReadyTagOrButton from '@/components/MatchReadyTagOrButton.vue';
 import MatchSummary from '@/components/MatchSummary.vue';
 import { gameResultFromString } from '@/tak-core/ptn';
+import { Tag } from '@tak-ui-lib/components';
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -53,8 +54,8 @@ function goToGame(gameId: string) {
       <div class="flex items-center gap-4">
         <h1 class="text-2xl font-semibold">Match</h1>
         <Tag
-          :value="match.status === 'completed' ? 'Completed' : 'Ongoing'"
-          :severity="match.status === 'completed' ? 'success' : 'warn'"
+          :label="match.status === 'completed' ? 'Completed' : 'Ongoing'"
+          :severity="match.status === 'completed' ? 'primary' : 'danger'"
         />
       </div>
       <MatchSummary :match-detail="match"></MatchSummary>

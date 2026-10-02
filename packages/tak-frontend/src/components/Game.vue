@@ -23,8 +23,8 @@ const props = defineProps<{
 }>();
 </script>
 <template>
-  <div class="w-full h-full flex items-stretch flex-col xl:flex-row gap-2 p-2 xl:gap-4 xl:p-4">
-    <div class="w-full xl:w-0 h-0 xl:h-full grow">
+  <div class="w-full h-full flex items-stretch flex-col xl:flex-row gap-2 p-2 xl:gap-4 xl:p-4 overflow-y-auto">
+    <div class="w-full xl:w-0 xl:h-full grow">
       <Board2D
         v-if="settingsStore.settings.boardType === '2d'"
         :game="props.game"
@@ -49,7 +49,7 @@ const props = defineProps<{
       </BoardNinja>
     </div>
 
-    <div class="w-full xl:w-140 flex flex-col gap-4 xl:overflow-y-auto">
+    <div class="w-full xl:w-110 h-full flex flex-col gap-4 xl:overflow-y-auto">
       <slot></slot>
     </div>
   </div>

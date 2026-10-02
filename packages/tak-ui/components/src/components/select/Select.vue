@@ -69,7 +69,14 @@ const reference = useTemplateRef<HTMLElement | null>('reference');
 useFormValue(value, () => props.name);
 </script>
 <template>
-  <LabelField :label="label" :disabled="disabled" :focused="dropdownVisible">
+  <LabelField
+    :label="label"
+    tabindex="0"
+    :disabled="disabled"
+    :focused="dropdownVisible"
+    @keydown.enter="onToggleDropdown"
+    @keydown.space.prevent="onToggleDropdown"
+  >
     <div
       ref="reference"
       class="p-select"

@@ -98,7 +98,7 @@ onBeforeUnmount(() => {
 </script>
 <template>
   <CollapseCard title="Moves" grow>
-    <div class="h-0 grow overflow-y-auto">
+    <div class="h-0 min-h-32 grow overflow-y-auto">
       <div
         v-for="(row, rowIndex) in historyItems"
         :key="rowIndex"
