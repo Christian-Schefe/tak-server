@@ -8,6 +8,7 @@ import {
   useUploadProfilePicture,
 } from '@/api/profile';
 import FlagIcon from '@/components/FlagIcon.vue';
+import GameHistory from '@/components/GameHistory.vue';
 import Page from '@/components/Page.vue';
 import PlayerStats from '@/components/PlayerStats.vue';
 import RatingHistory from '@/components/RatingHistory.vue';
@@ -115,24 +116,16 @@ function onClickProfilePicture() {
     <RatingHistory :player-id="route.params.id" />
     <h1>Win-Draw-Loss</h1>
     <WinDrawLossChart :player-id="route.params.id" />
+    <h1>Game History</h1>
+    <GameHistory :player-id="route.params.id" />
   </Page>
   <Dialog v-model:visible="editDialogVisible" header="Your Profile">
     <Form v-model="formCtx" :validator="validator" @submit="onUpdateProfile">
       <div class="w-full flex flex-col gap-4">
         <Select model-value="" name="country" :options="countryOptions" label="Country"></Select>
         <div class="flex justify-end gap-2">
-          <Button
-            severity="secondary"
-            variant="text"
-            label="Cancel"
-            @click="editDialogVisible = false"
-          />
-          <Button
-            type="submit"
-            variant="text"
-            label="Update Profile"
-            :disabled="isUpdatingProfile"
-          />
+          <Button variant="text" label="Cancel" @click="editDialogVisible = false" />
+          <Button type="submit" label="Update Profile" :disabled="isUpdatingProfile" />
         </div>
       </div>
     </Form>

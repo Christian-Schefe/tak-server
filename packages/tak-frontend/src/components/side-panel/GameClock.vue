@@ -2,6 +2,7 @@
 import PlayerLabel from '@/components/PlayerLabel.vue';
 import type { TakGame, TakPlayer } from '@/tak-core';
 import { clockFormat } from '@/utils/time';
+import { Tag } from '@tak-ui-lib/components';
 import { useInterval } from '@vueuse/core';
 import { computed } from 'vue';
 
@@ -23,10 +24,13 @@ const clockInfo = computed(() => {
   <div class="flex items-center gap-2">
     <PlayerLabel :pid="playerId" type="player" />
     <div class="grow"></div>
-    <div
-      :class="`py-2 px-4 text-lg text-center rounded-md font-mono min-w-24 border ${clockInfo.isActive ? 'bg-surface-700 dark:bg-surface-200' : 'border-surface'} ${clockInfo.isActive ? 'text-primary-contrast' : 'text-muted-color'} transition-colors`"
-    >
-      <p>{{ clockInfo.remainingMs }}</p>
-    </div>
+    <Tag
+      :class="`justify-center font-mono min-w-24`"
+      :style="{
+        opacity: clockInfo.isActive ? 1 : 0.5,
+        transition: 'opacity 200ms ease-in-out',
+      }"
+      :label="clockInfo.remainingMs"
+    />
   </div>
 </template>

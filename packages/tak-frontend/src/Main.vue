@@ -28,6 +28,7 @@ watch(isMobile, (newIsMobile) => {
     <template #top>
       <SideBar :visible="isMobile" direction="top">
         <Button
+          size="small"
           variant="text"
           severity="secondary"
           icon-only

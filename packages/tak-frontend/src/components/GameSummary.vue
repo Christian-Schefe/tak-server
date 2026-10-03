@@ -2,7 +2,7 @@
 import type { GameMetadata } from '@/api/game';
 import { getDefaultReserve, type TakGameState, type TakPlayer } from '@/tak-core/index.ts';
 import { timeControlToString } from '@/utils/time.ts';
-import { Button, Card } from '@tak-ui-lib/components';
+import { Button, Card, Tag } from '@tak-ui-lib/components';
 import { computed } from 'vue';
 import { Fa6ChessBoard, Fa6RegChessPawn, Fa6RegChessQueen } from 'vue-icons-plus/fa6';
 import { LuCalendar, LuClock, LuEye, LuPlay, LuScale } from 'vue-icons-plus/lu';
@@ -10,7 +10,7 @@ import PlayerLabel from './PlayerLabel.vue';
 
 const props = defineProps<{
   gameMetadata: GameMetadata;
-  result?: TakGameState;
+  result: TakGameState;
   hideGameSettings?: boolean;
 }>();
 
@@ -42,19 +42,18 @@ function resultOfPlayer(result: TakGameState, player: TakPlayer) {
   }
 }
 
-const resultArr = computed(() => {
-  if (!props.result) return undefined;
-  return [resultOfPlayer(props.result, 'white'), resultOfPlayer(props.result, 'black')];
+const resultStr = computed(() => {
+  switch (props.result.type) {
+    case 'ongoing':
+      return 'Ongoing';
+    case 'draw':
+      return 'Draw';
+    case 'win':
+      return `${resultOfPlayer(props.result, 'white')}-${resultOfPlayer(props.result, 'black')}`;
+    case 'aborted':
+      return 'Aborted';
+  }
 });
-
-const resultColor: Record<string, string | undefined> = {
-  '1': 'bg-primary text-primary-contrast',
-  F: 'bg-primary text-primary-contrast',
-  R: 'bg-primary text-primary-contrast',
-  '0': 'bg-surface-200 dark:bg-surface-700',
-  '1/2': 'bg-surface-200 dark:bg-surface-700',
-  '': '',
-};
 
 const isFlatsSpecial = computed(() => {
   const { boardSize, pieces } = props.gameMetadata.gameSettings;
@@ -78,79 +77,68 @@ const openingNames: Record<string, string | undefined> = {
 </script>
 <template>
   <Card>
-    <div class="flex items-start gap-2">
-      <div v-if="resultArr" class="w-8 h-18 grid grid-rows-2 rounded-md overflow-hidden text-sm">
-        <div
-          v-for="(res, index) in resultArr"
-          :key="index"
-          :class="resultColor[res]"
-          class="flex items-center justify-center font-mono"
-        >
-          {{ res }}
+    <div class="flex flex-col gap-2">
+      <h3 class="flex items-center gap-2 justify-start">
+        <span>Game #{{ gameMetadata.id }}</span>
+        <Tag class="flex items-center justify-center font-mono" :label="resultStr" />
+      </h3>
+      <PlayerLabel :pid="gameMetadata.playerIds.white" type="player"></PlayerLabel>
+      <PlayerLabel :pid="gameMetadata.playerIds.black" type="player"></PlayerLabel>
+      <template v-if="hideGameSettings !== true">
+        <div class="flex items-center gap-2 justify-start">
+          <LuCalendar />
+          {{
+            new Date(gameMetadata.date).toLocaleDateString([], {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })
+          }}
         </div>
-      </div>
-      <div class="flex flex-col gap-2 justify-center grow">
-        <PlayerLabel :pid="gameMetadata.playerIds.white" type="player"></PlayerLabel>
-        <PlayerLabel :pid="gameMetadata.playerIds.black" type="player"></PlayerLabel>
-      </div>
-      <Button size="small" severity="secondary" variant="text" icon-only @click="$emit('click')">
-        <LuEye />
-      </Button>
+        <div class="flex items-center gap-2 justify-start">
+          <Fa6ChessBoard />
+          {{ gameMetadata.gameSettings.boardSize }}x{{ gameMetadata.gameSettings.boardSize }}
+        </div>
+        <div class="flex items-center gap-2 justify-start">
+          <LuClock />
+          {{ timeControlToString(gameMetadata.gameSettings.timeSettings) }}
+        </div>
+        <div class="flex items-center gap-2 justify-start">
+          <LuScale />
+          {{ gameMetadata.gameSettings.halfKomi * 0.5 }} komi
+        </div>
+        <div v-if="isFlatsSpecial" class="flex items-center gap-2 justify-start">
+          <Fa6RegChessPawn />
+          {{ gameMetadata.gameSettings.pieces }} Flat{{
+            gameMetadata.gameSettings.pieces !== 1 ? 's' : ''
+          }}
+        </div>
+        <div v-if="isCapstonesSpecial" class="flex items-center gap-2 justify-start">
+          <Fa6RegChessQueen />
+          {{ gameMetadata.gameSettings.capstones }} Capstone{{
+            gameMetadata.gameSettings.capstones !== 1 ? 's' : ''
+          }}
+        </div>
+        <div v-if="isOpeningSpecial" class="flex items-center gap-2 justify-start">
+          <LuPlay />
+          {{ openingNames[gameMetadata.gameSettings.opening] }}
+        </div>
+      </template>
     </div>
-
-    <div
-      v-if="hideGameSettings !== true || resultArr"
-      class="flex flex-wrap gap-x-6 gap-y-2 justify-start items-center"
-    >
-      <div v-if="resultArr" class="flex items-center gap-2 justify-start">
-        <LuCalendar class="text-primary" />
-        {{
-          new Date(gameMetadata.date).toLocaleDateString([], {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-        }}
-      </div>
-      <div v-if="hideGameSettings !== true" class="flex items-center gap-2 justify-start">
-        <Fa6ChessBoard class="text-primary" />
-        {{ gameMetadata.gameSettings.boardSize }}x{{ gameMetadata.gameSettings.boardSize }}
-      </div>
-      <div v-if="hideGameSettings !== true" class="flex items-center gap-2 justify-start">
-        <LuClock class="text-primary" />
-        {{ timeControlToString(gameMetadata.gameSettings.timeSettings) }}
-      </div>
-      <div v-if="hideGameSettings !== true" class="flex items-center gap-2 justify-start">
-        <LuScale class="text-primary" />
-        {{ gameMetadata.gameSettings.halfKomi * 0.5 }} komi
-      </div>
-      <div
-        v-if="hideGameSettings !== true && isFlatsSpecial"
-        class="flex items-center gap-2 justify-start"
+    <div class="grow flex items-end justify-end">
+      <Button
+        size="small"
+        severity="secondary"
+        variant="text"
+        :label="result.type === 'ongoing' ? 'Watch' : 'View Result'"
+        @click="$emit('click')"
       >
-        <Fa6RegChessPawn class="text-primary" />
-        {{ gameMetadata.gameSettings.pieces }} Flat{{
-          gameMetadata.gameSettings.pieces !== 1 ? 's' : ''
-        }}
-      </div>
-      <div
-        v-if="hideGameSettings !== true && isCapstonesSpecial"
-        class="flex items-center gap-2 justify-start"
-      >
-        <Fa6RegChessQueen class="text-primary" />
-        {{ gameMetadata.gameSettings.capstones }} Capstone{{
-          gameMetadata.gameSettings.capstones !== 1 ? 's' : ''
-        }}
-      </div>
-      <div
-        v-if="hideGameSettings !== true && isOpeningSpecial"
-        class="flex items-center gap-2 justify-start"
-      >
-        <LuPlay class="text-primary" />
-        {{ openingNames[gameMetadata.gameSettings.opening] }}
-      </div>
+        <template #icon>
+          <LuEye />
+        </template>
+      </Button>
     </div>
   </Card>
 </template>

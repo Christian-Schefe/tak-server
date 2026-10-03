@@ -24,7 +24,7 @@ const { data: playerData } = usePlayerLeaderboard(() => ({
       <p class="font-semibold">Player</p>
       <p class="font-semibold">Rating</p>
       <template v-for="(player, index) in playerData?.items" :key="player.playerId">
-        <span class="text-lg font-semibold text-primary font-mono"
+        <span class="text-lg font-semibold font-mono"
           >#{{ index + 1 + (currentPage - 1) * pageSize }}</span
         >
         <PlayerLabel :pid="player.playerId" type="player" :show-rating="false"></PlayerLabel>

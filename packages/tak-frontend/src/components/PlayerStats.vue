@@ -16,14 +16,14 @@ const { data: stats } = usePlayerStats(() => props.playerId);
     <Card class="w-full!">
       <div class="flex flex-col items-center">
         <LuHash />
-        <p class="text-primary text-4xl my-4">{{ stats?.ranking?.rank ?? '...' }}</p>
+        <p class="text-4xl my-4">{{ stats?.ranking?.rank ?? '...' }}</p>
         <p class="text-lg">Rank</p>
       </div>
     </Card>
     <Card class="w-full!">
       <div class="flex flex-col items-center">
         <LuTrophy />
-        <p class="text-primary text-4xl my-4">
+        <p class="text-4xl my-4">
           {{ playerInfo?.participationRating?.toFixed(0) ?? '...' }}
         </p>
         <p class="text-lg">Rating</p>
@@ -32,14 +32,14 @@ const { data: stats } = usePlayerStats(() => props.playerId);
     <Card class="w-full!">
       <div class="flex flex-col items-center">
         <LuSwords />
-        <p class="text-primary text-4xl my-4">{{ stats?.gamesPlayed ?? '...' }}</p>
+        <p class="text-4xl my-4">{{ stats?.gamesPlayed ?? '...' }}</p>
         <p class="text-lg">Games</p>
       </div>
     </Card>
     <Card class="w-full!">
       <div class="flex flex-col items-center">
         <LuFlame />
-        <p class="text-primary text-4xl my-4">{{ stats?.winStreak ?? '...' }}</p>
+        <p class="text-4xl my-4">{{ stats?.winStreak ?? '...' }}</p>
         <p class="text-lg">Win Streak</p>
       </div>
     </Card>

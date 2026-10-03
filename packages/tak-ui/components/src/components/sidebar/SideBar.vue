@@ -22,7 +22,7 @@ function onClickMask() {
 }
 const actualSize = computed(
   () =>
-    props.size ?? (props.direction === 'left' || props.direction === 'right' ? '256px' : '56px'),
+    props.size ?? (props.direction === 'left' || props.direction === 'right' ? '256px' : '60px'),
 );
 const floating = useTemplateRef<HTMLElement | null>('floating');
 const zIndex = useOverlayZIndex(floating, visible, 0);

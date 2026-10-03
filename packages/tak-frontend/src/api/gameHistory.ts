@@ -29,3 +29,25 @@ export function useGameHistory(pagination: MaybeRefOrGetter<PaginationQuery>) {
     },
   });
 }
+
+export function usePlayerGameHistory(
+  playerId: MaybeRefOrGetter<string>,
+  pagination: MaybeRefOrGetter<PaginationQuery>,
+) {
+  const { fetchTyped } = useFetch();
+  return useQuery({
+    queryKey: ['playerGameHistory', playerId, pagination],
+    queryFn: async () => {
+      const playerIdValue = toValue(playerId);
+      const paginationValue = toValue(pagination);
+      const params = new URLSearchParams({
+        page: paginationValue.page.toString(),
+        pageSize: paginationValue.pageSize.toString(),
+      });
+      return await fetchTyped(
+        gameHistorySchema,
+        `/api/history/player/${playerIdValue}?${params.toString()}`,
+      );
+    },
+  });
+}

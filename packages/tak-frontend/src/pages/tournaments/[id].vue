@@ -160,7 +160,7 @@ const tournamentStatusSeverities = {
         <p class="font-semibold">Player</p>
         <p class="font-semibold">Score</p>
         <template v-for="(player, index) in tournamentPlayers" :key="player.id">
-          <span class="text-lg font-semibold text-primary font-mono">#{{ index + 1 }}</span>
+          <span class="text-lg font-semibold font-mono">#{{ index + 1 }}</span>
           <PlayerLabel :pid="player.id" type="player" :show-rating="false"></PlayerLabel>
           <span class="ml-auto font-mono">{{ player.score }}</span>
         </template>

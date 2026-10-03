@@ -277,8 +277,11 @@ const chatConversation = computed<ChatMessageConversation | undefined>(() => {
         :match-id="gameData.status.matchId"
       />
     </Card>
-    <GameAnalysis :game="gameData.game.base" :ply-index="plyIndex"></GameAnalysis>
-    <ChatPanel v-if="chatConversation" :conversation="chatConversation" />
+    <GameAnalysis
+      v-if="gameData.mode.type === 'spectator'"
+      :game="gameData.game.base"
+      :ply-index="plyIndex"
+    ></GameAnalysis>
     <GameClock
       :game="gameData.game"
       player="white"
@@ -294,5 +297,6 @@ const chatConversation = computed<ChatMessageConversation | undefined>(() => {
       :ply-index="plyIndex"
       @update-ply-index="plyIndex = $event"
     ></MoveHistory>
+    <ChatPanel v-if="chatConversation" :conversation="chatConversation" />
   </Game>
 </template>

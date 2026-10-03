@@ -22,7 +22,7 @@ defineEmits<{
         <div
           v-for="(res, index) in [matchDetail.player1.score, matchDetail.player2.score]"
           :key="index"
-          class="flex items-center justify-center font-mono bg-surface-200 dark:bg-surface-700"
+          class="flex items-center justify-center font-mono"
         >
           {{ res }}
         </div>
@@ -31,7 +31,7 @@ defineEmits<{
         <PlayerLabel :pid="matchDetail.player1.playerId" type="player"></PlayerLabel>
         <PlayerLabel :pid="matchDetail.player2.playerId" type="player"></PlayerLabel>
       </div>
-      <Button icon-only variant="text" severity="secondary" @click="$emit('click')">
+      <Button size="small" icon-only variant="text" severity="secondary" @click="$emit('click')">
         <LuEye />
       </Button>
     </div>
@@ -41,17 +41,17 @@ defineEmits<{
       class="flex flex-wrap gap-x-6 gap-y-2 justify-start items-center"
     >
       <div class="flex items-center gap-2 justify-start">
-        <Fa6ChessBoard class="text-primary" />
+        <Fa6ChessBoard />
         {{ matchDetail.settings.gameSettings.boardSize }}x{{
           matchDetail.settings.gameSettings.boardSize
         }}
       </div>
       <div class="flex items-center gap-2 justify-start">
-        <LuClock class="text-primary" />
+        <LuClock />
         {{ timeControlToString(matchDetail.settings.gameSettings.timeSettings) }}
       </div>
       <div class="flex items-center gap-2 justify-start">
-        <LuScale class="text-primary" />
+        <LuScale />
         {{ matchDetail.settings.gameSettings.halfKomi * 0.5 }} komi
       </div>
     </div>

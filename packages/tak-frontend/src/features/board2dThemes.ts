@@ -18,7 +18,6 @@ import steampunk from '../assets/board-2d/steampunk.json';
 const pieceColorSchema = z.object({
   background: z.string(),
   border: z.string(),
-  text: z.string().optional(),
   capstoneOverride: z
     .object({
       background: z.string(),

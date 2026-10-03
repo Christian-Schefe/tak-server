@@ -1,9 +1,7 @@
 <script setup lang="ts">
-import { useIsAccountOnline } from '@/api/account';
 import { useAccountOrPlayerInfo } from '@/api/player';
 import { useProfile, useProfilePictureUrl } from '@/api/profile';
 import FlagIcon from '@/components/FlagIcon.vue';
-import { Badge } from '@tak-ui-lib/components';
 
 const props = withDefaults(
   defineProps<{
@@ -26,8 +24,6 @@ const { data: playerInfo, isError } = useAccountOrPlayerInfo(
 );
 const { data: profile } = useProfile(() => playerInfo.value?.accountId);
 const avatarSrc = useProfilePictureUrl(() => playerInfo.value?.accountId);
-
-const isOnline = useIsAccountOnline(() => playerInfo.value?.accountId);
 </script>
 <template>
   <RouterLink
@@ -35,16 +31,12 @@ const isOnline = useIsAccountOnline(() => playerInfo.value?.accountId);
     :draggable="false"
     class="flex gap-2 items-center justify-start hover:underline"
   >
-    <Badge v-if="showProfilePicture && isOnline === true">
-      <img :src="avatarSrc" alt="Profile Picture" class="w-8 h-8 rounded-sm pointer-events-none" />
-    </Badge>
     <img
-      v-else-if="showProfilePicture"
+      v-if="showProfilePicture"
       :src="avatarSrc"
       alt="Profile Picture"
       class="w-8 h-8 rounded-sm pointer-events-none"
     />
-
     <span class="text-left text-ellipsis overflow-hidden text-nowrap">
       {{ playerInfo?.displayName ?? (isError ? 'Unknown Player' : '') }}
       <span

@@ -36,28 +36,28 @@ function tournamentModeToString(tournament: Tournament): string {
         <p class="font-semibold text-lg">{{ tournament.metadata.name }}</p>
         <p class="text-sm">Description</p>
       </div>
-      <Button icon-only variant="text" severity="secondary" @click="$emit('click')">
+      <Button size="small" icon-only variant="text" severity="secondary" @click="$emit('click')">
         <LuEye />
       </Button>
     </div>
 
     <div class="flex flex-wrap gap-x-6 gap-y-2 justify-start items-center">
       <div class="flex items-center gap-2 justify-start">
-        <LuSwords class="text-primary" />
+        <LuSwords />
         {{ tournamentModeToString(tournament) }}
       </div>
       <div class="flex items-center gap-2 justify-start">
-        <Fa6ChessBoard class="text-primary" />
+        <Fa6ChessBoard />
         {{ tournament.metadata.matchSettings.gameSettings.boardSize }}x{{
           tournament.metadata.matchSettings.gameSettings.boardSize
         }}
       </div>
       <div class="flex items-center gap-2 justify-start">
-        <LuClock class="text-primary" />
+        <LuClock />
         {{ timeControlToString(tournament.metadata.matchSettings.gameSettings.timeSettings) }}
       </div>
       <div class="flex items-center gap-2 justify-start">
-        <LuScale class="text-primary" />
+        <LuScale />
         {{ tournament.metadata.matchSettings.gameSettings.halfKomi * 0.5 }} komi
       </div>
     </div>

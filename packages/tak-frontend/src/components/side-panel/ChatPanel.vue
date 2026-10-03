@@ -188,7 +188,7 @@ const formCtx = useFormContext(() => ({ chatMessage: '' }));
 }
 
 .markdown-body a {
-  color: var(--p-primary-color);
+  color: var(--p-color-primary);
   text-decoration: none;
 }
 
@@ -197,7 +197,7 @@ const formCtx = useFormContext(() => ({ chatMessage: '' }));
 }
 
 .markdown-body blockquote {
-  border-left: 2px solid var(--p-primary-color);
+  border-left: 2px solid var(--p-color-primary);
   padding-left: 0.5rem;
   margin: 1rem 0;
 }
@@ -210,7 +210,7 @@ const formCtx = useFormContext(() => ({ chatMessage: '' }));
 
 .markdown-body table th,
 .markdown-body table td {
-  border: 1px solid var(--color-surface-500);
+  border: 1px solid var(--p-color-outline);
   padding: 0.5rem;
   text-align: left;
 }

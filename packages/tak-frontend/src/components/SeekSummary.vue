@@ -46,8 +46,41 @@ const openingNames: Record<string, string | undefined> = {
 <template>
   <Card>
     <div class="flex items-start gap-2">
-      <div class="flex flex-col gap-2 justify-center">
+      <div class="flex flex-col gap-4 justify-center">
         <PlayerLabel :pid="seek.creatorId" type="player"></PlayerLabel>
+
+        <div class="flex flex-col gap-x-6 gap-y-2 justify-start items-start">
+          <div class="flex items-center gap-2 justify-start">
+            <LuContrast />
+            {{ colorNames[seek.color] }}
+          </div>
+          <div class="flex items-center gap-2 justify-start">
+            <Fa6ChessBoard />
+            {{ seek.gameSettings.boardSize }}x{{ seek.gameSettings.boardSize }}
+          </div>
+          <div class="flex items-center gap-2 justify-start">
+            <LuScale />
+            {{ seek.gameSettings.halfKomi * 0.5 }} komi
+          </div>
+          <div class="flex items-center gap-2 justify-start">
+            <LuClock />
+            {{ timeControlToString(seek.gameSettings.timeSettings) }}
+          </div>
+          <div v-if="isFlatsSpecial" class="flex items-center gap-2 justify-start">
+            <Fa6RegChessPawn />
+            {{ seek.gameSettings.pieces }} Flat{{ seek.gameSettings.pieces !== 1 ? 's' : '' }}
+          </div>
+          <div v-if="isCapstonesSpecial" class="flex items-center gap-2 justify-start">
+            <Fa6RegChessQueen />
+            {{ seek.gameSettings.capstones }} Capstone{{
+              seek.gameSettings.capstones !== 1 ? 's' : ''
+            }}
+          </div>
+          <div v-if="isOpeningSpecial" class="flex items-center gap-2 justify-start">
+            <LuPlay />
+            {{ openingNames[seek.gameSettings.opening] }}
+          </div>
+        </div>
       </div>
       <Tag v-if="!seek.isRated" severity="primary">Unrated</Tag>
       <div class="grow" />
@@ -56,37 +89,6 @@ const openingNames: Record<string, string | undefined> = {
         <LuTrash v-if="action === 'delete'" size="1lh" />
         <LuSwords v-else size="1lh" />
       </Button>
-    </div>
-
-    <div class="flex flex-wrap gap-x-6 gap-y-2 justify-start items-center">
-      <div class="flex items-center gap-2 justify-start">
-        <LuContrast class="text-primary" />
-        {{ colorNames[seek.color] }}
-      </div>
-      <div class="flex items-center gap-2 justify-start">
-        <Fa6ChessBoard class="text-primary" />
-        {{ seek.gameSettings.boardSize }}x{{ seek.gameSettings.boardSize }}
-      </div>
-      <div class="flex items-center gap-2 justify-start">
-        <LuScale class="text-primary" />
-        {{ seek.gameSettings.halfKomi * 0.5 }} komi
-      </div>
-      <div class="flex items-center gap-2 justify-start">
-        <LuClock class="text-primary" />
-        {{ timeControlToString(seek.gameSettings.timeSettings) }}
-      </div>
-      <div v-if="isFlatsSpecial" class="flex items-center gap-2 justify-start">
-        <Fa6RegChessPawn class="text-primary" />
-        {{ seek.gameSettings.pieces }} Flat{{ seek.gameSettings.pieces !== 1 ? 's' : '' }}
-      </div>
-      <div v-if="isCapstonesSpecial" class="flex items-center gap-2 justify-start">
-        <Fa6RegChessQueen class="text-primary" />
-        {{ seek.gameSettings.capstones }} Capstone{{ seek.gameSettings.capstones !== 1 ? 's' : '' }}
-      </div>
-      <div v-if="isOpeningSpecial" class="flex items-center gap-2 justify-start">
-        <LuPlay class="text-primary" />
-        {{ openingNames[seek.gameSettings.opening] }}
-      </div>
     </div>
   </Card>
 </template>

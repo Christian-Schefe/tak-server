@@ -10,7 +10,6 @@ import {
   type TakVariant,
 } from '@/tak-core';
 import { TakGameUI, type TakUIPiece, type TakUITile } from '@/tak-core/ui2d.ts';
-import { Button } from '@tak-ui-lib/components';
 import { produce } from 'immer';
 import { computed, ref, shallowRef, watch, type ShallowRef } from 'vue';
 import Board2DPiece from './Board2DPiece.vue';
@@ -125,19 +124,35 @@ const boardTheme = computed(
 </script>
 <template>
   <div class="w-full h-full relative">
-    <div class="absolute inset-0 m-auto max-w-full max-h-full touch-none aspect-4/5 xl:aspect-9/10">
+    <div class="xl:absolute inset-0 m-auto max-w-full max-h-full touch-none aspect-4/5 xl:aspect-9/10">
       <div class="w-full h-[10%] xl:h-[5%]">
         <div class="w-full h-full grid grid-cols-2 gap-2 pb-2">
           <div
-            class="bg-content border-surface rounded-md flex gap-4 items-center justify-center font-mono outline-primary"
-            :class="gameUi.actualGame.currentPlayer === 'white' ? 'outline-2' : ''"
+            class="rounded-md flex gap-4 items-center justify-center font-mono"
+            :style="{
+              backgroundColor: boardTheme.background,
+              color: boardTheme.text,
+              outline:
+                gameUi.actualGame.currentPlayer === 'white'
+                  ? `2px solid ${boardTheme.text}`
+                  : '2px solid transparent',
+              transition: 'outline 200ms ease-in-out',
+            }"
           >
             <span class="font-semibold">White</span> {{ game.reserves['white'].pieces }} /
             {{ game.reserves['white'].capstones }}
           </div>
           <div
-            class="bg-content border-surface rounded-md flex gap-4 items-center justify-center font-mono outline-primary"
-            :class="gameUi.actualGame.currentPlayer === 'black' ? 'outline-2' : ''"
+            class="rounded-md flex gap-4 items-center justify-center font-mono"
+            :style="{
+              backgroundColor: boardTheme.background,
+              color: boardTheme.text,
+              outline:
+                gameUi.actualGame.currentPlayer === 'black'
+                  ? `2px solid ${boardTheme.text}`
+                  : '2px solid transparent',
+              transition: 'outline 200ms ease-in-out',
+            }"
           >
             <span class="font-semibold">Black</span> {{ game.reserves['black'].pieces }} /
             {{ game.reserves['black'].capstones }}
@@ -177,27 +192,23 @@ const boardTheme = computed(
       </div>
       <div class="w-full h-[10%] xl:h-[5%]">
         <div class="w-full h-full grid grid-cols-3 gap-2 pt-2 font-mono">
-          <Button
-            :severity="currentVariant === 'flat' ? undefined : 'secondary'"
-            :disabled="canPlace === null || !canPlace.flat"
-            @click="currentVariant = 'flat'"
+          <button
+            v-for="variant in ['flat', 'standing', 'capstone']"
+            :key="variant"
+            :disabled="canPlace === null || !canPlace[variant]"
+            class="rounded-md"
+            :style="{
+              backgroundColor: currentVariant === variant ? boardTheme.text : boardTheme.background,
+              color: currentVariant === variant ? boardTheme.background : boardTheme.text,
+              transition:
+                'background-color 200ms ease-in-out, color 200ms ease-in-out, opacity 200ms ease-in-out',
+              cursor: canPlace === null || !canPlace[variant] ? undefined : 'pointer',
+              opacity: canPlace === null || !canPlace[variant] ? 0.5 : 1,
+            }"
+            @click="currentVariant = variant"
           >
-            Flat
-          </Button>
-          <Button
-            :severity="currentVariant === 'standing' ? undefined : 'secondary'"
-            :disabled="canPlace === null || !canPlace.standing"
-            @click="currentVariant = 'standing'"
-          >
-            Wall
-          </Button>
-          <Button
-            :severity="currentVariant === 'capstone' ? undefined : 'secondary'"
-            :disabled="canPlace === null || !canPlace.capstone"
-            @click="currentVariant = 'capstone'"
-          >
-            Capstone
-          </Button>
+            {{ variant.charAt(0).toUpperCase() + variant.slice(1) }}
+          </button>
         </div>
       </div>
     </div>

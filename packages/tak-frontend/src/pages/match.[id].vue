@@ -77,14 +77,16 @@ function goToGame(gameId: string) {
     </div>
     <div v-if="match" class="flex flex-col gap-2">
       <h1 class="text-2xl font-semibold">Games</h1>
-      <GameSummary
-        v-for="game in matchGames"
-        :key="game.id"
-        :game-metadata="game"
-        :result="gameResultFromString(game.result ?? '') ?? { type: 'ongoing' }"
-        hide-game-settings
-        @click="goToGame(game.id)"
-      ></GameSummary>
+      <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+        <GameSummary
+          v-for="game in matchGames"
+          :key="game.id"
+          :game-metadata="game"
+          :result="gameResultFromString(game.result ?? '') ?? { type: 'ongoing' }"
+          hide-game-settings
+          @click="goToGame(game.id)"
+        ></GameSummary>
+      </div>
       <p v-if="!matchGames?.length">No live games available.</p>
     </div>
   </div>

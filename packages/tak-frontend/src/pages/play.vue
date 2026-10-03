@@ -49,29 +49,30 @@ const createSeekDialogVisible = ref(false);
 <template>
   <Page>
     <h1 class="text-2xl font-semibold">Your Seeks</h1>
-    <SeekSummary
-      v-for="seek in seekData.ownSeeks"
-      :key="seek.seek.id"
-      :seek="seek.seek"
-      :action="'delete'"
-      @click="onDeleteSeek(seek.seek.id)"
-    ></SeekSummary>
-    <p v-if="!seekData.ownSeeks.length">
-      You have no active seeks. Click "Create Seek" to create a new one.
-    </p>
+    <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+      <SeekSummary
+        v-for="seek in seekData.ownSeeks"
+        :key="seek.seek.id"
+        :seek="seek.seek"
+        :action="'delete'"
+        @click="onDeleteSeek(seek.seek.id)"
+      ></SeekSummary>
+    </div>
     <div class="flex justify-center">
       <Button label="Create Seek" @click="createSeekDialogVisible = true"
         ><template #icon><LuPlus /></template
       ></Button>
     </div>
     <h1 class="text-2xl font-semibold">Seeks</h1>
-    <SeekSummary
-      v-for="seek in seekData.otherSeeks"
-      :key="seek.seek.id"
-      :seek="seek.seek"
-      :action="'accept'"
-      @click="onAcceptSeek(seek.seek.id)"
-    ></SeekSummary>
+    <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+      <SeekSummary
+        v-for="seek in seekData.otherSeeks"
+        :key="seek.seek.id"
+        :seek="seek.seek"
+        :action="'accept'"
+        @click="onAcceptSeek(seek.seek.id)"
+      ></SeekSummary>
+    </div>
     <p v-if="!seekData.otherSeeks.length">No seeks available.</p>
   </Page>
   <CreateSeekModal v-model="createSeekDialogVisible" @create="createSeek" />
