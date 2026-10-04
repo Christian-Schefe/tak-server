@@ -16,9 +16,8 @@ scp ./deploy/.env.production root@tak_server:/root/app/.env
 # TLS Certificates
 scp -r ./deploy/certs root@tak_server:/root/app
 
-# Caddy and Ory configs
+# Caddy config
 scp -r ./deploy/caddy root@tak_server:/root/app
-scp -r ./deploy/ory root@tak_server:/root/app
 
 # Frontend source files
 scp -r ./deploy/artifacts/dist root@tak_server:/root/app

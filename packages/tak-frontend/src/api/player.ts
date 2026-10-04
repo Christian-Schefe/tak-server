@@ -8,7 +8,6 @@ const playerInfo = z.object({
   playerId: z.string(),
   accountId: z.string(),
   username: z.string(),
-  displayName: z.string(),
   participationRating: z.number().nullable(),
 });
 

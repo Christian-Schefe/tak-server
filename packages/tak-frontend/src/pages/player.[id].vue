@@ -100,7 +100,7 @@ function onClickProfilePicture() {
       </div>
       <div v-if="playerInfo" class="flex flex-col grow">
         <div class="font-bold text-2xl flex items-center gap-2">
-          <h1>{{ playerInfo.displayName }}</h1>
+          <h1>{{ profile?.displayName ?? playerInfo.username }}</h1>
           <FlagIcon :country="profile?.country ?? undefined" />
         </div>
         <p class="mb-4">@{{ playerInfo.username }}</p>

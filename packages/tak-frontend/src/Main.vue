@@ -4,10 +4,10 @@ import { breakpointsTailwind, useBreakpoints } from '@vueuse/core';
 import { ref, watch } from 'vue';
 import { useNavigateOnGamesStartWebSocketSubscription } from './api/game.ts';
 import Navigation from './components/Navigation.vue';
-import { useAuthStore } from './features/auth.ts';
+import { useJwtSync } from './features/auth.ts';
 import { useWebSocketStore } from './features/websocket.ts';
 
-useAuthStore();
+useJwtSync();
 useWebSocketStore();
 useNavigateOnGamesStartWebSocketSubscription();
 

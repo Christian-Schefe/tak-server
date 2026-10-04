@@ -14,19 +14,19 @@ pub fn register_routes() -> axum::Router<AppState> {
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct MessagesQuery {
-    pub cursor: Option<i64>,
-    pub limit: usize,
+struct MessagesQuery {
+    cursor: Option<i64>,
+    limit: usize,
 }
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonChatMessagePage {
-    pub messages: Vec<JsonChatMessage>,
-    pub next_cursor: Option<i64>,
+struct JsonChatMessagePage {
+    messages: Vec<JsonChatMessage>,
+    next_cursor: Option<i64>,
 }
 
-pub async fn get_chat_messages(
+async fn get_chat_messages(
     State(app): State<AppState>,
     Path(conversation_id): Path<String>,
     Query(messages_query): Query<MessagesQuery>,

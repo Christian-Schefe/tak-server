@@ -29,3 +29,34 @@ export function useRefreshAccount() {
     await queryClient.refetchQueries({ queryKey: accountQueryKey });
   };
 }
+
+export interface LoginRequest {
+  identifier: string;
+  password: string;
+}
+
+export const loginResponseSchema = z.object({
+  jwt: z.string(),
+});
+
+export type LoginResponse = z.infer<typeof loginResponseSchema>;
+
+export function useLogin() {
+  const { fetchTyped } = useFetch();
+  return async (request: LoginRequest) => {
+    return await fetchTyped(loginResponseSchema, '/api/auth/login', 'POST', request);
+  };
+}
+
+export interface RegisterRequest {
+  email: string;
+  username: string;
+  password: string;
+}
+
+export function useRegister() {
+  const { fetchTyped } = useFetch();
+  return async (request: RegisterRequest) => {
+    return await fetchTyped(loginResponseSchema, '/api/auth/register', 'POST', request);
+  };
+}

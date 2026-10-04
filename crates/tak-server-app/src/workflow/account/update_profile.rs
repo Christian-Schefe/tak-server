@@ -19,6 +19,7 @@ pub trait UpdateProfileUseCase {
     async fn update_profile(
         &self,
         account_id: &AccountId,
+        display_name: Option<String>,
         country: Option<CountryCode>,
     ) -> Result<(), UpdateProfileError>;
     async fn set_profile_picture(
@@ -69,6 +70,7 @@ impl<
     async fn update_profile(
         &self,
         account_id: &AccountId,
+        display_name: Option<String>,
         country: Option<CountryCode>,
     ) -> Result<(), UpdateProfileError> {
         let account = match self.authentication_port.get_account(account_id).await {
@@ -84,7 +86,7 @@ impl<
             .await
         {
             Ok(data) => data,
-            Err(RepoRetrieveError::NotFound) => AccountProfile::new(None, None),
+            Err(RepoRetrieveError::NotFound) => AccountProfile::new(),
             Err(RepoRetrieveError::StorageError(e)) => {
                 tracing::error!(
                     "Failed to retrieve profile information for account {}: {}",
@@ -95,6 +97,7 @@ impl<
             }
         };
         profile_data.country = country;
+        profile_data.display_name = display_name;
         match self
             .profile_information_repo
             .insert_profile_information(account_id, profile_data)
@@ -130,7 +133,7 @@ impl<
             .await
         {
             Ok(data) => data,
-            Err(RepoRetrieveError::NotFound) => AccountProfile::new(None, None),
+            Err(RepoRetrieveError::NotFound) => AccountProfile::new(),
             Err(RepoRetrieveError::StorageError(e)) => {
                 tracing::error!(
                     "Failed to retrieve profile information for account {}: {}",
@@ -156,6 +159,7 @@ impl<
                 AccountProfile {
                     country: profile_data.country,
                     profile_picture_version: Some(new_version),
+                    display_name: profile_data.display_name,
                 },
             )
             .await

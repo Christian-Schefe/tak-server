@@ -13,32 +13,26 @@ pub trait AuthenticationPort {
 
 #[derive(Clone, Debug)]
 pub struct Account {
-    pub account_id: AccountId,
     pub account_type: AccountType,
     pub role: AccountRole,
     pub flags: ModerationFlags,
     pub username: String,
-    pub display_name: String,
     pub email: Option<String>,
 }
 
 impl Account {
     pub fn new(
-        account_id: AccountId,
         account_type: AccountType,
         role: AccountRole,
         flags: ModerationFlags,
         username: String,
-        display_name: String,
         email: Option<String>,
     ) -> Self {
         Self {
-            account_id,
             account_type,
             role,
             flags,
             username,
-            display_name,
             email,
         }
     }
@@ -69,10 +63,6 @@ impl Account {
 
     pub fn get_username(&self) -> &str {
         &self.username
-    }
-
-    pub fn get_display_name(&self) -> &str {
-        &self.display_name
     }
 }
 

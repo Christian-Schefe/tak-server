@@ -7,18 +7,18 @@ use tak_server_app::Application;
 pub use auth::ApiAuthPort;
 pub use ws::WsService;
 
-pub mod account;
+mod account;
 mod auth;
-pub mod chat;
-pub mod game;
-pub mod history;
-pub mod matches;
-pub mod player;
-pub mod profile;
-pub mod puzzle;
-pub mod seek;
-pub mod tournament;
-pub mod ws;
+mod chat;
+mod game;
+mod history;
+mod matches;
+mod player;
+mod profile;
+mod puzzle;
+mod seek;
+mod tournament;
+mod ws;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -76,16 +76,16 @@ pub async fn serve(
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PaginationQuery {
+struct PaginationQuery {
     page: usize,
     page_size: usize,
 }
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PaginatedResponse<T> {
-    pub items: Vec<T>,
-    pub total_count: u32,
+struct PaginatedResponse<T> {
+    items: Vec<T>,
+    total_count: u32,
 }
 
 #[allow(unused)]
@@ -99,7 +99,7 @@ pub enum ServiceError {
 }
 
 impl ServiceError {
-    pub fn message(&self) -> &str {
+    fn message(&self) -> &str {
         match self {
             ServiceError::NotFound(msg)
             | ServiceError::Unauthorized(msg)
@@ -110,7 +110,7 @@ impl ServiceError {
         }
     }
 
-    pub fn status_code(&self) -> axum::http::StatusCode {
+    fn status_code(&self) -> axum::http::StatusCode {
         match self {
             ServiceError::NotFound(_) => axum::http::StatusCode::NOT_FOUND,
             ServiceError::Unauthorized(_) => axum::http::StatusCode::UNAUTHORIZED,

@@ -4,6 +4,7 @@ import { computed, toValue, type MaybeRefOrGetter } from 'vue';
 import { z } from 'zod';
 
 const profileSchema = z.object({
+  displayName: z.string().nullable(),
   country: z.string().nullable(),
   profilePictureVersion: z.number().nullable(),
 });

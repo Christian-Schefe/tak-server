@@ -55,6 +55,7 @@ impl<
         {
             Ok(profile_information) => Ok(profile_information.into()),
             Err(RepoRetrieveError::NotFound) => Ok(AccountProfileView {
+                display_name: None,
                 country: None,
                 profile_picture_version: None,
             }),

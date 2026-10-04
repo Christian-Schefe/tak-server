@@ -234,8 +234,8 @@ impl<
             &self.rating_repository,
             &self.rating_history_repository,
             &ended_game,
-            white_account.as_ref(),
-            black_account.as_ref(),
+            white_account.as_ref().map(|(_, acc)| acc),
+            black_account.as_ref().map(|(_, acc)| acc),
         )
         .await;
 
@@ -253,8 +253,8 @@ impl<
         update_stats(
             &self.stats_repository,
             &ended_game,
-            white_account.as_ref(),
-            black_account.as_ref(),
+            white_account.as_ref().map(|(_, acc)| acc),
+            black_account.as_ref().map(|(_, acc)| acc),
         )
         .await;
 

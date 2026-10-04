@@ -1,9 +1,7 @@
 use clap::{Parser, Subcommand};
-use std::{path::PathBuf, sync::Arc, time::Duration};
-use tak_auth_ory::{AuthenticationService, jwt};
-use tak_bot_registry::FileBotRepository;
-use tak_persistence_sea_orm::guest::GuestRepositoryImpl;
-use tak_server_app::ports::authentication::AuthenticationPort;
+use std::{path::PathBuf, sync::Arc};
+use tak_auth::AuthService;
+use tak_server_app::{domain::AccountId, ports::authentication::AuthenticationPort};
 
 #[derive(Parser)]
 struct Cli {
@@ -16,14 +14,8 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     SetAdmin {
-        #[arg(value_name = "USERNAME")]
-        username: String,
-    },
-    GenerateToken {
-        #[arg(value_name = "USERNAME")]
-        username: String,
-        #[arg(short, long, default_value = "3600")]
-        duration: u64,
+        #[arg(value_name = "Account Id")]
+        id: String,
     },
 }
 
@@ -37,42 +29,28 @@ async fn main() {
         println!("Loaded environment variables from {}", env_path.display());
     }
 
-    let bot_repository = Arc::new(FileBotRepository::new());
-    let guest_repository = Arc::new(GuestRepositoryImpl::new().await);
-    let auth_service = Arc::new(AuthenticationService::new(bot_repository, guest_repository));
+    let account_repo =
+        Arc::new(tak_persistence_sea_orm::account::AccountRepositoryImpl::new().await);
+    let auth_service = Arc::new(AuthService::new(account_repo));
 
     match cli.command {
-        Commands::SetAdmin { username } => {
-            let Some(acc) = auth_service.find_by_username(&username).await else {
-                println!("Account with username '{}' not found", username);
+        Commands::SetAdmin { id } => {
+            let account_id = AccountId::try_from(id.clone()).expect("Invalid account ID format");
+            let Some(acc) = auth_service.get_account(&account_id).await else {
+                println!("Account with id '{}' not found", id);
                 return;
             };
             println!("Setting account {:?} to admin", acc);
             match auth_service
                 .set_role(
-                    &acc.account_id,
+                    &account_id,
                     tak_server_app::domain::moderation::AccountRole::Admin,
                 )
                 .await
             {
-                Ok(_) => println!("Account {} set to admin", acc.account_id.to_string()),
-                Err(_) => println!(
-                    "Failed to set account {} to admin",
-                    acc.account_id.to_string()
-                ),
+                Ok(_) => println!("Account {} set to admin", account_id.to_string()),
+                Err(_) => println!("Failed to set account {} to admin", account_id.to_string()),
             }
-        }
-        Commands::GenerateToken { username, duration } => {
-            let Some(acc) = auth_service.find_by_username(&username).await else {
-                println!("Account with username '{}' not found", username);
-                return;
-            };
-            println!(
-                "Generating token for account {:?} with duration {} seconds",
-                acc, duration
-            );
-            let token = jwt::generate_jwt(&acc.account_id, Duration::from_secs(duration));
-            println!("{}", token);
         }
     }
 }

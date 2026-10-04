@@ -15,7 +15,6 @@
     "format": "prettier --write --experimental-cli src/"
   },
   "dependencies": {
-    "@ory/client": "^1.22.37",
     "@tailwindcss/vite": "^4.2.4",
     "@tak-ui-lib/components": "workspace:*",
     "@tak-ui-lib/material": "workspace:*",

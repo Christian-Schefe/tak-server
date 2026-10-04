@@ -36,6 +36,7 @@ impl AccountProfileRepository for ProfileRepositoryImpl {
     ) -> Result<(), RepoError> {
         let active_model = profile::ActiveModel {
             account_id: sea_orm::ActiveValue::Set(account_id.0),
+            display_name: sea_orm::ActiveValue::Set(profile_information.display_name.clone()),
             country: sea_orm::ActiveValue::Set(profile_information.country.map(|x| x.to_string())),
             profile_picture_version: sea_orm::ActiveValue::Set(
                 profile_information.profile_picture_version.map(|x| x.0),
@@ -75,6 +76,7 @@ impl AccountProfileRepository for ProfileRepositoryImpl {
 
         if let Some(model) = profile_model {
             let profile_information = AccountProfile {
+                display_name: model.display_name,
                 country: model
                     .country
                     .as_deref()

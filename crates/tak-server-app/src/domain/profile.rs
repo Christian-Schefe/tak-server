@@ -30,18 +30,17 @@ impl ProfilePictureVersion {
 
 #[derive(Clone, Debug)]
 pub struct AccountProfile {
+    pub display_name: Option<String>,
     pub country: Option<CountryCode>,
     pub profile_picture_version: Option<ProfilePictureVersion>,
 }
 
 impl AccountProfile {
-    pub fn new(
-        country: Option<CountryCode>,
-        profile_picture_version: Option<ProfilePictureVersion>,
-    ) -> Self {
+    pub fn new() -> Self {
         Self {
-            country,
-            profile_picture_version,
+            display_name: None,
+            country: None,
+            profile_picture_version: None,
         }
     }
 }

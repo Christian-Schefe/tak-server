@@ -174,14 +174,14 @@ watch(
 
 const settingsVisible = ref(false);
 
-const { mutate: updateGameStatusMutation } = useSetGameRequest(() => route.params.id);
+const { mutate: updateGameStatusMutation } = useSetGameRequest();
 
 function onSetRequest(request: GameRequest) {
-  updateGameStatusMutation(request);
+  updateGameStatusMutation({ gameId: route.params.id, request });
 }
-const { mutate: acceptGameRequestMutation } = useAcceptGameRequest(() => route.params.id);
+const { mutate: acceptGameRequestMutation } = useAcceptGameRequest();
 function onAcceptRequest(requestType: GameRequestType) {
-  acceptGameRequestMutation(requestType);
+  acceptGameRequestMutation({ gameId: route.params.id, requestType });
 }
 
 const gameOverDialogVisible = ref(false);

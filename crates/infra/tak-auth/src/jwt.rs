@@ -53,3 +53,9 @@ pub fn generate_jwt(account_id: &AccountId, duration: Duration) -> String {
     let token = encode(&Header::default(), &claims, &KEYS.encoding).unwrap();
     token
 }
+
+pub fn validate_jwt(token: &str) -> Option<AccountId> {
+    let claims = Claims::from_token(token).ok()?;
+    let account_id = AccountId::try_from(claims.sub).ok()?;
+    Some(account_id)
+}

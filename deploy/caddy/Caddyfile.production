@@ -1,12 +1,6 @@
 {$SITE_ADDRESS} {
     root * /srv/www/dist
 
-    handle_path /auth/admin/* {
-        respond 404
-    }
-    handle_path /auth/* {
-        reverse_proxy kratos:4433
-    }
     handle_path /api/* {
         reverse_proxy tak_server:{$TAK_HTTP_API_PORT}
     }

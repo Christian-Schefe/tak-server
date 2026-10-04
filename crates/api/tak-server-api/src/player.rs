@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use tak_server_app::{
     domain::{AccountId, Pagination, PlayerId, rating::RatingQuery},
     workflow::{
-        account::{AccountProfileView, get_account::GetAccountError},
+        account::get_account::GetAccountError,
         player::{PlayerStatsView, get_rating::GetRatingError},
     },
 };
@@ -17,7 +17,6 @@ use crate::{AppState, PaginatedResponse, PaginationQuery, ServiceError};
 
 pub fn register_routes() -> axum::Router<AppState> {
     axum::Router::new()
-        .route("/username/{username}", get(get_player_by_username))
         .route("/account/{account_id}", get(get_player_by_account_id))
         .route("/player/{player_id}", get(get_player_info))
         .route("/player/{player_id}/stats", get(get_player_stats))
@@ -32,7 +31,7 @@ async fn get_player_info_helper(
     app: &AppState,
     player_id: PlayerId,
 ) -> Result<PlayerInfo, ServiceError> {
-    let account = match app.app.get_account_workflow.get_account(player_id).await {
+    let (account_id, account) = match app.app.get_account_workflow.get_account(player_id).await {
         Ok(account) => account,
         Err(GetAccountError::AccountNotFound) => {
             return Err(ServiceError::NotFound("Player not found".to_string()));
@@ -60,14 +59,13 @@ async fn get_player_info_helper(
 
     Ok(PlayerInfo {
         player_id: player_id.to_string(),
-        account_id: account.account_id.to_string(),
+        account_id: account_id.to_string(),
         username: account.username,
-        display_name: account.display_name,
         participation_rating,
     })
 }
 
-pub async fn get_player_info(
+async fn get_player_info(
     State(app): State<AppState>,
     Path(player_id): Path<String>,
 ) -> Result<Json<PlayerInfo>, ServiceError> {
@@ -78,7 +76,7 @@ pub async fn get_player_info(
     get_player_info_helper(&app, player_id).await.map(Json)
 }
 
-pub async fn get_player_stats(
+async fn get_player_stats(
     State(app): State<AppState>,
     Path(player_id): Path<String>,
 ) -> Result<Json<JsonPlayerStatsInfo>, ServiceError> {
@@ -96,25 +94,7 @@ pub async fn get_player_stats(
     Ok(Json(stats.into()))
 }
 
-pub async fn get_player_by_username(
-    State(app): State<AppState>,
-    Path(username): Path<String>,
-) -> Result<Json<PlayerInfo>, ServiceError> {
-    let Some(account) = app.auth.get_account_by_username(&username).await else {
-        return Err(ServiceError::NotFound("Player not found".to_string()));
-    };
-
-    let player_id = app
-        .app
-        .player_resolver_service
-        .resolve_player_id_by_account_id(&account.account_id)
-        .await
-        .map_err(|_| ServiceError::Internal("Failed to resolve player ID".to_string()))?;
-
-    get_player_info_helper(&app, player_id).await.map(Json)
-}
-
-pub async fn get_player_by_account_id(
+async fn get_player_by_account_id(
     State(app): State<AppState>,
     Path(account_id): Path<String>,
 ) -> Result<Json<PlayerInfo>, ServiceError> {
@@ -123,21 +103,21 @@ pub async fn get_player_by_account_id(
             "Invalid account ID format".to_string(),
         ));
     };
-    let Some(account) = app.auth.get_account(&account_id).await else {
+    let Some(_) = app.auth.get_account(&account_id).await else {
         return Err(ServiceError::NotFound("Account not found".to_string()));
     };
 
     let player_id = app
         .app
         .player_resolver_service
-        .resolve_player_id_by_account_id(&account.account_id)
+        .resolve_player_id_by_account_id(&account_id)
         .await
         .map_err(|_| ServiceError::Internal("Failed to resolve player ID".to_string()))?;
 
     get_player_info_helper(&app, player_id).await.map(Json)
 }
 
-pub async fn get_rating_history(
+async fn get_rating_history(
     State(app): State<AppState>,
     Path(player_id): Path<String>,
     Query(query): Query<RatingHistoryQuery>,
@@ -176,12 +156,12 @@ pub async fn get_rating_history(
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonRatingEntry {
-    pub player_id: String,
-    pub rating: f64,
+struct JsonRatingEntry {
+    player_id: String,
+    rating: f64,
 }
 
-pub async fn query_player_ratings(
+async fn query_player_ratings(
     State(app): State<AppState>,
     Query(query): Query<PaginationQuery>,
 ) -> Result<Json<PaginatedResponse<JsonRatingEntry>>, ServiceError> {
@@ -213,24 +193,24 @@ pub async fn query_player_ratings(
 }
 
 #[derive(serde::Deserialize)]
-pub struct RatingHistoryQuery {
-    pub from: Option<SerdeTimestamp>,
-    pub to: Option<SerdeTimestamp>,
+struct RatingHistoryQuery {
+    from: Option<SerdeTimestamp>,
+    to: Option<SerdeTimestamp>,
 }
 
 #[derive(serde::Deserialize)]
-pub struct SerdeTimestamp(#[serde(with = "chrono::serde::ts_milliseconds")] pub DateTime<Utc>);
+struct SerdeTimestamp(#[serde(with = "chrono::serde::ts_milliseconds")] DateTime<Utc>);
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonRatingHistory {
-    pub entries: Vec<JsonRatingHistoryEntry>,
-    pub first_entry_before_range: Option<JsonRatingHistoryEntry>,
+struct JsonRatingHistory {
+    entries: Vec<JsonRatingHistoryEntry>,
+    first_entry_before_range: Option<JsonRatingHistoryEntry>,
 }
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonRatingHistoryEntry {
+struct JsonRatingHistoryEntry {
     #[serde(with = "chrono::serde::ts_milliseconds")]
     timestamp: DateTime<Utc>,
     rating: f64,
@@ -238,33 +218,32 @@ pub struct JsonRatingHistoryEntry {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PlayerInfo {
-    pub player_id: String,
-    pub account_id: String,
-    pub username: String,
-    pub display_name: String,
-    pub participation_rating: Option<f64>,
+struct PlayerInfo {
+    player_id: String,
+    account_id: String,
+    username: String,
+    participation_rating: Option<f64>,
 }
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonPlayerStatsInfo {
-    pub ranking: Option<JsonPlayerRankingInfo>,
-    pub games_played: u32,
-    pub rated_games_played: u32,
-    pub games_won: u32,
-    pub games_lost: u32,
-    pub games_drawn: u32,
-    pub win_streak: u32,
-    pub longest_win_streak: u32,
+struct JsonPlayerStatsInfo {
+    ranking: Option<JsonPlayerRankingInfo>,
+    games_played: u32,
+    rated_games_played: u32,
+    games_won: u32,
+    games_lost: u32,
+    games_drawn: u32,
+    win_streak: u32,
+    longest_win_streak: u32,
 }
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonPlayerRankingInfo {
-    pub rating: f64,
-    pub max_rating: f64,
-    pub rank: u32,
+struct JsonPlayerRankingInfo {
+    rating: f64,
+    max_rating: f64,
+    rank: u32,
 }
 
 impl From<PlayerStatsView> for JsonPlayerStatsInfo {
@@ -282,28 +261,6 @@ impl From<PlayerStatsView> for JsonPlayerStatsInfo {
                 max_rating: ranking.max_rating,
                 rank: ranking.ranking,
             }),
-        }
-    }
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct PlayerProfileUpdate {
-    pub country: Option<String>,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct PlayerProfileInfo {
-    pub country: Option<String>,
-    pub profile_picture_version: Option<u64>,
-}
-
-impl From<AccountProfileView> for PlayerProfileInfo {
-    fn from(profile: AccountProfileView) -> Self {
-        PlayerProfileInfo {
-            country: profile.country.map(|c| c.to_string()),
-            profile_picture_version: profile.profile_picture_version.map(|x| x.0),
         }
     }
 }

@@ -53,7 +53,7 @@ impl<
         date: chrono::DateTime<chrono::Utc>,
     ) -> PlayerSnapshot {
         let username = match self.get_account_workflow.get_account(player_id).await {
-            Ok(account) => Some(account.username),
+            Ok((_, account)) => Some(account.username),
             Err(GetAccountError::AccountNotFound) => None,
             Err(GetAccountError::RepositoryError) => {
                 tracing::error!(

@@ -47,7 +47,7 @@ pub fn register_routes() -> axum::Router<AppState> {
         )
 }
 
-pub async fn get_tournaments(
+async fn get_tournaments(
     State(app): State<AppState>,
 ) -> Result<Json<Vec<JsonTournament>>, ServiceError> {
     match app.app.get_tournaments_use_case.get_tournaments().await {
@@ -63,7 +63,7 @@ pub async fn get_tournaments(
     }
 }
 
-pub async fn get_tournament(
+async fn get_tournament(
     State(app): State<AppState>,
     Path(tournament_id): Path<String>,
 ) -> Result<Json<JsonTournamentDetail>, ServiceError> {
@@ -89,7 +89,7 @@ pub async fn get_tournament(
     Ok(Json(JsonTournamentDetail::from(&tournament)))
 }
 
-pub async fn register_player_to_tournament(
+async fn register_player_to_tournament(
     auth: Auth,
     State(app): State<AppState>,
     Path(tournament_id): Path<String>,
@@ -102,12 +102,12 @@ pub async fn register_player_to_tournament(
     let player_id = app
         .app
         .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .resolve_player_id_by_account_id(&auth.account_id)
         .await
         .map_err(|ResolveError::Internal| {
             ServiceError::Internal(format!(
                 "Failed to resolve player id for account {}",
-                auth.account.account_id
+                auth.account_id
             ))
         })?;
     app.app
@@ -127,7 +127,7 @@ pub async fn register_player_to_tournament(
         })
 }
 
-pub async fn unregister_player_from_tournament(
+async fn unregister_player_from_tournament(
     auth: Auth,
     State(app): State<AppState>,
     Path(tournament_id): Path<String>,
@@ -140,12 +140,12 @@ pub async fn unregister_player_from_tournament(
     let player_id = app
         .app
         .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .resolve_player_id_by_account_id(&auth.account_id)
         .await
         .map_err(|ResolveError::Internal| {
             ServiceError::Internal(format!(
                 "Failed to resolve player id for account {}",
-                auth.account.account_id
+                auth.account_id
             ))
         })?;
     app.app
@@ -165,7 +165,7 @@ pub async fn unregister_player_from_tournament(
         })
 }
 
-pub async fn create_tournament(
+async fn create_tournament(
     auth: Auth,
     State(app): State<AppState>,
     Json(payload): Json<CreateTournamentRequest>,
@@ -205,7 +205,7 @@ pub async fn create_tournament(
     Ok(())
 }
 
-pub async fn start_tournament(
+async fn start_tournament(
     auth: Auth,
     State(app): State<AppState>,
     Path(tournament_id): Path<String>,
@@ -236,7 +236,7 @@ pub async fn start_tournament(
     Ok(())
 }
 
-pub async fn finish_tournament(
+async fn finish_tournament(
     auth: Auth,
     State(app): State<AppState>,
     Path(tournament_id): Path<String>,
@@ -267,7 +267,7 @@ pub async fn finish_tournament(
     Ok(())
 }
 
-pub async fn start_next_round_of_tournament(
+async fn start_next_round_of_tournament(
     auth: Auth,
     State(app): State<AppState>,
     Path(tournament_id): Path<String>,
@@ -298,7 +298,7 @@ pub async fn start_next_round_of_tournament(
     Ok(())
 }
 
-pub async fn set_registration_open(
+async fn set_registration_open(
     auth: Auth,
     State(app): State<AppState>,
     Path(tournament_id): Path<String>,
@@ -332,36 +332,36 @@ pub async fn set_registration_open(
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SetRegistrationOpenRequest {
-    pub registration_open: bool,
+struct SetRegistrationOpenRequest {
+    registration_open: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CreateTournamentRequest {
-    pub name: String,
-    pub tournament_format: JsonTournamentType,
-    pub match_settings: JsonMatchSettings,
+struct CreateTournamentRequest {
+    name: String,
+    tournament_format: JsonTournamentType,
+    match_settings: JsonMatchSettings,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonTournamentDetail {
+struct JsonTournamentDetail {
     #[serde(flatten)]
-    pub tournament: JsonTournament,
-    pub players: Vec<JsonTournamentPlayer>,
-    pub rounds: Vec<JsonTournamentRound>,
+    tournament: JsonTournament,
+    players: Vec<JsonTournamentPlayer>,
+    rounds: Vec<JsonTournamentRound>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonTournamentRound {
-    pub matches: Vec<String>,
-    pub byes: Vec<String>,
+struct JsonTournamentRound {
+    matches: Vec<String>,
+    byes: Vec<String>,
 }
 
 impl JsonTournamentDetail {
-    pub fn from(tournament: &TournamentDetailView) -> Self {
+    fn from(tournament: &TournamentDetailView) -> Self {
         Self {
             tournament: JsonTournament::from(&tournament.tournament),
             players: tournament
@@ -386,25 +386,25 @@ impl JsonTournamentDetail {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonTournamentPlayer {
-    pub id: String,
-    pub score: u32,
+struct JsonTournamentPlayer {
+    id: String,
+    score: u32,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonTournamentMetadata {
-    pub id: String,
-    pub name: String,
-    pub match_settings: JsonMatchSettings,
-    pub tournament_format: JsonTournamentType,
+struct JsonTournamentMetadata {
+    id: String,
+    name: String,
+    match_settings: JsonMatchSettings,
+    tournament_format: JsonTournamentType,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonTournament {
-    pub metadata: JsonTournamentMetadata,
-    pub status: JsonTournamentStatus,
+struct JsonTournament {
+    metadata: JsonTournamentMetadata,
+    status: JsonTournamentStatus,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

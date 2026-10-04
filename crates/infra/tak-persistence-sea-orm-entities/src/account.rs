@@ -1,14 +1,19 @@
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-#[sea_orm(table_name = "guests")]
+#[sea_orm(table_name = "accounts")]
 pub struct Model {
-    #[sea_orm(primary_key, auto_increment = true)]
-    pub guest_number: i64,
-    #[sea_orm(unique)]
+    #[sea_orm(primary_key, auto_increment = false)]
     pub account_id: Uuid,
+    #[sea_orm(unique)]
+    pub username: String,
+    #[sea_orm(unique)]
+    pub email: Option<String>,
+    pub account_type: String,
+    pub role: String,
     pub banned: bool,
     pub silenced: bool,
+    pub password_hash: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

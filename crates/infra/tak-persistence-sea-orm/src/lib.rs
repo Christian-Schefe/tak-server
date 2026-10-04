@@ -10,9 +10,9 @@ use tak_core::{
 use tak_persistence_sea_orm_migrations::Migrator;
 use tak_server_app::domain::RepoRetrieveError;
 
+pub mod account;
 pub mod chat;
 pub mod games;
-pub mod guest;
 pub mod matches;
 pub mod player_account_mapping;
 pub mod profile;
@@ -75,7 +75,7 @@ pub async fn create_db_pool() -> DatabaseConnection {
                 .register(tak_persistence_sea_orm_entities::tournament::Entity)
                 .register(tak_persistence_sea_orm_entities::matches::Entity)
                 .register(tak_persistence_sea_orm_entities::tournament_round::Entity)
-                .register(tak_persistence_sea_orm_entities::guest::Entity)
+                .register(tak_persistence_sea_orm_entities::account::Entity)
                 .sync(&db)
                 .await
                 .expect("Failed to apply entity sync");

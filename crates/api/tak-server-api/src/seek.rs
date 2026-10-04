@@ -24,12 +24,12 @@ pub fn register_routes() -> axum::Router<AppState> {
         .route("/{seek_id}/accept", post(accept_seek))
 }
 
-pub async fn get_seeks(State(app): State<AppState>) -> Json<Vec<JsonSeek>> {
+async fn get_seeks(State(app): State<AppState>) -> Json<Vec<JsonSeek>> {
     let seeks = app.app.seek_list_use_case.list_seeks();
     Json(seeks.into_iter().map(|seek| from_seek_view(seek)).collect())
 }
 
-pub async fn create_seek(
+async fn create_seek(
     auth: Auth,
     State(app): State<AppState>,
     Json(payload): Json<CreateSeekPayload>,
@@ -37,7 +37,7 @@ pub async fn create_seek(
     let player_id = match app
         .app
         .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .resolve_player_id_by_account_id(&auth.account_id)
         .await
     {
         Ok(id) => id,
@@ -72,7 +72,7 @@ pub async fn create_seek(
     }
 }
 
-pub async fn cancel_seek(
+async fn cancel_seek(
     auth: Auth,
     State(app): State<AppState>,
     Path(seek_id): Path<u64>,
@@ -80,7 +80,7 @@ pub async fn cancel_seek(
     let player_id = match app
         .app
         .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .resolve_player_id_by_account_id(&auth.account_id)
         .await
     {
         Ok(id) => id,
@@ -100,7 +100,7 @@ pub async fn cancel_seek(
     Ok(())
 }
 
-pub async fn accept_seek(
+async fn accept_seek(
     auth: Auth,
     State(app): State<AppState>,
     Path(seek_id): Path<u64>,
@@ -108,7 +108,7 @@ pub async fn accept_seek(
     let player_id = match app
         .app
         .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .resolve_player_id_by_account_id(&auth.account_id)
         .await
     {
         Ok(id) => id,

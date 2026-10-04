@@ -8,13 +8,12 @@ use axum::{
     response::Response,
     routing::{get, post},
 };
-use tak_server_app::domain::{AccountId, profile::ProfilePictureFileType};
-
-use crate::{
-    AppState, ServiceError,
-    auth::Auth,
-    player::{PlayerProfileInfo, PlayerProfileUpdate},
+use tak_server_app::{
+    domain::{AccountId, profile::ProfilePictureFileType},
+    workflow::account::AccountProfileView,
 };
+
+use crate::{AppState, ServiceError, auth::Auth};
 
 pub fn register_routes() -> axum::Router<AppState> {
     axum::Router::new()
@@ -24,7 +23,7 @@ pub fn register_routes() -> axum::Router<AppState> {
         .route("/{account_id}/picture", post(set_profile_picture))
 }
 
-pub async fn get_account_profile(
+async fn get_account_profile(
     State(app): State<AppState>,
     Path(account_id): Path<String>,
 ) -> Result<Json<PlayerProfileInfo>, ServiceError> {
@@ -33,20 +32,20 @@ pub async fn get_account_profile(
             "Invalid account ID format".to_string(),
         ));
     };
-    let Some(account) = app.auth.get_account(&account_id).await else {
+    let Some(_) = app.auth.get_account(&account_id).await else {
         return Err(ServiceError::NotFound("Account not found".to_string()));
     };
     let profile = app
         .app
         .get_profile_use_case
-        .get_profile(&account.account_id)
+        .get_profile(&account_id)
         .await
         .map_err(|_| ServiceError::Internal("Failed to retrieve player profile".to_string()))?;
 
     Ok(Json(profile.into()))
 }
 
-pub async fn update_account_profile(
+async fn update_account_profile(
     auth: Auth,
     State(app): State<AppState>,
     Path(account_id): Path<String>,
@@ -57,7 +56,7 @@ pub async fn update_account_profile(
             "Invalid account ID format".to_string(),
         ));
     };
-    if account_id != auth.account.account_id {
+    if account_id != auth.account_id {
         return Err(ServiceError::Forbidden(
             "You can only update your own profile".to_string(),
         ));
@@ -72,7 +71,7 @@ pub async fn update_account_profile(
 
     app.app
         .update_profile_use_case
-        .update_profile(&auth.account.account_id, country)
+        .update_profile(&auth.account_id, payload.display_name, country)
         .await
         .map_err(|_| ServiceError::Internal("Failed to update player profile".to_string()))
 }
@@ -80,12 +79,12 @@ pub async fn update_account_profile(
 #[derive(serde::Deserialize)]
 #[allow(dead_code)]
 #[serde(rename_all = "camelCase")]
-pub struct VersionQuery {
+struct VersionQuery {
     #[serde(rename = "v")]
     version: Option<u64>,
 }
 
-pub async fn get_profile_picture(
+async fn get_profile_picture(
     State(app): State<AppState>,
     Path(account_id): Path<String>,
     Query(_version_query): Query<VersionQuery>,
@@ -95,13 +94,13 @@ pub async fn get_profile_picture(
             "Invalid account ID format".to_string(),
         ));
     };
-    let Some(account) = app.auth.get_account(&account_id).await else {
+    let Some(_) = app.auth.get_account(&account_id).await else {
         return Err(ServiceError::NotFound("Account not found".to_string()));
     };
     let profile_picture = app
         .app
         .get_profile_use_case
-        .get_profile_picture(&account.account_id)
+        .get_profile_picture(&account_id)
         .await
         .map_err(|_| ServiceError::Internal("Failed to retrieve profile picture".to_string()))?;
     let Some(profile_picture) = profile_picture else {
@@ -120,7 +119,7 @@ pub async fn get_profile_picture(
     Ok(response)
 }
 
-pub async fn set_profile_picture(
+async fn set_profile_picture(
     auth: Auth,
     State(app): State<AppState>,
     Path(account_id): Path<String>,
@@ -131,7 +130,7 @@ pub async fn set_profile_picture(
             "Invalid account ID format".to_string(),
         ));
     };
-    if account_id != auth.account.account_id {
+    if account_id != auth.account_id {
         return Err(ServiceError::Forbidden(
             "You can only update your own profile".to_string(),
         ));
@@ -162,7 +161,7 @@ pub async fn set_profile_picture(
         match app
             .app
             .update_profile_use_case
-            .set_profile_picture(&auth.account.account_id, img)
+            .set_profile_picture(&auth.account_id, img)
             .await
         {
             Ok(_) => (),
@@ -174,4 +173,29 @@ pub async fn set_profile_picture(
         }
     }
     Ok(())
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PlayerProfileUpdate {
+    display_name: Option<String>,
+    country: Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PlayerProfileInfo {
+    display_name: Option<String>,
+    country: Option<String>,
+    profile_picture_version: Option<u64>,
+}
+
+impl From<AccountProfileView> for PlayerProfileInfo {
+    fn from(profile: AccountProfileView) -> Self {
+        PlayerProfileInfo {
+            display_name: profile.display_name,
+            country: profile.country.map(|c| c.to_string()),
+            profile_picture_version: profile.profile_picture_version.map(|x| x.0),
+        }
+    }
 }

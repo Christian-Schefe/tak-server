@@ -18,7 +18,7 @@ pub fn register_routes() -> axum::Router<AppState> {
         .route("/", axum::routing::get(get_random_puzzle))
 }
 
-pub async fn get_puzzle(
+async fn get_puzzle(
     State(app): State<AppState>,
     Path(puzzle_id): Path<String>,
 ) -> Result<Json<JsonPuzzle>, ServiceError> {
@@ -43,11 +43,11 @@ pub async fn get_puzzle(
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TrySolvePuzzlePayload {
-    pub actions: Vec<String>,
+struct TrySolvePuzzlePayload {
+    actions: Vec<String>,
 }
 
-pub async fn try_solve_puzzle(
+async fn try_solve_puzzle(
     State(app): State<AppState>,
     Path(puzzle_id): Path<String>,
     Json(payload): Json<TrySolvePuzzlePayload>,
@@ -94,13 +94,13 @@ pub async fn try_solve_puzzle(
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
-pub enum TrySolvePuzzleResponse {
+enum TrySolvePuzzleResponse {
     Correct,
     Continue { action: String },
     Incorrect,
 }
 
-pub async fn get_random_puzzle(
+async fn get_random_puzzle(
     State(app): State<AppState>,
 ) -> Result<Json<PuzzleSelection>, ServiceError> {
     let puzzle_id = app
@@ -116,20 +116,20 @@ pub async fn get_random_puzzle(
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PuzzleSelection {
-    pub id: String,
+struct PuzzleSelection {
+    id: String,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonPuzzle {
-    pub id: String,
-    pub actions: Vec<String>,
-    pub game_settings: JsonBaseGameSettings,
+struct JsonPuzzle {
+    id: String,
+    actions: Vec<String>,
+    game_settings: JsonBaseGameSettings,
 }
 
 impl JsonPuzzle {
-    pub fn from(puzzle: PuzzleView) -> Self {
+    fn from(puzzle: PuzzleView) -> Self {
         Self {
             id: puzzle.id.to_string(),
             actions: puzzle.position.iter().map(|a| action_to_ptn(a)).collect(),

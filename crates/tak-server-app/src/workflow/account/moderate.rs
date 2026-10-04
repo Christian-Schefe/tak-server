@@ -116,11 +116,11 @@ impl<E: EmailPort, A: AuthenticationPort> ModeratePlayerUseCaseImpl<E, A> {
 
         let res = if is_banned {
             self.authentication_service
-                .add_flag(&target_account.account_id, ModerationFlag::Banned)
+                .add_flag(&target_account_id, ModerationFlag::Banned)
                 .await
         } else {
             self.authentication_service
-                .remove_flag(&target_account.account_id, ModerationFlag::Banned)
+                .remove_flag(&target_account_id, ModerationFlag::Banned)
                 .await
         };
 
@@ -151,11 +151,11 @@ impl<E: EmailPort, A: AuthenticationPort> ModeratePlayerUseCaseImpl<E, A> {
 
         let res = if is_silenced {
             self.authentication_service
-                .add_flag(&target_account.account_id, ModerationFlag::Silenced)
+                .add_flag(&target_account_id, ModerationFlag::Silenced)
                 .await
         } else {
             self.authentication_service
-                .remove_flag(&target_account.account_id, ModerationFlag::Silenced)
+                .remove_flag(&target_account_id, ModerationFlag::Silenced)
                 .await
         };
 
@@ -188,7 +188,7 @@ impl<E: EmailPort, A: AuthenticationPort> ModeratePlayerUseCaseImpl<E, A> {
 
         match self
             .authentication_service
-            .set_role(&target_account.account_id, AccountRole::Moderator)
+            .set_role(&target_account_id, AccountRole::Moderator)
             .await
         {
             Ok(()) => Ok(()),

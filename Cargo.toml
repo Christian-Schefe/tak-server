@@ -5,8 +5,7 @@ edition = "2024"
 members = [
     "crates/api/tak-server-api",
     "crates/api/tak-server-api-contract",
-    "crates/infra/tak-auth-ory",
-    "crates/infra/tak-bot-registry",
+    "crates/infra/tak-auth",
     "crates/infra/tak-email-lettre",
     "crates/infra/tak-events-google-sheets",
     "crates/infra/tak-persistence-profile-pictures",

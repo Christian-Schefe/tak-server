@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    domain::{PlayerId, RepoRetrieveError},
+    domain::{AccountId, PlayerId, RepoRetrieveError},
     ports::{
         authentication::{Account, AuthenticationPort},
         player_mapping::PlayerAccountMappingRepository,
@@ -10,7 +10,10 @@ use crate::{
 
 #[async_trait::async_trait]
 pub trait GetAccountWorkflow {
-    async fn get_account(&self, player_id: PlayerId) -> Result<Account, GetAccountError>;
+    async fn get_account(
+        &self,
+        player_id: PlayerId,
+    ) -> Result<(AccountId, Account), GetAccountError>;
 }
 
 #[derive(Debug)]
@@ -39,7 +42,10 @@ impl<
     P: PlayerAccountMappingRepository + Send + Sync + 'static,
 > GetAccountWorkflow for GetAccountWorkflowImpl<A, P>
 {
-    async fn get_account(&self, player_id: PlayerId) -> Result<Account, GetAccountError> {
+    async fn get_account(
+        &self,
+        player_id: PlayerId,
+    ) -> Result<(AccountId, Account), GetAccountError> {
         let account_id = match self
             .player_account_mapping_repo
             .get_account_id(player_id)
@@ -57,7 +63,7 @@ impl<
             }
         };
         match self.authentication_service.get_account(&account_id).await {
-            Some(account) => Ok(account),
+            Some(account) => Ok((account_id, account)),
             None => Err(GetAccountError::AccountNotFound),
         }
     }

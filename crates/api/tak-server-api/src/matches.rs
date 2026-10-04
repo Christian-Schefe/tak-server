@@ -38,7 +38,7 @@ pub fn register_routes() -> axum::Router<AppState> {
         )
 }
 
-pub async fn get_match(
+async fn get_match(
     State(app): State<AppState>,
     Path(match_id): Path<String>,
 ) -> Result<Json<JsonMatch>, ServiceError> {
@@ -62,12 +62,12 @@ pub async fn get_match(
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonMatch {
-    pub id: String,
-    pub player1: JsonMatchPlayer,
-    pub player2: JsonMatchPlayer,
-    pub settings: JsonMatchSettings,
-    pub status: JsonMatchStatus,
+struct JsonMatch {
+    id: String,
+    player1: JsonMatchPlayer,
+    player2: JsonMatchPlayer,
+    settings: JsonMatchSettings,
+    status: JsonMatchStatus,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -166,7 +166,7 @@ impl JsonMatch {
     }
 }
 
-pub async fn set_player_ready(
+async fn set_player_ready(
     auth: Auth,
     State(app): State<AppState>,
     Path(match_id): Path<String>,
@@ -174,12 +174,12 @@ pub async fn set_player_ready(
     let player_id = app
         .app
         .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .resolve_player_id_by_account_id(&auth.account_id)
         .await
         .map_err(|ResolveError::Internal| {
             ServiceError::Internal(format!(
                 "Failed to resolve player id for account {}",
-                auth.account.account_id
+                auth.account_id
             ))
         })?;
     let match_id = MatchId(
@@ -206,7 +206,7 @@ pub async fn set_player_ready(
     }
 }
 
-pub async fn set_player_not_ready(
+async fn set_player_not_ready(
     auth: Auth,
     State(app): State<AppState>,
     Path(match_id): Path<String>,
@@ -214,12 +214,12 @@ pub async fn set_player_not_ready(
     let player_id = app
         .app
         .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .resolve_player_id_by_account_id(&auth.account_id)
         .await
         .map_err(|ResolveError::Internal| {
             ServiceError::Internal(format!(
                 "Failed to resolve player id for account {}",
-                auth.account.account_id
+                auth.account_id
             ))
         })?;
     let match_id = MatchId(
@@ -246,7 +246,7 @@ pub async fn set_player_not_ready(
     }
 }
 
-pub async fn get_match_readiness_status(
+async fn get_match_readiness_status(
     State(app): State<AppState>,
     Path(match_id): Path<String>,
 ) -> Result<Json<MatchReadinessStatus>, ServiceError> {
@@ -266,7 +266,7 @@ pub async fn get_match_readiness_status(
     }))
 }
 
-pub async fn get_match_games(
+async fn get_match_games(
     State(app): State<AppState>,
     Path(match_id): Path<String>,
 ) -> Result<Json<Vec<JsonEndedGameInfo>>, ServiceError> {

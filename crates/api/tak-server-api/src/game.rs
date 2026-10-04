@@ -37,7 +37,7 @@ pub fn register_routes() -> axum::Router<AppState> {
         .route("/{game_id}/request/accept", post(accept_request))
 }
 
-pub async fn get_games(State(app): State<AppState>) -> Json<Vec<JsonGameMetadata>> {
+async fn get_games(State(app): State<AppState>) -> Json<Vec<JsonGameMetadata>> {
     let games = app.app.game_list_ongoing_use_case.list_games();
     Json(
         games
@@ -47,7 +47,7 @@ pub async fn get_games(State(app): State<AppState>) -> Json<Vec<JsonGameMetadata
     )
 }
 
-pub async fn get_game_status(
+async fn get_game_status(
     State(app): State<AppState>,
     Path(game_id): Path<i64>,
 ) -> Result<Json<JsonGameStatus>, ServiceError> {
@@ -147,7 +147,7 @@ pub async fn get_game_status(
     }
 }
 
-pub async fn resign_game(
+async fn resign_game(
     auth: Auth,
     State(app): State<AppState>,
     Path(game_id): Path<i64>,
@@ -156,12 +156,12 @@ pub async fn resign_game(
     let player_id = app
         .app
         .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .resolve_player_id_by_account_id(&auth.account_id)
         .await
         .map_err(|ResolveError::Internal| {
             ServiceError::Internal(format!(
                 "Failed to resolve player id for account {}",
-                auth.account.account_id
+                auth.account_id
             ))
         })?;
     app.app
@@ -178,7 +178,7 @@ pub async fn resign_game(
         })
 }
 
-pub async fn set_request(
+async fn set_request(
     auth: Auth,
     State(app): State<AppState>,
     Path(game_id): Path<i64>,
@@ -188,12 +188,12 @@ pub async fn set_request(
     let player_id = app
         .app
         .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .resolve_player_id_by_account_id(&auth.account_id)
         .await
         .map_err(|ResolveError::Internal| {
             ServiceError::Internal(format!(
                 "Failed to resolve player id for account {}",
-                auth.account.account_id
+                auth.account_id
             ))
         })?;
     let request = match request {
@@ -222,7 +222,7 @@ pub async fn set_request(
     }
 }
 
-pub async fn accept_request(
+async fn accept_request(
     auth: Auth,
     State(app): State<AppState>,
     Path(game_id): Path<i64>,
@@ -233,12 +233,12 @@ pub async fn accept_request(
     let player_id = app
         .app
         .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account.account_id)
+        .resolve_player_id_by_account_id(&auth.account_id)
         .await
         .map_err(|ResolveError::Internal| {
             ServiceError::Internal(format!(
                 "Failed to resolve player id for account {}",
-                auth.account.account_id
+                auth.account_id
             ))
         })?;
 

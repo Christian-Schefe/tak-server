@@ -38,7 +38,7 @@ const avatarSrc = useProfilePictureUrl(() => playerInfo.value?.accountId);
       class="w-8 h-8 rounded-sm pointer-events-none"
     />
     <span class="text-left text-ellipsis overflow-hidden text-nowrap">
-      {{ playerInfo?.displayName ?? (isError ? 'Unknown Player' : '') }}
+      {{ profile?.displayName ?? playerInfo?.username ?? (isError ? 'Unknown Player' : '') }}
       <span
         v-if="
           showRating &&

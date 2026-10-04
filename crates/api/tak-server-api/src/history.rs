@@ -20,7 +20,7 @@ pub fn register_routes() -> axum::Router<AppState> {
         .route("/player/{player_id}", get(query_player_game_history))
 }
 
-pub async fn query_game_history(
+async fn query_game_history(
     State(app): State<AppState>,
     Query(pagination): Query<PaginationQuery>,
 ) -> Result<Json<PaginatedResponse<JsonEndedGameInfo>>, ServiceError> {
@@ -44,7 +44,7 @@ pub async fn query_game_history(
     }))
 }
 
-pub async fn query_player_game_history(
+async fn query_player_game_history(
     State(app): State<AppState>,
     Path(player_id): Path<String>,
     Query(pagination): Query<PaginationQuery>,

@@ -377,22 +377,26 @@ export function useNavigateOnGamesStartWebSocketSubscription() {
   );
 }
 
-export function useSetGameRequest(gameId: MaybeRefOrGetter<string>) {
+export function useSetGameRequest() {
   const { fetch } = useFetch();
   return useMutation({
-    mutationFn: async (request: GameRequest) => {
-      const id = toValue(gameId);
-      await fetch(`/api/games/${id}/request`, 'POST', request);
+    mutationFn: async ({ gameId, request }: { gameId: string; request: GameRequest }) => {
+      await fetch(`/api/games/${gameId}/request`, 'POST', request);
     },
   });
 }
 
-export function useAcceptGameRequest(gameId: MaybeRefOrGetter<string>) {
+export function useAcceptGameRequest() {
   const { fetch } = useFetch();
   return useMutation({
-    mutationFn: async (requestType: GameRequestType) => {
-      const id = toValue(gameId);
-      await fetch(`/api/games/${id}/request/accept`, 'POST', { type: requestType });
+    mutationFn: async ({
+      gameId,
+      requestType,
+    }: {
+      gameId: string;
+      requestType: GameRequestType;
+    }) => {
+      await fetch(`/api/games/${gameId}/request/accept`, 'POST', { type: requestType });
     },
   });
 }

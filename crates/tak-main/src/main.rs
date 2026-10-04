@@ -1,14 +1,13 @@
 use std::sync::Arc;
 
-use tak_auth_ory::AuthenticationService;
-use tak_bot_registry::FileBotRepository;
+use tak_auth::AuthService;
 use tak_email_lettre::LettreEmailAdapter;
 use tak_events_google_sheets::NoopEventRepository;
 use tak_persistence_profile_pictures::ProfilePictureRepositoryImpl;
 use tak_persistence_sea_orm::{
+    account::AccountRepositoryImpl,
     chat::ChatRepositoryImpl,
     games::GameRepositoryImpl,
-    guest::GuestRepositoryImpl,
     matches::MatchRepositoryImpl,
     player_account_mapping::PlayerAccountMappingRepositoryImpl,
     profile::ProfileRepositoryImpl,
@@ -89,9 +88,8 @@ async fn main() {
         player_connection_adapter.clone(), //for now only one adapter
     ]));
 
-    let bot_repository = Arc::new(FileBotRepository::new());
-    let guest_repo = Arc::new(GuestRepositoryImpl::new().await);
-    let authentication_adapter = Arc::new(AuthenticationService::new(bot_repository, guest_repo));
+    let account_repo = Arc::new(AccountRepositoryImpl::new().await);
+    let authentication_adapter = Arc::new(AuthService::new(account_repo));
 
     let account_online_status_adapter = Arc::new(AccountOnlineStatusService::new());
     let profile_picture_repo = Arc::new(ProfilePictureRepositoryImpl::new().await);
