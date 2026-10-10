@@ -4,7 +4,7 @@ use sea_orm::{
 };
 use tak_persistence_sea_orm_entities::chat;
 use tak_server_app::domain::{
-    AccountId, ChatMessageId, RepoError,
+    UserId, ChatMessageId, RepoError,
     chat::{ChatConversation, ChatMessage, ChatRepository},
 };
 
@@ -81,7 +81,7 @@ impl ChatRepository for ChatRepositoryImpl {
                     ChatMessageId::new(model.id),
                     ChatMessage {
                         date: model.date,
-                        sender: AccountId(model.from_account_id),
+                        sender: UserId(model.from_account_id),
                         message: model.message,
                     },
                 )

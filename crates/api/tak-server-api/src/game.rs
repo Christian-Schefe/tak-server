@@ -16,7 +16,6 @@ use tak_server_app::{
         GameId,
         game::request::{GameRequest, GameRequestType},
     },
-    services::player_resolver::ResolveError,
     workflow::{
         gameplay::{
             GameMetadataView,
@@ -153,20 +152,9 @@ async fn resign_game(
     Path(game_id): Path<i64>,
 ) -> Result<(), ServiceError> {
     let game_id = GameId(game_id);
-    let player_id = app
-        .app
-        .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account_id)
-        .await
-        .map_err(|ResolveError::Internal| {
-            ServiceError::Internal(format!(
-                "Failed to resolve player id for account {}",
-                auth.account_id
-            ))
-        })?;
     app.app
         .game_do_action_use_case
-        .resign(game_id, player_id)
+        .resign(game_id, auth.user_id)
         .await
         .map_err(|e| match e {
             PlayerActionError::GameNotFound => {
@@ -185,17 +173,6 @@ async fn set_request(
     Json(request): Json<JsonGameRequest>,
 ) -> Result<(), ServiceError> {
     let game_id = GameId(game_id);
-    let player_id = app
-        .app
-        .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account_id)
-        .await
-        .map_err(|ResolveError::Internal| {
-            ServiceError::Internal(format!(
-                "Failed to resolve player id for account {}",
-                auth.account_id
-            ))
-        })?;
     let request = match request {
         JsonGameRequest::Draw { offer } => GameRequest::Draw(offer),
         JsonGameRequest::Undo { request } => GameRequest::Undo(request),
@@ -206,7 +183,7 @@ async fn set_request(
     match app
         .app
         .game_do_action_use_case
-        .set_request(game_id, player_id, request)
+        .set_request(game_id, auth.user_id, request)
         .await
     {
         Ok(()) => Ok(()),
@@ -230,18 +207,6 @@ async fn accept_request(
 ) -> Result<(), ServiceError> {
     let game_id = GameId(game_id);
 
-    let player_id = app
-        .app
-        .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account_id)
-        .await
-        .map_err(|ResolveError::Internal| {
-            ServiceError::Internal(format!(
-                "Failed to resolve player id for account {}",
-                auth.account_id
-            ))
-        })?;
-
     let request_type = match request_type {
         JsonGameRequestType::Draw => GameRequestType::Draw,
         JsonGameRequestType::Undo => GameRequestType::Undo,
@@ -251,10 +216,10 @@ async fn accept_request(
     let res = app
         .app
         .game_do_action_use_case
-        .accept_request(game_id, player_id, request_type)
+        .accept_request(game_id, auth.user_id, request_type)
         .await;
     tracing::info!(
-        %player_id,
+        %auth.user_id,
         %game_id,
         "ACCEPT Player is accepting request in game",
     );

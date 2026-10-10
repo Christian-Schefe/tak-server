@@ -11,7 +11,7 @@ use tak_core::{
 };
 use tak_persistence_sea_orm_entities::game;
 use tak_server_app::domain::{
-    GameId, MatchId, PaginatedResponse, PlayerId, RepoError, RepoRetrieveError, SortOrder,
+    GameId, MatchId, PaginatedResponse, UserId, RepoError, RepoRetrieveError, SortOrder,
     game::{GameEvent, GameEventType, GameMetadata, GameOverEventType, request::GameRequest},
     game_history::{
         DateSelector, GameFinishedUpdate, GameIdSelector, GamePlayerFilter, GameQuery,
@@ -256,8 +256,8 @@ impl GameRepositoryImpl {
         let json_events: Vec<JsonEventRecord> =
             serde_json::from_value(model.events).unwrap_or_default();
 
-        let white_id = PlayerId(model.player_white_id);
-        let black_id = PlayerId(model.player_black_id);
+        let white_id = UserId(model.player_white_id);
+        let black_id = UserId(model.player_black_id);
 
         let white_snapshot = PlayerSnapshot::new(
             model.player_white_username.clone(),
@@ -455,18 +455,18 @@ impl GameRepository for GameRepositoryImpl {
                                 .add(game::Column::PlayerBlackUsername.eq(&name)),
                         }
                     }
-                    GamePlayerFilter::PlayerId(player_id) => {
+                    GamePlayerFilter::UserId(user_id) => {
                         let condition = sea_orm::Condition::any();
                         match color {
                             Some(TakPlayer::White) => {
-                                condition.add(game::Column::PlayerWhiteId.eq(player_id.0))
+                                condition.add(game::Column::PlayerWhiteId.eq(user_id.0))
                             }
                             Some(TakPlayer::Black) => {
-                                condition.add(game::Column::PlayerBlackId.eq(player_id.0))
+                                condition.add(game::Column::PlayerBlackId.eq(user_id.0))
                             }
                             None => condition
-                                .add(game::Column::PlayerWhiteId.eq(player_id.0))
-                                .add(game::Column::PlayerBlackId.eq(player_id.0)),
+                                .add(game::Column::PlayerWhiteId.eq(user_id.0))
+                                .add(game::Column::PlayerBlackId.eq(user_id.0)),
                         }
                     }
                 };

@@ -6,7 +6,7 @@ use tak_server_app::domain::tournament::{
     Tournament, TournamentFormat, TournamentMetadata, TournamentPlayer, TournamentPlayerRepository,
     TournamentRepository, TournamentRound, TournamentRoundRepository, TournamentStatus,
 };
-use tak_server_app::domain::{MatchId, PlayerId, TournamentId};
+use tak_server_app::domain::{MatchId, UserId, TournamentId};
 use tak_server_app::domain::{RepoError, RepoRetrieveError};
 
 pub struct TournamentRepositoryImpl {
@@ -248,7 +248,7 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
         let player_ids = registration_models
             .into_iter()
             .map(|m| TournamentPlayer {
-                player_id: PlayerId(m.player_id),
+                user_id: UserId(m.user_id),
                 score: m.score as u32,
                 seeding_score: m.seeding_score,
             })
@@ -264,7 +264,7 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
     ) -> Result<(), RepoError> {
         let model = tournament_players::ActiveModel {
             tournament_id: sea_orm::Set(tournament_id.0),
-            player_id: sea_orm::Set(player.player_id.0),
+            user_id: sea_orm::Set(player.user_id.0),
             score: sea_orm::Set(player.score as i32),
             seeding_score: sea_orm::Set(player.seeding_score),
         };
@@ -284,11 +284,11 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
     async fn remove_tournament_player(
         &self,
         tournament_id: TournamentId,
-        player_id: PlayerId,
+        user_id: UserId,
     ) -> Result<(), RepoError> {
         let model = tournament_players::ActiveModel {
             tournament_id: sea_orm::Set(tournament_id.0),
-            player_id: sea_orm::Set(player_id.0),
+            user_id: sea_orm::Set(user_id.0),
             ..Default::default()
         };
         match tournament_players::Entity::delete(model)
@@ -306,7 +306,7 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
     async fn increase_player_score(
         &self,
         tournament_id: TournamentId,
-        player_id: PlayerId,
+        user_id: UserId,
         score_increase: u32,
     ) -> Result<(), RepoError> {
         tournament_players::Entity::update_many()
@@ -316,7 +316,7 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
                     .add(score_increase as i32),
             )
             .filter(tournament_players::Column::TournamentId.eq(tournament_id.0))
-            .filter(tournament_players::Column::PlayerId.eq(player_id.0))
+            .filter(tournament_players::Column::UserId.eq(user_id.0))
             .exec(&self.db)
             .await
             .map_err(|e| {
@@ -331,12 +331,12 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
     async fn set_player_seeding_score(
         &self,
         tournament_id: TournamentId,
-        player_id: PlayerId,
+        user_id: UserId,
         seeding_score: i32,
     ) -> Result<(), RepoError> {
         let active_model = tournament_players::ActiveModel {
             tournament_id: sea_orm::Set(tournament_id.0),
-            player_id: sea_orm::Set(player_id.0),
+            user_id: sea_orm::Set(user_id.0),
             seeding_score: sea_orm::Set(seeding_score),
             ..Default::default()
         };
@@ -403,7 +403,7 @@ impl TournamentRoundRepositoryImpl {
                 .byes
                 .into_iter()
                 .map(|s| {
-                    PlayerId::try_from(s).map_err(|e| {
+                    UserId::try_from(s).map_err(|e| {
                         format!(
                             "Failed to parse player ID from bye in tournament {} round {}: {}",
                             model.tournament_id, model.round_index, e

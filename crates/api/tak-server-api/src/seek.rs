@@ -10,7 +10,6 @@ use tak_server_api_contract::{
 };
 use tak_server_app::{
     domain::{SeekId, seek::CreateSeekError},
-    services::player_resolver::ResolveError,
     workflow::matchmaking::{SeekView, accept::AcceptSeekError},
 };
 
@@ -34,20 +33,6 @@ async fn create_seek(
     State(app): State<AppState>,
     Json(payload): Json<CreateSeekPayload>,
 ) -> Result<Json<JsonSeek>, ServiceError> {
-    let player_id = match app
-        .app
-        .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account_id)
-        .await
-    {
-        Ok(id) => id,
-        Err(ResolveError::Internal) => {
-            return Err(ServiceError::Internal(
-                "Failed to resolve player ID".to_string(),
-            ));
-        }
-    };
-
     let color = match payload.color.as_str() {
         "white" => Some(TakPlayer::White),
         "black" => Some(TakPlayer::Black),
@@ -60,7 +45,7 @@ async fn create_seek(
     let game_settings = payload.game_settings.to_game_settings();
 
     match app.app.seek_create_use_case.create_seek(
-        player_id,
+        auth.user_id,
         color,
         game_settings,
         payload.is_rated,
@@ -77,23 +62,10 @@ async fn cancel_seek(
     State(app): State<AppState>,
     Path(seek_id): Path<u64>,
 ) -> Result<(), ServiceError> {
-    let player_id = match app
-        .app
-        .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account_id)
-        .await
-    {
-        Ok(id) => id,
-        Err(ResolveError::Internal) => {
-            return Err(ServiceError::Internal(
-                "Failed to resolve player ID".to_string(),
-            ));
-        }
-    };
     if !app
         .app
         .seek_cancel_use_case
-        .cancel_seek(player_id, SeekId(seek_id))
+        .cancel_seek(auth.user_id, SeekId(seek_id))
     {
         return Err(ServiceError::NotFound("Seek not found".to_string()));
     }
@@ -105,23 +77,10 @@ async fn accept_seek(
     State(app): State<AppState>,
     Path(seek_id): Path<u64>,
 ) -> Result<(), ServiceError> {
-    let player_id = match app
-        .app
-        .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account_id)
-        .await
-    {
-        Ok(id) => id,
-        Err(ResolveError::Internal) => {
-            return Err(ServiceError::Internal(
-                "Failed to resolve player ID".to_string(),
-            ));
-        }
-    };
     match app
         .app
         .seek_accept_use_case
-        .accept_seek(player_id, SeekId(seek_id))
+        .accept_seek(auth.user_id, SeekId(seek_id))
         .await
     {
         Ok(_) => Ok(()),

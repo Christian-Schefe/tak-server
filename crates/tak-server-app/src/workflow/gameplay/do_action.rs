@@ -4,7 +4,7 @@ use tak_core::TakAction;
 
 use crate::{
     domain::{
-        GameId, PlayerId,
+        GameId, UserId,
         game::{
             DoActionResult, FinishedGame, GamePlayerActionResult, GameService,
             request::{GameRequest, GameRequestType},
@@ -21,23 +21,23 @@ pub trait DoActionUseCase {
     async fn do_action(
         &self,
         game_id: GameId,
-        player_id: PlayerId,
+        user_id: UserId,
         action: TakAction,
     ) -> ActionResult<DoActionError>;
     async fn set_request(
         &self,
         game_id: GameId,
-        player_id: PlayerId,
+        user_id: UserId,
         request: GameRequest,
     ) -> Result<(), PlayerActionError>;
     async fn accept_request(
         &self,
         game_id: GameId,
-        player_id: PlayerId,
+        user_id: UserId,
         request_type: GameRequestType,
     ) -> ActionResult<HandleRequestError>;
-    async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), PlayerActionError>;
-    async fn abort(&self, game_id: GameId, player_id: PlayerId) -> ActionResult<AbortError>;
+    async fn resign(&self, game_id: GameId, user_id: UserId) -> Result<(), PlayerActionError>;
+    async fn abort(&self, game_id: GameId, user_id: UserId) -> ActionResult<AbortError>;
 }
 
 #[derive(Debug)]
@@ -121,18 +121,18 @@ impl<
     async fn do_action(
         &self,
         game_id: GameId,
-        player_id: PlayerId,
+        user_id: UserId,
         action: TakAction,
     ) -> ActionResult<DoActionError> {
         tracing::debug!(
             "Player {} is performing action {:?} in game {}",
-            player_id,
+            user_id,
             action,
             game_id
         );
         let now = Instant::now();
         let (action_record, maybe_ended_game) = match self
-            .handle_game_action_result(self.game_service.do_action(game_id, player_id, action, now))
+            .handle_game_action_result(self.game_service.do_action(game_id, user_id, action, now))
             .await
         {
             Err(e) => return ActionResult::NotPossible(e),
@@ -151,7 +151,7 @@ impl<
         let msg = ListenerMessage::GameEvent {
             game_id,
             event_type: ListenerGameMessageType::GameAction {
-                player_id,
+                user_id,
                 action: action_record.action,
                 ply_index: action_record.ply_index,
             },
@@ -181,14 +181,14 @@ impl<
     async fn set_request(
         &self,
         game_id: GameId,
-        player_id: PlayerId,
+        user_id: UserId,
         request: GameRequest,
     ) -> Result<(), PlayerActionError> {
         let now = Instant::now();
         match self
             .handle_game_action_result(self.game_service.set_request(
                 game_id,
-                player_id,
+                user_id,
                 request.clone(),
                 now,
             ))
@@ -213,12 +213,12 @@ impl<
     async fn accept_request(
         &self,
         game_id: GameId,
-        player_id: PlayerId,
+        user_id: UserId,
         request_type: GameRequestType,
     ) -> ActionResult<HandleRequestError> {
         tracing::info!(
             "Player {} is accepting request of type {:?} in game {}",
-            player_id,
+            user_id,
             request_type,
             game_id
         );
@@ -228,7 +228,7 @@ impl<
                 match self
                     .handle_game_action_result(
                         self.game_service
-                            .accept_draw_request(game_id, player_id, now),
+                            .accept_draw_request(game_id, user_id, now),
                     )
                     .await
                 {
@@ -256,7 +256,7 @@ impl<
                 match self
                     .handle_game_action_result(
                         self.game_service
-                            .accept_undo_request(game_id, player_id, now),
+                            .accept_undo_request(game_id, user_id, now),
                     )
                     .await
                 {
@@ -291,7 +291,7 @@ impl<
                 match self
                     .handle_game_action_result(
                         self.game_service
-                            .accept_more_time_request(game_id, player_id, now),
+                            .accept_more_time_request(game_id, user_id, now),
                     )
                     .await
                 {
@@ -313,19 +313,19 @@ impl<
         }
     }
 
-    async fn resign(&self, game_id: GameId, player_id: PlayerId) -> Result<(), PlayerActionError> {
+    async fn resign(&self, game_id: GameId, user_id: UserId) -> Result<(), PlayerActionError> {
         let now = Instant::now();
         let ended_game = self
-            .handle_game_action_result(self.game_service.resign(game_id, player_id, now))
+            .handle_game_action_result(self.game_service.resign(game_id, user_id, now))
             .await?;
         self.handle_ended_game(ended_game).await;
         Ok(())
     }
 
-    async fn abort(&self, game_id: GameId, player_id: PlayerId) -> ActionResult<AbortError> {
+    async fn abort(&self, game_id: GameId, user_id: UserId) -> ActionResult<AbortError> {
         let now = Instant::now();
         match self
-            .handle_game_action_result(self.game_service.abort(game_id, player_id, now))
+            .handle_game_action_result(self.game_service.abort(game_id, user_id, now))
             .await
         {
             Ok(Some(ended_game)) => {

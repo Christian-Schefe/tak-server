@@ -11,7 +11,6 @@ use tak_server_app::{
         MatchId,
         matches::{Match, MatchMode, MatchSettings, MatchStatus},
     },
-    services::player_resolver::ResolveError,
     workflow::{
         history::query::GameQueryError,
         matchmaking::{get::GetMatchError, readiness::MatchReadinessError},
@@ -144,7 +143,7 @@ impl JsonMatchStatus {
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonMatchPlayer {
-    pub player_id: String,
+    pub user_id: String,
     pub score: u32,
 }
 
@@ -153,11 +152,11 @@ impl JsonMatch {
         Self {
             id: id.to_string(),
             player1: JsonMatchPlayer {
-                player_id: m.player1.player_id.to_string(),
+                user_id: m.player1.user_id.to_string(),
                 score: m.player1.score,
             },
             player2: JsonMatchPlayer {
-                player_id: m.player2.player_id.to_string(),
+                user_id: m.player2.user_id.to_string(),
                 score: m.player2.score,
             },
             settings: JsonMatchSettings::from_match_settings(&m.settings),
@@ -171,17 +170,6 @@ async fn set_player_ready(
     State(app): State<AppState>,
     Path(match_id): Path<String>,
 ) -> Result<Json<()>, ServiceError> {
-    let player_id = app
-        .app
-        .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account_id)
-        .await
-        .map_err(|ResolveError::Internal| {
-            ServiceError::Internal(format!(
-                "Failed to resolve player id for account {}",
-                auth.account_id
-            ))
-        })?;
     let match_id = MatchId(
         match_id
             .parse::<i64>()
@@ -190,7 +178,7 @@ async fn set_player_ready(
     if let Err(e) = app
         .app
         .match_readiness_use_case
-        .set_player_ready(match_id, player_id)
+        .set_player_ready(match_id, auth.user_id)
         .await
     {
         match e {
@@ -211,17 +199,6 @@ async fn set_player_not_ready(
     State(app): State<AppState>,
     Path(match_id): Path<String>,
 ) -> Result<Json<()>, ServiceError> {
-    let player_id = app
-        .app
-        .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account_id)
-        .await
-        .map_err(|ResolveError::Internal| {
-            ServiceError::Internal(format!(
-                "Failed to resolve player id for account {}",
-                auth.account_id
-            ))
-        })?;
     let match_id = MatchId(
         match_id
             .parse::<i64>()
@@ -230,7 +207,7 @@ async fn set_player_not_ready(
     if let Err(e) = app
         .app
         .match_readiness_use_case
-        .set_player_not_ready(match_id, player_id)
+        .set_player_not_ready(match_id, auth.user_id)
         .await
     {
         match e {
@@ -262,7 +239,7 @@ async fn get_match_readiness_status(
     Ok(Json(MatchReadinessStatus {
         ready_player: match_readiness_status
             .player_ready
-            .map(|player_id| player_id.to_string()),
+            .map(|user_id| user_id.to_string()),
     }))
 }
 

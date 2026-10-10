@@ -3,7 +3,7 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use tak_core::{TakGameSettings, TakPlayer};
 
-use crate::domain::{MatchId, PlayerId, RepoError, RepoRetrieveError, TournamentId};
+use crate::domain::{MatchId, UserId, RepoError, RepoRetrieveError, TournamentId};
 
 #[async_trait::async_trait]
 pub trait MatchRepository {
@@ -29,7 +29,7 @@ pub struct Match {
 
 #[derive(Clone, Debug)]
 pub struct MatchPlayer {
-    pub player_id: PlayerId,
+    pub user_id: UserId,
     pub score: u32,
 }
 
@@ -57,19 +57,19 @@ pub enum MatchMode {
 
 impl Match {
     pub fn new(
-        player1: PlayerId,
-        player2: PlayerId,
+        player1: UserId,
+        player2: UserId,
         tournament_info: Option<MatchTournamentInfo>,
         settings: MatchSettings,
         initial_color: TakPlayer,
     ) -> Self {
         Self {
             player1: MatchPlayer {
-                player_id: player1,
+                user_id: player1,
                 score: 0,
             },
             player2: MatchPlayer {
-                player_id: player2,
+                user_id: player2,
                 score: 0,
             },
             settings,
@@ -80,13 +80,13 @@ impl Match {
         }
     }
 
-    pub fn get_winner(&self) -> Option<PlayerId> {
+    pub fn get_winner(&self) -> Option<UserId> {
         match self.status {
             MatchStatus::Completed => {
                 if self.player1.score > self.player2.score {
-                    Some(self.player1.player_id)
+                    Some(self.player1.user_id)
                 } else if self.player2.score > self.player1.score {
-                    Some(self.player2.player_id)
+                    Some(self.player2.user_id)
                 } else {
                     None
                 }
@@ -99,19 +99,19 @@ impl Match {
         self.status = MatchStatus::Waiting;
     }
 
-    pub fn end_game_in_match(&mut self, winner: Option<PlayerId>) {
+    pub fn end_game_in_match(&mut self, winner: Option<UserId>) {
         match winner {
             Some(winner) => {
-                if winner == self.player1.player_id {
+                if winner == self.player1.user_id {
                     self.player1.score += 2;
-                } else if winner == self.player2.player_id {
+                } else if winner == self.player2.user_id {
                     self.player2.score += 2;
                 } else {
                     tracing::error!(
                         "Winner {} is not part of the match between {} and {}",
                         winner,
-                        self.player1.player_id,
-                        self.player2.player_id
+                        self.player1.user_id,
+                        self.player2.user_id
                     );
                     return;
                 }
@@ -159,14 +159,14 @@ pub enum MatchStatus {
 }
 
 pub trait MatchReadinessService {
-    fn get_readiness_status(&self, match_id: MatchId) -> Option<PlayerId>;
-    fn set_player_ready(&self, match_id: MatchId, player: PlayerId) -> bool;
-    fn set_player_not_ready(&self, match_id: MatchId, player: PlayerId) -> bool;
-    fn set_player_not_ready_everywhere(&self, player: PlayerId) -> Vec<MatchId>;
+    fn get_readiness_status(&self, match_id: MatchId) -> Option<UserId>;
+    fn set_player_ready(&self, match_id: MatchId, player: UserId) -> bool;
+    fn set_player_not_ready(&self, match_id: MatchId, player: UserId) -> bool;
+    fn set_player_not_ready_everywhere(&self, player: UserId) -> Vec<MatchId>;
 }
 
 pub struct MatchReadinessServiceImpl {
-    match_readiness: Arc<DashMap<MatchId, PlayerId>>,
+    match_readiness: Arc<DashMap<MatchId, UserId>>,
 }
 
 impl MatchReadinessServiceImpl {
@@ -178,13 +178,13 @@ impl MatchReadinessServiceImpl {
 }
 
 impl MatchReadinessService for MatchReadinessServiceImpl {
-    fn get_readiness_status(&self, match_id: MatchId) -> Option<PlayerId> {
+    fn get_readiness_status(&self, match_id: MatchId) -> Option<UserId> {
         self.match_readiness
             .get(&match_id)
             .map(|entry| *entry.value())
     }
 
-    fn set_player_ready(&self, match_id: MatchId, player: PlayerId) -> bool {
+    fn set_player_ready(&self, match_id: MatchId, player: UserId) -> bool {
         let request = self.match_readiness.get(&match_id);
         if let Some(already_ready) = &request {
             if *already_ready.value() == player {
@@ -201,7 +201,7 @@ impl MatchReadinessService for MatchReadinessServiceImpl {
         }
     }
 
-    fn set_player_not_ready(&self, match_id: MatchId, player: PlayerId) -> bool {
+    fn set_player_not_ready(&self, match_id: MatchId, player: UserId) -> bool {
         let request = self.match_readiness.get(&match_id);
         if let Some(already_ready) = &request {
             if *already_ready.value() == player {
@@ -216,7 +216,7 @@ impl MatchReadinessService for MatchReadinessServiceImpl {
         }
     }
 
-    fn set_player_not_ready_everywhere(&self, player: PlayerId) -> Vec<MatchId> {
+    fn set_player_not_ready_everywhere(&self, player: UserId) -> Vec<MatchId> {
         let mut match_ids = Vec::new();
         self.match_readiness.retain(|match_id, ready_player| {
             if *ready_player == player {

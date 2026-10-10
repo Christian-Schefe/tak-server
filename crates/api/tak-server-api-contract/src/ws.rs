@@ -96,7 +96,7 @@ pub enum ServerMessage {
     rename_all_fields = "camelCase"
 )]
 pub enum ServerMatchEventType {
-    ReadinessChanged { player_id: Option<String> },
+    ReadinessChanged { user_id: Option<String> },
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -127,7 +127,7 @@ pub enum ServerGameEventType {
         result: String,
     },
     GameRequestChanged {
-        player_id: String,
+        user_id: String,
         request: JsonGameRequest,
     },
 }

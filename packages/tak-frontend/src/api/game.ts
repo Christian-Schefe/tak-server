@@ -49,7 +49,7 @@ export const gameRequestsSchema = z.object({
 export const gameStatusSchema = z.object({
   id: z.string(),
   matchId: z.string().nullable(),
-  playerIds: z.object({
+  userIds: z.object({
     white: z.string(),
     black: z.string(),
   }),
@@ -98,7 +98,7 @@ export type GameRequestType = GameRequest['type'];
 export const gameMetadataSchema = z.object({
   id: z.string(),
   date: z.number(),
-  playerIds: z.object({
+  userIds: z.object({
     white: z.string(),
     black: z.string(),
   }),
@@ -130,7 +130,7 @@ export const gameEvent = z.union([
   z.object({
     eventType: z.literal('gameRequestChanged'),
     request: gameRequestSchema,
-    playerId: z.string(),
+    userId: z.string(),
     ...gameEventBase.shape,
   }),
 ]);
@@ -300,7 +300,7 @@ function computeNewGameStatus(oldStatus: GameStatus, event: GameEvent): GameStat
         status: {
           ...oldStatus.status,
           whiteRequests:
-            event.playerId === oldStatus.playerIds.white
+            event.userId === oldStatus.userIds.white
               ? {
                   ...oldStatus.status.whiteRequests,
                   ...(event.request.type === 'draw' && { drawOffered: event.request.offer }),
@@ -311,7 +311,7 @@ function computeNewGameStatus(oldStatus: GameStatus, event: GameEvent): GameStat
                 }
               : oldStatus.status.whiteRequests,
           blackRequests:
-            event.playerId === oldStatus.playerIds.black
+            event.userId === oldStatus.userIds.black
               ? {
                   ...oldStatus.status.blackRequests,
                   ...(event.request.type === 'draw' && { drawOffered: event.request.offer }),
@@ -368,8 +368,8 @@ export function useNavigateOnGamesStartWebSocketSubscription() {
     z.object({ game: gameMetadataSchema }),
     ({ game }) => {
       const isOwnGame =
-        game.playerIds.white === account.value?.playerId ||
-        game.playerIds.black === account.value?.playerId;
+        game.userIds.white === account.value?.userId ||
+        game.userIds.black === account.value?.userId;
       if (isOwnGame) {
         void router.push(`/online/${game.id}`);
       }

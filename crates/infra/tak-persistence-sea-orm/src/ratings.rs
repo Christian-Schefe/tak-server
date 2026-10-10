@@ -7,13 +7,13 @@ use sea_orm::{
 };
 use tak_persistence_sea_orm_entities::rating;
 use tak_server_app::domain::{
-    PaginatedResponse, PlayerId, RepoError, RepoRetrieveError, SortOrder,
+    PaginatedResponse, UserId, RepoError, RepoRetrieveError, SortOrder,
     rating::{PlayerRating, RatingQuery, RatingRepository, RatingSortBy},
 };
 
 pub struct RatingRepositoryImpl {
     db: DatabaseConnection,
-    ratings_cache: Arc<moka::sync::Cache<PlayerId, PlayerRating>>,
+    ratings_cache: Arc<moka::sync::Cache<UserId, PlayerRating>>,
 }
 
 impl RatingRepositoryImpl {
@@ -30,7 +30,7 @@ impl RatingRepositoryImpl {
 
     fn model_to_rating(model: rating::Model) -> PlayerRating {
         PlayerRating {
-            player_id: PlayerId(model.player_id),
+            user_id: UserId(model.user_id),
             rating: model.rating,
             boost: model.boost,
             max_rating: model.max_rating,
@@ -39,14 +39,14 @@ impl RatingRepositoryImpl {
             fatigue: serde_json::from_value::<HashMap<uuid::Uuid, f64>>(model.fatigue)
                 .unwrap_or_default()
                 .into_iter()
-                .map(|(k, v)| (PlayerId(k), v))
+                .map(|(k, v)| (UserId(k), v))
                 .collect(),
         }
     }
 
-    fn rating_to_model(player_id: PlayerId, rating: &PlayerRating) -> rating::ActiveModel {
+    fn rating_to_model(user_id: UserId, rating: &PlayerRating) -> rating::ActiveModel {
         rating::ActiveModel {
-            player_id: sea_orm::Set(player_id.0),
+            user_id: sea_orm::Set(user_id.0),
             rating: sea_orm::Set(rating.rating),
             boost: sea_orm::Set(rating.boost),
             max_rating: sea_orm::Set(rating.max_rating),
@@ -70,19 +70,19 @@ impl RatingRepositoryImpl {
 impl RatingRepository for RatingRepositoryImpl {
     async fn get_player_rating(
         &self,
-        player_id: PlayerId,
+        user_id: UserId,
     ) -> Result<PlayerRating, RepoRetrieveError> {
-        if let Some(cached) = self.ratings_cache.get(&player_id) {
+        if let Some(cached) = self.ratings_cache.get(&user_id) {
             return Ok(cached);
         }
-        let rating_model = rating::Entity::find_by_id(player_id.0)
+        let rating_model = rating::Entity::find_by_id(user_id.0)
             .one(&self.db)
             .await
             .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
         match rating_model {
             Some(model) => {
                 let rating = Self::model_to_rating(model);
-                self.ratings_cache.insert(player_id, rating.clone());
+                self.ratings_cache.insert(user_id, rating.clone());
                 Ok(rating)
             }
             None => Err(RepoRetrieveError::NotFound),
@@ -91,8 +91,8 @@ impl RatingRepository for RatingRepositoryImpl {
 
     async fn update_player_ratings<R: Send + 'static>(
         &self,
-        white: PlayerId,
-        black: PlayerId,
+        white: UserId,
+        black: UserId,
         calc_fn: impl FnOnce(
             Option<PlayerRating>,
             Option<PlayerRating>,
@@ -166,9 +166,9 @@ impl RatingRepository for RatingRepositoryImpl {
 
     async fn get_player_ranking(
         &self,
-        player_id: PlayerId,
+        user_id: UserId,
     ) -> Result<(u32, PlayerRating), RepoRetrieveError> {
-        let rating_model = rating::Entity::find_by_id(player_id.0)
+        let rating_model = rating::Entity::find_by_id(user_id.0)
             .one(&self.db)
             .await
             .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;

@@ -9,27 +9,27 @@ const profileSchema = z.object({
   profilePictureVersion: z.number().nullable(),
 });
 
-export function useProfile(accountId: MaybeRefOrGetter<string | undefined>) {
+export function useProfile(userId: MaybeRefOrGetter<string | undefined>) {
   const { fetchTyped } = useFetch();
   return useQuery({
-    queryKey: ['profile', accountId],
+    queryKey: ['profile', userId],
     queryFn: async () => {
-      const id = toValue(accountId) ?? '';
+      const id = toValue(userId) ?? '';
       return await fetchTyped(profileSchema, `/api/profiles/${id}`);
     },
-    enabled: () => toValue(accountId) !== undefined,
+    enabled: () => toValue(userId) !== undefined,
     staleTime: 1000 * 60 * 5,
   });
 }
 
-export function getProfilePictureUrl(accountId: string, version: number) {
-  return `/api/profiles/${accountId}/picture?v=${version.toString()}`;
+export function getProfilePictureUrl(userId: string, version: number) {
+  return `/api/profiles/${userId}/picture?v=${version.toString()}`;
 }
 
-export function useProfilePictureUrl(accountId: MaybeRefOrGetter<string | undefined>) {
-  const { data: profile } = useProfile(accountId);
+export function useProfilePictureUrl(userId: MaybeRefOrGetter<string | undefined>) {
+  const { data: profile } = useProfile(userId);
   return computed(() => {
-    const accId = toValue(accountId);
+    const accId = toValue(userId);
     const val = profile.value;
     if (accId === undefined || !val || val.profilePictureVersion === null) {
       return '/fallback/default_user.webp';
@@ -42,10 +42,10 @@ export function useUploadProfilePicture() {
   const { fetch } = useFetch();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ file, accountId }: { file: File; accountId: string }) => {
+    mutationFn: async ({ file, userId }: { file: File; userId: string }) => {
       const formData = new FormData();
       formData.append('picture', file);
-      await fetch(`/api/profiles/${accountId}/picture`, 'POST', formData);
+      await fetch(`/api/profiles/${userId}/picture`, 'POST', formData);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['profile'] });
@@ -54,8 +54,9 @@ export function useUploadProfilePicture() {
 }
 
 export interface AccountProfileUpdate {
-  accountId: string;
+  userId: string;
   country: string | null;
+  displayName: string | null;
 }
 
 export function useUpdateProfile() {
@@ -63,7 +64,7 @@ export function useUpdateProfile() {
   const { fetch } = useFetch();
   return useMutation({
     mutationFn: async (update: AccountProfileUpdate) => {
-      await fetch(`/api/profiles/${update.accountId}`, 'POST', update);
+      await fetch(`/api/profiles/${update.userId}`, 'POST', update);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['profile'] });

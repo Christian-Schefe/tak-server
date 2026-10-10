@@ -9,7 +9,7 @@ export type ChatMessage = z.infer<typeof historyChatMessage>;
 export const chatMessageConversation = z.union([
   z.object({ type: z.literal('global') }),
   z.object({ type: z.literal('room'), roomName: z.string() }),
-  z.object({ type: z.literal('private'), accountId1: z.string(), accountId2: z.string() }),
+  z.object({ type: z.literal('private'), userId1: z.string(), userId2: z.string() }),
 ]);
 
 export const historyChatMessage = z.object({
@@ -38,7 +38,7 @@ function getConversationId(conversation: ChatMessageConversation): string {
   } else if (conversation.type === 'room') {
     return `room:${conversation.roomName}`;
   } else {
-    const ids = [conversation.accountId1, conversation.accountId2].sort();
+    const ids = [conversation.userId1, conversation.userId2].sort();
     return `private:${ids.join(':')}`;
   }
 }

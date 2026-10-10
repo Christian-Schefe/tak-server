@@ -1,13 +1,13 @@
-use crate::domain::PlayerId;
+use crate::domain::UserId;
 
 pub struct Player {
-    pub player_id: PlayerId,
+    pub user_id: UserId,
 }
 
 impl Player {
     pub fn new() -> Self {
         Self {
-            player_id: PlayerId(uuid::Uuid::new_v4()),
+            user_id: UserId(uuid::Uuid::new_v4()),
         }
     }
 }

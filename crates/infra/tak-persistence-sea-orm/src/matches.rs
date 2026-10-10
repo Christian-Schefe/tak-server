@@ -6,7 +6,7 @@ use tak_persistence_sea_orm_entities::matches;
 use tak_server_app::domain::matches::{
     Match, MatchMode, MatchPlayer, MatchRepository, MatchSettings, MatchStatus, MatchTournamentInfo,
 };
-use tak_server_app::domain::{MatchId, PlayerId, RepoError, RepoRetrieveError, TournamentId};
+use tak_server_app::domain::{MatchId, UserId, RepoError, RepoRetrieveError, TournamentId};
 
 pub struct MatchRepositoryImpl {
     db: DatabaseConnection,
@@ -73,11 +73,11 @@ impl MatchRepositoryImpl {
             MatchId(model.match_id),
             Match {
                 player1: MatchPlayer {
-                    player_id: PlayerId(model.player1_id),
+                    user_id: UserId(model.player1_id),
                     score: model.score_player1,
                 },
                 player2: MatchPlayer {
-                    player_id: PlayerId(model.player2_id),
+                    user_id: UserId(model.player2_id),
                     score: model.score_player2,
                 },
                 initial_color: match model.initial_color.as_str() {
@@ -125,8 +125,8 @@ impl MatchRepositoryImpl {
     ) -> Result<matches::ActiveModel, String> {
         Ok(matches::ActiveModel {
             match_id: match_id.map(|id| Set(id.0)).unwrap_or_default(),
-            player1_id: Set(match_entry.player1.player_id.0),
-            player2_id: Set(match_entry.player2.player_id.0),
+            player1_id: Set(match_entry.player1.user_id.0),
+            player2_id: Set(match_entry.player2.user_id.0),
             initial_color: Set(match match_entry.initial_color {
                 TakPlayer::White => "white".to_string(),
                 TakPlayer::Black => "black".to_string(),

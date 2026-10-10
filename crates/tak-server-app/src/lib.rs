@@ -21,16 +21,13 @@ use crate::{
         connection::{AccountConnectionPort, AccountOnlineStatusPort},
         email::EmailPort,
         notification::ListenerNotificationPort,
-        player_mapping::PlayerAccountMappingRepository,
     },
     processes::{
         disconnect_timeout_runner::DisconnectTimeoutRunnerImpl,
         game_timeout_runner::GameTimeoutRunnerImpl,
     },
-    services::player_resolver::{PlayerResolverService, PlayerResolverServiceImpl},
     workflow::{
         account::{
-            get_account::{GetAccountWorkflow, GetAccountWorkflowImpl},
             get_online::{GetOnlineAccountsUseCase, GetOnlineAccountsUseCaseImpl},
             get_profile::{GetProfileUseCase, GetProfileUseCaseImpl},
             get_snapshot::{GetSnapshotWorkflow, GetSnapshotWorkflowImpl},
@@ -86,7 +83,6 @@ use crate::{
 pub mod domain;
 pub mod ports;
 pub mod processes;
-pub mod services;
 pub mod workflow;
 
 pub struct Application {
@@ -103,7 +99,6 @@ pub struct Application {
     pub listener_disconnect_use_case: Arc<dyn ListenerDisconnectUseCase + Send + Sync + 'static>,
 
     pub player_get_rating_use_case: Arc<dyn PlayerGetRatingUseCase + Send + Sync + 'static>,
-    pub player_resolver_service: Arc<dyn PlayerResolverService + Send + Sync + 'static>,
 
     pub game_do_action_use_case: Arc<dyn DoActionUseCase + Send + Sync + 'static>,
     pub game_get_ongoing_use_case: Arc<dyn GetOngoingGameUseCase + Send + Sync + 'static>,
@@ -120,7 +115,6 @@ pub struct Application {
     pub event_list_use_case: Arc<dyn ListEventsUseCase + Send + Sync + 'static>,
 
     pub get_snapshot_workflow: Arc<dyn GetSnapshotWorkflow + Send + Sync + 'static>,
-    pub get_account_workflow: Arc<dyn GetAccountWorkflow + Send + Sync + 'static>,
     pub get_profile_use_case: Arc<dyn GetProfileUseCase + Send + Sync + 'static>,
     pub update_profile_use_case: Arc<dyn UpdateProfileUseCase + Send + Sync + 'static>,
 
@@ -148,7 +142,6 @@ pub async fn build_application<
     AS: AuthenticationPort + Send + Sync + 'static,
     E: EmailPort + Send + Sync + 'static,
     ER: EventRepository + Send + Sync + 'static,
-    PR: PlayerAccountMappingRepository + Send + Sync + 'static,
     PF: AccountProfileRepository + Send + Sync + 'static,
     AC: AccountOnlineStatusPort + Send + Sync + 'static,
     PFP: ProfilePictureRepository + Send + Sync + 'static,
@@ -161,7 +154,6 @@ pub async fn build_application<
     TRR: TournamentRoundRepository + Send + Sync + 'static,
 >(
     game_repository: Arc<G>,
-    player_repository: Arc<PR>,
     rating_repository: Arc<R>,
     event_repository: Arc<ER>,
     stats_repository: Arc<S>,
@@ -198,16 +190,8 @@ pub async fn build_application<
         set_user_policy: Arc::new(HigherRoleAccountPolicy),
     };
 
-    let player_resolver_service =
-        Arc::new(PlayerResolverServiceImpl::new(player_repository.clone()));
-
-    let get_account_workflow = Arc::new(GetAccountWorkflowImpl::new(
-        authentication_service.clone(),
-        player_repository.clone(),
-    ));
-
     let get_snapshot_workflow = Arc::new(GetSnapshotWorkflowImpl::new(
-        get_account_workflow.clone(),
+        authentication_service.clone(),
         rating_repository.clone(),
         rating_service.clone(),
     ));
@@ -217,7 +201,6 @@ pub async fn build_application<
         player_connection_port.clone(),
         game_service.clone(),
         spectator_service.clone(),
-        player_resolver_service.clone(),
     ));
 
     let tournament_match_workflow = Arc::new(TournamentMatchWorkflowImpl::new(
@@ -233,7 +216,7 @@ pub async fn build_application<
         notify_player_workflow.clone(),
         spectator_service.clone(),
         listener_notification_port.clone(),
-        get_account_workflow.clone(),
+        authentication_service.clone(),
         stats_repository.clone(),
         rating_history_repository.clone(),
         tournament_match_workflow.clone(),
@@ -293,7 +276,6 @@ pub async fn build_application<
             account_online_status_port.clone(),
             listener_notification_port.clone(),
             seek_service.clone(),
-            player_resolver_service.clone(),
             player_disconnect_timeout_scheduler.clone(),
             match_readiness_service.clone(),
             match_repository.clone(),
@@ -313,7 +295,6 @@ pub async fn build_application<
             rating_history_repository.clone(),
             rating_service.clone(),
         )),
-        player_resolver_service,
 
         game_do_action_use_case: Arc::new(DoActionUseCaseImpl::new(
             game_service.clone(),
@@ -349,7 +330,6 @@ pub async fn build_application<
         event_list_use_case: Arc::new(ListEventsUseCaseImpl::new(event_repository.clone())),
 
         get_snapshot_workflow,
-        get_account_workflow,
         get_profile_use_case: Arc::new(GetProfileUseCaseImpl::new(
             profile_repository.clone(),
             profile_picture_repo.clone(),

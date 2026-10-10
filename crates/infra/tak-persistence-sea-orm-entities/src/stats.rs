@@ -4,7 +4,7 @@ use sea_orm::entity::prelude::*;
 #[sea_orm(table_name = "stats")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub player_id: Uuid,
+    pub user_id: Uuid,
     pub rated_games_played: u32,
     pub games_played: u32,
     pub games_won: u32,

@@ -3,7 +3,7 @@ use tak_auth::{AccountRepository, FullAccount};
 use tak_persistence_sea_orm_entities::account;
 use tak_server_app::{
     domain::{
-        AccountId, RepoError, RepoRetrieveError,
+        UserId, RepoError, RepoRetrieveError,
         moderation::{AccountRole, ModerationFlag, ModerationFlags},
     },
     ports::authentication::AccountType,
@@ -23,7 +23,7 @@ impl AccountRepositoryImpl {
 
     fn account_to_active_model(&self, account: &FullAccount) -> account::ActiveModel {
         account::ActiveModel {
-            account_id: sea_orm::ActiveValue::Set(account.account_id.0),
+            user_id: sea_orm::ActiveValue::Set(account.user_id.0),
             username: sea_orm::ActiveValue::Set(account.account.username.clone()),
             email: sea_orm::ActiveValue::Set(account.account.email.clone()),
             account_type: sea_orm::ActiveValue::Set(
@@ -53,7 +53,7 @@ impl AccountRepositoryImpl {
     }
     fn model_to_account(&self, model: account::Model) -> Result<FullAccount, String> {
         Ok(FullAccount {
-            account_id: AccountId(model.account_id),
+            user_id: UserId(model.user_id),
             account: tak_server_app::ports::authentication::Account {
                 account_type: match model.account_type.as_str() {
                     "player" => AccountType::Player,
@@ -89,8 +89,8 @@ impl AccountRepository for AccountRepositoryImpl {
         Ok(())
     }
 
-    async fn get_account(&self, account_id: &AccountId) -> Result<FullAccount, RepoRetrieveError> {
-        let model = account::Entity::find_by_id(account_id.0)
+    async fn get_account(&self, user_id: UserId) -> Result<FullAccount, RepoRetrieveError> {
+        let model = account::Entity::find_by_id(user_id.0)
             .one(&self.db)
             .await
             .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?

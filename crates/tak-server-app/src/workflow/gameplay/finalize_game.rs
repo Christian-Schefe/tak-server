@@ -15,12 +15,11 @@ use crate::{
         },
     },
     ports::{
-        authentication::Account,
+        authentication::{Account, AuthenticationPort},
         notification::{ListenerGameMessageType, ListenerMessage, ListenerNotificationPort},
     },
     workflow::{
-        account::get_account::GetAccountWorkflow, gameplay::FinishedGameView,
-        player::notify_player::NotifyPlayerWorkflow,
+        gameplay::FinishedGameView, player::notify_player::NotifyPlayerWorkflow,
         tournament::tournament_match::TournamentMatchWorkflow,
     },
 };
@@ -39,7 +38,7 @@ pub struct FinalizeGameWorkflowImpl<
     NP: NotifyPlayerWorkflow,
     SPS: SpectatorService,
     L: ListenerNotificationPort,
-    A: GetAccountWorkflow,
+    A: AuthenticationPort,
     S: StatsRepository,
     RH: RatingHistoryRepository,
     TM: TournamentMatchWorkflow,
@@ -52,7 +51,7 @@ pub struct FinalizeGameWorkflowImpl<
     notify_player_workflow: Arc<NP>,
     spectator_service: Arc<SPS>,
     listener_notification_port: Arc<L>,
-    get_account_workflow: Arc<A>,
+    authentication_service: Arc<A>,
     stats_repository: Arc<S>,
     rating_history_repository: Arc<RH>,
     tournament_match_workflow: Arc<TM>,
@@ -67,7 +66,7 @@ impl<
     NP: NotifyPlayerWorkflow,
     SPS: SpectatorService,
     L: ListenerNotificationPort,
-    A: GetAccountWorkflow,
+    A: AuthenticationPort,
     S: StatsRepository,
     RH: RatingHistoryRepository,
     TM: TournamentMatchWorkflow,
@@ -82,7 +81,7 @@ impl<
         notify_player_workflow: Arc<NP>,
         spectator_service: Arc<SPS>,
         listener_notification_port: Arc<L>,
-        get_account_workflow: Arc<A>,
+        authentication_service: Arc<A>,
         stats_repository: Arc<S>,
         rating_history_repository: Arc<RH>,
         tournament_match_workflow: Arc<TM>,
@@ -96,7 +95,7 @@ impl<
             notify_player_workflow,
             spectator_service,
             listener_notification_port,
-            get_account_workflow,
+            authentication_service,
             stats_repository,
             rating_history_repository,
             tournament_match_workflow,
@@ -159,7 +158,7 @@ impl<
     NP: NotifyPlayerWorkflow + Send + Sync + 'static,
     SPS: SpectatorService + Send + Sync + 'static,
     L: ListenerNotificationPort + Send + Sync + 'static,
-    A: GetAccountWorkflow + Send + Sync + 'static,
+    A: AuthenticationPort + Send + Sync + 'static,
     S: StatsRepository + Send + Sync + 'static,
     RH: RatingHistoryRepository + Send + Sync + 'static,
     TM: TournamentMatchWorkflow + Send + Sync + 'static,
@@ -199,11 +198,11 @@ impl<
         );
 
         let white_account = match self
-            .get_account_workflow
+            .authentication_service
             .get_account(ended_game.metadata.white_id)
             .await
         {
-            Ok(account) => Some(account),
+            Ok(account) => account,
             Err(e) => {
                 tracing::error!(
                     "Failed to retrieve account for white player {}: {:?}",
@@ -214,11 +213,11 @@ impl<
             }
         };
         let black_account = match self
-            .get_account_workflow
+            .authentication_service
             .get_account(ended_game.metadata.black_id)
             .await
         {
-            Ok(account) => Some(account),
+            Ok(account) => account,
             Err(e) => {
                 tracing::error!(
                     "Failed to retrieve account for black player {}: {:?}",
@@ -234,8 +233,8 @@ impl<
             &self.rating_repository,
             &self.rating_history_repository,
             &ended_game,
-            white_account.as_ref().map(|(_, acc)| acc),
-            black_account.as_ref().map(|(_, acc)| acc),
+            white_account.as_ref(),
+            black_account.as_ref(),
         )
         .await;
 
@@ -253,8 +252,8 @@ impl<
         update_stats(
             &self.stats_repository,
             &ended_game,
-            white_account.as_ref().map(|(_, acc)| acc),
-            black_account.as_ref().map(|(_, acc)| acc),
+            white_account.as_ref(),
+            black_account.as_ref(),
         )
         .await;
 

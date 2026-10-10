@@ -7,7 +7,7 @@ import { gameHistoryRecordSchema } from './gameHistory';
 import { useFetch } from '@/utils/fetch';
 
 const matchPlayerSchema = z.object({
-  playerId: z.string(),
+  userId: z.string(),
   score: z.number(),
 });
 
@@ -33,7 +33,7 @@ export const matchEvent = z.union([
   z.object({
     eventType: z.literal('readinessChanged'),
     matchId: z.string(),
-    playerId: z.string().nullable(),
+    userId: z.string().nullable(),
   }),
 ]);
 
@@ -105,7 +105,7 @@ export function useMatchReadiness(
 
         return {
           ...oldMatch,
-          readyPlayer: event.playerId,
+          readyPlayer: event.userId,
         };
       });
     }

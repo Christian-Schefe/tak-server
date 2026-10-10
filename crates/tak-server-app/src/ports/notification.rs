@@ -2,8 +2,7 @@ use tak_core::{TakAction, TakGameResult, TakTimeInfo};
 
 use crate::{
     domain::{
-        AccountId, GameId, ListenerId, MatchId, PlayerId, chat::ChatConversation,
-        game::PlayerGameRequest,
+        GameId, ListenerId, MatchId, UserId, chat::ChatConversation, game::PlayerGameRequest,
     },
     workflow::{
         chat::ChatMessageView,
@@ -40,7 +39,7 @@ pub enum ListenerMessage {
         game: FinishedGameView,
     },
     AccountsOnline {
-        accounts: Vec<AccountId>,
+        accounts: Vec<UserId>,
     },
     GameEvent {
         game_id: GameId,
@@ -62,7 +61,7 @@ pub enum ListenerMessage {
 
 #[derive(Clone, Debug)]
 pub enum ListenerMatchEventType {
-    MatchReadinessChanged { player_id: Option<PlayerId> },
+    MatchReadinessChanged { user_id: Option<UserId> },
 }
 
 #[derive(Clone, Debug)]
@@ -71,7 +70,7 @@ pub enum ListenerGameMessageType {
         game_result: TakGameResult,
     },
     GameAction {
-        player_id: PlayerId,
+        user_id: UserId,
         action: TakAction,
         ply_index: usize,
     },

@@ -63,10 +63,10 @@ const roundData = computed(() => {
     })
     .filter((match): match is NonNullable<typeof match> => match !== null);
   /* return roundData.concat(
-    data.byes.map((playerId) => ({
+    data.byes.map((userId) => ({
       id: '',
       status: 'completed',
-      player1Id: playerId,
+      player1Id: userId,
       score: 'Bye',
     })),
   );*/
@@ -81,7 +81,7 @@ const { mutate: setRegistrationOpen } = useSetRegistrationOpen();
 
 const { data: account } = useAccount();
 const isSignedUp = computed(() => {
-  return tournament.value?.players.some((player) => player.id === account.value?.playerId);
+  return tournament.value?.players.some((player) => player.id === account.value?.userId);
 });
 
 function onRegister() {
@@ -161,7 +161,7 @@ const tournamentStatusSeverities = {
         <p class="font-semibold">Score</p>
         <template v-for="(player, index) in tournamentPlayers" :key="player.id">
           <span class="text-lg font-semibold font-mono">#{{ index + 1 }}</span>
-          <PlayerLabel :pid="player.id" type="player" :show-rating="false"></PlayerLabel>
+          <PlayerLabel :user-id="player.id" :show-rating="false"></PlayerLabel>
           <span class="ml-auto font-mono">{{ player.score }}</span>
         </template>
       </div>

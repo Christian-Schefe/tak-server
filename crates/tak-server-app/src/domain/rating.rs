@@ -4,25 +4,25 @@ use chrono::{DateTime, TimeDelta, Utc};
 use tak_core::{TakGameResult, TakGameSettings, TakPlayer, TakTimeSettings};
 
 use crate::domain::{
-    PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError, SortOrder,
+    PaginatedResponse, Pagination, UserId, RepoError, RepoRetrieveError, SortOrder,
     game::FinishedGame, game_history::GameRatingInfo,
 };
 
 #[derive(Clone, Debug)]
 pub struct PlayerRating {
-    pub player_id: PlayerId,
+    pub user_id: UserId,
     pub rating: f64,
     pub boost: f64,
     pub max_rating: f64,
     pub rated_games_played: u32,
     pub rating_age: Option<DateTime<Utc>>,
-    pub fatigue: HashMap<PlayerId, f64>,
+    pub fatigue: HashMap<UserId, f64>,
 }
 
 impl PlayerRating {
-    pub fn new(player_id: PlayerId) -> Self {
+    pub fn new(user_id: UserId) -> Self {
         Self {
-            player_id,
+            user_id,
             rating: 1000.0,
             boost: 750.0,
             max_rating: 1000.0,
@@ -37,11 +37,11 @@ impl PlayerRating {
 pub trait RatingRepository {
     async fn get_player_rating(
         &self,
-        player_id: PlayerId,
+        user_id: UserId,
     ) -> Result<PlayerRating, RepoRetrieveError>;
     async fn get_player_ranking(
         &self,
-        player_id: PlayerId,
+        user_id: UserId,
     ) -> Result<(u32, PlayerRating), RepoRetrieveError>;
     async fn query_player_ratings(
         &self,
@@ -49,8 +49,8 @@ pub trait RatingRepository {
     ) -> Result<PaginatedResponse<PlayerRating>, RepoError>;
     async fn update_player_ratings<R: Send + 'static>(
         &self,
-        white: PlayerId,
-        black: PlayerId,
+        white: UserId,
+        black: UserId,
         calc_fn: impl FnOnce(
             Option<PlayerRating>,
             Option<PlayerRating>,
@@ -206,7 +206,7 @@ impl RatingServiceImpl {
         player.max_rating = f64::max(player.max_rating, player.rating);
     }
 
-    fn update_fatigue(player: &mut PlayerRating, opponent_id: PlayerId, game_factor: f64) {
+    fn update_fatigue(player: &mut PlayerRating, opponent_id: UserId, game_factor: f64) {
         let multiplier = 1.0 - game_factor * 0.4;
         for (_, fatigue) in player.fatigue.iter_mut() {
             *fatigue *= multiplier;
@@ -227,7 +227,7 @@ impl RatingServiceImpl {
 
     fn update_rating_and_fatigue(
         player: &mut PlayerRating,
-        opponent_id: PlayerId,
+        opponent_id: UserId,
         amount: f64,
         fairness: f64,
         fatigue_factor: f64,

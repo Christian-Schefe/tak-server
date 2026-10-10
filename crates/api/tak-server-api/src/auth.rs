@@ -12,15 +12,14 @@ use axum_extra::{
 };
 use tak_server_api_contract::auth::IdentityInfo;
 use tak_server_app::{
-    domain::AccountId,
+    domain::UserId,
     ports::authentication::{Account, AuthenticationPort},
-    services::player_resolver::ResolveError,
 };
 
 use crate::{AppState, ServiceError};
 
 pub struct Auth {
-    pub account_id: AccountId,
+    pub user_id: UserId,
     pub account: Account,
 }
 
@@ -34,9 +33,9 @@ impl FromRequestParts<AppState> for Auth {
         if let Ok(TypedHeader(Authorization(bearer))) =
             parts.extract::<TypedHeader<Authorization<Bearer>>>().await
         {
-            if let Some((account_id, acc)) = app.auth.validate_account_jwt(bearer.token()).await {
+            if let Some((user_id, acc)) = app.auth.validate_account_jwt(bearer.token()).await {
                 return Ok(Auth {
-                    account_id,
+                    user_id,
                     account: acc,
                 });
             }
@@ -73,7 +72,7 @@ async fn login(
     State(app): State<AppState>,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, ServiceError> {
-    let (account_id, _) = match app.auth.login_account(&req.identifier, &req.password).await {
+    let (user_id, _) = match app.auth.login_account(&req.identifier, &req.password).await {
         Some(account) => account,
         None => {
             return Err(ServiceError::Unauthorized(
@@ -85,7 +84,7 @@ async fn login(
     Ok(Json(LoginResponse {
         jwt: app
             .auth
-            .generate_account_jwt(&account_id, std::time::Duration::from_secs(60 * 60 * 24)),
+            .generate_account_jwt(user_id, std::time::Duration::from_secs(60 * 60 * 24)),
     }))
 }
 
@@ -101,7 +100,7 @@ async fn register(
     State(app): State<AppState>,
     Json(req): Json<RegisterRequest>,
 ) -> Result<Json<LoginResponse>, ServiceError> {
-    let (account_id, _) = match app
+    let (user_id, _) = match app
         .auth
         .register_account(&req.email, &req.username, &req.password)
         .await
@@ -117,7 +116,7 @@ async fn register(
     Ok(Json(LoginResponse {
         jwt: app
             .auth
-            .generate_account_jwt(&account_id, std::time::Duration::from_secs(60 * 60 * 24)),
+            .generate_account_jwt(user_id, std::time::Duration::from_secs(60 * 60 * 24)),
     }))
 }
 
@@ -132,8 +131,8 @@ async fn who_am_i(
     State(app): State<AppState>,
     Query(params): Query<WhoAmIQueryParams>,
 ) -> Result<Json<IdentityInfo>, ServiceError> {
-    let ((account_id, account), new_guest) = match auth {
-        Ok(auth) => ((auth.account_id, auth.account), false),
+    let ((user_id, account), new_guest) = match auth {
+        Ok(auth) => ((auth.user_id, auth.account), false),
         Err(e) => {
             if let Some(true) = params.prevent_guest {
                 return Err(e);
@@ -148,23 +147,14 @@ async fn who_am_i(
             }
         }
     };
-    let player_id = app
-        .app
-        .player_resolver_service
-        .resolve_player_id_by_account_id(&account_id)
-        .await
-        .map_err(|ResolveError::Internal| {
-            ServiceError::Internal("Failed to resolve player ID".to_string())
-        })?;
     Ok(Json(IdentityInfo {
-        account_id: account_id.to_string(),
-        player_id: player_id.to_string(),
+        user_id: user_id.to_string(),
         is_guest: account.is_guest(),
         is_admin: account.is_admin(),
         new_guest,
         jwt: app
             .auth
-            .generate_account_jwt(&account_id, std::time::Duration::from_secs(60 * 60 * 24)),
+            .generate_account_jwt(user_id, std::time::Duration::from_secs(60 * 60 * 24)),
     }))
 }
 
@@ -178,10 +168,9 @@ async fn create_api_token(
             "Duration must be between 1 second and 365 days".to_string(),
         ));
     }
-    let cert = app.auth.generate_account_jwt(
-        &auth.account_id,
-        std::time::Duration::from_secs(req.duration),
-    );
+    let cert = app
+        .auth
+        .generate_account_jwt(auth.user_id, std::time::Duration::from_secs(req.duration));
     Ok(Json(serde_json::json!({ "certificate": cert })))
 }
 
@@ -197,11 +186,10 @@ pub trait ApiAuthPort: AuthenticationPort {
         email: &str,
         username: &str,
         password: &str,
-    ) -> Option<(AccountId, Account)>;
-    async fn login_account(&self, identifier: &str, password: &str)
-    -> Option<(AccountId, Account)>;
-    async fn create_guest_account(&self) -> Option<(AccountId, Account)>;
+    ) -> Option<(UserId, Account)>;
+    async fn login_account(&self, identifier: &str, password: &str) -> Option<(UserId, Account)>;
+    async fn create_guest_account(&self) -> Option<(UserId, Account)>;
 
-    fn generate_account_jwt(&self, id: &AccountId, duration: Duration) -> String;
-    async fn validate_account_jwt(&self, token: &str) -> Option<(AccountId, Account)>;
+    fn generate_account_jwt(&self, id: UserId, duration: Duration) -> String;
+    async fn validate_account_jwt(&self, token: &str) -> Option<(UserId, Account)>;
 }

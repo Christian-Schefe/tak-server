@@ -2,7 +2,7 @@ use std::{io::Cursor, path::PathBuf};
 
 use image::DynamicImage;
 use tak_server_app::domain::{
-    AccountId, RepoError, RepoRetrieveError,
+    UserId, RepoError, RepoRetrieveError,
     profile::{ProfilePicture, ProfilePictureFileType, ProfilePictureRepository},
 };
 
@@ -21,18 +21,18 @@ impl ProfilePictureRepositoryImpl {
         Self { file_path }
     }
 
-    fn get_file_path(&self, account_id: &AccountId) -> (PathBuf, String) {
-        let file_name = compute_file_name_hash(account_id);
+    fn get_file_path(&self, user_id: UserId) -> (PathBuf, String) {
+        let file_name = compute_file_name_hash(user_id);
         let shard_prefix = &file_name[0..2];
         let shard_path = self.file_path.join(shard_prefix);
         (shard_path, format!("{}.webp", file_name))
     }
 }
 
-fn compute_file_name_hash(account_id: &AccountId) -> String {
+fn compute_file_name_hash(user_id: UserId) -> String {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
-    hasher.update(account_id.to_string().as_bytes());
+    hasher.update(user_id.to_string().as_bytes());
     format!("{:x}", hasher.finalize())
 }
 
@@ -40,10 +40,10 @@ fn compute_file_name_hash(account_id: &AccountId) -> String {
 impl ProfilePictureRepository for ProfilePictureRepositoryImpl {
     async fn set_profile_picture(
         &self,
-        account_id: &AccountId,
+        user_id: UserId,
         image: DynamicImage,
     ) -> Result<(), RepoError> {
-        let (shard_path, file_name) = self.get_file_path(account_id);
+        let (shard_path, file_name) = self.get_file_path(user_id);
         let file_path = shard_path.join(file_name);
         let mut bytes: Vec<u8> = Vec::new();
         image
@@ -60,9 +60,9 @@ impl ProfilePictureRepository for ProfilePictureRepositoryImpl {
 
     async fn get_profile_picture(
         &self,
-        account_id: &AccountId,
+        user_id: UserId,
     ) -> Result<ProfilePicture, RepoRetrieveError> {
-        let (shard_path, file_name) = self.get_file_path(account_id);
+        let (shard_path, file_name) = self.get_file_path(user_id);
         let file_path = shard_path.join(file_name);
         let file = tokio::fs::File::open(&file_path)
             .await

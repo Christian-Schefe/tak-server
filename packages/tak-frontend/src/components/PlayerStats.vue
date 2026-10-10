@@ -4,11 +4,11 @@ import { Card } from '@tak-ui-lib/components';
 import { LuFlame, LuHash, LuSwords, LuTrophy } from 'vue-icons-plus/lu';
 
 const props = defineProps<{
-  playerId: string;
+  userId: string;
 }>();
 
-const { data: playerInfo } = usePlayerInfo(() => props.playerId);
-const { data: stats } = usePlayerStats(() => props.playerId);
+const { data: playerInfo } = usePlayerInfo(() => props.userId);
+const { data: stats } = usePlayerStats(() => props.userId);
 </script>
 
 <template>

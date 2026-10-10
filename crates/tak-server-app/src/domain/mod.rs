@@ -13,48 +13,28 @@ pub mod spectator;
 pub mod stats;
 pub mod tournament;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct PlayerId(pub uuid::Uuid);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct UserId(pub uuid::Uuid);
 
-impl std::fmt::Display for PlayerId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.as_hyphenated())
-    }
-}
-impl TryFrom<String> for PlayerId {
-    type Error = String;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&value) {
-            Ok(PlayerId(uuid))
-        } else {
-            Err(format!("Failed to parse PlayerId from string: {}", value))
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct AccountId(pub uuid::Uuid);
-
-impl AccountId {
+impl UserId {
     pub fn new() -> Self {
-        AccountId(uuid::Uuid::new_v4())
+        UserId(uuid::Uuid::new_v4())
     }
 }
 
-impl TryFrom<String> for AccountId {
+impl TryFrom<String> for UserId {
     type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
         if let Ok(uuid) = uuid::Uuid::parse_str(&value) {
-            Ok(AccountId(uuid))
+            Ok(UserId(uuid))
         } else {
-            Err(format!("Failed to parse AccountId from string: {}", value))
+            Err(format!("Failed to parse UserId from string: {}", value))
         }
     }
 }
 
-impl std::fmt::Display for AccountId {
+impl std::fmt::Display for UserId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0.as_hyphenated())
     }

@@ -5,8 +5,7 @@ import { z } from 'zod';
 export type AccountInfo = z.infer<typeof accountInfoSchema>;
 
 const accountInfoSchema = z.object({
-  accountId: z.string(),
-  playerId: z.string(),
+  userId: z.string(),
   isGuest: z.boolean(),
   isAdmin: z.boolean(),
   newGuest: z.boolean(),

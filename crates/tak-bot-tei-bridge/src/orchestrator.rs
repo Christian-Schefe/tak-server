@@ -83,9 +83,9 @@ impl Orchestrator {
     }
 
     fn get_player_color(&self, game: &JsonGameMetadata) -> Option<TakPlayer> {
-        if game.player_ids.white == self.identity.player_id {
+        if game.player_ids.white == self.identity.user_id {
             Some(TakPlayer::White)
-        } else if game.player_ids.black == self.identity.player_id {
+        } else if game.player_ids.black == self.identity.user_id {
             Some(TakPlayer::Black)
         } else {
             None

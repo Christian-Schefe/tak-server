@@ -47,7 +47,7 @@ const openingNames: Record<string, string | undefined> = {
   <Card>
     <div class="flex items-start gap-2">
       <div class="flex flex-col gap-4 justify-center">
-        <PlayerLabel :pid="seek.creatorId" type="player"></PlayerLabel>
+        <PlayerLabel :user-id="seek.creatorId"></PlayerLabel>
 
         <div class="flex flex-col gap-x-6 gap-y-2 justify-start items-start">
           <div class="flex items-center gap-2 justify-start">

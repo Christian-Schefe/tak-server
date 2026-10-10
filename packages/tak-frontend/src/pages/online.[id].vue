@@ -70,9 +70,9 @@ const { data: gameStatus } = useGameStatus(() => route.params.id);
 
 const shouldSpectateGameId = computed(() => {
   if (!gameStatus.value || !account.value) return undefined;
-  const playerIds = gameStatus.value.playerIds;
-  return account.value.playerId !== playerIds.white &&
-    account.value.playerId !== playerIds.black &&
+  const userIds = gameStatus.value.userIds;
+  return account.value.userId !== userIds.white &&
+    account.value.userId !== userIds.black &&
     gameStatus.value.status.type === 'ongoing'
     ? route.params.id
     : undefined;
@@ -141,12 +141,12 @@ const gameData = computed<{
     }
   });
   const mode: GameMode =
-    account.value.playerId === gameStatus.value.playerIds.white
+    account.value.userId === gameStatus.value.userIds.white
       ? {
           type: 'online',
           localPlayer: 'white',
         }
-      : account.value.playerId === gameStatus.value.playerIds.black
+      : account.value.userId === gameStatus.value.userIds.black
         ? {
             type: 'online',
             localPlayer: 'black',
@@ -195,9 +195,9 @@ watch(
   },
 );
 
-const accountIds = usePlayerInfos(() =>
-  gameData.value?.status.playerIds
-    ? [gameData.value.status.playerIds.white, gameData.value.status.playerIds.black]
+const userIds = usePlayerInfos(() =>
+  gameData.value?.status.userIds
+    ? [gameData.value.status.userIds.white, gameData.value.status.userIds.black]
     : undefined,
 );
 
@@ -205,14 +205,12 @@ const chatConversation = computed<ChatMessageConversation | undefined>(() => {
   if (!gameData.value) return undefined;
   switch (gameData.value.mode.type) {
     case 'online': {
-      const accIds = accountIds.value
-        .map((info) => info.data?.accountId)
-        .filter((v) => v !== undefined);
+      const accIds = userIds.value.map((info) => info.data?.userId).filter((v) => v !== undefined);
       return accIds[0] !== undefined && accIds[1] !== undefined
         ? {
             type: 'private',
-            accountId1: accIds[0],
-            accountId2: accIds[1],
+            userId1: accIds[0],
+            userId2: accIds[1],
           }
         : undefined;
     }
@@ -285,12 +283,12 @@ const chatConversation = computed<ChatMessageConversation | undefined>(() => {
     <GameClock
       :game="gameData.game"
       player="white"
-      :player-id="gameData.status.playerIds.white"
+      :user-id="gameData.status.userIds.white"
     ></GameClock>
     <GameClock
       :game="gameData.game"
       player="black"
-      :player-id="gameData.status.playerIds.black"
+      :user-id="gameData.status.userIds.black"
     ></GameClock>
     <MoveHistory
       :game="gameData.game.base"

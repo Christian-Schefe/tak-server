@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useIsAccountOnline } from '@/api/account';
+import { useIsUserOnline } from '@/api/account';
 import { useAccount } from '@/api/auth';
 import { useMatch, useMatchGames, useMatchReadiness, useMatchSetPlayerReady } from '@/api/match';
 import { usePlayerInfo } from '@/api/player';
@@ -18,8 +18,8 @@ const { data: account } = useAccount();
 const isOwnMatch = computed(
   () =>
     account.value !== undefined &&
-    (match.value?.player1.playerId === account.value.playerId ||
-      match.value?.player2.playerId === account.value.playerId),
+    (match.value?.player1.userId === account.value.userId ||
+      match.value?.player2.userId === account.value.userId),
 );
 
 const { data: match } = useMatch(() => route.params.id);
@@ -29,14 +29,14 @@ const { data: matchGames } = useMatchGames(() => route.params.id);
 const setPlayerReady = useMatchSetPlayerReady();
 
 const isSelfReady = computed(
-  () => account.value !== undefined && matchReadiness.value?.readyPlayer === account.value.playerId,
+  () => account.value !== undefined && matchReadiness.value?.readyPlayer === account.value.userId,
 );
 
-const { data: player1Info } = usePlayerInfo(() => match.value?.player1.playerId);
-const { data: player2Info } = usePlayerInfo(() => match.value?.player2.playerId);
+const { data: player1Info } = usePlayerInfo(() => match.value?.player1.userId);
+const { data: player2Info } = usePlayerInfo(() => match.value?.player2.userId);
 
-const isPlayer1Online = useIsAccountOnline(() => player1Info.value?.accountId);
-const isPlayer2Online = useIsAccountOnline(() => player2Info.value?.accountId);
+const isPlayer1Online = useIsUserOnline(() => player1Info.value?.userId);
+const isPlayer2Online = useIsUserOnline(() => player2Info.value?.userId);
 
 function toggleReady() {
   if (!matchReadiness.value) return;
@@ -63,14 +63,14 @@ function goToGame(gameId: string) {
       <div v-if="match.status === 'waiting' && isOwnMatch" class="grid grid-cols-2 gap-2">
         <MatchReadyTagOrButton
           :is-online="isPlayer1Online ?? false"
-          :is-ready="matchReadiness?.readyPlayer === match.player1.playerId"
-          :is-button="account !== undefined && match.player1.playerId === account.playerId"
+          :is-ready="matchReadiness?.readyPlayer === match.player1.userId"
+          :is-button="account !== undefined && match.player1.userId === account.userId"
           @toggle-ready="toggleReady"
         />
         <MatchReadyTagOrButton
           :is-online="isPlayer2Online ?? false"
-          :is-ready="matchReadiness?.readyPlayer === match.player2.playerId"
-          :is-button="account !== undefined && match.player2.playerId === account.playerId"
+          :is-ready="matchReadiness?.readyPlayer === match.player2.userId"
+          :is-button="account !== undefined && match.player2.userId === account.userId"
           @toggle-ready="toggleReady"
         />
       </div>

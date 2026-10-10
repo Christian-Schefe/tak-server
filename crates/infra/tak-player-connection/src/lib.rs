@@ -7,7 +7,7 @@ use more_concurrent_maps::bijection::BiMap;
 use parking_lot::RwLock;
 use tak_server_app::{
     Application,
-    domain::{AccountId, ListenerId},
+    domain::{ListenerId, UserId},
     ports::{
         connection::{AccountConnectionPort, AccountOnlineStatusPort},
         notification::{ListenerMessage, ListenerNotificationPort},
@@ -39,7 +39,7 @@ pub trait PlayerSimpleConnectionPort {
 }
 
 struct ConnectionRegistry {
-    listener_map: BiMap<AccountId, ListenerId>,
+    listener_map: BiMap<UserId, ListenerId>,
     connection_to_listener: HashMap<ConnectionId, ListenerId>,
     listener_to_connections: HashMap<ListenerId, HashSet<ConnectionId>>,
 }
@@ -56,16 +56,16 @@ impl PlayerConnectionDriver {
         Self { app, inner }
     }
 
-    pub async fn associate_connection(&self, account_id: &AccountId, connection_id: ConnectionId) {
+    pub async fn associate_connection(&self, user_id: UserId, connection_id: ConnectionId) {
         if let Some(prev_account_id) = self.get_account_id(&connection_id) {
-            if &prev_account_id == account_id {
+            if prev_account_id == user_id {
                 return;
             } else {
                 tracing::info!(
                     "Connection {} is already associated with account {}. Reassociating with account {}.",
                     connection_id,
                     prev_account_id,
-                    account_id
+                    user_id
                 );
                 self.remove_connection(&connection_id).await;
             }
@@ -73,13 +73,13 @@ impl PlayerConnectionDriver {
         let set_online = {
             let mut registry = self.inner.registry.write();
             let (listener_id, set_online) =
-                if let Some(listener_id) = registry.listener_map.get_by_left(&account_id) {
+                if let Some(listener_id) = registry.listener_map.get_by_left(&user_id) {
                     (*listener_id, false)
                 } else {
                     let new_listener_id = ListenerId::new();
                     registry
                         .listener_map
-                        .try_insert(account_id.clone(), new_listener_id);
+                        .try_insert(user_id.clone(), new_listener_id);
                     (new_listener_id, true)
                 };
             registry
@@ -95,7 +95,7 @@ impl PlayerConnectionDriver {
         if set_online {
             self.app
                 .account_set_online_use_case
-                .set_online(account_id)
+                .set_online(user_id)
                 .await;
         }
     }
@@ -111,10 +111,8 @@ impl PlayerConnectionDriver {
                     connections.remove(connection_id);
                     if connections.is_empty() {
                         registry.listener_to_connections.remove(&listener_id);
-                        if let Some(account_id) =
-                            registry.listener_map.remove_by_right(&listener_id)
-                        {
-                            set_account_offline = Some(account_id);
+                        if let Some(user_id) = registry.listener_map.remove_by_right(&listener_id) {
+                            set_account_offline = Some(user_id);
                         }
                     }
                 }
@@ -128,17 +126,17 @@ impl PlayerConnectionDriver {
         self.app
             .listener_disconnect_use_case
             .handle_listener_disconnect(connection_id.0);
-        if let Some(account_id) = set_account_offline {
+        if let Some(user_id) = set_account_offline {
             self.app
                 .account_set_online_use_case
-                .set_offline(&account_id)
+                .set_offline(user_id)
                 .await;
         }
     }
 
-    pub fn get_connection_ids(&self, account_id: &AccountId) -> Vec<ConnectionId> {
+    pub fn get_connection_ids(&self, user_id: UserId) -> Vec<ConnectionId> {
         let registry = self.inner.registry.read();
-        if let Some(listener_id) = registry.listener_map.get_by_left(account_id) {
+        if let Some(listener_id) = registry.listener_map.get_by_left(&user_id) {
             if let Some(conn_set) = registry.listener_to_connections.get(listener_id) {
                 return conn_set.iter().cloned().collect();
             }
@@ -146,11 +144,11 @@ impl PlayerConnectionDriver {
         Vec::new()
     }
 
-    pub fn get_account_id(&self, connection_id: &ConnectionId) -> Option<AccountId> {
+    pub fn get_account_id(&self, connection_id: &ConnectionId) -> Option<UserId> {
         let registry = self.inner.registry.read();
         if let Some(listener_id) = registry.connection_to_listener.get(connection_id) {
-            if let Some(account_id) = registry.listener_map.get_by_right(listener_id) {
-                return Some(account_id.clone());
+            if let Some(user_id) = registry.listener_map.get_by_right(listener_id) {
+                return Some(user_id.clone());
             }
         }
         None
@@ -159,10 +157,10 @@ impl PlayerConnectionDriver {
 
 #[async_trait::async_trait]
 impl AccountConnectionPort for PlayerConnectionService {
-    async fn get_connection_id(&self, account_id: &AccountId) -> Option<ListenerId> {
+    async fn get_connection_id(&self, user_id: UserId) -> Option<ListenerId> {
         let registry = self.registry.read();
 
-        registry.listener_map.get_by_left(account_id).cloned()
+        registry.listener_map.get_by_left(&user_id).cloned()
     }
 }
 
@@ -212,7 +210,7 @@ impl ListenerNotificationPort for PlayerConnectionService {
 }
 
 pub struct AccountOnlineStatusService {
-    online_accounts: Arc<RwLock<HashSet<AccountId>>>,
+    online_accounts: Arc<RwLock<HashSet<UserId>>>,
 }
 
 impl AccountOnlineStatusService {
@@ -224,25 +222,25 @@ impl AccountOnlineStatusService {
 }
 
 impl AccountOnlineStatusPort for AccountOnlineStatusService {
-    fn set_account_online(&self, account_id: &AccountId) -> Option<Vec<AccountId>> {
+    fn set_account_online(&self, user_id: UserId) -> Option<Vec<UserId>> {
         let mut online_accounts = self.online_accounts.write();
-        if online_accounts.insert(account_id.clone()) {
+        if online_accounts.insert(user_id.clone()) {
             Some(online_accounts.iter().cloned().collect())
         } else {
             None
         }
     }
 
-    fn set_account_offline(&self, account_id: &AccountId) -> Option<Vec<AccountId>> {
+    fn set_account_offline(&self, user_id: UserId) -> Option<Vec<UserId>> {
         let mut online_accounts = self.online_accounts.write();
-        if online_accounts.remove(account_id) {
+        if online_accounts.remove(&user_id) {
             Some(online_accounts.iter().cloned().collect())
         } else {
             None
         }
     }
 
-    fn get_online_accounts(&self) -> Vec<AccountId> {
+    fn get_online_accounts(&self) -> Vec<UserId> {
         self.online_accounts.read().iter().cloned().collect()
     }
 }

@@ -1,18 +1,18 @@
 use country_code_enum::CountryCode;
 use image::DynamicImage;
 
-use crate::domain::{AccountId, RepoError, RepoRetrieveError};
+use crate::domain::{UserId, RepoError, RepoRetrieveError};
 
 #[async_trait::async_trait]
 pub trait AccountProfileRepository {
     async fn insert_profile_information(
         &self,
-        account_id: &AccountId,
+        user_id: UserId,
         profile_information: AccountProfile,
     ) -> Result<(), RepoError>;
     async fn get_profile_information(
         &self,
-        account_id: &AccountId,
+        user_id: UserId,
     ) -> Result<AccountProfile, RepoRetrieveError>;
 }
 
@@ -49,12 +49,12 @@ impl AccountProfile {
 pub trait ProfilePictureRepository {
     async fn set_profile_picture(
         &self,
-        account_id: &AccountId,
+        user_id: UserId,
         image: DynamicImage,
     ) -> Result<(), RepoError>;
     async fn get_profile_picture(
         &self,
-        account_id: &AccountId,
+        user_id: UserId,
     ) -> Result<ProfilePicture, RepoRetrieveError>;
 }
 

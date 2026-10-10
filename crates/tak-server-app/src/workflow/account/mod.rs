@@ -2,7 +2,6 @@ use country_code_enum::CountryCode;
 
 use crate::domain::profile::{AccountProfile, ProfilePictureVersion};
 
-pub mod get_account;
 pub mod get_online;
 pub mod get_profile;
 pub mod get_snapshot;

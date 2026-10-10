@@ -155,7 +155,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
       void sendMessage({ type: 'authenticate', token: newAccount.jwt })
         .then(() => {
           console.log('WebSocket authentication successful');
-          lastAuthenticated.value = newAccount.accountId;
+          lastAuthenticated.value = newAccount.userId;
         })
         .catch((error: unknown) => {
           console.error('WebSocket authentication failed:', error);
@@ -167,7 +167,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     return (
       status.value === 'OPEN' &&
       account.value !== undefined &&
-      lastAuthenticated.value === account.value.accountId
+      lastAuthenticated.value === account.value.userId
     );
   });
 

@@ -2,7 +2,6 @@ pub mod account;
 pub mod chat;
 pub mod game;
 pub mod matches;
-pub mod player_account_mapping;
 pub mod profile;
 pub mod puzzle;
 pub mod rating;

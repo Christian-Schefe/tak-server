@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use tak_core::TakPlayer;
 
 use crate::domain::{
-    MatchId, PlayerId, RepoError, RepoRetrieveError, TournamentId,
+    MatchId, UserId, RepoError, RepoRetrieveError, TournamentId,
     matches::{Match, MatchSettings},
 };
 
@@ -22,26 +22,26 @@ pub struct Tournament {
 
 pub struct TournamentRound {
     pub matches: Vec<MatchId>,
-    pub byes: Vec<PlayerId>,
+    pub byes: Vec<UserId>,
 }
 
 impl TournamentRound {
-    pub fn new(matches: Vec<MatchId>, byes: Vec<PlayerId>) -> Self {
+    pub fn new(matches: Vec<MatchId>, byes: Vec<UserId>) -> Self {
         Self { matches, byes }
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct TournamentPlayer {
-    pub player_id: PlayerId,
+    pub user_id: UserId,
     pub score: u32,
     pub seeding_score: i32,
 }
 
 impl TournamentPlayer {
-    pub fn new(player_id: PlayerId) -> Self {
+    pub fn new(user_id: UserId) -> Self {
         Self {
-            player_id,
+            user_id,
             score: 0,
             seeding_score: 0,
         }
@@ -63,8 +63,8 @@ pub enum TournamentFormat {
 }
 
 pub struct RoundPairing {
-    pub pairings: Vec<(PlayerId, PlayerId, TakPlayer)>,
-    pub byes: Vec<PlayerId>,
+    pub pairings: Vec<(UserId, UserId, TakPlayer)>,
+    pub byes: Vec<UserId>,
 }
 
 impl TournamentFormat {
@@ -96,13 +96,13 @@ impl TournamentFormat {
         if round_index >= rounds {
             return None;
         }
-        fn normalize_pair(a: PlayerId, b: PlayerId) -> (PlayerId, PlayerId) {
+        fn normalize_pair(a: UserId, b: UserId) -> (UserId, UserId) {
             if a.0 < b.0 { (a, b) } else { (b, a) }
         }
 
         let previous_pairings_set = previous_pairings
             .iter()
-            .map(|m| normalize_pair(m.player1.player_id, m.player2.player_id))
+            .map(|m| normalize_pair(m.player1.user_id, m.player2.user_id))
             .collect::<HashSet<_>>();
 
         let mut sorted = players.iter().enumerate().collect::<Vec<_>>();
@@ -118,7 +118,7 @@ impl TournamentFormat {
         // Bye handling
         if sorted.len() % 2 != 0 {
             // Give bye to the lowest-ranked player
-            let bye_player = sorted.last().unwrap().1.player_id;
+            let bye_player = sorted.last().unwrap().1.user_id;
             byes.push(bye_player);
 
             used[sorted.len() - 1] = true;
@@ -129,7 +129,7 @@ impl TournamentFormat {
                 continue;
             }
 
-            let p1 = sorted[i].1.player_id;
+            let p1 = sorted[i].1.user_id;
 
             // Find next valid opponent
             let mut opponent_index = None;
@@ -139,7 +139,7 @@ impl TournamentFormat {
                     continue;
                 }
 
-                let p2 = sorted[j].1.player_id;
+                let p2 = sorted[j].1.user_id;
 
                 let pair_key = normalize_pair(p1, p2);
 
@@ -159,7 +159,7 @@ impl TournamentFormat {
                 used[i] = true;
                 used[j] = true;
 
-                let p2 = sorted[j].1.player_id;
+                let p2 = sorted[j].1.user_id;
 
                 // Alternate colors by round + board index
                 let color = if (pairings.len() + round_index) % 2 == 0 {
@@ -187,8 +187,8 @@ impl TournamentFormat {
         if round_index >= total_rounds {
             return None;
         }
-        let mut players: Vec<Option<PlayerId>> =
-            players.iter().map(|tp| Some(tp.player_id)).collect();
+        let mut players: Vec<Option<UserId>> =
+            players.iter().map(|tp| Some(tp.user_id)).collect();
         if players.len() % 2 != 0 {
             players.push(None);
         }
@@ -300,18 +300,18 @@ pub trait TournamentPlayerRepository {
     async fn increase_player_score(
         &self,
         tournament_id: TournamentId,
-        player_id: PlayerId,
+        user_id: UserId,
         score_increase: u32,
     ) -> Result<(), RepoError>;
     async fn remove_tournament_player(
         &self,
         tournament_id: TournamentId,
-        player_id: PlayerId,
+        user_id: UserId,
     ) -> Result<(), RepoError>;
     async fn set_player_seeding_score(
         &self,
         tournament_id: TournamentId,
-        player_id: PlayerId,
+        user_id: UserId,
         seeding_score: i32,
     ) -> Result<(), RepoError>;
 }

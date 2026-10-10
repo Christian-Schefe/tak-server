@@ -4,7 +4,7 @@ use tak_core::{TakGameSettings, TakPlayer};
 
 use crate::{
     domain::{
-        PlayerId,
+        UserId,
         seek::{CreateSeekError, SeekService},
     },
     ports::notification::{ListenerMessage, ListenerNotificationPort},
@@ -14,7 +14,7 @@ use crate::{
 pub trait CreateSeekUseCase {
     fn create_seek(
         &self,
-        player: PlayerId,
+        player: UserId,
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
         is_rated: bool,
@@ -40,7 +40,7 @@ impl<S: SeekService + Send + Sync + 'static, L: ListenerNotificationPort + Send 
 {
     fn create_seek(
         &self,
-        player: PlayerId,
+        player: UserId,
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
         is_rated: bool,

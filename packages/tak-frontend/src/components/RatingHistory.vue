@@ -20,7 +20,7 @@ import { Line } from 'vue-chartjs';
 Chart.register(TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 const props = defineProps<{
-  playerId: string;
+  userId: string;
 }>();
 
 const ratingRangeOptions: { label: string; value: RatingRangeOptionKey }[] = [
@@ -49,7 +49,7 @@ const ratingRange = ref<RatingRangeOptionKey>('last-30-days');
 const selectedRange = computed(() => ratingRangeOptionsMap.value[ratingRange.value]);
 
 const { data: ratingHistoryData } = useRatingHistory(
-  () => props.playerId,
+  () => props.userId,
   () => selectedRange.value.from?.getTime(),
   () => selectedRange.value.to.getTime(),
 );

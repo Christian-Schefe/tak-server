@@ -5,29 +5,28 @@ import { z } from 'zod';
 import { paginatedResponseSchema, type PaginationQuery } from '.';
 
 const playerInfo = z.object({
-  playerId: z.string(),
-  accountId: z.string(),
+  userId: z.string(),
   username: z.string(),
   participationRating: z.number().nullable(),
 });
 
-export function usePlayerInfo(playerId: MaybeRefOrGetter<string | undefined>) {
+export function usePlayerInfo(userId: MaybeRefOrGetter<string | undefined>) {
   const { fetchTyped } = useFetch();
   return useQuery({
-    queryKey: ['playerInfo', playerId],
+    queryKey: ['playerInfo', userId],
     queryFn: async () => {
-      const id = toValue(playerId) ?? '';
+      const id = toValue(userId) ?? '';
       return await fetchTyped(playerInfo, `/api/players/player/${id}`);
     },
-    enabled: computed(() => toValue(playerId) !== undefined),
+    enabled: computed(() => toValue(userId) !== undefined),
     staleTime: 1000 * 60 * 5,
   });
 }
 
-export function usePlayerInfos(playerIds: MaybeRefOrGetter<string[] | undefined>) {
+export function usePlayerInfos(userIds: MaybeRefOrGetter<string[] | undefined>) {
   const { fetchTyped } = useFetch();
   const queries = computed(() => {
-    const ids = toValue(playerIds) ?? [];
+    const ids = toValue(userIds) ?? [];
     return ids.map((id) => ({
       queryKey: ['playerInfo', id],
       queryFn: async () => {
@@ -38,27 +37,6 @@ export function usePlayerInfos(playerIds: MaybeRefOrGetter<string[] | undefined>
   });
   return useQueries({
     queries,
-  });
-}
-
-export function useAccountOrPlayerInfo(
-  id: MaybeRefOrGetter<string | undefined>,
-  type: MaybeRefOrGetter<'account' | 'player'>,
-) {
-  const { fetchTyped } = useFetch();
-  return useQuery({
-    queryKey: ['accountInfo', id, type],
-    queryFn: async () => {
-      const idVal = toValue(id) ?? '';
-      const typeVal = toValue(type);
-      if (typeVal === 'account') {
-        return await fetchTyped(playerInfo, `/api/players/account/${idVal}`);
-      } else {
-        return await fetchTyped(playerInfo, `/api/players/player/${idVal}`);
-      }
-    },
-    enabled: computed(() => toValue(id) !== undefined),
-    staleTime: 1000 * 60 * 5,
   });
 }
 
@@ -74,18 +52,18 @@ const ratingHistoryResponse = z.object({
 type RatingHistoryResponse = z.infer<typeof ratingHistoryResponse>;
 
 export function useRatingHistory(
-  playerId: MaybeRefOrGetter<string | undefined>,
+  userId: MaybeRefOrGetter<string | undefined>,
   from: MaybeRefOrGetter<number | undefined>,
   to: MaybeRefOrGetter<number | undefined>,
 ) {
   const { fetchTyped } = useFetch();
   return useQuery({
-    queryKey: ['ratingHistory', playerId, from, to],
+    queryKey: ['ratingHistory', userId, from, to],
     queryFn: async () => {
-      const playerIdVal = toValue(playerId);
+      const userIdVal = toValue(userId);
       const fromVal = toValue(from);
       const toVal = toValue(to);
-      if (playerIdVal === undefined) {
+      if (userIdVal === undefined) {
         return undefined;
       }
       const queryParams = new URLSearchParams();
@@ -97,11 +75,11 @@ export function useRatingHistory(
       }
       return await fetchTyped<RatingHistoryResponse>(
         ratingHistoryResponse,
-        `/api/players/player/${playerIdVal}/rating-history?${queryParams.toString()}`,
+        `/api/players/player/${userIdVal}/rating-history?${queryParams.toString()}`,
       );
     },
     staleTime: 1000 * 60 * 5,
-    enabled: () => toValue(playerId) !== undefined,
+    enabled: () => toValue(userId) !== undefined,
   });
 }
 
@@ -124,22 +102,22 @@ const playerStatsSchema = z.object({
 
 export type PlayerStats = z.infer<typeof playerStatsSchema>;
 
-export function usePlayerStats(playerId: MaybeRefOrGetter<string | undefined>) {
+export function usePlayerStats(userId: MaybeRefOrGetter<string | undefined>) {
   const { fetchTyped } = useFetch();
   return useQuery({
-    queryKey: ['playerStats', playerId],
+    queryKey: ['playerStats', userId],
     queryFn: async () => {
-      const id = toValue(playerId) ?? '';
+      const id = toValue(userId) ?? '';
       return await fetchTyped(playerStatsSchema, `/api/players/player/${id}/stats`);
     },
     staleTime: 1000 * 60 * 5,
-    enabled: () => toValue(playerId) !== undefined,
+    enabled: () => toValue(userId) !== undefined,
   });
 }
 
 export const playerLeaderboardSchema = paginatedResponseSchema(
   z.object({
-    playerId: z.string(),
+    userId: z.string(),
     rating: z.number(),
   }),
 );

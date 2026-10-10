@@ -48,7 +48,7 @@ const { data: games } = useGames();
 
 const opponentSeekCount = computed(() => {
   if (!seeks.value || !account.value) return undefined;
-  return seeks.value.filter((seek) => seek.creatorId !== account.value.playerId).length;
+  return seeks.value.filter((seek) => seek.creatorId !== account.value.userId).length;
 });
 
 const settingsVisible = ref(false);
@@ -163,7 +163,7 @@ function isActive(path: string) {
       </Button>
     </div>
     <div class="p-2">
-      <PlayerLabel v-if="account" :pid="account.accountId" type="account" :show-rating="false" />
+      <PlayerLabel v-if="account" :user-id="account.userId" :show-rating="false" />
     </div>
   </div>
   <SettingsModal v-model="settingsVisible" />

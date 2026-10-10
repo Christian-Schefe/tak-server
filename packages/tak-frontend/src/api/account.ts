@@ -4,36 +4,36 @@ import { useQuery, useQueryClient } from '@tanstack/vue-query';
 import { computed, toValue, type MaybeRefOrGetter } from 'vue';
 import { z } from 'zod';
 
-const accountOnlineSchema = z.object({
-  accountIds: z.array(z.string()),
+const usersOnlineSchema = z.object({
+  userIds: z.array(z.string()),
 });
 
-export function useOnlineAccounts() {
+export function useOnlineUsers() {
   const { fetchTyped } = useFetch();
   const queryClient = useQueryClient();
-  useSubscription(['accountsOnline'], 'accountsOnline', accountOnlineSchema, (data) => {
-    console.log('Received online accounts update', data);
-    queryClient.setQueryData(['ws', 'accountsOnline'], data.accountIds);
+  useSubscription(['usersOnline'], 'usersOnline', usersOnlineSchema, (data) => {
+    console.log('Received online users update', data);
+    queryClient.setQueryData(['ws', 'usersOnline'], data.userIds);
   });
   return useQuery({
-    queryKey: ['ws', 'accountsOnline'],
+    queryKey: ['ws', 'usersOnline'],
     queryFn: async () => {
       return await fetchTyped(z.array(z.string()), '/api/accounts/online');
     },
   });
 }
 
-export function useIsAccountOnline(accountId: MaybeRefOrGetter<string | undefined>) {
-  const onlineAccountsQuery = useOnlineAccounts();
+export function useIsUserOnline(userId: MaybeRefOrGetter<string | undefined>) {
+  const onlineAccountsQuery = useOnlineUsers();
   return computed(() => {
     const onlineAccounts = onlineAccountsQuery.data.value;
     if (!onlineAccounts) {
       return undefined;
     }
-    const resolvedAccountId = toValue(accountId);
-    if (resolvedAccountId === undefined) {
+    const resolvedUserId = toValue(userId);
+    if (resolvedUserId === undefined) {
       return undefined;
     }
-    return onlineAccounts.includes(resolvedAccountId);
+    return onlineAccounts.includes(resolvedUserId);
   });
 }

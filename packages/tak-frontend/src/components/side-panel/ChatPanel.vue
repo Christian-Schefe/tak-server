@@ -125,12 +125,7 @@ const formCtx = useFormContext(() => ({ chatMessage: '' }));
           class="w-full flex flex-col mt-4"
         >
           <div class="flex items-center gap-4">
-            <PlayerLabel
-              :pid="message.sender"
-              type="account"
-              :show-flag="false"
-              :show-rating="false"
-            />
+            <PlayerLabel :user-id="message.sender" :show-flag="false" :show-rating="false" />
             <p v-if="message.formattedTimestamp" class="text-sm">
               {{ message.formattedTimestamp }}
             </p>

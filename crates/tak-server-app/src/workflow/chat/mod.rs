@@ -1,4 +1,4 @@
-use crate::domain::{AccountId, ChatMessageId, chat::ChatMessage};
+use crate::domain::{UserId, ChatMessageId, chat::ChatMessage};
 
 pub mod message;
 pub mod room;
@@ -7,7 +7,7 @@ pub mod room;
 pub struct ChatMessageView {
     pub id: ChatMessageId,
     pub date: chrono::DateTime<chrono::Utc>,
-    pub sender: AccountId,
+    pub sender: UserId,
     pub message: String,
 }
 

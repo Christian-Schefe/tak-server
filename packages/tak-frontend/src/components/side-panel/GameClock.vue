@@ -9,7 +9,7 @@ import { computed } from 'vue';
 const props = defineProps<{
   game: TakGame;
   player: TakPlayer;
-  playerId: string;
+  userId: string;
 }>();
 
 const counter = useInterval(100);
@@ -22,7 +22,7 @@ const clockInfo = computed(() => {
 </script>
 <template>
   <div class="flex items-center gap-2">
-    <PlayerLabel :pid="playerId" type="player" />
+    <PlayerLabel :user-id="userId" />
     <div class="grow"></div>
     <Tag
       :class="`justify-center font-mono min-w-24`"

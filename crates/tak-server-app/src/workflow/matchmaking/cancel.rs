@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use crate::{
-    domain::{PlayerId, SeekId, seek::SeekService},
+    domain::{UserId, SeekId, seek::SeekService},
     ports::notification::{ListenerMessage, ListenerNotificationPort},
 };
 
 pub trait CancelSeekUseCase {
-    fn cancel_seeks(&self, player: PlayerId);
-    fn cancel_seek(&self, player: PlayerId, seek_id: SeekId) -> bool;
+    fn cancel_seeks(&self, player: UserId);
+    fn cancel_seek(&self, player: UserId, seek_id: SeekId) -> bool;
 }
 
 pub struct CancelSeekUseCaseImpl<S: SeekService, L: ListenerNotificationPort> {
@@ -27,7 +27,7 @@ impl<S: SeekService, L: ListenerNotificationPort> CancelSeekUseCaseImpl<S, L> {
 impl<S: SeekService, L: ListenerNotificationPort> CancelSeekUseCase
     for CancelSeekUseCaseImpl<S, L>
 {
-    fn cancel_seeks(&self, player: PlayerId) {
+    fn cancel_seeks(&self, player: UserId) {
         for cancelled_seek in self.seek_service.cancel_player_seeks(player, |_| true) {
             let message = ListenerMessage::SeekCancelled {
                 seek: cancelled_seek.into(),
@@ -36,7 +36,7 @@ impl<S: SeekService, L: ListenerNotificationPort> CancelSeekUseCase
         }
     }
 
-    fn cancel_seek(&self, player: PlayerId, seek_id: SeekId) -> bool {
+    fn cancel_seek(&self, player: UserId, seek_id: SeekId) -> bool {
         if let Some(cancelled_seek) = self.seek_service.cancel_seek(player, seek_id) {
             let message = ListenerMessage::SeekCancelled {
                 seek: cancelled_seek.into(),

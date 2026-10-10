@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     domain::{
-        AccountId, RepoRetrieveError,
+        RepoRetrieveError, UserId,
         profile::{AccountProfileRepository, ProfilePicture, ProfilePictureRepository},
     },
     workflow::account::AccountProfileView,
@@ -10,13 +10,10 @@ use crate::{
 
 #[async_trait::async_trait]
 pub trait GetProfileUseCase {
-    async fn get_profile(
-        &self,
-        account_id: &AccountId,
-    ) -> Result<AccountProfileView, GetProfileError>;
+    async fn get_profile(&self, user_id: UserId) -> Result<AccountProfileView, GetProfileError>;
     async fn get_profile_picture(
         &self,
-        account_id: &AccountId,
+        user_id: UserId,
     ) -> Result<Option<ProfilePicture>, GetProfileError>;
 }
 
@@ -44,13 +41,10 @@ impl<
     PFP: ProfilePictureRepository + Send + Sync + 'static,
 > GetProfileUseCase for GetProfileUseCaseImpl<PF, PFP>
 {
-    async fn get_profile(
-        &self,
-        account_id: &AccountId,
-    ) -> Result<AccountProfileView, GetProfileError> {
+    async fn get_profile(&self, user_id: UserId) -> Result<AccountProfileView, GetProfileError> {
         match self
             .profile_information_repo
-            .get_profile_information(&account_id)
+            .get_profile_information(user_id)
             .await
         {
             Ok(profile_information) => Ok(profile_information.into()),
@@ -62,7 +56,7 @@ impl<
             Err(RepoRetrieveError::StorageError(e)) => {
                 tracing::error!(
                     "Failed to retrieve profile information for account {}: {}",
-                    account_id,
+                    user_id,
                     e
                 );
                 Err(GetProfileError::RepositoryError)
@@ -72,13 +66,9 @@ impl<
 
     async fn get_profile_picture(
         &self,
-        account_id: &AccountId,
+        user_id: UserId,
     ) -> Result<Option<ProfilePicture>, GetProfileError> {
-        match self
-            .profile_picture_repo
-            .get_profile_picture(account_id)
-            .await
-        {
+        match self.profile_picture_repo.get_profile_picture(user_id).await {
             Ok(profile_picture) => Ok(Some(profile_picture)),
             Err(RepoRetrieveError::NotFound) => Ok(None),
             Err(RepoRetrieveError::StorageError(e)) => {

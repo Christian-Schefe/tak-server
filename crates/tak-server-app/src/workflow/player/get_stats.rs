@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     domain::{
-        PlayerId, RepoRetrieveError,
+        UserId, RepoRetrieveError,
         rating::RatingRepository,
         stats::{PlayerStats, StatsRepository},
     },
@@ -11,7 +11,7 @@ use crate::{
 
 #[async_trait::async_trait]
 pub trait GetPlayerStatsUseCase {
-    async fn get_stats(&self, player_id: PlayerId) -> Result<PlayerStatsView, GetStatsError>;
+    async fn get_stats(&self, user_id: UserId) -> Result<PlayerStatsView, GetStatsError>;
 }
 
 pub enum GetStatsError {
@@ -36,8 +36,8 @@ impl<S: StatsRepository, R: RatingRepository> GetPlayerStatsUseCaseImpl<S, R> {
 impl<S: StatsRepository + Send + Sync + 'static, R: RatingRepository + Send + Sync + 'static>
     GetPlayerStatsUseCase for GetPlayerStatsUseCaseImpl<S, R>
 {
-    async fn get_stats(&self, player_id: PlayerId) -> Result<PlayerStatsView, GetStatsError> {
-        let rating_info = match self.rating_repo.get_player_ranking(player_id).await {
+    async fn get_stats(&self, user_id: UserId) -> Result<PlayerStatsView, GetStatsError> {
+        let rating_info = match self.rating_repo.get_player_ranking(user_id).await {
             Ok(rating_info) => Some(rating_info),
             Err(RepoRetrieveError::NotFound) => None,
             Err(RepoRetrieveError::StorageError(e)) => {
@@ -45,7 +45,7 @@ impl<S: StatsRepository + Send + Sync + 'static, R: RatingRepository + Send + Sy
                 return Err(GetStatsError::Internal);
             }
         };
-        let stats = match self.stats_repo.get_player_stats(player_id).await {
+        let stats = match self.stats_repo.get_player_stats(user_id).await {
             Ok(stats) => stats,
             Err(RepoRetrieveError::NotFound) => PlayerStats {
                 rated_games_played: 0,

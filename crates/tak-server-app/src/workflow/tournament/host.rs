@@ -150,7 +150,7 @@ impl<
         let set_seeding_futures = tournament_players.into_iter().map(|player| async move {
             let seeding_score = match self
                 .rating_repository
-                .get_player_rating(player.player_id)
+                .get_player_rating(player.user_id)
                 .await
             {
                 Ok(rating) => rating.rating as i32,
@@ -159,7 +159,7 @@ impl<
                 Err(RepoRetrieveError::StorageError(e)) => {
                     tracing::error!(
                         "Failed to retrieve rating for player {}: {:?}",
-                        player.player_id,
+                        player.user_id,
                         e
                     );
                     return Err(());
@@ -167,12 +167,12 @@ impl<
             };
             if let Err(e) = self
                 .tournament_player_repository
-                .set_player_seeding_score(tournament_id, player.player_id, seeding_score)
+                .set_player_seeding_score(tournament_id, player.user_id, seeding_score)
                 .await
             {
                 tracing::error!(
                     %tournament_id,
-                    %player.player_id,
+                    %player.user_id,
                     "Failed to set tournament player seeding score: {:?}",
                     e
                 );
@@ -273,7 +273,7 @@ impl<
                 );
             })?;
 
-        all_players.sort_by_key(|x| (std::cmp::Reverse(x.seeding_score), x.player_id.0));
+        all_players.sort_by_key(|x| (std::cmp::Reverse(x.seeding_score), x.user_id.0));
 
         let rounds = match self
             .tournament_round_repository
@@ -309,21 +309,21 @@ impl<
             return Err(());
         };
 
-        let bye_futures = pairings.byes.into_iter().map(|player_id| async move {
+        let bye_futures = pairings.byes.into_iter().map(|user_id| async move {
             if let Err(e) = self
                 .tournament_player_repository
-                .increase_player_score(tournament_id, player_id, 2)
+                .increase_player_score(tournament_id, user_id, 2)
                 .await
             {
                 tracing::error!(
-                    %player_id,
+                    %user_id,
                     %tournament_id,
                     "Failed to update tournament player score: {:?}",
                     e
                 );
                 return Err(());
             }
-            Ok(player_id)
+            Ok(user_id)
         });
 
         let pairing_futures = pairings.pairings.into_iter().enumerate().map(

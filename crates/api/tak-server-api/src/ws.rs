@@ -22,7 +22,7 @@ use tak_server_api_contract::{
     },
 };
 use tak_server_app::{
-    domain::{AccountId, GameId, PlayerId, chat::ChatConversation, game::request::GameRequest},
+    domain::{GameId, UserId, chat::ChatConversation, game::request::GameRequest},
     ports::notification::{ListenerGameMessageType, ListenerMatchEventType, ListenerMessage},
     workflow::{
         chat::message::ChatSendMessageError,
@@ -164,19 +164,19 @@ async fn handle_client_message(
 ) -> Result<(), ServiceError> {
     match msg {
         ClientMessage::Authenticate { token } => {
-            let account_id = authenticate_ws_token(app, &token).await?;
+            let user_id = authenticate_ws_token(app, &token).await?;
             app.connection_driver
-                .associate_connection(&account_id, connection_id)
+                .associate_connection(user_id, connection_id)
                 .await;
             tracing::info!(
                 "WS connection {} associated with account {}",
                 connection_id,
-                &account_id
+                &user_id
             );
             Ok(())
         }
         _ => {
-            let account_id = app
+            let user_id = app
                 .connection_driver
                 .get_account_id(&connection_id)
                 .ok_or_else(|| {
@@ -184,26 +184,14 @@ async fn handle_client_message(
                         "WebSocket connection is not authenticated".to_string(),
                     )
                 })?;
-            let player_id = app
-                .app
-                .player_resolver_service
-                .resolve_player_id_by_account_id(&account_id)
-                .await
-                .map_err(|_| {
-                    ServiceError::Internal(
-                        "Failed to resolve player ID for authenticated account".to_string(),
-                    )
-                })?;
-            handle_authenticated_client_message(app, account_id, player_id, msg, connection_id)
-                .await
+            handle_authenticated_client_message(app, user_id, msg, connection_id).await
         }
     }
 }
 
 async fn handle_authenticated_client_message(
     app: &AppState,
-    account_id: AccountId,
-    player_id: PlayerId,
+    user_id: UserId,
     msg: ClientMessage,
     connection_id: ConnectionId,
 ) -> Result<(), ServiceError> {
@@ -226,7 +214,7 @@ async fn handle_authenticated_client_message(
             match app
                 .app
                 .game_do_action_use_case
-                .do_action(game_id, player_id, action)
+                .do_action(game_id, user_id, action)
                 .await
             {
                 ActionResult::Success => Ok(()),
@@ -261,12 +249,12 @@ async fn handle_authenticated_client_message(
                     account_id1,
                     account_id2,
                 } => {
-                    let Ok(account_id1) = AccountId::try_from(account_id1) else {
+                    let Ok(account_id1) = UserId::try_from(account_id1) else {
                         return Err(ServiceError::BadRequest(
                             "Invalid account ID format in private conversation".to_string(),
                         ));
                     };
-                    let Ok(account_id2) = AccountId::try_from(account_id2) else {
+                    let Ok(account_id2) = UserId::try_from(account_id2) else {
                         return Err(ServiceError::BadRequest(
                             "Invalid account ID format in private conversation".to_string(),
                         ));
@@ -280,7 +268,7 @@ async fn handle_authenticated_client_message(
             match app
                 .app
                 .chat_message_use_case
-                .send_message(&account_id, &message_target, &message)
+                .send_message(user_id, &message_target, &message)
                 .await
             {
                 Ok(_) => Ok(()),
@@ -333,11 +321,11 @@ async fn handle_authenticated_client_message(
     }
 }
 
-async fn authenticate_ws_token(app: &AppState, token: &str) -> Result<AccountId, ServiceError> {
-    let (account_id, _) = app.auth.validate_account_jwt(token).await.ok_or_else(|| {
+async fn authenticate_ws_token(app: &AppState, token: &str) -> Result<UserId, ServiceError> {
+    let (user_id, _) = app.auth.validate_account_jwt(token).await.ok_or_else(|| {
         ServiceError::Unauthorized("Invalid or expired authentication token".to_string())
     })?;
-    Ok(account_id)
+    Ok(user_id)
 }
 
 struct ConnectionEntry {
@@ -383,7 +371,7 @@ fn from_listener_game_event_type(event_type: ListenerGameMessageType) -> ServerG
             result: game_result_to_string(&game_result),
         },
         ListenerGameMessageType::GameAction {
-            player_id: _,
+            user_id: _,
             action,
             ply_index,
         } => ServerGameEventType::GameAction {
@@ -395,7 +383,7 @@ fn from_listener_game_event_type(event_type: ListenerGameMessageType) -> ServerG
         }
         ListenerGameMessageType::GameRequestChanged { request } => {
             ServerGameEventType::GameRequestChanged {
-                player_id: request.player_id.0.to_string(),
+                user_id: request.user_id.0.to_string(),
                 request: match request.request {
                     GameRequest::Draw(offer) => JsonGameRequest::Draw { offer },
                     GameRequest::Undo(request) => JsonGameRequest::Undo { request },
@@ -467,9 +455,9 @@ fn from_listener_message(message: ListenerMessage) -> Option<ServerMessage> {
         } => Some(ServerMessage::MatchEvent {
             match_id: match_id.to_string(),
             event_type: match event_type {
-                ListenerMatchEventType::MatchReadinessChanged { player_id } => {
+                ListenerMatchEventType::MatchReadinessChanged { user_id } => {
                     ServerMatchEventType::ReadinessChanged {
-                        player_id: player_id.map(|id| id.to_string()),
+                        user_id: user_id.map(|id| id.to_string()),
                     }
                 }
             },

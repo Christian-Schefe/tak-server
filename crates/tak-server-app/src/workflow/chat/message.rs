@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     domain::{
-        AccountId, ChatMessageId, RepoError,
+        ChatMessageId, RepoError, UserId,
         chat::{ChatConversation, ChatMessage, ChatRepository, ChatRoomService, ContentPolicy},
     },
     ports::{
@@ -16,7 +16,7 @@ use crate::{
 pub trait ChatMessageUseCase {
     async fn send_message(
         &self,
-        from: &AccountId,
+        from: UserId,
         conversation: &ChatConversation,
         message: &str,
     ) -> Result<(), ChatSendMessageError>;
@@ -83,13 +83,13 @@ impl<
 {
     async fn send_message(
         &self,
-        from_account_id: &AccountId,
+        from_account_id: UserId,
         conversation: &ChatConversation,
         message: &str,
     ) -> Result<(), ChatSendMessageError> {
         let is_allowed_to_send = match conversation {
             ChatConversation::Private { account_ids } => {
-                account_ids.0 == *from_account_id || account_ids.1 == *from_account_id
+                account_ids.0 == from_account_id || account_ids.1 == from_account_id
             }
             ChatConversation::Room { room_name: _ } => true,
             ChatConversation::Global => true,
@@ -135,7 +135,7 @@ impl<
                         .into_iter()
                         .map(|to_account_id| async move {
                             self.player_connection_port
-                                .get_connection_id(to_account_id)
+                                .get_connection_id(*to_account_id)
                                 .await
                         });
                 let member_connections = futures::future::join_all(member_listener_futures).await;

@@ -5,13 +5,13 @@ use sea_orm::TransactionTrait;
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, TransactionError};
 use tak_persistence_sea_orm_entities::stats;
 use tak_server_app::domain::{
-    PlayerId, RepoError, RepoRetrieveError,
+    UserId, RepoError, RepoRetrieveError,
     stats::{PlayerStats, StatsRepository},
 };
 
 pub struct StatsRepositoryImpl {
     db: DatabaseConnection,
-    stats_cache: Arc<moka::sync::Cache<PlayerId, PlayerStats>>,
+    stats_cache: Arc<moka::sync::Cache<UserId, PlayerStats>>,
 }
 
 impl StatsRepositoryImpl {
@@ -38,9 +38,9 @@ impl StatsRepositoryImpl {
         }
     }
 
-    fn stats_to_model(player_id: PlayerId, stats: &PlayerStats) -> stats::ActiveModel {
+    fn stats_to_model(user_id: UserId, stats: &PlayerStats) -> stats::ActiveModel {
         stats::ActiveModel {
-            player_id: sea_orm::Set(player_id.0),
+            user_id: sea_orm::Set(user_id.0),
             rated_games_played: sea_orm::Set(stats.rated_games_played),
             games_played: sea_orm::Set(stats.games_played),
             games_won: sea_orm::Set(stats.games_won),
@@ -56,13 +56,13 @@ impl StatsRepositoryImpl {
 impl StatsRepository for StatsRepositoryImpl {
     async fn get_player_stats(
         &self,
-        player_id: PlayerId,
+        user_id: UserId,
     ) -> Result<PlayerStats, RepoRetrieveError> {
-        if let Some(cached_stats) = self.stats_cache.get(&player_id) {
+        if let Some(cached_stats) = self.stats_cache.get(&user_id) {
             return Ok(cached_stats);
         }
 
-        let model = stats::Entity::find_by_id(player_id.0)
+        let model = stats::Entity::find_by_id(user_id.0)
             .one(&self.db)
             .await
             .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?
@@ -78,20 +78,20 @@ impl StatsRepository for StatsRepositoryImpl {
             longest_win_streak: model.longest_win_streak,
         };
 
-        self.stats_cache.insert(player_id, player_stats.clone());
+        self.stats_cache.insert(user_id, player_stats.clone());
         Ok(player_stats)
     }
 
     async fn update_player_game(
         &self,
-        player_id: PlayerId,
+        user_id: UserId,
         calc_fn: impl FnOnce(Option<PlayerStats>) -> PlayerStats + Send + 'static,
     ) -> Result<(), RepoError> {
         let res = self
             .db
             .transaction::<_, (), RepoError>(|c| {
                 Box::pin(async move {
-                    let stats_model = stats::Entity::find_by_id(player_id.0)
+                    let stats_model = stats::Entity::find_by_id(user_id.0)
                         .one(c)
                         .await
                         .map_err(|e| RepoError::StorageError(e.to_string()))?;
@@ -102,7 +102,7 @@ impl StatsRepository for StatsRepositoryImpl {
 
                     let new_stats = calc_fn(stats);
 
-                    let active_model = Self::stats_to_model(player_id, &new_stats);
+                    let active_model = Self::stats_to_model(user_id, &new_stats);
 
                     if has_stats {
                         active_model
@@ -122,7 +122,7 @@ impl StatsRepository for StatsRepositoryImpl {
 
         match res {
             Ok(result) => {
-                self.stats_cache.invalidate(&player_id);
+                self.stats_cache.invalidate(&user_id);
                 Ok(result)
             }
             Err(TransactionError::Transaction(e)) => Err(e),
@@ -130,13 +130,13 @@ impl StatsRepository for StatsRepositoryImpl {
         }
     }
 
-    async fn remove_player_stats(&self, player_id: PlayerId) -> Result<(), RepoError> {
-        match stats::Entity::delete_by_id(player_id.0)
+    async fn remove_player_stats(&self, user_id: UserId) -> Result<(), RepoError> {
+        match stats::Entity::delete_by_id(user_id.0)
             .exec(&self.db)
             .await
         {
             Ok(_) => {
-                self.stats_cache.invalidate(&player_id);
+                self.stats_cache.invalidate(&user_id);
                 Ok(())
             }
             Err(e) => Err(RepoError::StorageError(e.to_string())),

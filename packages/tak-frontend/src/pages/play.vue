@@ -21,7 +21,7 @@ const seekData = computed(() => {
   const ownSeeks: SeekEntry[] = [];
   const otherSeeks: SeekEntry[] = [];
   seeks.value?.forEach((seek) => {
-    if (seek.creatorId === account.value?.playerId) {
+    if (seek.creatorId === account.value?.userId) {
       ownSeeks.push({ type: 'own', seek });
     } else {
       otherSeeks.push({ type: 'other', seek });

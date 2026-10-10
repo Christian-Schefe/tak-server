@@ -7,7 +7,7 @@ import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 const props = defineProps<{
-  playerId: string;
+  userId: string;
 }>();
 
 const router = useRouter();
@@ -20,7 +20,7 @@ const currentPage = ref(1);
 const pageSize = 6;
 
 const { data: gameHistory } = usePlayerGameHistory(
-  () => props.playerId,
+  () => props.userId,
   () => ({
     page: currentPage.value,
     pageSize,

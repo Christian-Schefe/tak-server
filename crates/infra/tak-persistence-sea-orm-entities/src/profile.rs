@@ -4,7 +4,7 @@ use sea_orm::entity::prelude::*;
 #[sea_orm(table_name = "profile")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
-    pub account_id: Uuid,
+    pub user_id: Uuid,
     pub display_name: Option<String>,
     pub country: Option<String>,
     pub profile_picture_version: Option<u64>,

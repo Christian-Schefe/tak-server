@@ -31,14 +31,14 @@ export function useGameHistory(pagination: MaybeRefOrGetter<PaginationQuery>) {
 }
 
 export function usePlayerGameHistory(
-  playerId: MaybeRefOrGetter<string>,
+  userId: MaybeRefOrGetter<string>,
   pagination: MaybeRefOrGetter<PaginationQuery>,
 ) {
   const { fetchTyped } = useFetch();
   return useQuery({
-    queryKey: ['playerGameHistory', playerId, pagination],
+    queryKey: ['playerGameHistory', userId, pagination],
     queryFn: async () => {
-      const playerIdValue = toValue(playerId);
+      const userIdValue = toValue(userId);
       const paginationValue = toValue(pagination);
       const params = new URLSearchParams({
         page: paginationValue.page.toString(),
@@ -46,7 +46,7 @@ export function usePlayerGameHistory(
       });
       return await fetchTyped(
         gameHistorySchema,
-        `/api/history/player/${playerIdValue}?${params.toString()}`,
+        `/api/history/player/${userIdValue}?${params.toString()}`,
       );
     },
   });

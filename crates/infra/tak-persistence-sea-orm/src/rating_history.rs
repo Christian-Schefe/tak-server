@@ -6,7 +6,7 @@ use sea_orm::{
 };
 use tak_persistence_sea_orm_entities::rating_history;
 use tak_server_app::domain::{
-    PlayerId, RepoError,
+    UserId, RepoError,
     stats::{RatingHistoryEntry, RatingHistoryRange, RatingHistoryRepository},
 };
 
@@ -28,11 +28,11 @@ impl RatingHistoryRepositoryImpl {
     }
 
     fn rating_to_model(
-        player_id: PlayerId,
+        user_id: UserId,
         rating: &RatingHistoryEntry,
     ) -> rating_history::ActiveModel {
         rating_history::ActiveModel {
-            player_id: sea_orm::Set(player_id.0),
+            user_id: sea_orm::Set(user_id.0),
             timestamp: sea_orm::Set(rating.timestamp),
             rating: sea_orm::Set(rating.rating),
         }
@@ -43,12 +43,12 @@ impl RatingHistoryRepositoryImpl {
 impl RatingHistoryRepository for RatingHistoryRepositoryImpl {
     async fn get_rating_history(
         &self,
-        player_id: PlayerId,
+        user_id: UserId,
         from: Option<DateTime<Utc>>,
         to: Option<DateTime<Utc>>,
     ) -> Result<RatingHistoryRange, RepoError> {
         let entries: Vec<RatingHistoryEntry> = rating_history::Entity::find()
-            .filter(rating_history::Column::PlayerId.eq(player_id.0))
+            .filter(rating_history::Column::UserId.eq(user_id.0))
             .apply_if(from, |query, from| {
                 query.filter(rating_history::Column::Timestamp.gte(from))
             })
@@ -63,7 +63,7 @@ impl RatingHistoryRepository for RatingHistoryRepositoryImpl {
 
         let first_entry_before_range = if let Some(from) = from {
             let first_value_outside_range = rating_history::Entity::find()
-                .filter(rating_history::Column::PlayerId.eq(player_id.0))
+                .filter(rating_history::Column::UserId.eq(user_id.0))
                 .filter(rating_history::Column::Timestamp.lt(from))
                 .order_by_desc(rating_history::Column::Timestamp)
                 .one(&self.db)
@@ -82,14 +82,14 @@ impl RatingHistoryRepository for RatingHistoryRepositoryImpl {
     }
     async fn add_rating_history_entry(
         &self,
-        player_id: PlayerId,
+        user_id: UserId,
         rating: RatingHistoryEntry,
     ) -> Result<(), RepoError> {
-        let model = Self::rating_to_model(player_id, &rating);
+        let model = Self::rating_to_model(user_id, &rating);
         rating_history::Entity::insert(model)
             .on_conflict(
                 OnConflict::columns([
-                    rating_history::Column::PlayerId,
+                    rating_history::Column::UserId,
                     rating_history::Column::Timestamp,
                 ])
                 .update_column(rating_history::Column::Rating)

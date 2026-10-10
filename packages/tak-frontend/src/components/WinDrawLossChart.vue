@@ -7,10 +7,10 @@ import { Doughnut } from 'vue-chartjs';
 Chart.register(ArcElement);
 
 const props = defineProps<{
-  playerId: string;
+  userId: string;
 }>();
 
-const { data: stats } = usePlayerStats(() => props.playerId);
+const { data: stats } = usePlayerStats(() => props.userId);
 
 const wdl = computed(() => {
   if (!stats.value) {

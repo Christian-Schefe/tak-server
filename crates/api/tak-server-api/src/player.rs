@@ -5,11 +5,8 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use tak_server_app::{
-    domain::{AccountId, Pagination, PlayerId, rating::RatingQuery},
-    workflow::{
-        account::get_account::GetAccountError,
-        player::{PlayerStatsView, get_rating::GetRatingError},
-    },
+    domain::{Pagination, UserId, rating::RatingQuery},
+    workflow::player::{PlayerStatsView, get_rating::GetRatingError},
 };
 use uuid::Uuid;
 
@@ -17,38 +14,29 @@ use crate::{AppState, PaginatedResponse, PaginationQuery, ServiceError};
 
 pub fn register_routes() -> axum::Router<AppState> {
     axum::Router::new()
-        .route("/account/{account_id}", get(get_player_by_account_id))
-        .route("/player/{player_id}", get(get_player_info))
-        .route("/player/{player_id}/stats", get(get_player_stats))
-        .route(
-            "/player/{player_id}/rating-history",
-            get(get_rating_history),
-        )
+        .route("/player/{user_id}", get(get_player_info))
+        .route("/player/{user_id}/stats", get(get_player_stats))
+        .route("/player/{user_id}/rating-history", get(get_rating_history))
         .route("/leaderboard", get(query_player_ratings))
 }
 
 async fn get_player_info_helper(
     app: &AppState,
-    player_id: PlayerId,
+    user_id: UserId,
 ) -> Result<PlayerInfo, ServiceError> {
-    let (account_id, account) = match app.app.get_account_workflow.get_account(player_id).await {
-        Ok(account) => account,
-        Err(GetAccountError::AccountNotFound) => {
+    let account = match app.auth.get_account(user_id).await {
+        Ok(Some(account)) => account,
+        Ok(None) => {
             return Err(ServiceError::NotFound("Player not found".to_string()));
         }
-        Err(GetAccountError::RepositoryError) => {
+        Err(_) => {
             return Err(ServiceError::Internal(
                 "Failed to retrieve player account".to_string(),
             ));
         }
     };
 
-    let participation_rating = match app
-        .app
-        .player_get_rating_use_case
-        .get_rating(player_id)
-        .await
-    {
+    let participation_rating = match app.app.player_get_rating_use_case.get_rating(user_id).await {
         Ok(rating) => rating,
         Err(GetRatingError::Internal) => {
             return Err(ServiceError::Internal(
@@ -58,8 +46,7 @@ async fn get_player_info_helper(
     };
 
     Ok(PlayerInfo {
-        player_id: player_id.to_string(),
-        account_id: account_id.to_string(),
+        user_id: user_id.to_string(),
         username: account.username,
         participation_rating,
     })
@@ -67,69 +54,46 @@ async fn get_player_info_helper(
 
 async fn get_player_info(
     State(app): State<AppState>,
-    Path(player_id): Path<String>,
+    Path(user_id): Path<String>,
 ) -> Result<Json<PlayerInfo>, ServiceError> {
-    let player_id = PlayerId(
-        Uuid::parse_str(&player_id)
+    let user_id = UserId(
+        Uuid::parse_str(&user_id)
             .map_err(|_| ServiceError::BadRequest("Invalid player ID".to_string()))?,
     );
-    get_player_info_helper(&app, player_id).await.map(Json)
+    get_player_info_helper(&app, user_id).await.map(Json)
 }
 
 async fn get_player_stats(
     State(app): State<AppState>,
-    Path(player_id): Path<String>,
+    Path(user_id): Path<String>,
 ) -> Result<Json<JsonPlayerStatsInfo>, ServiceError> {
-    let player_id = PlayerId(
-        Uuid::parse_str(&player_id)
+    let user_id = UserId(
+        Uuid::parse_str(&user_id)
             .map_err(|_| ServiceError::BadRequest("Invalid player ID".to_string()))?,
     );
     let stats = app
         .app
         .get_stats_use_case
-        .get_stats(player_id)
+        .get_stats(user_id)
         .await
         .map_err(|_| ServiceError::Internal("Failed to retrieve player stats".to_string()))?;
 
     Ok(Json(stats.into()))
 }
 
-async fn get_player_by_account_id(
-    State(app): State<AppState>,
-    Path(account_id): Path<String>,
-) -> Result<Json<PlayerInfo>, ServiceError> {
-    let Ok(account_id) = AccountId::try_from(account_id) else {
-        return Err(ServiceError::BadRequest(
-            "Invalid account ID format".to_string(),
-        ));
-    };
-    let Some(_) = app.auth.get_account(&account_id).await else {
-        return Err(ServiceError::NotFound("Account not found".to_string()));
-    };
-
-    let player_id = app
-        .app
-        .player_resolver_service
-        .resolve_player_id_by_account_id(&account_id)
-        .await
-        .map_err(|_| ServiceError::Internal("Failed to resolve player ID".to_string()))?;
-
-    get_player_info_helper(&app, player_id).await.map(Json)
-}
-
 async fn get_rating_history(
     State(app): State<AppState>,
-    Path(player_id): Path<String>,
+    Path(user_id): Path<String>,
     Query(query): Query<RatingHistoryQuery>,
 ) -> Result<Json<JsonRatingHistory>, ServiceError> {
-    let player_id = PlayerId(
-        Uuid::parse_str(&player_id)
+    let user_id = UserId(
+        Uuid::parse_str(&user_id)
             .map_err(|_| ServiceError::BadRequest("Invalid player ID".to_string()))?,
     );
     match app
         .app
         .player_get_rating_use_case
-        .get_rating_history(player_id, query.from.map(|t| t.0), query.to.map(|t| t.0))
+        .get_rating_history(user_id, query.from.map(|t| t.0), query.to.map(|t| t.0))
         .await
     {
         Ok(history) => Ok(Json(JsonRatingHistory {
@@ -157,7 +121,7 @@ async fn get_rating_history(
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct JsonRatingEntry {
-    player_id: String,
+    user_id: String,
     rating: f64,
 }
 
@@ -179,8 +143,8 @@ async fn query_player_ratings(
             items: response
                 .items
                 .into_iter()
-                .map(|(player_id, rating)| JsonRatingEntry {
-                    player_id: player_id.to_string(),
+                .map(|(user_id, rating)| JsonRatingEntry {
+                    user_id: user_id.to_string(),
                     rating,
                 })
                 .collect(),
@@ -219,8 +183,7 @@ struct JsonRatingHistoryEntry {
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct PlayerInfo {
-    player_id: String,
-    account_id: String,
+    user_id: String,
     username: String,
     participation_rating: Option<f64>,
 }

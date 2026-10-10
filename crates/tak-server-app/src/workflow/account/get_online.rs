@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use crate::{domain::AccountId, ports::connection::AccountOnlineStatusPort};
+use crate::{domain::UserId, ports::connection::AccountOnlineStatusPort};
 
 pub trait GetOnlineAccountsUseCase {
-    fn get_online_accounts(&self) -> Vec<AccountId>;
+    fn get_online_accounts(&self) -> Vec<UserId>;
 }
 
 pub struct GetOnlineAccountsUseCaseImpl<P: AccountOnlineStatusPort> {
@@ -25,7 +25,7 @@ impl<P> GetOnlineAccountsUseCase for GetOnlineAccountsUseCaseImpl<P>
 where
     P: AccountOnlineStatusPort + Send + Sync + 'static,
 {
-    fn get_online_accounts(&self) -> Vec<AccountId> {
+    fn get_online_accounts(&self) -> Vec<UserId> {
         self.account_online_status_port.get_online_accounts()
     }
 }

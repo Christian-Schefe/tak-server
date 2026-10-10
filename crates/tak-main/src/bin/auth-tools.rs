@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use std::{path::PathBuf, sync::Arc};
 use tak_auth::AuthService;
-use tak_server_app::{domain::AccountId, ports::authentication::AuthenticationPort};
+use tak_server_app::{domain::UserId, ports::authentication::AuthenticationPort};
 
 #[derive(Parser)]
 struct Cli {
@@ -35,21 +35,21 @@ async fn main() {
 
     match cli.command {
         Commands::SetAdmin { id } => {
-            let account_id = AccountId::try_from(id.clone()).expect("Invalid account ID format");
-            let Some(acc) = auth_service.get_account(&account_id).await else {
+            let user_id = UserId::try_from(id.clone()).expect("Invalid account ID format");
+            let Ok(Some(acc)) = auth_service.get_account(user_id).await else {
                 println!("Account with id '{}' not found", id);
                 return;
             };
             println!("Setting account {:?} to admin", acc);
             match auth_service
                 .set_role(
-                    &account_id,
+                    user_id,
                     tak_server_app::domain::moderation::AccountRole::Admin,
                 )
                 .await
             {
-                Ok(_) => println!("Account {} set to admin", account_id.to_string()),
-                Err(_) => println!("Failed to set account {} to admin", account_id.to_string()),
+                Ok(_) => println!("Account {} set to admin", user_id.to_string()),
+                Err(_) => println!("Failed to set account {} to admin", user_id.to_string()),
             }
         }
     }

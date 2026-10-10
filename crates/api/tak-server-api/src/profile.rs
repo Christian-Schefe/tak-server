@@ -9,7 +9,7 @@ use axum::{
     routing::{get, post},
 };
 use tak_server_app::{
-    domain::{AccountId, profile::ProfilePictureFileType},
+    domain::{UserId, profile::ProfilePictureFileType},
     workflow::account::AccountProfileView,
 };
 
@@ -17,46 +17,46 @@ use crate::{AppState, ServiceError, auth::Auth};
 
 pub fn register_routes() -> axum::Router<AppState> {
     axum::Router::new()
-        .route("/{account_id}", get(get_account_profile))
-        .route("/{account_id}", post(update_account_profile))
-        .route("/{account_id}/picture", get(get_profile_picture))
-        .route("/{account_id}/picture", post(set_profile_picture))
+        .route("/{user_id}", get(get_profile))
+        .route("/{user_id}", post(update_profile))
+        .route("/{user_id}/picture", get(get_profile_picture))
+        .route("/{user_id}/picture", post(set_profile_picture))
 }
 
-async fn get_account_profile(
+async fn get_profile(
     State(app): State<AppState>,
-    Path(account_id): Path<String>,
+    Path(user_id): Path<String>,
 ) -> Result<Json<PlayerProfileInfo>, ServiceError> {
-    let Ok(account_id) = AccountId::try_from(account_id) else {
+    let Ok(user_id) = UserId::try_from(user_id) else {
         return Err(ServiceError::BadRequest(
             "Invalid account ID format".to_string(),
         ));
     };
-    let Some(_) = app.auth.get_account(&account_id).await else {
+    let Ok(Some(_)) = app.auth.get_account(user_id).await else {
         return Err(ServiceError::NotFound("Account not found".to_string()));
     };
     let profile = app
         .app
         .get_profile_use_case
-        .get_profile(&account_id)
+        .get_profile(user_id)
         .await
         .map_err(|_| ServiceError::Internal("Failed to retrieve player profile".to_string()))?;
 
     Ok(Json(profile.into()))
 }
 
-async fn update_account_profile(
+async fn update_profile(
     auth: Auth,
     State(app): State<AppState>,
-    Path(account_id): Path<String>,
+    Path(user_id): Path<String>,
     Json(payload): Json<PlayerProfileUpdate>,
 ) -> Result<(), ServiceError> {
-    let Ok(account_id) = AccountId::try_from(account_id) else {
+    let Ok(user_id) = UserId::try_from(user_id) else {
         return Err(ServiceError::BadRequest(
             "Invalid account ID format".to_string(),
         ));
     };
-    if account_id != auth.account_id {
+    if user_id != auth.user_id {
         return Err(ServiceError::Forbidden(
             "You can only update your own profile".to_string(),
         ));
@@ -71,7 +71,7 @@ async fn update_account_profile(
 
     app.app
         .update_profile_use_case
-        .update_profile(&auth.account_id, payload.display_name, country)
+        .update_profile(auth.user_id, payload.display_name, country)
         .await
         .map_err(|_| ServiceError::Internal("Failed to update player profile".to_string()))
 }
@@ -86,21 +86,21 @@ struct VersionQuery {
 
 async fn get_profile_picture(
     State(app): State<AppState>,
-    Path(account_id): Path<String>,
+    Path(user_id): Path<String>,
     Query(_version_query): Query<VersionQuery>,
 ) -> Result<Response, ServiceError> {
-    let Ok(account_id) = AccountId::try_from(account_id) else {
+    let Ok(user_id) = UserId::try_from(user_id) else {
         return Err(ServiceError::BadRequest(
             "Invalid account ID format".to_string(),
         ));
     };
-    let Some(_) = app.auth.get_account(&account_id).await else {
+    let Ok(Some(_)) = app.auth.get_account(user_id).await else {
         return Err(ServiceError::NotFound("Account not found".to_string()));
     };
     let profile_picture = app
         .app
         .get_profile_use_case
-        .get_profile_picture(&account_id)
+        .get_profile_picture(user_id)
         .await
         .map_err(|_| ServiceError::Internal("Failed to retrieve profile picture".to_string()))?;
     let Some(profile_picture) = profile_picture else {
@@ -122,15 +122,15 @@ async fn get_profile_picture(
 async fn set_profile_picture(
     auth: Auth,
     State(app): State<AppState>,
-    Path(account_id): Path<String>,
+    Path(user_id): Path<String>,
     mut multipart: Multipart,
 ) -> Result<(), ServiceError> {
-    let Ok(account_id) = AccountId::try_from(account_id) else {
+    let Ok(user_id) = UserId::try_from(user_id) else {
         return Err(ServiceError::BadRequest(
             "Invalid account ID format".to_string(),
         ));
     };
-    if account_id != auth.account_id {
+    if user_id != auth.user_id {
         return Err(ServiceError::Forbidden(
             "You can only update your own profile".to_string(),
         ));
@@ -161,7 +161,7 @@ async fn set_profile_picture(
         match app
             .app
             .update_profile_use_case
-            .set_profile_picture(&auth.account_id, img)
+            .set_profile_picture(auth.user_id, img)
             .await
         {
             Ok(_) => (),

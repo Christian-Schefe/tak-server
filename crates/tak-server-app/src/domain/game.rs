@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::domain::{
-    GameId, MatchId, PlayerId,
+    GameId, MatchId, UserId,
     game::request::{GameRequest, GameRequestSystem, GameRequestType},
 };
 use dashmap::DashMap;
@@ -62,15 +62,15 @@ pub enum GameOverEventType {
 #[derive(Clone, Debug)]
 pub struct GameMetadata {
     pub date: chrono::DateTime<chrono::Utc>,
-    pub white_id: PlayerId,
-    pub black_id: PlayerId,
+    pub white_id: UserId,
+    pub black_id: UserId,
     pub settings: TakGameSettings,
     pub is_rated: bool,
     pub match_id: Option<MatchId>,
 }
 
 impl GameMetadata {
-    pub fn get_opponent(&self, player: PlayerId) -> Option<PlayerId> {
+    pub fn get_opponent(&self, player: UserId) -> Option<UserId> {
         if player == self.white_id {
             Some(self.black_id)
         } else if player == self.black_id {
@@ -79,14 +79,14 @@ impl GameMetadata {
             None
         }
     }
-    pub fn get_player_id(&self, player: TakPlayer) -> PlayerId {
+    pub fn get_player_id(&self, player: TakPlayer) -> UserId {
         match player {
             TakPlayer::White => self.white_id,
             TakPlayer::Black => self.black_id,
         }
     }
 
-    pub fn get_player(&self, id: PlayerId) -> Option<TakPlayer> {
+    pub fn get_player(&self, id: UserId) -> Option<TakPlayer> {
         if id == self.white_id {
             Some(TakPlayer::White)
         } else if id == self.black_id {
@@ -99,7 +99,7 @@ impl GameMetadata {
 
 #[derive(Clone, Debug)]
 pub struct PlayerGameRequest {
-    pub player_id: PlayerId,
+    pub user_id: UserId,
     pub request: GameRequest,
 }
 
@@ -141,8 +141,8 @@ pub trait GameService {
     fn create_game_metadata(
         &self,
         date: chrono::DateTime<chrono::Utc>,
-        white_id: PlayerId,
-        black_id: PlayerId,
+        white_id: UserId,
+        black_id: UserId,
         is_rated: bool,
         game_settings: TakGameSettings,
         match_id: Option<MatchId>,
@@ -155,46 +155,46 @@ pub trait GameService {
     fn check_disconnect_timeout(
         &self,
         game_id: GameId,
-        player: PlayerId,
+        player: UserId,
         disconnected_duration: Duration,
         now: Instant,
     ) -> GamePlayerActionResult<CheckDisconnectTimeoutResult>;
     fn do_action(
         &self,
         game_id: GameId,
-        player: PlayerId,
+        player: UserId,
         action: TakAction,
         now: Instant,
     ) -> GamePlayerActionResult<DoActionResult>;
     fn resign(
         &self,
         game_id: GameId,
-        player: PlayerId,
+        player: UserId,
         now: Instant,
     ) -> GamePlayerActionResult<FinishedGame>;
     fn abort(
         &self,
         game_id: GameId,
-        player: PlayerId,
+        player: UserId,
         now: Instant,
     ) -> GamePlayerActionResult<Option<FinishedGame>>;
     fn set_request(
         &self,
         game_id: GameId,
-        player: PlayerId,
+        player: UserId,
         request: GameRequest,
         now: Instant,
     ) -> GamePlayerActionResult<Option<(PlayerGameRequest, TakTimeInfo)>>;
     fn accept_draw_request(
         &self,
         game_id: GameId,
-        player: PlayerId,
+        player: UserId,
         now: Instant,
     ) -> GamePlayerActionResult<Option<(PlayerGameRequest, TakTimeInfo, FinishedGame)>>;
     fn accept_undo_request(
         &self,
         game_id: GameId,
-        player: PlayerId,
+        player: UserId,
         now: Instant,
     ) -> GamePlayerActionResult<
         Option<(PlayerGameRequest, TakTimeInfo, Option<GameUndoActionRecord>)>,
@@ -202,7 +202,7 @@ pub trait GameService {
     fn accept_more_time_request(
         &self,
         game_id: GameId,
-        player: PlayerId,
+        player: UserId,
         now: Instant,
     ) -> GamePlayerActionResult<Option<(PlayerGameRequest, TakTimeInfo)>>;
 }
@@ -296,7 +296,7 @@ impl GameServiceImpl {
     fn game_player_action<R, FR>(
         &self,
         game_id: GameId,
-        player: PlayerId,
+        player: UserId,
         action_fn: impl FnOnce(
             &mut OngoingGame,
             TakPlayer,
@@ -337,8 +337,8 @@ impl GameService for GameServiceImpl {
     fn create_game_metadata(
         &self,
         date: chrono::DateTime<chrono::Utc>,
-        white_id: PlayerId,
-        black_id: PlayerId,
+        white_id: UserId,
+        black_id: UserId,
         is_rated: bool,
         game_settings: TakGameSettings,
         match_id: Option<MatchId>,
@@ -378,7 +378,7 @@ impl GameService for GameServiceImpl {
     fn do_action(
         &self,
         game_id: GameId,
-        player: PlayerId,
+        player: UserId,
         action: TakAction,
         now: Instant,
     ) -> GamePlayerActionResult<DoActionResult> {
@@ -443,7 +443,7 @@ impl GameService for GameServiceImpl {
     fn resign(
         &self,
         game_id: GameId,
-        player: PlayerId,
+        player: UserId,
         now: Instant,
     ) -> GamePlayerActionResult<FinishedGame> {
         self.game_player_action(
@@ -465,7 +465,7 @@ impl GameService for GameServiceImpl {
     fn abort(
         &self,
         game_id: GameId,
-        player: PlayerId,
+        player: UserId,
         now: Instant,
     ) -> GamePlayerActionResult<Option<FinishedGame>> {
         self.game_player_action(
@@ -510,7 +510,7 @@ impl GameService for GameServiceImpl {
     fn set_request(
         &self,
         game_id: GameId,
-        player: PlayerId,
+        player: UserId,
         request: GameRequest,
         now: Instant,
     ) -> GamePlayerActionResult<Option<(PlayerGameRequest, TakTimeInfo)>> {
@@ -539,7 +539,7 @@ impl GameService for GameServiceImpl {
                         GameControl::Keep,
                         Some((
                             PlayerGameRequest {
-                                player_id: player,
+                                user_id: player,
                                 request,
                             },
                             time_info,
@@ -554,7 +554,7 @@ impl GameService for GameServiceImpl {
     fn accept_draw_request(
         &self,
         game_id: GameId,
-        player: PlayerId,
+        player: UserId,
         now: Instant,
     ) -> GamePlayerActionResult<Option<(PlayerGameRequest, TakTimeInfo, FinishedGame)>> {
         self.game_player_action(
@@ -590,7 +590,7 @@ impl GameService for GameServiceImpl {
                         GameControl::Remove,
                         Some((
                             PlayerGameRequest {
-                                player_id: opponent_id,
+                                user_id: opponent_id,
                                 request: GameRequest::Draw(false),
                             },
                             time_info,
@@ -605,7 +605,7 @@ impl GameService for GameServiceImpl {
     fn accept_undo_request(
         &self,
         game_id: GameId,
-        player: PlayerId,
+        player: UserId,
         now: Instant,
     ) -> GamePlayerActionResult<
         Option<(PlayerGameRequest, TakTimeInfo, Option<GameUndoActionRecord>)>,
@@ -649,7 +649,7 @@ impl GameService for GameServiceImpl {
                         GameControl::Keep,
                         Some((
                             PlayerGameRequest {
-                                player_id: opponent_id,
+                                user_id: opponent_id,
                                 request: GameRequest::Undo(false),
                             },
                             time_info,
@@ -665,7 +665,7 @@ impl GameService for GameServiceImpl {
     fn accept_more_time_request(
         &self,
         game_id: GameId,
-        player: PlayerId,
+        player: UserId,
         now: Instant,
     ) -> GamePlayerActionResult<Option<(PlayerGameRequest, TakTimeInfo)>> {
         self.game_player_action(
@@ -701,7 +701,7 @@ impl GameService for GameServiceImpl {
                         GameControl::Keep,
                         Some((
                             PlayerGameRequest {
-                                player_id: opponent_id,
+                                user_id: opponent_id,
                                 request: GameRequest::MoreTime(None),
                             },
                             time_info,
@@ -740,7 +740,7 @@ impl GameService for GameServiceImpl {
     fn check_disconnect_timeout(
         &self,
         game_id: GameId,
-        player: PlayerId,
+        player: UserId,
         disconnected_duration: Duration,
         now: Instant,
     ) -> GamePlayerActionResult<CheckDisconnectTimeoutResult> {

@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Instant};
 
 use crate::{
     domain::{
-        GameId, PlayerId,
+        GameId, UserId,
         game::{
             CheckDisconnectTimeoutResult, CheckTimeoutResult, GamePlayerActionResult, GameService,
         },
@@ -20,7 +20,7 @@ pub trait ObserveGameTimeoutUseCase {
     async fn check_game_timeout(&self, game_id: GameId) -> ObserveOutcome;
     async fn check_player_timeout(
         &self,
-        player_id: PlayerId,
+        user_id: UserId,
         disconnected_at: Instant,
     ) -> ObserveOutcome;
 }
@@ -62,7 +62,7 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
 
     async fn check_player_timeout(
         &self,
-        player_id: PlayerId,
+        user_id: UserId,
         disconnected_at: Instant,
     ) -> ObserveOutcome {
         let now = Instant::now();
@@ -71,7 +71,7 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
             .game_service
             .get_games()
             .filter(|game| {
-                game.metadata.white_id == player_id || game.metadata.black_id == player_id
+                game.metadata.white_id == user_id || game.metadata.black_id == user_id
             })
             .collect::<Vec<_>>();
 
@@ -80,14 +80,14 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
         for game in games {
             match self.game_service.check_disconnect_timeout(
                 game.game_id,
-                player_id,
+                user_id,
                 disconnected_duration,
                 now,
             ) {
                 GamePlayerActionResult::GameNotFound | GamePlayerActionResult::NotAPlayerInGame => {
                     tracing::warn!(
                         "Received unexpected result when checking disconnect timeout for player {:?} in game {:?}",
-                        player_id,
+                        user_id,
                         game.game_id
                     );
                 }
@@ -98,7 +98,7 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
                     CheckDisconnectTimeoutResult::TimedOut(ended_game) => {
                         tracing::info!(
                             "Player {:?} timed out in game {:?} after being disconnected for {:?}",
-                            player_id,
+                            user_id,
                             game.game_id,
                             disconnected_duration
                         );

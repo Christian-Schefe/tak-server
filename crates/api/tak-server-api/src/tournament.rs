@@ -7,7 +7,6 @@ use tak_server_app::{
         TournamentId,
         tournament::{TournamentFormat, TournamentStatus},
     },
-    services::player_resolver::ResolveError,
     workflow::tournament::{
         TournamentDetailView, TournamentMetadataView, TournamentView,
         register::TournamentRegistrationError,
@@ -99,20 +98,9 @@ async fn register_player_to_tournament(
             .parse()
             .map_err(|_| ServiceError::BadRequest("Invalid tournament ID".to_string()))?,
     );
-    let player_id = app
-        .app
-        .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account_id)
-        .await
-        .map_err(|ResolveError::Internal| {
-            ServiceError::Internal(format!(
-                "Failed to resolve player id for account {}",
-                auth.account_id
-            ))
-        })?;
     app.app
         .tournament_player_registration_use_case
-        .register_player_in_tournament(tournament_id, player_id)
+        .register_player_in_tournament(tournament_id, auth.user_id)
         .await
         .map_err(|e| match e {
             TournamentRegistrationError::TournamentNotFound => {
@@ -137,20 +125,9 @@ async fn unregister_player_from_tournament(
             .parse()
             .map_err(|_| ServiceError::BadRequest("Invalid tournament ID".to_string()))?,
     );
-    let player_id = app
-        .app
-        .player_resolver_service
-        .resolve_player_id_by_account_id(&auth.account_id)
-        .await
-        .map_err(|ResolveError::Internal| {
-            ServiceError::Internal(format!(
-                "Failed to resolve player id for account {}",
-                auth.account_id
-            ))
-        })?;
     app.app
         .tournament_player_registration_use_case
-        .unregister_player_from_tournament(tournament_id, player_id)
+        .unregister_player_from_tournament(tournament_id, auth.user_id)
         .await
         .map_err(|e| match e {
             TournamentRegistrationError::TournamentNotFound => {
@@ -367,8 +344,8 @@ impl JsonTournamentDetail {
             players: tournament
                 .player_scores
                 .iter()
-                .map(|(player_id, score)| JsonTournamentPlayer {
-                    id: player_id.to_string(),
+                .map(|(user_id, score)| JsonTournamentPlayer {
+                    id: user_id.to_string(),
                     score: *score,
                 })
                 .collect(),

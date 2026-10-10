@@ -5,13 +5,13 @@ use country_code_enum::CountryCode;
 use sea_orm::{DatabaseConnection, EntityTrait, Iterable, sea_query::OnConflict};
 use tak_persistence_sea_orm_entities::profile;
 use tak_server_app::domain::{
-    AccountId, RepoError, RepoRetrieveError,
+    RepoError, RepoRetrieveError, UserId,
     profile::{AccountProfile, AccountProfileRepository, ProfilePictureVersion},
 };
 
 pub struct ProfileRepositoryImpl {
     db: DatabaseConnection,
-    profile_cache: Arc<moka::sync::Cache<AccountId, AccountProfile>>,
+    profile_cache: Arc<moka::sync::Cache<UserId, AccountProfile>>,
 }
 
 impl ProfileRepositoryImpl {
@@ -31,11 +31,11 @@ impl ProfileRepositoryImpl {
 impl AccountProfileRepository for ProfileRepositoryImpl {
     async fn insert_profile_information(
         &self,
-        account_id: &AccountId,
+        user_id: UserId,
         profile_information: AccountProfile,
     ) -> Result<(), RepoError> {
         let active_model = profile::ActiveModel {
-            account_id: sea_orm::ActiveValue::Set(account_id.0),
+            user_id: sea_orm::ActiveValue::Set(user_id.0),
             display_name: sea_orm::ActiveValue::Set(profile_information.display_name.clone()),
             country: sea_orm::ActiveValue::Set(profile_information.country.map(|x| x.to_string())),
             profile_picture_version: sea_orm::ActiveValue::Set(
@@ -44,10 +44,10 @@ impl AccountProfileRepository for ProfileRepositoryImpl {
         };
         profile::Entity::insert(active_model)
             .on_conflict(
-                OnConflict::column(profile::Column::AccountId)
+                OnConflict::column(profile::Column::UserId)
                     .update_columns(
                         profile::Column::iter()
-                            .filter(|c| !matches!(c, profile::Column::AccountId))
+                            .filter(|c| !matches!(c, profile::Column::UserId))
                             .collect::<Vec<_>>(),
                     )
                     .to_owned(),
@@ -57,19 +57,19 @@ impl AccountProfileRepository for ProfileRepositoryImpl {
             .map_err(|e| RepoError::StorageError(e.to_string()))?;
 
         self.profile_cache
-            .insert(account_id.clone(), profile_information);
+            .insert(user_id.clone(), profile_information);
         Ok(())
     }
 
     async fn get_profile_information(
         &self,
-        account_id: &AccountId,
+        user_id: UserId,
     ) -> Result<AccountProfile, RepoRetrieveError> {
-        if let Some(cached_profile) = self.profile_cache.get(account_id) {
+        if let Some(cached_profile) = self.profile_cache.get(&user_id) {
             return Ok(cached_profile);
         }
 
-        let profile_model = profile::Entity::find_by_id(account_id.0)
+        let profile_model = profile::Entity::find_by_id(user_id.0)
             .one(&self.db)
             .await
             .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
@@ -84,7 +84,7 @@ impl AccountProfileRepository for ProfileRepositoryImpl {
                 profile_picture_version: model.profile_picture_version.map(ProfilePictureVersion),
             };
             self.profile_cache
-                .insert(account_id.clone(), profile_information.clone());
+                .insert(user_id.clone(), profile_information.clone());
             Ok(profile_information)
         } else {
             Err(RepoRetrieveError::NotFound)

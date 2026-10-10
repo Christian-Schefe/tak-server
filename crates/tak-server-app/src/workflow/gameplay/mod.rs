@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use tak_core::{TakFinishedGame, TakGameSettings, TakOngoingGame};
 
 use crate::domain::{
-    GameId, MatchId, PlayerId,
+    GameId, MatchId, UserId,
     game::{FinishedGame, GameMetadata, OngoingGame, request::GameRequests},
 };
 
@@ -18,8 +18,8 @@ pub mod timeout;
 #[derive(Clone, Debug)]
 pub struct GameMetadataView {
     pub date: DateTime<Utc>,
-    pub white_id: PlayerId,
-    pub black_id: PlayerId,
+    pub white_id: UserId,
+    pub black_id: UserId,
     pub is_rated: bool,
     pub settings: TakGameSettings,
     pub match_id: Option<MatchId>,

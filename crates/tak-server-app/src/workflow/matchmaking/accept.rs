@@ -4,7 +4,7 @@ use tak_core::{TakPlayer, TakTimeSettings};
 
 use crate::{
     domain::{
-        PlayerId, SeekId,
+        UserId, SeekId,
         matches::{Match, MatchMode, MatchRepository, MatchSettings},
         seek::SeekService,
     },
@@ -14,7 +14,7 @@ use crate::{
 
 #[async_trait::async_trait]
 pub trait AcceptSeekUseCase {
-    async fn accept_seek(&self, player: PlayerId, seek_id: SeekId) -> Result<(), AcceptSeekError>;
+    async fn accept_seek(&self, player: UserId, seek_id: SeekId) -> Result<(), AcceptSeekError>;
 }
 
 pub struct AcceptSeekUseCaseImpl<
@@ -65,7 +65,7 @@ impl<
 > AcceptSeekUseCase for AcceptSeekUseCaseImpl<S, M, L, C>
 {
     #[tracing::instrument(skip(self))]
-    async fn accept_seek(&self, player: PlayerId, seek_id: SeekId) -> Result<(), AcceptSeekError> {
+    async fn accept_seek(&self, player: UserId, seek_id: SeekId) -> Result<(), AcceptSeekError> {
         let seek = self
             .seek_service
             .remove_seek_if(seek_id, |s| s.creator_id != player)

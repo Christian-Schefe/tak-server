@@ -5,6 +5,7 @@ use tak_player_connection::PlayerConnectionDriver;
 use tak_server_app::Application;
 
 pub use auth::ApiAuthPort;
+use tower_http::csrf::CsrfLayer;
 pub use ws::WsService;
 
 mod account;
@@ -42,6 +43,8 @@ pub async fn serve(
         connection_driver,
     };
 
+    let csrf_layer = CsrfLayer::new();
+
     let router = Router::new()
         .route("/ws", get(ws::ws_handler))
         .nest("/seeks", seek::register_routes())
@@ -54,7 +57,8 @@ pub async fn serve(
         .nest("/accounts", account::register_routes())
         .nest("/players", player::register_routes())
         .nest("/profiles", profile::register_routes())
-        .nest("/history", history::register_routes());
+        .nest("/history", history::register_routes())
+        .layer(csrf_layer);
 
     let port = std::env::var("TAK_HTTP_API_PORT")
         .expect("TAK_HTTP_API_PORT must be set")

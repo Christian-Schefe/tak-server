@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::domain::{
-    MatchId, PlayerId, TournamentId,
+    MatchId, UserId, TournamentId,
     matches::MatchSettings,
     tournament::{
         Tournament, TournamentFormat, TournamentMetadata, TournamentPlayer, TournamentRound,
@@ -31,14 +31,14 @@ pub struct TournamentView {
 #[derive(Clone, Debug)]
 pub struct TournamentDetailView {
     pub tournament: TournamentView,
-    pub player_scores: HashMap<PlayerId, u32>,
+    pub player_scores: HashMap<UserId, u32>,
     pub rounds: Vec<TournamentRoundView>,
 }
 
 #[derive(Clone, Debug)]
 pub struct TournamentRoundView {
     pub matches: Vec<MatchId>,
-    pub byes: Vec<PlayerId>,
+    pub byes: Vec<UserId>,
 }
 
 impl TournamentMetadataView {
@@ -72,7 +72,7 @@ impl TournamentDetailView {
             tournament: TournamentView::from_tournament(tournament_id, tournament),
             player_scores: tournament_players
                 .into_iter()
-                .map(|tp| (tp.player_id, tp.score))
+                .map(|tp| (tp.user_id, tp.score))
                 .collect(),
             rounds: rounds
                 .into_iter()

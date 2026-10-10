@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, Query, State},
 };
 use tak_server_api_contract::ws::JsonChatMessage;
-use tak_server_app::domain::{AccountId, ChatMessageId, chat::ChatConversation};
+use tak_server_app::domain::{UserId, ChatMessageId, chat::ChatConversation};
 use unordered_pair::UnorderedPair;
 
 use crate::{AppState, ServiceError};
@@ -58,10 +58,10 @@ async fn get_chat_messages(
                 ));
             }
             let account_ids = UnorderedPair(
-                AccountId::try_from(parts[1].to_string()).map_err(|_| {
+                UserId::try_from(parts[1].to_string()).map_err(|_| {
                     ServiceError::BadRequest("Invalid account ID in conversation ID".to_string())
                 })?,
-                AccountId::try_from(parts[2].to_string()).map_err(|_| {
+                UserId::try_from(parts[2].to_string()).map_err(|_| {
                     ServiceError::BadRequest("Invalid account ID in conversation ID".to_string())
                 })?,
             );

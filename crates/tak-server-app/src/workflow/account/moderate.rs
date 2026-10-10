@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     domain::{
-        AccountId,
+        UserId,
         moderation::{AccountRole, ModerationFlag, PermissionPolicy},
     },
     ports::{
@@ -15,44 +15,44 @@ use crate::{
 pub trait ModeratePlayerUseCase {
     async fn kick_player(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
     ) -> Result<(), ModerationError>;
     async fn ban_player(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
         reason: &str,
     ) -> Result<(), ModerationError>;
     async fn unban_player(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
     ) -> Result<(), ModerationError>;
     async fn silence_player(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
     ) -> Result<(), ModerationError>;
     async fn unsilence_player(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
     ) -> Result<(), ModerationError>;
     async fn set_moderator(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
     ) -> Result<(), ModerationError>;
     async fn set_user(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
     ) -> Result<(), ModerationError>;
     async fn set_admin(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
     ) -> Result<(), ModerationError>;
 }
 
@@ -89,21 +89,27 @@ impl<E: EmailPort, A: AuthenticationPort> ModeratePlayerUseCaseImpl<E, A> {
         }
     }
 
-    async fn get_account(&self, account_id: &AccountId) -> Result<Account, ModerationError> {
-        if let Some(account) = self.authentication_service.get_account(account_id).await {
-            Ok(account)
-        } else {
-            Err(ModerationError::AccountNotFound)
+    async fn get_account(&self, user_id: UserId) -> Result<Account, ModerationError> {
+        match self.authentication_service.get_account(user_id).await {
+            Ok(Some(account)) => Ok(account),
+            Ok(None) => Err(ModerationError::AccountNotFound),
+            Err(_) => {
+                tracing::error!(
+                    "Failed to retrieve account for player {}: Repository error",
+                    user_id.to_string(),
+                );
+                Err(ModerationError::AccountNotFound)
+            }
         }
     }
 
     async fn set_player_banned(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
         is_banned: bool,
     ) -> Result<Account, ModerationError> {
-        let executing_account = self.get_account(account_id).await?;
+        let executing_account = self.get_account(user_id).await?;
         let target_account = self.get_account(target_account_id).await?;
 
         if !self
@@ -116,11 +122,11 @@ impl<E: EmailPort, A: AuthenticationPort> ModeratePlayerUseCaseImpl<E, A> {
 
         let res = if is_banned {
             self.authentication_service
-                .add_flag(&target_account_id, ModerationFlag::Banned)
+                .add_flag(target_account_id, ModerationFlag::Banned)
                 .await
         } else {
             self.authentication_service
-                .remove_flag(&target_account_id, ModerationFlag::Banned)
+                .remove_flag(target_account_id, ModerationFlag::Banned)
                 .await
         };
 
@@ -134,11 +140,11 @@ impl<E: EmailPort, A: AuthenticationPort> ModeratePlayerUseCaseImpl<E, A> {
 
     async fn set_player_silenced(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
         is_silenced: bool,
     ) -> Result<(), ModerationError> {
-        let executing_account = self.get_account(account_id).await?;
+        let executing_account = self.get_account(user_id).await?;
         let target_account = self.get_account(target_account_id).await?;
 
         if !self
@@ -151,11 +157,11 @@ impl<E: EmailPort, A: AuthenticationPort> ModeratePlayerUseCaseImpl<E, A> {
 
         let res = if is_silenced {
             self.authentication_service
-                .add_flag(&target_account_id, ModerationFlag::Silenced)
+                .add_flag(target_account_id, ModerationFlag::Silenced)
                 .await
         } else {
             self.authentication_service
-                .remove_flag(&target_account_id, ModerationFlag::Silenced)
+                .remove_flag(target_account_id, ModerationFlag::Silenced)
                 .await
         };
 
@@ -169,11 +175,11 @@ impl<E: EmailPort, A: AuthenticationPort> ModeratePlayerUseCaseImpl<E, A> {
 
     async fn set_role(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
         role: AccountRole,
     ) -> Result<(), ModerationError> {
-        let executing_account = self.get_account(account_id).await?;
+        let executing_account = self.get_account(user_id).await?;
         let target_account = self.get_account(target_account_id).await?;
 
         let policy = match role {
@@ -188,7 +194,7 @@ impl<E: EmailPort, A: AuthenticationPort> ModeratePlayerUseCaseImpl<E, A> {
 
         match self
             .authentication_service
-            .set_role(&target_account_id, AccountRole::Moderator)
+            .set_role(target_account_id, AccountRole::Moderator)
             .await
         {
             Ok(()) => Ok(()),
@@ -206,10 +212,10 @@ impl<E: EmailPort + Send + Sync + 'static, A: AuthenticationPort + Send + Sync +
 {
     async fn kick_player(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
     ) -> Result<(), ModerationError> {
-        let executing_account = self.get_account(account_id).await?;
+        let executing_account = self.get_account(user_id).await?;
         let target_account = self.get_account(target_account_id).await?;
 
         if !self
@@ -225,12 +231,12 @@ impl<E: EmailPort + Send + Sync + 'static, A: AuthenticationPort + Send + Sync +
 
     async fn ban_player(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
         reason: &str,
     ) -> Result<(), ModerationError> {
         let target_account = self
-            .set_player_banned(account_id, target_account_id, true)
+            .set_player_banned(user_id, target_account_id, true)
             .await?;
 
         if let Some(email) = &target_account.email {
@@ -257,56 +263,56 @@ impl<E: EmailPort + Send + Sync + 'static, A: AuthenticationPort + Send + Sync +
 
     async fn unban_player(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
     ) -> Result<(), ModerationError> {
-        self.set_player_banned(account_id, target_account_id, false)
+        self.set_player_banned(user_id, target_account_id, false)
             .await?;
         Ok(())
     }
 
     async fn silence_player(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
     ) -> Result<(), ModerationError> {
-        self.set_player_silenced(account_id, target_account_id, true)
+        self.set_player_silenced(user_id, target_account_id, true)
             .await
     }
 
     async fn unsilence_player(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
     ) -> Result<(), ModerationError> {
-        self.set_player_silenced(account_id, target_account_id, false)
+        self.set_player_silenced(user_id, target_account_id, false)
             .await
     }
 
     async fn set_moderator(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
     ) -> Result<(), ModerationError> {
-        self.set_role(account_id, target_account_id, AccountRole::Moderator)
+        self.set_role(user_id, target_account_id, AccountRole::Moderator)
             .await
     }
 
     async fn set_user(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
     ) -> Result<(), ModerationError> {
-        self.set_role(account_id, target_account_id, AccountRole::User)
+        self.set_role(user_id, target_account_id, AccountRole::User)
             .await
     }
 
     async fn set_admin(
         &self,
-        account_id: &AccountId,
-        target_account_id: &AccountId,
+        user_id: UserId,
+        target_account_id: UserId,
     ) -> Result<(), ModerationError> {
-        self.set_role(account_id, target_account_id, AccountRole::Admin)
+        self.set_role(user_id, target_account_id, AccountRole::Admin)
             .await
     }
 }

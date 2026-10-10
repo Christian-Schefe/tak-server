@@ -14,7 +14,6 @@ pub mod account;
 pub mod chat;
 pub mod games;
 pub mod matches;
-pub mod player_account_mapping;
 pub mod profile;
 pub mod puzzle;
 pub mod rating_history;
@@ -64,7 +63,6 @@ pub async fn create_db_pool() -> DatabaseConnection {
             // Entity sync to create tables, indices, and columns
             db.get_schema_builder()
                 .register(tak_persistence_sea_orm_entities::game::Entity)
-                .register(tak_persistence_sea_orm_entities::player_account_mapping::Entity)
                 .register(tak_persistence_sea_orm_entities::profile::Entity)
                 .register(tak_persistence_sea_orm_entities::rating::Entity)
                 .register(tak_persistence_sea_orm_entities::stats::Entity)

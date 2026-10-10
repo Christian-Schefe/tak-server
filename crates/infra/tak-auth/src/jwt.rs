@@ -2,7 +2,7 @@ use std::{sync::LazyLock, time::Duration};
 
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
-use tak_server_app::domain::AccountId;
+use tak_server_app::domain::UserId;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -43,9 +43,9 @@ fn read_or_generate_secret() -> Vec<u8> {
     secret.as_bytes().to_vec()
 }
 
-pub fn generate_jwt(account_id: &AccountId, duration: Duration) -> String {
+pub fn generate_jwt(user_id: UserId, duration: Duration) -> String {
     let claims = Claims {
-        sub: account_id.to_string(),
+        sub: user_id.to_string(),
         exp: (chrono::Utc::now()
             + chrono::Duration::from_std(duration).unwrap_or_else(|_| chrono::Duration::MAX))
         .timestamp() as usize,
@@ -54,8 +54,8 @@ pub fn generate_jwt(account_id: &AccountId, duration: Duration) -> String {
     token
 }
 
-pub fn validate_jwt(token: &str) -> Option<AccountId> {
+pub fn validate_jwt(token: &str) -> Option<UserId> {
     let claims = Claims::from_token(token).ok()?;
-    let account_id = AccountId::try_from(claims.sub).ok()?;
-    Some(account_id)
+    let user_id = UserId::try_from(claims.sub).ok()?;
+    Some(user_id)
 }

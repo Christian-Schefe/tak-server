@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::domain::{
-    PlayerId, RepoRetrieveError, TournamentId,
+    UserId, RepoRetrieveError, TournamentId,
     tournament::{
         TournamentPlayer, TournamentPlayerRepository, TournamentRepository, TournamentStatus,
     },
@@ -12,12 +12,12 @@ pub trait TournamentPlayerRegistrationUseCase {
     async fn register_player_in_tournament(
         &self,
         tournament_id: TournamentId,
-        player_id: PlayerId,
+        user_id: UserId,
     ) -> Result<(), TournamentRegistrationError>;
     async fn unregister_player_from_tournament(
         &self,
         tournament_id: TournamentId,
-        player_id: PlayerId,
+        user_id: UserId,
     ) -> Result<(), TournamentRegistrationError>;
 }
 
@@ -56,7 +56,7 @@ impl<
     async fn register_player_in_tournament(
         &self,
         tournament_id: TournamentId,
-        player_id: PlayerId,
+        user_id: UserId,
     ) -> Result<(), TournamentRegistrationError> {
         let tournament = match self
             .tournament_repository
@@ -82,19 +82,19 @@ impl<
         else {
             tracing::warn!(
                 "Attempted to register player {} in tournament {} which is not upcoming or not open for registration",
-                player_id,
+                user_id,
                 tournament_id
             );
             return Err(TournamentRegistrationError::TournamentNotUpcoming);
         };
         if let Err(e) = self
             .tournament_player_repository
-            .create_tournament_player(tournament_id, TournamentPlayer::new(player_id))
+            .create_tournament_player(tournament_id, TournamentPlayer::new(user_id))
             .await
         {
             tracing::error!(
                 "Failed to register player {} in tournament {}: {:?}",
-                player_id,
+                user_id,
                 tournament_id,
                 e
             );
@@ -108,7 +108,7 @@ impl<
     async fn unregister_player_from_tournament(
         &self,
         tournament_id: TournamentId,
-        player_id: PlayerId,
+        user_id: UserId,
     ) -> Result<(), TournamentRegistrationError> {
         let tournament = match self
             .tournament_repository
@@ -134,19 +134,19 @@ impl<
         else {
             tracing::warn!(
                 "Attempted to unregister player {} in tournament {} which is not upcoming or not open for registration",
-                player_id,
+                user_id,
                 tournament_id
             );
             return Err(TournamentRegistrationError::TournamentNotUpcoming);
         };
         if let Err(e) = self
             .tournament_player_repository
-            .remove_tournament_player(tournament_id, player_id)
+            .remove_tournament_player(tournament_id, user_id)
             .await
         {
             tracing::error!(
                 "Failed to unregister player {} from tournament {}: {:?}",
-                player_id,
+                user_id,
                 tournament_id,
                 e
             );

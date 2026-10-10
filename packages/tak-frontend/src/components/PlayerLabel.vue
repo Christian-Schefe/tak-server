@@ -1,12 +1,11 @@
 <script setup lang="ts">
-import { useAccountOrPlayerInfo } from '@/api/player';
+import { usePlayerInfo } from '@/api/player';
 import { useProfile, useProfilePictureUrl } from '@/api/profile';
 import FlagIcon from '@/components/FlagIcon.vue';
 
 const props = withDefaults(
   defineProps<{
-    pid: string;
-    type: 'account' | 'player';
+    userId: string;
     showProfilePicture?: boolean;
     showRating?: boolean;
     showFlag?: boolean;
@@ -18,16 +17,13 @@ const props = withDefaults(
   },
 );
 
-const { data: playerInfo, isError } = useAccountOrPlayerInfo(
-  () => props.pid,
-  () => props.type,
-);
-const { data: profile } = useProfile(() => playerInfo.value?.accountId);
-const avatarSrc = useProfilePictureUrl(() => playerInfo.value?.accountId);
+const { data: playerInfo, isError } = usePlayerInfo(() => props.userId);
+const { data: profile } = useProfile(() => playerInfo.value?.userId);
+const avatarSrc = useProfilePictureUrl(() => playerInfo.value?.userId);
 </script>
 <template>
   <RouterLink
-    :to="`/player/${playerInfo?.playerId}`"
+    :to="`/player/${playerInfo?.userId}`"
     :draggable="false"
     class="flex gap-2 items-center justify-start hover:underline"
   >

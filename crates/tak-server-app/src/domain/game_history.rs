@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use tak_core::{TakGameResult, TakPlayer};
 
 use crate::domain::{
-    GameId, MatchId, PaginatedResponse, Pagination, PlayerId, RepoError, RepoRetrieveError,
+    GameId, MatchId, PaginatedResponse, Pagination, UserId, RepoError, RepoRetrieveError,
     SortOrder,
     game::{FinishedGame, GameEvent, GameMetadata},
 };
@@ -72,7 +72,7 @@ pub enum GameIdSelector {
 pub enum GamePlayerFilter {
     Contains(String),
     Equals(String),
-    PlayerId(PlayerId),
+    UserId(UserId),
 }
 
 pub struct GameFinishedUpdate {

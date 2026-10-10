@@ -4,12 +4,12 @@ use std::{
 };
 use tak_core::{TakGameSettings, TakPlayer};
 
-use crate::domain::{PlayerId, SeekId};
+use crate::domain::{UserId, SeekId};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Seek {
     pub id: SeekId,
-    pub creator_id: PlayerId,
+    pub creator_id: UserId,
     pub color: Option<TakPlayer>,
     pub game_settings: TakGameSettings,
     pub is_rated: bool,
@@ -22,14 +22,14 @@ pub enum CreateSeekError {
 pub trait SeekService {
     fn create_seek(
         &self,
-        player: PlayerId,
+        player: UserId,
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
         is_rated: bool,
     ) -> Result<Seek, CreateSeekError>;
-    fn cancel_player_seeks(&self, player: PlayerId, predicate: impl Fn(&Seek) -> bool)
+    fn cancel_player_seeks(&self, player: UserId, predicate: impl Fn(&Seek) -> bool)
     -> Vec<Seek>;
-    fn cancel_seek(&self, player: PlayerId, seek_id: SeekId) -> Option<Seek>;
+    fn cancel_seek(&self, player: UserId, seek_id: SeekId) -> Option<Seek>;
     fn get_seek(&self, seek_id: SeekId) -> Option<Seek>;
     fn list_seeks(&self) -> Vec<Seek>;
     fn remove_seek_if(&self, seek_id: SeekId, predicate: impl Fn(&Seek) -> bool) -> Option<Seek>;
@@ -37,7 +37,7 @@ pub trait SeekService {
 
 struct SeekRegistry {
     seeks: HashMap<SeekId, Seek>,
-    seeks_by_player: HashMap<PlayerId, HashSet<SeekId>>,
+    seeks_by_player: HashMap<UserId, HashSet<SeekId>>,
     next_seek_id: SeekId,
 }
 
@@ -69,7 +69,7 @@ impl SeekRegistry {
 
     fn cancel_player_seeks(
         &mut self,
-        player: PlayerId,
+        player: UserId,
         predicate: impl Fn(&Seek) -> bool,
     ) -> Vec<Seek> {
         let mut cancelled_seek_ids = Vec::new();
@@ -91,7 +91,7 @@ impl SeekRegistry {
         cancelled_seeks
     }
 
-    fn cancel_player_seek(&mut self, player: PlayerId, seek_id: SeekId) -> Option<Seek> {
+    fn cancel_player_seek(&mut self, player: UserId, seek_id: SeekId) -> Option<Seek> {
         if let Some(seek) = self.seeks.get(&seek_id) {
             if seek.creator_id == player {
                 if let Some(seek_ids) = self.seeks_by_player.get_mut(&player) {
@@ -148,7 +148,7 @@ impl SeekServiceImpl {
 impl SeekService for SeekServiceImpl {
     fn create_seek(
         &self,
-        player: PlayerId,
+        player: UserId,
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
         is_rated: bool,
@@ -171,7 +171,7 @@ impl SeekService for SeekServiceImpl {
 
     fn cancel_player_seeks(
         &self,
-        player: PlayerId,
+        player: UserId,
         predicate: impl Fn(&Seek) -> bool,
     ) -> Vec<Seek> {
         self.seek_registry
@@ -180,7 +180,7 @@ impl SeekService for SeekServiceImpl {
             .cancel_player_seeks(player, predicate)
     }
 
-    fn cancel_seek(&self, player: PlayerId, seek_id: SeekId) -> Option<Seek> {
+    fn cancel_seek(&self, player: UserId, seek_id: SeekId) -> Option<Seek> {
         self.seek_registry
             .write()
             .unwrap()

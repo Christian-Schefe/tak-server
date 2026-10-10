@@ -15,7 +15,7 @@ import RatingHistory from '@/components/RatingHistory.vue';
 import WinDrawLossChart from '@/components/WinDrawLossChart.vue';
 import { countryOptions } from '@/utils/flags';
 import { zodFormValidator } from '@/utils/forms';
-import { Button, useFormContext, Dialog, Form, Select } from '@tak-ui-lib/components';
+import { Button, Dialog, Form, InputText, Select, useFormContext } from '@tak-ui-lib/components';
 import { computed, ref, useTemplateRef } from 'vue';
 import { LuPen, LuPlus } from 'vue-icons-plus/lu';
 import { useRoute } from 'vue-router';
@@ -24,13 +24,13 @@ import z from 'zod';
 const route = useRoute('/player.[id]');
 
 const { data: playerInfo } = usePlayerInfo(() => route.params.id);
-const { data: profile } = useProfile(() => playerInfo.value?.accountId);
-const avatarUrl = useProfilePictureUrl(() => playerInfo.value?.accountId);
+const { data: profile } = useProfile(() => playerInfo.value?.userId);
+const avatarUrl = useProfilePictureUrl(() => playerInfo.value?.userId);
 const { data: account } = useAccount();
 const canEditProfile = computed(() => {
   return (
     account.value !== undefined &&
-    account.value.playerId === route.params.id &&
+    account.value.userId === route.params.id &&
     !account.value.isGuest
   );
 });
@@ -52,23 +52,29 @@ function onUpload(uploadEvent: Event) {
   if (!file) {
     return;
   }
-  uploadProfilePicture({ accountId: playerInfo.value.accountId, file });
+  uploadProfilePicture({ userId: playerInfo.value.userId, file });
 }
 
-function onUpdateProfile(event: { country: string | null }) {
+function onUpdateProfile(event: { country: string | null; displayName: string | null }) {
   if (!playerInfo.value) {
     return;
   }
-  updateProfile({ accountId: playerInfo.value.accountId, country: event.country });
+  updateProfile({
+    userId: playerInfo.value.userId,
+    country: event.country?.length === 0 ? null : event.country,
+    displayName: event.displayName?.length === 0 ? null : event.displayName,
+  });
 }
 
 const formCtx = useFormContext(() => ({
   country: profile.value?.country ?? null,
+  displayName: profile.value?.displayName ?? null,
 }));
 
 const validator = zodFormValidator(
   z.object({
     country: z.string().nullable(),
+    displayName: z.string().nullable(),
   }),
 );
 
@@ -111,18 +117,25 @@ function onClickProfilePicture() {
         </Button>
       </div>
     </div>
-    <PlayerStats :player-id="route.params.id" />
+    <PlayerStats :user-id="route.params.id" />
     <h1>Rating History</h1>
-    <RatingHistory :player-id="route.params.id" />
+    <RatingHistory :user-id="route.params.id" />
     <h1>Win-Draw-Loss</h1>
-    <WinDrawLossChart :player-id="route.params.id" />
+    <WinDrawLossChart :user-id="route.params.id" />
     <h1>Game History</h1>
-    <GameHistory :player-id="route.params.id" />
+    <GameHistory :user-id="route.params.id" />
   </Page>
   <Dialog v-model:visible="editDialogVisible" header="Your Profile">
     <Form v-model="formCtx" :validator="validator" @submit="onUpdateProfile">
       <div class="w-full flex flex-col gap-4">
-        <Select model-value="" name="country" :options="countryOptions" label="Country"></Select>
+        <InputText name="displayName" label="Display Name" :placeholder="playerInfo?.username" />
+        <Select
+          model-value=""
+          name="country"
+          :options="countryOptions"
+          label="Country"
+          placeholder="Select a country"
+        />
         <div class="flex justify-end gap-2">
           <Button variant="text" label="Cancel" @click="editDialogVisible = false" />
           <Button type="submit" label="Update Profile" :disabled="isUpdatingProfile" />

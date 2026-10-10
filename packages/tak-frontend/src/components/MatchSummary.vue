@@ -28,8 +28,8 @@ defineEmits<{
         </div>
       </div>
       <div class="flex flex-col gap-2 justify-center grow">
-        <PlayerLabel :pid="matchDetail.player1.playerId" type="player"></PlayerLabel>
-        <PlayerLabel :pid="matchDetail.player2.playerId" type="player"></PlayerLabel>
+        <PlayerLabel :user-id="matchDetail.player1.userId"></PlayerLabel>
+        <PlayerLabel :user-id="matchDetail.player2.userId"></PlayerLabel>
       </div>
       <Button size="small" icon-only variant="text" severity="secondary" @click="$emit('click')">
         <LuEye />

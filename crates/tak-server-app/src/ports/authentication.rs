@@ -1,14 +1,14 @@
 use crate::domain::{
-    AccountId,
+    UserId,
     moderation::{AccountRole, ModerationFlag, ModerationFlags},
 };
 
 #[async_trait::async_trait]
 pub trait AuthenticationPort {
-    async fn get_account(&self, account_id: &AccountId) -> Option<Account>;
-    async fn set_role(&self, account_id: &AccountId, role: AccountRole) -> Result<(), ()>;
-    async fn add_flag(&self, account_id: &AccountId, flag: ModerationFlag) -> Result<(), ()>;
-    async fn remove_flag(&self, account_id: &AccountId, flag: ModerationFlag) -> Result<(), ()>;
+    async fn get_account(&self, user_id: UserId) -> Result<Option<Account>, ()>;
+    async fn set_role(&self, user_id: UserId, role: AccountRole) -> Result<(), ()>;
+    async fn add_flag(&self, user_id: UserId, flag: ModerationFlag) -> Result<(), ()>;
+    async fn remove_flag(&self, user_id: UserId, flag: ModerationFlag) -> Result<(), ()>;
 }
 
 #[derive(Clone, Debug)]

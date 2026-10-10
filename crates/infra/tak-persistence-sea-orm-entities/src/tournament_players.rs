@@ -6,7 +6,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false, indexed)]
     pub tournament_id: i64,
     #[sea_orm(primary_key, auto_increment = false)]
-    pub player_id: Uuid,
+    pub user_id: Uuid,
     pub score: i32,
     pub seeding_score: i32,
 }

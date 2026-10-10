@@ -4,7 +4,7 @@ use tak_core::TakTimeSettings;
 
 use crate::{
     domain::{
-        AccountId,
+        UserId,
         matches::{MatchReadinessService, MatchRepository},
         seek::SeekService,
     },
@@ -13,21 +13,19 @@ use crate::{
         notification::{ListenerMatchEventType, ListenerMessage, ListenerNotificationPort},
     },
     processes::disconnect_timeout_runner::DisconnectTimeoutRunner,
-    services::player_resolver::{PlayerResolverService, ResolveError},
     workflow::player::notify_player::NotifyPlayerWorkflow,
 };
 
 #[async_trait::async_trait]
 pub trait SetAccountOnlineUseCase {
-    async fn set_online(&self, account_id: &AccountId);
-    async fn set_offline(&self, account_id: &AccountId);
+    async fn set_online(&self, user_id: UserId);
+    async fn set_offline(&self, user_id: UserId);
 }
 
 pub struct SetAccountOnlineUseCaseImpl<
     P: AccountOnlineStatusPort,
     L: ListenerNotificationPort,
     S: SeekService,
-    R: PlayerResolverService,
     D: DisconnectTimeoutRunner,
     M: MatchReadinessService,
     MR: MatchRepository,
@@ -36,7 +34,6 @@ pub struct SetAccountOnlineUseCaseImpl<
     account_online_status_port: Arc<P>,
     notification_port: Arc<L>,
     seek_service: Arc<S>,
-    player_resolver_service: Arc<R>,
     disconnect_timeout_runner: Arc<D>,
     match_readiness_service: Arc<M>,
     match_repository: Arc<MR>,
@@ -47,18 +44,16 @@ impl<
     P: AccountOnlineStatusPort,
     L: ListenerNotificationPort,
     S: SeekService,
-    R: PlayerResolverService,
     D: DisconnectTimeoutRunner,
     M: MatchReadinessService,
     MR: MatchRepository,
     NP: NotifyPlayerWorkflow,
-> SetAccountOnlineUseCaseImpl<P, L, S, R, D, M, MR, NP>
+> SetAccountOnlineUseCaseImpl<P, L, S, D, M, MR, NP>
 {
     pub fn new(
         account_online_status_port: Arc<P>,
         notification_port: Arc<L>,
         seek_service: Arc<S>,
-        player_resolver_service: Arc<R>,
         disconnect_timeout_runner: Arc<D>,
         match_readiness_service: Arc<M>,
         match_repository: Arc<MR>,
@@ -68,7 +63,6 @@ impl<
             account_online_status_port,
             notification_port,
             seek_service,
-            player_resolver_service,
             disconnect_timeout_runner,
             match_readiness_service,
             match_repository,
@@ -82,63 +76,29 @@ impl<
     P: AccountOnlineStatusPort + Send + Sync + 'static,
     L: ListenerNotificationPort + Send + Sync + 'static,
     S: SeekService + Send + Sync + 'static,
-    R: PlayerResolverService + Send + Sync + 'static,
     D: DisconnectTimeoutRunner + Send + Sync + 'static,
     M: MatchReadinessService + Send + Sync + 'static,
     MR: MatchRepository + Send + Sync + 'static,
     NP: NotifyPlayerWorkflow + Send + Sync + 'static,
-> SetAccountOnlineUseCase for SetAccountOnlineUseCaseImpl<P, L, S, R, D, M, MR, NP>
+> SetAccountOnlineUseCase for SetAccountOnlineUseCaseImpl<P, L, S, D, M, MR, NP>
 {
     #[tracing::instrument(skip(self))]
-    async fn set_online(&self, account_id: &AccountId) {
-        if let Some(accounts) = self
-            .account_online_status_port
-            .set_account_online(account_id)
-        {
+    async fn set_online(&self, user_id: UserId) {
+        if let Some(accounts) = self.account_online_status_port.set_account_online(user_id) {
             let message = ListenerMessage::AccountsOnline { accounts };
             self.notification_port.notify_all(&message);
         }
-        match self
-            .player_resolver_service
-            .resolve_player_id_by_account_id(account_id)
-            .await
-        {
-            Ok(id) => {
-                self.disconnect_timeout_runner.cancel_disconnect_timeout(id);
-            }
-            Err(ResolveError::Internal) => {
-                tracing::error!(
-                    "Failed to resolve player ID when setting account online: {}",
-                    account_id
-                )
-            }
-        };
+        self.disconnect_timeout_runner
+            .cancel_disconnect_timeout(user_id);
     }
 
     #[tracing::instrument(skip(self))]
-    async fn set_offline(&self, account_id: &AccountId) {
-        if let Some(accounts) = self
-            .account_online_status_port
-            .set_account_offline(account_id)
-        {
+    async fn set_offline(&self, user_id: UserId) {
+        if let Some(accounts) = self.account_online_status_port.set_account_offline(user_id) {
             let message = ListenerMessage::AccountsOnline { accounts };
             self.notification_port.notify_all(&message);
         }
-        let player_id = match self
-            .player_resolver_service
-            .resolve_player_id_by_account_id(account_id)
-            .await
-        {
-            Ok(id) => id,
-            Err(ResolveError::Internal) => {
-                tracing::error!(
-                    "Failed to resolve player ID when setting account offline: {}",
-                    account_id
-                );
-                return;
-            }
-        };
-        let cancelled_seeks = self.seek_service.cancel_player_seeks(player_id, |seek| {
+        let cancelled_seeks = self.seek_service.cancel_player_seeks(user_id, |seek| {
             matches!(
                 seek.game_settings.time_settings,
                 TakTimeSettings::Realtime(_)
@@ -152,7 +112,7 @@ impl<
         }
         let cancelled_match_readiness = self
             .match_readiness_service
-            .set_player_not_ready_everywhere(player_id);
+            .set_player_not_ready_everywhere(user_id);
         let match_futures =
             cancelled_match_readiness
                 .into_iter()
@@ -165,13 +125,11 @@ impl<
                 Ok(match_entry) => {
                     let message = ListenerMessage::MatchEvent {
                         match_id: match_id,
-                        event_type: ListenerMatchEventType::MatchReadinessChanged {
-                            player_id: None,
-                        },
+                        event_type: ListenerMatchEventType::MatchReadinessChanged { user_id: None },
                     };
                     self.notify_player_workflow
                         .notify_players(
-                            &[match_entry.player1.player_id, match_entry.player2.player_id],
+                            &[match_entry.player1.user_id, match_entry.player2.user_id],
                             &message,
                         )
                         .await;
@@ -186,7 +144,7 @@ impl<
         }
         DisconnectTimeoutRunner::start_disconnect_timeout(
             self.disconnect_timeout_runner.clone(),
-            player_id,
+            user_id,
         );
     }
 }
