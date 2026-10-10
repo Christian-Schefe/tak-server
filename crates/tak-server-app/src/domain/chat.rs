@@ -4,7 +4,7 @@ use more_concurrent_maps::multi::ConcurrentMultiMap;
 use rustrict::{Censor, Type};
 use unordered_pair::UnorderedPair;
 
-use crate::domain::{UserId, ChatMessageId, ListenerId, RepoError};
+use crate::domain::{ChatMessageId, ListenerId, RepoError, UserId};
 
 #[async_trait::async_trait]
 pub trait ChatRepository {
@@ -30,12 +30,8 @@ pub struct ChatMessage {
 
 #[derive(Clone, Debug)]
 pub enum ChatConversation {
-    Private {
-        account_ids: UnorderedPair<UserId>,
-    },
-    Room {
-        room_name: String,
-    },
+    Private { user_ids: UnorderedPair<UserId> },
+    Room { room_name: String },
     Global,
 }
 

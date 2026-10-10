@@ -84,8 +84,8 @@ pub enum ServerMessage {
         #[serde(flatten)]
         event_type: ServerMatchEventType,
     },
-    AccountsOnline {
-        account_ids: Vec<String>,
+    UsersOnline {
+        user_ids: Vec<String>,
     },
 }
 
@@ -144,7 +144,7 @@ pub enum JsonChatConversation {
         room_name: String,
     },
     Private {
-        account_id1: String,
-        account_id2: String,
+        user_id1: String,
+        user_id2: String,
     },
 }

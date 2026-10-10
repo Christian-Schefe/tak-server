@@ -50,7 +50,7 @@ async fn query_player_game_history(
     Query(pagination): Query<PaginationQuery>,
 ) -> Result<Json<PaginatedResponse<JsonEndedGameInfo>>, ServiceError> {
     let user_id = UserId::try_from(user_id)
-        .map_err(|_| ServiceError::BadRequest("Invalid player ID".to_string()))?;
+        .map_err(|_| ServiceError::BadRequest("Invalid user ID".to_string()))?;
     let filter = GameQuery {
         pagination: Pagination::new(pagination.page.saturating_sub(1), pagination.page_size),
         sort: Some((SortOrder::Descending, GameSortBy::Date)),

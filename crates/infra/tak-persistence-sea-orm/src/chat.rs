@@ -4,7 +4,7 @@ use sea_orm::{
 };
 use tak_persistence_sea_orm_entities::chat;
 use tak_server_app::domain::{
-    UserId, ChatMessageId, RepoError,
+    ChatMessageId, RepoError, UserId,
     chat::{ChatConversation, ChatMessage, ChatRepository},
 };
 
@@ -23,9 +23,7 @@ impl ChatRepositoryImpl {
 
 fn conversation_id_from_chat_conversation(conversation: &ChatConversation) -> String {
     match conversation {
-        ChatConversation::Private {
-            account_ids: members,
-        } => {
+        ChatConversation::Private { user_ids: members } => {
             let (first, second) = members.clone().into_ordered_tuple();
             format!("private:{}:{}", first, second)
         }
@@ -44,7 +42,7 @@ impl ChatRepository for ChatRepositoryImpl {
         let new_message = chat::ActiveModel {
             conversation: Set(conversation_id_from_chat_conversation(conversation)),
             id: Default::default(),
-            from_account_id: Set(message.sender.0),
+            from_user_id: Set(message.sender.0),
             date: Set(message.date),
             message: Set(message.message.to_string()),
         };
@@ -81,7 +79,7 @@ impl ChatRepository for ChatRepositoryImpl {
                     ChatMessageId::new(model.id),
                     ChatMessage {
                         date: model.date,
-                        sender: UserId(model.from_account_id),
+                        sender: UserId(model.from_user_id),
                         message: model.message,
                     },
                 )

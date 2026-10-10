@@ -29,7 +29,7 @@ async fn get_profile(
 ) -> Result<Json<PlayerProfileInfo>, ServiceError> {
     let Ok(user_id) = UserId::try_from(user_id) else {
         return Err(ServiceError::BadRequest(
-            "Invalid account ID format".to_string(),
+            "Invalid user ID format".to_string(),
         ));
     };
     let Ok(Some(_)) = app.auth.get_account(user_id).await else {
@@ -53,7 +53,7 @@ async fn update_profile(
 ) -> Result<(), ServiceError> {
     let Ok(user_id) = UserId::try_from(user_id) else {
         return Err(ServiceError::BadRequest(
-            "Invalid account ID format".to_string(),
+            "Invalid user ID format".to_string(),
         ));
     };
     if user_id != auth.user_id {
@@ -91,7 +91,7 @@ async fn get_profile_picture(
 ) -> Result<Response, ServiceError> {
     let Ok(user_id) = UserId::try_from(user_id) else {
         return Err(ServiceError::BadRequest(
-            "Invalid account ID format".to_string(),
+            "Invalid user ID format".to_string(),
         ));
     };
     let Ok(Some(_)) = app.auth.get_account(user_id).await else {
@@ -127,7 +127,7 @@ async fn set_profile_picture(
 ) -> Result<(), ServiceError> {
     let Ok(user_id) = UserId::try_from(user_id) else {
         return Err(ServiceError::BadRequest(
-            "Invalid account ID format".to_string(),
+            "Invalid user ID format".to_string(),
         ));
     };
     if user_id != auth.user_id {

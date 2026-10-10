@@ -57,15 +57,15 @@ async fn get_chat_messages(
                     "Invalid private conversation ID format".to_string(),
                 ));
             }
-            let account_ids = UnorderedPair(
+            let user_ids = UnorderedPair(
                 UserId::try_from(parts[1].to_string()).map_err(|_| {
-                    ServiceError::BadRequest("Invalid account ID in conversation ID".to_string())
+                    ServiceError::BadRequest("Invalid user ID in conversation ID".to_string())
                 })?,
                 UserId::try_from(parts[2].to_string()).map_err(|_| {
-                    ServiceError::BadRequest("Invalid account ID in conversation ID".to_string())
+                    ServiceError::BadRequest("Invalid user ID in conversation ID".to_string())
                 })?,
             );
-            ChatConversation::Private { account_ids }
+            ChatConversation::Private { user_ids }
         }
         _ => {
             return Err(ServiceError::BadRequest(

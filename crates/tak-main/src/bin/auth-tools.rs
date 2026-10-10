@@ -14,7 +14,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     SetAdmin {
-        #[arg(value_name = "Account Id")]
+        #[arg(value_name = "User Id")]
         id: String,
     },
 }
@@ -35,7 +35,7 @@ async fn main() {
 
     match cli.command {
         Commands::SetAdmin { id } => {
-            let user_id = UserId::try_from(id.clone()).expect("Invalid account ID format");
+            let user_id = UserId::try_from(id.clone()).expect("Invalid user ID format");
             let Ok(Some(acc)) = auth_service.get_account(user_id).await else {
                 println!("Account with id '{}' not found", id);
                 return;

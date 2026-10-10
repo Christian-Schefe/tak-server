@@ -367,7 +367,7 @@ impl<
             futures::future::join_all(pairing_futures)
         );
         let byes = match bye_results.into_iter().collect::<Result<Vec<_>, _>>() {
-            Ok(bye_player_ids) => bye_player_ids,
+            Ok(bye_ids) => bye_ids,
             Err(_) => {
                 tracing::error!(
                     "Failed to process byes for tournament {} round {}",

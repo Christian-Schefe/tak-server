@@ -178,7 +178,7 @@ async fn handle_client_message(
         _ => {
             let user_id = app
                 .connection_driver
-                .get_account_id(&connection_id)
+                .get_user_id(&connection_id)
                 .ok_or_else(|| {
                     ServiceError::Unauthorized(
                         "WebSocket connection is not authenticated".to_string(),
@@ -245,24 +245,19 @@ async fn handle_authenticated_client_message(
             let message_target = match conversation {
                 JsonChatConversation::Global => ChatConversation::Global,
                 JsonChatConversation::Room { room_name } => ChatConversation::Room { room_name },
-                JsonChatConversation::Private {
-                    account_id1,
-                    account_id2,
-                } => {
-                    let Ok(account_id1) = UserId::try_from(account_id1) else {
+                JsonChatConversation::Private { user_id1, user_id2 } => {
+                    let Ok(user_id1) = UserId::try_from(user_id1) else {
                         return Err(ServiceError::BadRequest(
-                            "Invalid account ID format in private conversation".to_string(),
+                            "Invalid user ID format in private conversation".to_string(),
                         ));
                     };
-                    let Ok(account_id2) = UserId::try_from(account_id2) else {
+                    let Ok(user_id2) = UserId::try_from(user_id2) else {
                         return Err(ServiceError::BadRequest(
-                            "Invalid account ID format in private conversation".to_string(),
+                            "Invalid user ID format in private conversation".to_string(),
                         ));
                     };
-                    let members = UnorderedPair(account_id1, account_id2);
-                    ChatConversation::Private {
-                        account_ids: members,
-                    }
+                    let members = UnorderedPair(user_id1, user_id2);
+                    ChatConversation::Private { user_ids: members }
                 }
             };
             match app
@@ -432,11 +427,9 @@ fn from_listener_message(message: ListenerMessage) -> Option<ServerMessage> {
             let conversation = match conversation {
                 ChatConversation::Global => JsonChatConversation::Global,
                 ChatConversation::Room { room_name } => JsonChatConversation::Room { room_name },
-                ChatConversation::Private {
-                    account_ids: members,
-                } => JsonChatConversation::Private {
-                    account_id1: members.0.to_string(),
-                    account_id2: members.1.to_string(),
+                ChatConversation::Private { user_ids: members } => JsonChatConversation::Private {
+                    user_id1: members.0.to_string(),
+                    user_id2: members.1.to_string(),
                 },
             };
             Some(ServerMessage::ChatMessage {
@@ -462,8 +455,8 @@ fn from_listener_message(message: ListenerMessage) -> Option<ServerMessage> {
                 }
             },
         }),
-        ListenerMessage::AccountsOnline { accounts } => Some(ServerMessage::AccountsOnline {
-            account_ids: accounts.into_iter().map(|a| a.to_string()).collect(),
+        ListenerMessage::UsersOnline { users: accounts } => Some(ServerMessage::UsersOnline {
+            user_ids: accounts.into_iter().map(|a| a.to_string()).collect(),
         }),
         ListenerMessage::ServerAlert { .. } => None,
     }

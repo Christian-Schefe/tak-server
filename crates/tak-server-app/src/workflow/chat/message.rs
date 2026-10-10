@@ -83,13 +83,13 @@ impl<
 {
     async fn send_message(
         &self,
-        from_account_id: UserId,
+        from_user_id: UserId,
         conversation: &ChatConversation,
         message: &str,
     ) -> Result<(), ChatSendMessageError> {
         let is_allowed_to_send = match conversation {
-            ChatConversation::Private { account_ids } => {
-                account_ids.0 == from_account_id || account_ids.1 == from_account_id
+            ChatConversation::Private { user_ids } => {
+                user_ids.0 == from_user_id || user_ids.1 == from_user_id
             }
             ChatConversation::Room { room_name: _ } => true,
             ChatConversation::Global => true,
@@ -107,7 +107,7 @@ impl<
 
         let chat_msg = ChatMessage {
             date: chrono::Utc::now(),
-            sender: from_account_id.clone(),
+            sender: from_user_id.clone(),
             message: filtered_message.clone(),
         };
 
@@ -129,13 +129,13 @@ impl<
         };
 
         match conversation {
-            ChatConversation::Private { account_ids } => {
+            ChatConversation::Private { user_ids } => {
                 let member_listener_futures =
-                    [&account_ids.0, &account_ids.1]
+                    [&user_ids.0, &user_ids.1]
                         .into_iter()
-                        .map(|to_account_id| async move {
+                        .map(|to_user_id| async move {
                             self.player_connection_port
-                                .get_connection_id(*to_account_id)
+                                .get_connection_id(*to_user_id)
                                 .await
                         });
                 let member_connections = futures::future::join_all(member_listener_futures).await;

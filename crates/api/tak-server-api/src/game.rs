@@ -75,7 +75,7 @@ async fn get_game_status(
         return Ok(Json(JsonGameStatus {
             id: ongoing_game.id.to_string(),
             match_id: ongoing_game.metadata.match_id.map(|id| id.to_string()),
-            player_ids: ForPlayer {
+            user_ids: ForPlayer {
                 white: ongoing_game.metadata.white_id.to_string(),
                 black: ongoing_game.metadata.black_id.to_string(),
             },
@@ -118,7 +118,7 @@ async fn get_game_status(
             Ok(Json(JsonGameStatus {
                 id: game_id.to_string(),
                 match_id: ended_game.metadata.match_id.map(|id| id.to_string()),
-                player_ids: ForPlayer {
+                user_ids: ForPlayer {
                     white: ended_game.metadata.white_id.to_string(),
                     black: ended_game.metadata.black_id.to_string(),
                 },
@@ -244,7 +244,7 @@ pub fn from_metadata_view(game_id: GameId, view: &GameMetadataView) -> JsonGameM
     JsonGameMetadata {
         id: game_id.to_string(),
         date: view.date,
-        player_ids: ForPlayer {
+        user_ids: ForPlayer {
             white: view.white_id.to_string(),
             black: view.black_id.to_string(),
         },

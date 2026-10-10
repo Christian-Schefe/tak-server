@@ -79,7 +79,7 @@ impl GameMetadata {
             None
         }
     }
-    pub fn get_player_id(&self, player: TakPlayer) -> UserId {
+    pub fn get_user_id(&self, player: TakPlayer) -> UserId {
         match player {
             TakPlayer::White => self.white_id,
             TakPlayer::Black => self.black_id,
@@ -585,7 +585,7 @@ impl GameService for GameServiceImpl {
                         time_info.clone(),
                     ));
                     let finished_game = FinishedGame::new(game_entry, finished_game);
-                    let opponent_id = game_entry.metadata.get_player_id(current_player.opponent());
+                    let opponent_id = game_entry.metadata.get_user_id(current_player.opponent());
                     (
                         GameControl::Remove,
                         Some((
@@ -644,7 +644,7 @@ impl GameService for GameServiceImpl {
                     } else {
                         None
                     };
-                    let opponent_id = game_entry.metadata.get_player_id(current_player.opponent());
+                    let opponent_id = game_entry.metadata.get_user_id(current_player.opponent());
                     (
                         GameControl::Keep,
                         Some((
@@ -696,7 +696,7 @@ impl GameService for GameServiceImpl {
             |game_entry, current_player, res| match res {
                 Some(()) => {
                     let time_info = game_entry.game.get_time_info(now);
-                    let opponent_id = game_entry.metadata.get_player_id(current_player.opponent());
+                    let opponent_id = game_entry.metadata.get_user_id(current_player.opponent());
                     (
                         GameControl::Keep,
                         Some((

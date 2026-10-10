@@ -11,7 +11,7 @@ use tak_core::{
 pub struct JsonGameStatus {
     pub id: String,
     pub match_id: Option<String>,
-    pub player_ids: ForPlayer<String>,
+    pub user_ids: ForPlayer<String>,
     pub is_rated: bool,
     pub game_settings: JsonGameSettings,
     pub actions: Vec<String>,
@@ -80,7 +80,7 @@ pub struct JsonGameMetadata {
     pub id: String,
     #[serde(with = "chrono::serde::ts_milliseconds")]
     pub date: DateTime<Utc>,
-    pub player_ids: ForPlayer<String>,
+    pub user_ids: ForPlayer<String>,
     pub is_rated: bool,
     pub game_settings: JsonGameSettings,
 }

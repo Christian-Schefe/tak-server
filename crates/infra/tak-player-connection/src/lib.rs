@@ -57,14 +57,14 @@ impl PlayerConnectionDriver {
     }
 
     pub async fn associate_connection(&self, user_id: UserId, connection_id: ConnectionId) {
-        if let Some(prev_account_id) = self.get_account_id(&connection_id) {
-            if prev_account_id == user_id {
+        if let Some(prev_user_id) = self.get_user_id(&connection_id) {
+            if prev_user_id == user_id {
                 return;
             } else {
                 tracing::info!(
                     "Connection {} is already associated with account {}. Reassociating with account {}.",
                     connection_id,
-                    prev_account_id,
+                    prev_user_id,
                     user_id
                 );
                 self.remove_connection(&connection_id).await;
@@ -144,7 +144,7 @@ impl PlayerConnectionDriver {
         Vec::new()
     }
 
-    pub fn get_account_id(&self, connection_id: &ConnectionId) -> Option<UserId> {
+    pub fn get_user_id(&self, connection_id: &ConnectionId) -> Option<UserId> {
         let registry = self.inner.registry.read();
         if let Some(listener_id) = registry.connection_to_listener.get(connection_id) {
             if let Some(user_id) = registry.listener_map.get_by_right(listener_id) {

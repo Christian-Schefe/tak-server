@@ -58,7 +58,7 @@ async fn get_player_info(
 ) -> Result<Json<PlayerInfo>, ServiceError> {
     let user_id = UserId(
         Uuid::parse_str(&user_id)
-            .map_err(|_| ServiceError::BadRequest("Invalid player ID".to_string()))?,
+            .map_err(|_| ServiceError::BadRequest("Invalid user ID".to_string()))?,
     );
     get_player_info_helper(&app, user_id).await.map(Json)
 }
@@ -69,7 +69,7 @@ async fn get_player_stats(
 ) -> Result<Json<JsonPlayerStatsInfo>, ServiceError> {
     let user_id = UserId(
         Uuid::parse_str(&user_id)
-            .map_err(|_| ServiceError::BadRequest("Invalid player ID".to_string()))?,
+            .map_err(|_| ServiceError::BadRequest("Invalid user ID".to_string()))?,
     );
     let stats = app
         .app
@@ -88,7 +88,7 @@ async fn get_rating_history(
 ) -> Result<Json<JsonRatingHistory>, ServiceError> {
     let user_id = UserId(
         Uuid::parse_str(&user_id)
-            .map_err(|_| ServiceError::BadRequest("Invalid player ID".to_string()))?,
+            .map_err(|_| ServiceError::BadRequest("Invalid user ID".to_string()))?,
     );
     match app
         .app

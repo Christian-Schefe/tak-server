@@ -38,8 +38,8 @@ pub enum ListenerMessage {
     GameEnded {
         game: FinishedGameView,
     },
-    AccountsOnline {
-        accounts: Vec<UserId>,
+    UsersOnline {
+        users: Vec<UserId>,
     },
     GameEvent {
         game_id: GameId,

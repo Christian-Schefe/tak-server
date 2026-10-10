@@ -84,8 +84,8 @@ impl<
 {
     #[tracing::instrument(skip(self))]
     async fn set_online(&self, user_id: UserId) {
-        if let Some(accounts) = self.account_online_status_port.set_account_online(user_id) {
-            let message = ListenerMessage::AccountsOnline { accounts };
+        if let Some(users) = self.account_online_status_port.set_account_online(user_id) {
+            let message = ListenerMessage::UsersOnline { users };
             self.notification_port.notify_all(&message);
         }
         self.disconnect_timeout_runner
@@ -94,8 +94,8 @@ impl<
 
     #[tracing::instrument(skip(self))]
     async fn set_offline(&self, user_id: UserId) {
-        if let Some(accounts) = self.account_online_status_port.set_account_offline(user_id) {
-            let message = ListenerMessage::AccountsOnline { accounts };
+        if let Some(users) = self.account_online_status_port.set_account_offline(user_id) {
+            let message = ListenerMessage::UsersOnline { users };
             self.notification_port.notify_all(&message);
         }
         let cancelled_seeks = self.seek_service.cancel_player_seeks(user_id, |seek| {

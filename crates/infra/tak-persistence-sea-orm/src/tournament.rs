@@ -6,7 +6,7 @@ use tak_server_app::domain::tournament::{
     Tournament, TournamentFormat, TournamentMetadata, TournamentPlayer, TournamentPlayerRepository,
     TournamentRepository, TournamentRound, TournamentRoundRepository, TournamentStatus,
 };
-use tak_server_app::domain::{MatchId, UserId, TournamentId};
+use tak_server_app::domain::{MatchId, TournamentId, UserId};
 use tak_server_app::domain::{RepoError, RepoRetrieveError};
 
 pub struct TournamentRepositoryImpl {
@@ -245,7 +245,7 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
                 ))
             })?;
 
-        let player_ids = registration_models
+        let user_ids = registration_models
             .into_iter()
             .map(|m| TournamentPlayer {
                 user_id: UserId(m.user_id),
@@ -254,7 +254,7 @@ impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
             })
             .collect();
 
-        Ok(player_ids)
+        Ok(user_ids)
     }
 
     async fn create_tournament_player(
@@ -405,7 +405,7 @@ impl TournamentRoundRepositoryImpl {
                 .map(|s| {
                     UserId::try_from(s).map_err(|e| {
                         format!(
-                            "Failed to parse player ID from bye in tournament {} round {}: {}",
+                            "Failed to parse user ID from bye in tournament {} round {}: {}",
                             model.tournament_id, model.round_index, e
                         )
                     })

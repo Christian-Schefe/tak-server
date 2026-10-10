@@ -8,7 +8,7 @@ pub struct Model {
     pub conversation: String,
     #[sea_orm(primary_key, auto_increment = true, unique_key = "unique_message")]
     pub id: i64,
-    pub from_account_id: Uuid,
+    pub from_user_id: Uuid,
     pub date: chrono::DateTime<Utc>,
     #[sea_orm(column_type = "Text")]
     pub message: String,
