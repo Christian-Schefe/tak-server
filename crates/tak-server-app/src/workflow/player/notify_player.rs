@@ -7,7 +7,7 @@ use crate::{
         spectator::SpectatorService,
     },
     ports::{
-        connection::AccountConnectionPort,
+        connection::UserConnectionPort,
         notification::{ListenerMessage, ListenerNotificationPort},
     },
 };
@@ -26,7 +26,7 @@ pub trait NotifyPlayerWorkflow {
 
 pub struct NotifyPlayerWorkflowImpl<
     L: ListenerNotificationPort,
-    P: AccountConnectionPort,
+    P: UserConnectionPort,
     G: GameService,
     S: SpectatorService,
 > {
@@ -36,7 +36,7 @@ pub struct NotifyPlayerWorkflowImpl<
     spectator_service: Arc<S>,
 }
 
-impl<L: ListenerNotificationPort, P: AccountConnectionPort, G: GameService, S: SpectatorService>
+impl<L: ListenerNotificationPort, P: UserConnectionPort, G: GameService, S: SpectatorService>
     NotifyPlayerWorkflowImpl<L, P, G, S>
 {
     pub fn new(
@@ -57,7 +57,7 @@ impl<L: ListenerNotificationPort, P: AccountConnectionPort, G: GameService, S: S
 #[async_trait::async_trait]
 impl<
     L: ListenerNotificationPort + Send + Sync,
-    P: AccountConnectionPort + Send + Sync,
+    P: UserConnectionPort + Send + Sync,
     G: GameService + Send + Sync,
     S: SpectatorService + Send + Sync,
 > NotifyPlayerWorkflow for NotifyPlayerWorkflowImpl<L, P, G, S>

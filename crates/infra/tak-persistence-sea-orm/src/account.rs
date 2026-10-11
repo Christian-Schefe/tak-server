@@ -3,7 +3,7 @@ use tak_auth::{AccountRepository, FullAccount};
 use tak_persistence_sea_orm_entities::account;
 use tak_server_app::{
     domain::{
-        UserId, RepoError, RepoRetrieveError,
+        RepoError, RepoRetrieveError, UserId,
         moderation::{AccountRole, ModerationFlag, ModerationFlags},
     },
     ports::authentication::AccountType,
@@ -49,6 +49,7 @@ impl AccountRepositoryImpl {
                 account.account.flags.is_flagged(ModerationFlag::Silenced),
             ),
             password_hash: sea_orm::ActiveValue::Set(account.password_hash.clone()),
+            unique_name: sea_orm::ActiveValue::Set(account.unique_name.clone()),
         }
     }
     fn model_to_account(&self, model: account::Model) -> Result<FullAccount, String> {
@@ -74,6 +75,7 @@ impl AccountRepositoryImpl {
                 email: model.email,
             },
             password_hash: model.password_hash,
+            unique_name: model.unique_name,
         })
     }
 }

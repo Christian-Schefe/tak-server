@@ -317,10 +317,18 @@ async fn handle_authenticated_client_message(
 }
 
 async fn authenticate_ws_token(app: &AppState, token: &str) -> Result<UserId, ServiceError> {
-    let (user_id, _) = app.auth.validate_account_jwt(token).await.ok_or_else(|| {
-        ServiceError::Unauthorized("Invalid or expired authentication token".to_string())
-    })?;
-    Ok(user_id)
+    match app.auth.validate_account_jwt(token).await {
+        Ok(Some((id, _))) => Ok(id),
+        Ok(None) => Err(ServiceError::Unauthorized(
+            "Invalid or expired authentication token".to_string(),
+        )),
+        Err(e) => {
+            tracing::error!("Error validating JWT: {:?}", e);
+            Err(ServiceError::Internal(
+                "Failed to validate authentication token".to_string(),
+            ))
+        }
+    }
 }
 
 struct ConnectionEntry {

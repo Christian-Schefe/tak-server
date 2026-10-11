@@ -59,3 +59,27 @@ export function useRegister() {
     return await fetchTyped(loginResponseSchema, '/api/auth/register', 'POST', request);
   };
 }
+
+export interface RecoverRequest {
+  identifier: string;
+}
+
+export function useRecover() {
+  const { fetch } = useFetch();
+  return async (request: RecoverRequest) => {
+    return await fetch('/api/auth/recover', 'POST', request);
+  };
+}
+
+export interface ResetRequest {
+  identifier: string;
+  token: string;
+  newPassword: string;
+}
+
+export function useReset() {
+  const { fetch } = useFetch();
+  return async (request: ResetRequest) => {
+    return await fetch('/api/auth/reset', 'POST', request);
+  };
+}

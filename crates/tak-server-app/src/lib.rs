@@ -18,7 +18,7 @@ use crate::{
     },
     ports::{
         authentication::AuthenticationPort,
-        connection::{AccountConnectionPort, AccountOnlineStatusPort},
+        connection::{UserConnectionPort, UserOnlineStatusPort},
         email::EmailPort,
         notification::ListenerNotificationPort,
     },
@@ -28,7 +28,7 @@ use crate::{
     },
     workflow::{
         account::{
-            get_online::{GetOnlineAccountsUseCase, GetOnlineAccountsUseCaseImpl},
+            get_online::{GetOnlineUsersUseCase, GetOnlineUsersUseCaseImpl},
             get_profile::{GetProfileUseCase, GetProfileUseCaseImpl},
             get_snapshot::{GetSnapshotWorkflow, GetSnapshotWorkflowImpl},
             moderate::{ModeratePlayerUseCase, ModeratePlayerUseCaseImpl, ModerationPolicies},
@@ -94,7 +94,7 @@ pub struct Application {
     pub match_readiness_use_case: Arc<dyn MatchReadinessUseCase + Send + Sync + 'static>,
 
     pub account_set_online_use_case: Arc<dyn SetAccountOnlineUseCase + Send + Sync + 'static>,
-    pub account_get_online_use_case: Arc<dyn GetOnlineAccountsUseCase + Send + Sync + 'static>,
+    pub account_get_online_use_case: Arc<dyn GetOnlineUsersUseCase + Send + Sync + 'static>,
 
     pub listener_disconnect_use_case: Arc<dyn ListenerDisconnectUseCase + Send + Sync + 'static>,
 
@@ -135,7 +135,7 @@ pub struct Application {
 
 pub async fn build_application<
     L: ListenerNotificationPort + Send + Sync + 'static,
-    C: AccountConnectionPort + Send + Sync + 'static,
+    C: UserConnectionPort + Send + Sync + 'static,
     G: GameRepository + Send + Sync + 'static,
     R: RatingRepository + Send + Sync + 'static,
     S: StatsRepository + Send + Sync + 'static,
@@ -143,7 +143,7 @@ pub async fn build_application<
     E: EmailPort + Send + Sync + 'static,
     ER: EventRepository + Send + Sync + 'static,
     PF: AccountProfileRepository + Send + Sync + 'static,
-    AC: AccountOnlineStatusPort + Send + Sync + 'static,
+    AC: UserOnlineStatusPort + Send + Sync + 'static,
     PFP: ProfilePictureRepository + Send + Sync + 'static,
     PZR: PuzzleRepository + Send + Sync + 'static,
     CR: ChatRepository + Send + Sync + 'static,
@@ -281,7 +281,7 @@ pub async fn build_application<
             match_repository.clone(),
             notify_player_workflow.clone(),
         )),
-        account_get_online_use_case: Arc::new(GetOnlineAccountsUseCaseImpl::new(
+        account_get_online_use_case: Arc::new(GetOnlineUsersUseCaseImpl::new(
             account_online_status_port.clone(),
         )),
 

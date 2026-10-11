@@ -54,6 +54,7 @@ async function onSubmit(data: LoginForm) {
         </div>
       </Form>
       <RouterLink to="/register" class="mt-4"> Don't have an account? Sign up here. </RouterLink>
+      <RouterLink to="/recover" class="mt-4"> Forgot your password? Recover it here. </RouterLink>
     </div>
   </Page>
 </template>

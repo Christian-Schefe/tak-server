@@ -142,6 +142,7 @@ async fn main() {
         app,
         authentication_adapter,
         ws_service,
+        email_adapter,
         connection_driver,
         on_shutdown,
     )

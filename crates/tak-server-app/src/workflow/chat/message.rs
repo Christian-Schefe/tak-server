@@ -6,7 +6,7 @@ use crate::{
         chat::{ChatConversation, ChatMessage, ChatRepository, ChatRoomService, ContentPolicy},
     },
     ports::{
-        connection::AccountConnectionPort,
+        connection::UserConnectionPort,
         notification::{ListenerMessage, ListenerNotificationPort},
     },
     workflow::chat::ChatMessageView,
@@ -35,7 +35,7 @@ pub enum ChatSendMessageError {
 
 pub struct ChatMessageUseCaseImpl<
     L: ListenerNotificationPort,
-    P: AccountConnectionPort,
+    P: UserConnectionPort,
     C: ChatRoomService,
     Co: ContentPolicy,
     CR: ChatRepository,
@@ -49,7 +49,7 @@ pub struct ChatMessageUseCaseImpl<
 
 impl<
     L: ListenerNotificationPort,
-    P: AccountConnectionPort,
+    P: UserConnectionPort,
     C: ChatRoomService,
     Co: ContentPolicy,
     CR: ChatRepository,
@@ -75,7 +75,7 @@ impl<
 #[async_trait::async_trait]
 impl<
     L: ListenerNotificationPort + Send + Sync + 'static,
-    P: AccountConnectionPort + Send + Sync + 'static,
+    P: UserConnectionPort + Send + Sync + 'static,
     C: ChatRoomService + Send + Sync + 'static,
     Co: ContentPolicy + Send + Sync + 'static,
     CR: ChatRepository + Send + Sync + 'static,

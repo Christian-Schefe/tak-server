@@ -9,7 +9,7 @@ use tak_server_app::{
     Application,
     domain::{ListenerId, UserId},
     ports::{
-        connection::{AccountConnectionPort, AccountOnlineStatusPort},
+        connection::{UserConnectionPort, UserOnlineStatusPort},
         notification::{ListenerMessage, ListenerNotificationPort},
     },
 };
@@ -156,7 +156,7 @@ impl PlayerConnectionDriver {
 }
 
 #[async_trait::async_trait]
-impl AccountConnectionPort for PlayerConnectionService {
+impl UserConnectionPort for PlayerConnectionService {
     async fn get_connection_id(&self, user_id: UserId) -> Option<ListenerId> {
         let registry = self.registry.read();
 
@@ -221,8 +221,8 @@ impl AccountOnlineStatusService {
     }
 }
 
-impl AccountOnlineStatusPort for AccountOnlineStatusService {
-    fn set_account_online(&self, user_id: UserId) -> Option<Vec<UserId>> {
+impl UserOnlineStatusPort for AccountOnlineStatusService {
+    fn set_user_online(&self, user_id: UserId) -> Option<Vec<UserId>> {
         let mut online_accounts = self.online_accounts.write();
         if online_accounts.insert(user_id.clone()) {
             Some(online_accounts.iter().cloned().collect())
@@ -231,7 +231,7 @@ impl AccountOnlineStatusPort for AccountOnlineStatusService {
         }
     }
 
-    fn set_account_offline(&self, user_id: UserId) -> Option<Vec<UserId>> {
+    fn set_user_offline(&self, user_id: UserId) -> Option<Vec<UserId>> {
         let mut online_accounts = self.online_accounts.write();
         if online_accounts.remove(&user_id) {
             Some(online_accounts.iter().cloned().collect())
@@ -240,7 +240,7 @@ impl AccountOnlineStatusPort for AccountOnlineStatusService {
         }
     }
 
-    fn get_online_accounts(&self) -> Vec<UserId> {
+    fn get_online_users(&self) -> Vec<UserId> {
         self.online_accounts.read().iter().cloned().collect()
     }
 }

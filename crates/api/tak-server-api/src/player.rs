@@ -18,6 +18,12 @@ pub fn register_routes() -> axum::Router<AppState> {
         .route("/player/{user_id}/stats", get(get_player_stats))
         .route("/player/{user_id}/rating-history", get(get_rating_history))
         .route("/leaderboard", get(query_player_ratings))
+        .route("/online", get(get_online_users))
+}
+
+async fn get_online_users(State(app): State<AppState>) -> Json<Vec<String>> {
+    let users = app.app.account_get_online_use_case.get_online_users();
+    Json(users.into_iter().map(|a| a.to_string()).collect())
 }
 
 async fn get_player_info_helper(

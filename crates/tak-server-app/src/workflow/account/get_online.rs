@@ -1,31 +1,31 @@
 use std::sync::Arc;
 
-use crate::{domain::UserId, ports::connection::AccountOnlineStatusPort};
+use crate::{domain::UserId, ports::connection::UserOnlineStatusPort};
 
-pub trait GetOnlineAccountsUseCase {
-    fn get_online_accounts(&self) -> Vec<UserId>;
+pub trait GetOnlineUsersUseCase {
+    fn get_online_users(&self) -> Vec<UserId>;
 }
 
-pub struct GetOnlineAccountsUseCaseImpl<P: AccountOnlineStatusPort> {
-    account_online_status_port: Arc<P>,
+pub struct GetOnlineUsersUseCaseImpl<P: UserOnlineStatusPort> {
+    user_online_status_port: Arc<P>,
 }
 
-impl<P> GetOnlineAccountsUseCaseImpl<P>
+impl<P> GetOnlineUsersUseCaseImpl<P>
 where
-    P: AccountOnlineStatusPort + Send + Sync + 'static,
+    P: UserOnlineStatusPort + Send + Sync + 'static,
 {
-    pub fn new(account_online_status_port: Arc<P>) -> Self {
+    pub fn new(user_online_status_port: Arc<P>) -> Self {
         Self {
-            account_online_status_port,
+            user_online_status_port,
         }
     }
 }
 
-impl<P> GetOnlineAccountsUseCase for GetOnlineAccountsUseCaseImpl<P>
+impl<P> GetOnlineUsersUseCase for GetOnlineUsersUseCaseImpl<P>
 where
-    P: AccountOnlineStatusPort + Send + Sync + 'static,
+    P: UserOnlineStatusPort + Send + Sync + 'static,
 {
-    fn get_online_accounts(&self) -> Vec<UserId> {
-        self.account_online_status_port.get_online_accounts()
+    fn get_online_users(&self) -> Vec<UserId> {
+        self.user_online_status_port.get_online_users()
     }
 }

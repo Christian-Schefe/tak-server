@@ -9,7 +9,7 @@ use crate::{
         seek::SeekService,
     },
     ports::{
-        connection::AccountOnlineStatusPort,
+        connection::UserOnlineStatusPort,
         notification::{ListenerMatchEventType, ListenerMessage, ListenerNotificationPort},
     },
     processes::disconnect_timeout_runner::DisconnectTimeoutRunner,
@@ -23,7 +23,7 @@ pub trait SetAccountOnlineUseCase {
 }
 
 pub struct SetAccountOnlineUseCaseImpl<
-    P: AccountOnlineStatusPort,
+    P: UserOnlineStatusPort,
     L: ListenerNotificationPort,
     S: SeekService,
     D: DisconnectTimeoutRunner,
@@ -41,7 +41,7 @@ pub struct SetAccountOnlineUseCaseImpl<
 }
 
 impl<
-    P: AccountOnlineStatusPort,
+    P: UserOnlineStatusPort,
     L: ListenerNotificationPort,
     S: SeekService,
     D: DisconnectTimeoutRunner,
@@ -73,7 +73,7 @@ impl<
 
 #[async_trait::async_trait]
 impl<
-    P: AccountOnlineStatusPort + Send + Sync + 'static,
+    P: UserOnlineStatusPort + Send + Sync + 'static,
     L: ListenerNotificationPort + Send + Sync + 'static,
     S: SeekService + Send + Sync + 'static,
     D: DisconnectTimeoutRunner + Send + Sync + 'static,
@@ -84,7 +84,7 @@ impl<
 {
     #[tracing::instrument(skip(self))]
     async fn set_online(&self, user_id: UserId) {
-        if let Some(users) = self.account_online_status_port.set_account_online(user_id) {
+        if let Some(users) = self.account_online_status_port.set_user_online(user_id) {
             let message = ListenerMessage::UsersOnline { users };
             self.notification_port.notify_all(&message);
         }
@@ -94,7 +94,7 @@ impl<
 
     #[tracing::instrument(skip(self))]
     async fn set_offline(&self, user_id: UserId) {
-        if let Some(users) = self.account_online_status_port.set_account_offline(user_id) {
+        if let Some(users) = self.account_online_status_port.set_user_offline(user_id) {
             let message = ListenerMessage::UsersOnline { users };
             self.notification_port.notify_all(&message);
         }

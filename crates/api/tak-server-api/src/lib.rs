@@ -2,13 +2,12 @@ use std::sync::Arc;
 
 use axum::{Router, response::IntoResponse, routing::get};
 use tak_player_connection::PlayerConnectionDriver;
-use tak_server_app::Application;
+use tak_server_app::{Application, ports::email::EmailPort};
 
 pub use auth::ApiAuthPort;
 use tower_http::csrf::CsrfLayer;
 pub use ws::WsService;
 
-mod account;
 mod auth;
 mod chat;
 mod game;
@@ -25,6 +24,7 @@ mod ws;
 pub struct AppState {
     pub app: Arc<Application>,
     pub auth: Arc<dyn ApiAuthPort + Send + Sync + 'static>,
+    pub email: Arc<dyn EmailPort + Send + Sync + 'static>,
     pub connection_driver: Arc<PlayerConnectionDriver>,
     pub ws: Arc<WsService>,
 }
@@ -33,6 +33,7 @@ pub async fn serve(
     app: Arc<Application>,
     auth: Arc<dyn ApiAuthPort + Send + Sync + 'static>,
     ws: Arc<WsService>,
+    email: Arc<dyn EmailPort + Send + Sync + 'static>,
     connection_driver: Arc<PlayerConnectionDriver>,
     shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
 ) {
@@ -41,6 +42,7 @@ pub async fn serve(
         auth,
         ws,
         connection_driver,
+        email,
     };
 
     let csrf_layer = CsrfLayer::new();
@@ -54,7 +56,6 @@ pub async fn serve(
         .nest("/chat", chat::register_routes())
         .nest("/tournaments", tournament::register_routes())
         .nest("/matches", matches::register_routes())
-        .nest("/accounts", account::register_routes())
         .nest("/players", player::register_routes())
         .nest("/profiles", profile::register_routes())
         .nest("/history", history::register_routes())

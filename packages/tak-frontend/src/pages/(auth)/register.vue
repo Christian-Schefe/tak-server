@@ -44,8 +44,8 @@ async function onSubmit(data: RegisterForm) {
     <div class="flex flex-col items-stretch gap-2">
       <Form v-model="formContext" :validator="formValidator" @submit="onSubmit">
         <div class="flex flex-col gap-2">
-          <InputText label="Email" name="email" autocomplete="email" />
-          <InputText label="Username" name="username" autocomplete="username" />
+          <InputText label="Username" name="username" />
+          <InputText label="Email" name="email" autocomplete="username" />
           <InputText label="Password" name="password" type="password" autocomplete="new-password" />
           <div class="flex justify-end">
             <Button type="submit">Sign Up</Button>

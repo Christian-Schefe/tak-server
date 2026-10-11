@@ -1,12 +1,12 @@
-use crate::domain::{UserId, ListenerId};
+use crate::domain::{ListenerId, UserId};
 
 #[async_trait::async_trait]
-pub trait AccountConnectionPort {
+pub trait UserConnectionPort {
     async fn get_connection_id(&self, user_id: UserId) -> Option<ListenerId>;
 }
 
-pub trait AccountOnlineStatusPort {
-    fn set_account_online(&self, user_id: UserId) -> Option<Vec<UserId>>;
-    fn set_account_offline(&self, user_id: UserId) -> Option<Vec<UserId>>;
-    fn get_online_accounts(&self) -> Vec<UserId>;
+pub trait UserOnlineStatusPort {
+    fn set_user_online(&self, user_id: UserId) -> Option<Vec<UserId>>;
+    fn set_user_offline(&self, user_id: UserId) -> Option<Vec<UserId>>;
+    fn get_online_users(&self) -> Vec<UserId>;
 }

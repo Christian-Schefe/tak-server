@@ -45,9 +45,23 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/(auth)/recover': RouteRecordInfo<
+      '/(auth)/recover',
+      '/recover',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/(auth)/register': RouteRecordInfo<
       '/(auth)/register',
       '/register',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/(auth)/reset': RouteRecordInfo<
+      '/(auth)/reset',
+      '/reset',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -172,9 +186,25 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
+    'src/pages/(auth)/recover.vue': {
+      routes:
+        | '/(auth)/recover'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
     'src/pages/(auth)/register.vue': {
       routes:
         | '/(auth)/register'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/(auth)/reset.vue': {
+      routes:
+        | '/(auth)/reset'
       views:
         | never
       pathParamNames:

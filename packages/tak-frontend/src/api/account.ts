@@ -18,7 +18,7 @@ export function useOnlineUsers() {
   return useQuery({
     queryKey: ['ws', 'usersOnline'],
     queryFn: async () => {
-      return await fetchTyped(z.array(z.string()), '/api/accounts/online');
+      return await fetchTyped(z.array(z.string()), '/api/players/online');
     },
   });
 }
