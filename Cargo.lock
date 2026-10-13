@@ -4878,7 +4878,6 @@ dependencies = [
 name = "tak-main"
 version = "0.1.0"
 dependencies = [
- "clap",
  "dotenvy",
  "tak-auth",
  "tak-email-lettre",
@@ -4985,7 +4984,6 @@ dependencies = [
  "tower-http 0.7.1",
  "tracing",
  "unordered-pair",
- "url 2.5.7",
  "uuid",
 ]
 
@@ -5018,6 +5016,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "unordered-pair",
+ "url 2.5.7",
  "uuid",
 ]
 

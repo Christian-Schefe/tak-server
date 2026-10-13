@@ -2,15 +2,13 @@ use std::sync::Arc;
 
 use country_code_enum::CountryCode;
 
-use crate::{
-    domain::{
-        RepoError, RepoRetrieveError, UserId,
-        profile::{
-            AccountProfile, AccountProfileRepository, ProfilePicture, ProfilePictureRepository,
-            ProfilePictureVersion,
-        },
+use crate::domain::{
+    RepoError, RepoRetrieveError, UserId,
+    moderation::ModerationRepository,
+    profile::{
+        AccountProfile, AccountProfileRepository, ProfilePicture, ProfilePictureRepository,
+        ProfilePictureVersion,
     },
-    ports::authentication::AuthenticationPort,
 };
 use image::DynamicImage;
 
@@ -31,30 +29,30 @@ pub trait UpdateProfileUseCase {
 
 pub enum UpdateProfileError {
     AccountNotFound,
-    RepositoryError,
+    Internal,
 }
 
 pub struct UpdateProfileUseCaseImpl<
     PF: AccountProfileRepository,
-    A: AuthenticationPort,
+    M: ModerationRepository,
     PFP: ProfilePictureRepository,
 > {
     profile_information_repo: Arc<PF>,
-    authentication_service: Arc<A>,
+    moderation_repo: Arc<M>,
     profile_picture_repo: Arc<PFP>,
 }
 
-impl<PF: AccountProfileRepository, A: AuthenticationPort, PFP: ProfilePictureRepository>
-    UpdateProfileUseCaseImpl<PF, A, PFP>
+impl<PF: AccountProfileRepository, M: ModerationRepository, PFP: ProfilePictureRepository>
+    UpdateProfileUseCaseImpl<PF, M, PFP>
 {
     pub fn new(
         profile_information_repo: Arc<PF>,
-        authentication_service: Arc<A>,
+        moderation_repo: Arc<M>,
         profile_picture_repo: Arc<PFP>,
     ) -> Self {
         Self {
             profile_information_repo,
-            authentication_service,
+            moderation_repo,
             profile_picture_repo,
         }
     }
@@ -63,9 +61,9 @@ impl<PF: AccountProfileRepository, A: AuthenticationPort, PFP: ProfilePictureRep
 #[async_trait::async_trait]
 impl<
     PF: AccountProfileRepository + Send + Sync + 'static,
-    A: AuthenticationPort + Send + Sync + 'static,
+    M: ModerationRepository + Send + Sync + 'static,
     PFP: ProfilePictureRepository + Send + Sync + 'static,
-> UpdateProfileUseCase for UpdateProfileUseCaseImpl<PF, A, PFP>
+> UpdateProfileUseCase for UpdateProfileUseCaseImpl<PF, M, PFP>
 {
     async fn update_profile(
         &self,
@@ -73,14 +71,24 @@ impl<
         display_name: Option<String>,
         country: Option<CountryCode>,
     ) -> Result<(), UpdateProfileError> {
-        let account = match self.authentication_service.get_account(user_id).await {
-            Ok(Some(acc)) => acc,
-            Ok(None) => return Err(UpdateProfileError::AccountNotFound),
-            Err(_) => return Err(UpdateProfileError::RepositoryError),
+        match self.moderation_repo.get_moderation(user_id).await {
+            Ok(acc) => {
+                if acc.is_guest() {
+                    return Err(UpdateProfileError::AccountNotFound);
+                }
+            }
+            Err(RepoRetrieveError::NotFound) => {
+                return Err(UpdateProfileError::AccountNotFound);
+            }
+            Err(RepoRetrieveError::StorageError(e)) => {
+                tracing::error!(
+                    "Failed to retrieve moderation for account {}: {}",
+                    user_id,
+                    e
+                );
+                return Err(UpdateProfileError::Internal);
+            }
         };
-        if account.is_guest() {
-            return Err(UpdateProfileError::AccountNotFound);
-        }
         let mut profile_data = match self
             .profile_information_repo
             .get_profile_information(user_id)
@@ -94,7 +102,7 @@ impl<
                     user_id,
                     e
                 );
-                return Err(UpdateProfileError::RepositoryError);
+                return Err(UpdateProfileError::Internal);
             }
         };
         profile_data.country = country;
@@ -111,7 +119,7 @@ impl<
                     user_id,
                     e
                 );
-                Err(UpdateProfileError::RepositoryError)
+                Err(UpdateProfileError::Internal)
             }
         }
     }
@@ -121,14 +129,24 @@ impl<
         user_id: UserId,
         picture_data: DynamicImage,
     ) -> Result<ProfilePictureVersion, UpdateProfileError> {
-        let account = match self.authentication_service.get_account(user_id).await {
-            Ok(Some(acc)) => acc,
-            Ok(None) => return Err(UpdateProfileError::AccountNotFound),
-            Err(_) => return Err(UpdateProfileError::RepositoryError),
+        match self.moderation_repo.get_moderation(user_id).await {
+            Ok(acc) => {
+                if acc.is_guest() {
+                    return Err(UpdateProfileError::AccountNotFound);
+                }
+            }
+            Err(RepoRetrieveError::NotFound) => {
+                return Err(UpdateProfileError::AccountNotFound);
+            }
+            Err(RepoRetrieveError::StorageError(e)) => {
+                tracing::error!(
+                    "Failed to retrieve moderation for account {}: {}",
+                    user_id,
+                    e
+                );
+                return Err(UpdateProfileError::Internal);
+            }
         };
-        if account.is_guest() {
-            return Err(UpdateProfileError::AccountNotFound);
-        }
         let profile_data = match self
             .profile_information_repo
             .get_profile_information(user_id)
@@ -142,7 +160,7 @@ impl<
                     user_id,
                     e
                 );
-                return Err(UpdateProfileError::RepositoryError);
+                return Err(UpdateProfileError::Internal);
             }
         };
         let new_version = profile_data
@@ -173,7 +191,7 @@ impl<
                     user_id,
                     e
                 );
-                return Err(UpdateProfileError::RepositoryError);
+                return Err(UpdateProfileError::Internal);
             }
         }
         tracing::info!(
@@ -194,7 +212,7 @@ impl<
                     user_id,
                     e
                 );
-                Err(UpdateProfileError::RepositoryError)
+                Err(UpdateProfileError::Internal)
             }
         }
     }

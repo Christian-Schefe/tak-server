@@ -6,7 +6,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use tak_server_app::{
     domain::{Pagination, UserId, rating::RatingQuery},
-    workflow::player::{PlayerStatsView, get_rating::GetRatingError},
+    workflow::player::PlayerStatsView,
 };
 use uuid::Uuid;
 
@@ -30,11 +30,13 @@ async fn get_player_info_helper(
     app: &AppState,
     user_id: UserId,
 ) -> Result<PlayerInfo, ServiceError> {
-    let account = match app.auth.get_account(user_id).await {
-        Ok(Some(account)) => account,
-        Ok(None) => {
-            return Err(ServiceError::NotFound("Player not found".to_string()));
-        }
+    let snapshot = match app
+        .app
+        .get_snapshot_workflow
+        .get_snapshot(user_id, Utc::now())
+        .await
+    {
+        Ok(snapshot) => snapshot,
         Err(_) => {
             return Err(ServiceError::Internal(
                 "Failed to retrieve player account".to_string(),
@@ -42,19 +44,10 @@ async fn get_player_info_helper(
         }
     };
 
-    let participation_rating = match app.app.player_get_rating_use_case.get_rating(user_id).await {
-        Ok(rating) => rating,
-        Err(GetRatingError::Internal) => {
-            return Err(ServiceError::Internal(
-                "Failed to retrieve player rating".to_string(),
-            ));
-        }
-    };
-
     Ok(PlayerInfo {
         user_id: user_id.to_string(),
-        username: account.username,
-        participation_rating,
+        username: snapshot.username,
+        participation_rating: snapshot.rating,
     })
 }
 

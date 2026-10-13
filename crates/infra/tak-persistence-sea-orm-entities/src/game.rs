@@ -11,8 +11,8 @@ pub struct Model {
 
     pub player_white_id: Uuid,
     pub player_black_id: Uuid,
-    pub player_white_username: Option<String>,
-    pub player_black_username: Option<String>,
+    pub player_white_username: String,
+    pub player_black_username: String,
     pub player_white_rating: Option<f64>,
     pub player_black_rating: Option<f64>,
 

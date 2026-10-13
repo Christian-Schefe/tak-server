@@ -14,6 +14,7 @@ pub mod account;
 pub mod chat;
 pub mod games;
 pub mod matches;
+pub mod moderation;
 pub mod profile;
 pub mod puzzle;
 pub mod rating_history;
@@ -74,6 +75,7 @@ pub async fn create_db_pool() -> DatabaseConnection {
                 .register(tak_persistence_sea_orm_entities::matches::Entity)
                 .register(tak_persistence_sea_orm_entities::tournament_round::Entity)
                 .register(tak_persistence_sea_orm_entities::account::Entity)
+                .register(tak_persistence_sea_orm_entities::moderation::Entity)
                 .sync(&db)
                 .await
                 .expect("Failed to apply entity sync");

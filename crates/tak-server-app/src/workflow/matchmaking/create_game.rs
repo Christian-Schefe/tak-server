@@ -25,7 +25,7 @@ pub trait CreateGameFromMatchWorkflow {
 #[derive(Debug)]
 pub enum CreateGameFromMatchError {
     MatchNotFound,
-    RepositoryError,
+    Internal,
     AlreadyInProgress,
 }
 
@@ -103,7 +103,7 @@ impl<
                 RepoRetrieveError::NotFound => CreateGameFromMatchError::MatchNotFound,
                 RepoRetrieveError::StorageError(e) => {
                     tracing::error!("Storage error while retrieving match {}: {}", match_id, e);
-                    CreateGameFromMatchError::RepositoryError
+                    CreateGameFromMatchError::Internal
                 }
             })?;
         let player1_color = match_entry.try_begin_game().map_err(|e| {
@@ -116,14 +116,22 @@ impl<
             TakPlayer::Black => (match_entry.player2.user_id, match_entry.player1.user_id),
         };
 
-        let snapshot_white = self
+        let snapshot_white = match self
             .get_snapshot_workflow
             .get_snapshot(white_id, date)
-            .await;
-        let snapshot_black = self
+            .await
+        {
+            Ok(snapshot) => snapshot,
+            Err(_) => return Err(CreateGameFromMatchError::Internal),
+        };
+        let snapshot_black = match self
             .get_snapshot_workflow
             .get_snapshot(black_id, date)
-            .await;
+            .await
+        {
+            Ok(snapshot) => snapshot,
+            Err(_) => return Err(CreateGameFromMatchError::Internal),
+        };
 
         let metadata = self.game_service.create_game_metadata(
             date,
@@ -144,7 +152,7 @@ impl<
             Ok(id) => id,
             Err(e) => {
                 tracing::error!("Failed to save ongoing game for match {}: {}", match_id, e);
-                return Err(CreateGameFromMatchError::RepositoryError);
+                return Err(CreateGameFromMatchError::Internal);
             }
         };
 

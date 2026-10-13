@@ -10,10 +10,6 @@ pub struct Model {
     pub unique_name: Option<String>,
     #[sea_orm(unique)]
     pub email: Option<String>,
-    pub account_type: String,
-    pub role: String,
-    pub banned: bool,
-    pub silenced: bool,
     pub password_hash: Option<String>,
 }
 

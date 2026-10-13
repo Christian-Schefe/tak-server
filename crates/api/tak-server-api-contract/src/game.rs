@@ -88,8 +88,7 @@ pub struct JsonGameMetadata {
 #[derive(serde::Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonEndedGameInfo {
-    pub white: JsonPlayerSnapshot,
-    pub black: JsonPlayerSnapshot,
+    pub players: ForPlayer<JsonPlayerSnapshot>,
     pub rating_info: Option<JsonGameRatingInfo>,
     pub result: Option<String>,
     #[serde(flatten)]
@@ -102,10 +101,10 @@ pub struct JsonGameRatingInfo {
     pub rating_change: ForPlayer<f64>,
 }
 
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonPlayerSnapshot {
-    pub username: Option<String>,
+    pub username: String,
     pub rating: Option<f64>,
 }
 

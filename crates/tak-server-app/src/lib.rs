@@ -7,7 +7,9 @@ use crate::{
         game::GameServiceImpl,
         game_history::{GameHistoryServiceImpl, GameRepository},
         matches::{MatchReadinessServiceImpl, MatchRepository},
-        moderation::{AdminAccountPolicy, HigherRoleAccountPolicy, ModeratorAccountPolicy},
+        moderation::{
+            AdminUserPolicy, HigherRoleUserPolicy, ModerationRepository, ModeratorUserPolicy,
+        },
         profile::{AccountProfileRepository, ProfilePictureRepository},
         puzzle::PuzzleRepository,
         rating::{RatingRepository, RatingServiceImpl},
@@ -17,7 +19,7 @@ use crate::{
         tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
     },
     ports::{
-        authentication::AuthenticationPort,
+        authentication::AccountPort,
         connection::{UserConnectionPort, UserOnlineStatusPort},
         email::EmailPort,
         notification::ListenerNotificationPort,
@@ -28,10 +30,10 @@ use crate::{
     },
     workflow::{
         account::{
+            authentication::{AuthenticationUseCase, AuthenticationUseCaseImpl},
             get_online::{GetOnlineUsersUseCase, GetOnlineUsersUseCaseImpl},
             get_profile::{GetProfileUseCase, GetProfileUseCaseImpl},
             get_snapshot::{GetSnapshotWorkflow, GetSnapshotWorkflowImpl},
-            moderate::{ModeratePlayerUseCase, ModeratePlayerUseCaseImpl, ModerationPolicies},
             set_online::{SetAccountOnlineUseCase, SetAccountOnlineUseCaseImpl},
             update_profile::{UpdateProfileUseCase, UpdateProfileUseCaseImpl},
         },
@@ -58,6 +60,9 @@ use crate::{
             get::{GetMatchUseCase, GetMatchUseCaseImpl, GetSeekUseCase, GetSeekUseCaseImpl},
             list::{ListSeeksUseCase, ListSeeksUseCaseImpl},
             readiness::{MatchReadinessUseCase, MatchReadinessUseCaseImpl},
+        },
+        moderation::moderate::{
+            ModeratePlayerUseCase, ModeratePlayerUseCaseImpl, ModerationPolicies,
         },
         player::{
             get_rating::{PlayerGetRatingUseCase, PlayerGetRatingUseCaseImpl},
@@ -131,6 +136,8 @@ pub struct Application {
     pub match_get_use_case: Arc<dyn GetMatchUseCase + Send + Sync + 'static>,
 
     pub shutdown_workflow: Arc<dyn ShutdownWorkflow + Send + Sync + 'static>,
+
+    pub authentication_use_case: Arc<dyn AuthenticationUseCase + Send + Sync + 'static>,
 }
 
 pub async fn build_application<
@@ -139,7 +146,7 @@ pub async fn build_application<
     G: GameRepository + Send + Sync + 'static,
     R: RatingRepository + Send + Sync + 'static,
     S: StatsRepository + Send + Sync + 'static,
-    AS: AuthenticationPort + Send + Sync + 'static,
+    AS: AccountPort + Send + Sync + 'static,
     E: EmailPort + Send + Sync + 'static,
     ER: EventRepository + Send + Sync + 'static,
     PF: AccountProfileRepository + Send + Sync + 'static,
@@ -152,6 +159,7 @@ pub async fn build_application<
     TPR: TournamentPlayerRepository + Send + Sync + 'static,
     MR: MatchRepository + Send + Sync + 'static,
     TRR: TournamentRoundRepository + Send + Sync + 'static,
+    MO: ModerationRepository + Send + Sync + 'static,
 >(
     game_repository: Arc<G>,
     rating_repository: Arc<R>,
@@ -171,6 +179,7 @@ pub async fn build_application<
     tournament_player_registration_repository: Arc<TPR>,
     match_repository: Arc<MR>,
     tournament_round_repository: Arc<TRR>,
+    moderation_repository: Arc<MO>,
 ) -> Application {
     let seek_service = Arc::new(SeekServiceImpl::new());
     let game_service = Arc::new(GameServiceImpl::new());
@@ -182,12 +191,11 @@ pub async fn build_application<
     let match_readiness_service = Arc::new(MatchReadinessServiceImpl::new());
 
     let policies = ModerationPolicies {
-        ban_policy: Arc::new(AdminAccountPolicy),
-        kick_policy: Arc::new(ModeratorAccountPolicy),
-        silence_policy: Arc::new(ModeratorAccountPolicy),
-        set_moderator_policy: Arc::new(HigherRoleAccountPolicy),
-        set_admin_policy: Arc::new(HigherRoleAccountPolicy),
-        set_user_policy: Arc::new(HigherRoleAccountPolicy),
+        ban_policy: Arc::new(AdminUserPolicy),
+        silence_policy: Arc::new(ModeratorUserPolicy),
+        set_moderator_policy: Arc::new(HigherRoleUserPolicy),
+        set_admin_policy: Arc::new(HigherRoleUserPolicy),
+        set_user_policy: Arc::new(HigherRoleUserPolicy),
     };
 
     let get_snapshot_workflow = Arc::new(GetSnapshotWorkflowImpl::new(
@@ -216,7 +224,7 @@ pub async fn build_application<
         notify_player_workflow.clone(),
         spectator_service.clone(),
         listener_notification_port.clone(),
-        authentication_service.clone(),
+        moderation_repository.clone(),
         stats_repository.clone(),
         rating_history_repository.clone(),
         tournament_match_workflow.clone(),
@@ -293,7 +301,6 @@ pub async fn build_application<
         player_get_rating_use_case: Arc::new(PlayerGetRatingUseCaseImpl::new(
             rating_repository.clone(),
             rating_history_repository.clone(),
-            rating_service.clone(),
         )),
 
         game_do_action_use_case: Arc::new(DoActionUseCaseImpl::new(
@@ -324,6 +331,7 @@ pub async fn build_application<
         account_moderate_use_case: Arc::new(ModeratePlayerUseCaseImpl::new(
             email_port.clone(),
             policies,
+            moderation_repository.clone(),
             authentication_service.clone(),
         )),
 
@@ -336,7 +344,7 @@ pub async fn build_application<
         )),
         update_profile_use_case: Arc::new(UpdateProfileUseCaseImpl::new(
             profile_repository.clone(),
-            authentication_service.clone(),
+            moderation_repository.clone(),
             profile_picture_repo.clone(),
         )),
 
@@ -365,11 +373,18 @@ pub async fn build_application<
             tournament_player_registration_repository.clone(),
             tournament_round_repository.clone(),
             rating_repository.clone(),
+            moderation_repository.clone(),
         )),
 
         match_get_use_case: Arc::new(GetMatchUseCaseImpl::new(match_repository.clone())),
 
         shutdown_workflow,
+
+        authentication_use_case: Arc::new(AuthenticationUseCaseImpl::new(
+            authentication_service.clone(),
+            email_port.clone(),
+            moderation_repository.clone(),
+        )),
     };
 
     application

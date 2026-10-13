@@ -256,13 +256,15 @@ pub fn from_metadata_view(game_id: GameId, view: &GameMetadataView) -> JsonGameM
 pub fn from_game_record(record: &GameRecordView) -> JsonEndedGameInfo {
     JsonEndedGameInfo {
         metadata: from_metadata_view(record.game_id, &record.metadata),
-        white: JsonPlayerSnapshot {
-            username: record.white.username.clone(),
-            rating: record.white.rating,
-        },
-        black: JsonPlayerSnapshot {
-            username: record.black.username.clone(),
-            rating: record.black.rating,
+        players: ForPlayer {
+            white: JsonPlayerSnapshot {
+                username: record.white.username.clone(),
+                rating: record.white.rating,
+            },
+            black: JsonPlayerSnapshot {
+                username: record.black.username.clone(),
+                rating: record.black.rating,
+            },
         },
         rating_info: record.rating_info.as_ref().map(|info| JsonGameRatingInfo {
             rating_change: ForPlayer {

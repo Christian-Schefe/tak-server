@@ -8,16 +8,14 @@ use crate::{
         game::FinishedGame,
         game_history::{GameHistoryService, GameRatingInfo, GameRepository},
         matches::{MatchRepository, MatchStatus},
+        moderation::{Moderation, ModerationRepository},
         rating::{PlayerRating, RatingRepository, RatingService},
         spectator::SpectatorService,
         stats::{
             GameOutcome, PlayerStats, RatingHistoryEntry, RatingHistoryRepository, StatsRepository,
         },
     },
-    ports::{
-        authentication::{Account, AuthenticationPort},
-        notification::{ListenerGameMessageType, ListenerMessage, ListenerNotificationPort},
-    },
+    ports::notification::{ListenerGameMessageType, ListenerMessage, ListenerNotificationPort},
     workflow::{
         gameplay::FinishedGameView, player::notify_player::NotifyPlayerWorkflow,
         tournament::tournament_match::TournamentMatchWorkflow,
@@ -38,7 +36,7 @@ pub struct FinalizeGameWorkflowImpl<
     NP: NotifyPlayerWorkflow,
     SPS: SpectatorService,
     L: ListenerNotificationPort,
-    A: AuthenticationPort,
+    MR: ModerationRepository,
     S: StatsRepository,
     RH: RatingHistoryRepository,
     TM: TournamentMatchWorkflow,
@@ -51,7 +49,7 @@ pub struct FinalizeGameWorkflowImpl<
     notify_player_workflow: Arc<NP>,
     spectator_service: Arc<SPS>,
     listener_notification_port: Arc<L>,
-    authentication_service: Arc<A>,
+    moderation_repository: Arc<MR>,
     stats_repository: Arc<S>,
     rating_history_repository: Arc<RH>,
     tournament_match_workflow: Arc<TM>,
@@ -66,11 +64,11 @@ impl<
     NP: NotifyPlayerWorkflow,
     SPS: SpectatorService,
     L: ListenerNotificationPort,
-    A: AuthenticationPort,
+    MR: ModerationRepository,
     S: StatsRepository,
     RH: RatingHistoryRepository,
     TM: TournamentMatchWorkflow,
-> FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, A, S, RH, TM>
+> FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, MR, S, RH, TM>
 {
     pub fn new(
         game_repository: Arc<G>,
@@ -81,7 +79,7 @@ impl<
         notify_player_workflow: Arc<NP>,
         spectator_service: Arc<SPS>,
         listener_notification_port: Arc<L>,
-        authentication_service: Arc<A>,
+        moderation_repository: Arc<MR>,
         stats_repository: Arc<S>,
         rating_history_repository: Arc<RH>,
         tournament_match_workflow: Arc<TM>,
@@ -95,7 +93,7 @@ impl<
             notify_player_workflow,
             spectator_service,
             listener_notification_port,
-            authentication_service,
+            moderation_repository,
             stats_repository,
             rating_history_repository,
             tournament_match_workflow,
@@ -158,11 +156,11 @@ impl<
     NP: NotifyPlayerWorkflow + Send + Sync + 'static,
     SPS: SpectatorService + Send + Sync + 'static,
     L: ListenerNotificationPort + Send + Sync + 'static,
-    A: AuthenticationPort + Send + Sync + 'static,
+    MR: ModerationRepository + Send + Sync + 'static,
     S: StatsRepository + Send + Sync + 'static,
     RH: RatingHistoryRepository + Send + Sync + 'static,
     TM: TournamentMatchWorkflow + Send + Sync + 'static,
-> FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, A, S, RH, TM>
+> FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, MR, S, RH, TM>
 {
     #[tracing::instrument(skip(self, ended_game), fields(game_id = %ended_game.game_id))]
     async fn finalize_game(&self, ended_game: FinishedGame) {
@@ -198,11 +196,11 @@ impl<
         );
 
         let white_account = match self
-            .authentication_service
-            .get_account(ended_game.metadata.white_id)
+            .moderation_repository
+            .get_moderation(ended_game.metadata.white_id)
             .await
         {
-            Ok(account) => account,
+            Ok(account) => Some(account),
             Err(e) => {
                 tracing::error!(
                     "Failed to retrieve account for white player {}: {:?}",
@@ -213,11 +211,11 @@ impl<
             }
         };
         let black_account = match self
-            .authentication_service
-            .get_account(ended_game.metadata.black_id)
+            .moderation_repository
+            .get_moderation(ended_game.metadata.black_id)
             .await
         {
-            Ok(account) => account,
+            Ok(account) => Some(account),
             Err(e) => {
                 tracing::error!(
                     "Failed to retrieve account for black player {}: {:?}",
@@ -284,8 +282,8 @@ async fn update_ratings<
     rating_repository: &Arc<RR>,
     rating_history_repository: &Arc<RH>,
     ended_game: &FinishedGame,
-    white_account: Option<&Account>,
-    black_account: Option<&Account>,
+    white_account: Option<&Moderation>,
+    black_account: Option<&Moderation>,
 ) -> Option<GameRatingInfo> {
     if white_account.is_none_or(|x| x.is_guest()) || black_account.is_none_or(|x| x.is_guest()) {
         return None;
@@ -389,8 +387,8 @@ async fn update_ratings<
 async fn update_stats<S: StatsRepository>(
     stats_repository: &Arc<S>,
     ended_game: &FinishedGame,
-    white_account: Option<&Account>,
-    black_account: Option<&Account>,
+    white_account: Option<&Moderation>,
+    black_account: Option<&Moderation>,
 ) {
     let (white_outcome, black_outcome) = match ended_game.game.game_result() {
         TakGameResult::Draw => (GameOutcome::Draw, GameOutcome::Draw),

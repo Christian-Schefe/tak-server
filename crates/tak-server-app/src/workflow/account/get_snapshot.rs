@@ -4,10 +4,15 @@ use crate::{
     domain::{
         RepoRetrieveError, UserId,
         game_history::PlayerSnapshot,
-        rating::{PlayerRating, RatingRepository, RatingService},
+        rating::{RatingRepository, RatingService},
     },
-    ports::authentication::AuthenticationPort,
+    ports::authentication::AccountPort,
 };
+
+pub enum GetSnapshotError {
+    NotFound,
+    Internal,
+}
 
 #[async_trait::async_trait]
 pub trait GetSnapshotWorkflow {
@@ -15,21 +20,23 @@ pub trait GetSnapshotWorkflow {
         &self,
         user_id: UserId,
         date: chrono::DateTime<chrono::Utc>,
-    ) -> PlayerSnapshot;
+    ) -> Result<PlayerSnapshot, GetSnapshotError>;
 }
 
-pub struct GetSnapshotWorkflowImpl<A: AuthenticationPort, R: RatingRepository, RS: RatingService> {
-    authentication_service: Arc<A>,
+pub struct GetSnapshotWorkflowImpl<A: AccountPort, R: RatingRepository, RS: RatingService> {
+    account_info_service: Arc<A>,
     rating_repository: Arc<R>,
     rating_service: Arc<RS>,
 }
 
-impl<A: AuthenticationPort, R: RatingRepository, RS: RatingService>
-    GetSnapshotWorkflowImpl<A, R, RS>
-{
-    pub fn new(authentication_service: Arc<A>, rating_repository: Arc<R>, rating_service: Arc<RS>) -> Self {
+impl<A: AccountPort, R: RatingRepository, RS: RatingService> GetSnapshotWorkflowImpl<A, R, RS> {
+    pub fn new(
+        account_info_service: Arc<A>,
+        rating_repository: Arc<R>,
+        rating_service: Arc<RS>,
+    ) -> Self {
         Self {
-            authentication_service,
+            account_info_service,
             rating_repository,
             rating_service,
         }
@@ -38,7 +45,7 @@ impl<A: AuthenticationPort, R: RatingRepository, RS: RatingService>
 
 #[async_trait::async_trait]
 impl<
-    A: AuthenticationPort + Send + Sync + 'static,
+    A: AccountPort + Send + Sync + 'static,
     R: RatingRepository + Send + Sync + 'static,
     RS: RatingService + Send + Sync + 'static,
 > GetSnapshotWorkflow for GetSnapshotWorkflowImpl<A, R, RS>
@@ -47,37 +54,31 @@ impl<
         &self,
         user_id: UserId,
         date: chrono::DateTime<chrono::Utc>,
-    ) -> PlayerSnapshot {
-        let username = match self.authentication_service.get_account(user_id).await {
-            Ok(Some(account)) => Some(account.username),
-            Ok(None) => None,
+    ) -> Result<PlayerSnapshot, GetSnapshotError> {
+        let username = match self.account_info_service.get_account_info(user_id).await {
+            Ok(Some(info)) => info.username,
+            Ok(None) => return Err(GetSnapshotError::NotFound),
             Err(_) => {
                 tracing::error!(
                     "Failed to retrieve account for player {}: Repository error",
                     user_id.to_string(),
                 );
-                None
+                return Err(GetSnapshotError::Internal);
             }
         };
         let current_rating = match self.rating_repository.get_player_rating(user_id).await {
             Ok(rating) => Some(self.rating_service.get_current_rating(&rating, date)),
-            Err(RepoRetrieveError::NotFound) => {
-                let default_rating = PlayerRating::new(user_id);
-                Some(
-                    self.rating_service
-                        .get_current_rating(&default_rating, date),
-                )
-            }
+            Err(RepoRetrieveError::NotFound) => None,
             Err(RepoRetrieveError::StorageError(e)) => {
                 tracing::error!(
                     "Failed to retrieve rating for player {}: {}",
                     user_id.to_string(),
                     e
                 );
-                None
+                return Err(GetSnapshotError::Internal);
             }
         };
 
-        PlayerSnapshot::new(username, current_rating)
+        Ok(PlayerSnapshot::new(username, current_rating))
     }
 }

@@ -4,8 +4,8 @@ use chrono::{DateTime, Utc};
 
 use crate::{
     domain::{
-        PaginatedResponse, UserId, RepoRetrieveError,
-        rating::{RatingQuery, RatingRepository, RatingService},
+        PaginatedResponse, UserId,
+        rating::{RatingQuery, RatingRepository},
         stats::RatingHistoryRepository,
     },
     workflow::player::{RatingHistoryEntryView, RatingHistoryRangeView},
@@ -13,7 +13,6 @@ use crate::{
 
 #[async_trait::async_trait]
 pub trait PlayerGetRatingUseCase {
-    async fn get_rating(&self, user_id: UserId) -> Result<Option<f64>, GetRatingError>;
     async fn get_rating_history(
         &self,
         user_id: UserId,
@@ -26,28 +25,16 @@ pub trait PlayerGetRatingUseCase {
     ) -> Result<PaginatedResponse<(UserId, f64)>, GetRatingError>;
 }
 
-pub struct PlayerGetRatingUseCaseImpl<
-    R: RatingRepository,
-    RH: RatingHistoryRepository,
-    RS: RatingService,
-> {
+pub struct PlayerGetRatingUseCaseImpl<R: RatingRepository, RH: RatingHistoryRepository> {
     rating_repository: Arc<R>,
     rating_history_repository: Arc<RH>,
-    rating_service: Arc<RS>,
 }
 
-impl<R: RatingRepository, RH: RatingHistoryRepository, RS: RatingService>
-    PlayerGetRatingUseCaseImpl<R, RH, RS>
-{
-    pub fn new(
-        rating_repository: Arc<R>,
-        rating_history_repository: Arc<RH>,
-        rating_service: Arc<RS>,
-    ) -> Self {
+impl<R: RatingRepository, RH: RatingHistoryRepository> PlayerGetRatingUseCaseImpl<R, RH> {
+    pub fn new(rating_repository: Arc<R>, rating_history_repository: Arc<RH>) -> Self {
         Self {
             rating_repository,
             rating_history_repository,
-            rating_service,
         }
     }
 }
@@ -60,28 +47,8 @@ pub enum GetRatingError {
 impl<
     R: RatingRepository + Send + Sync + 'static,
     RH: RatingHistoryRepository + Send + Sync + 'static,
-    RS: RatingService + Send + Sync + 'static,
-> PlayerGetRatingUseCase for PlayerGetRatingUseCaseImpl<R, RH, RS>
+> PlayerGetRatingUseCase for PlayerGetRatingUseCaseImpl<R, RH>
 {
-    async fn get_rating(&self, user_id: UserId) -> Result<Option<f64>, GetRatingError> {
-        let now = Utc::now();
-        match self.rating_repository.get_player_rating(user_id).await {
-            Ok(rating) => {
-                let participation_rating = self.rating_service.get_current_rating(&rating, now);
-                Ok(Some(participation_rating))
-            }
-            Err(RepoRetrieveError::NotFound) => Ok(None),
-            Err(RepoRetrieveError::StorageError(e)) => {
-                tracing::error!(
-                    "Error retrieving player rating for player {}: {}",
-                    user_id,
-                    e
-                );
-                Err(GetRatingError::Internal)
-            }
-        }
-    }
-
     async fn get_rating_history(
         &self,
         user_id: UserId,

@@ -147,15 +147,11 @@ async fn create_tournament(
     State(app): State<AppState>,
     Json(payload): Json<CreateTournamentRequest>,
 ) -> Result<(), ServiceError> {
-    if !auth.account.is_admin() {
-        return Err(ServiceError::Unauthorized(
-            "Only admins can create tournaments".to_string(),
-        ));
-    }
     match app
         .app
         .host_tournament_use_case
         .create_tournament(
+            auth.user_id,
             payload.name,
             match payload.tournament_format {
                 JsonTournamentType::Swiss { rounds } => TournamentFormat::Swiss {
@@ -187,11 +183,6 @@ async fn start_tournament(
     State(app): State<AppState>,
     Path(tournament_id): Path<String>,
 ) -> Result<(), ServiceError> {
-    if !auth.account.is_admin() {
-        return Err(ServiceError::Unauthorized(
-            "Only admins can start tournaments".to_string(),
-        ));
-    }
     let tournament_id = TournamentId(
         tournament_id
             .parse()
@@ -200,7 +191,7 @@ async fn start_tournament(
     match app
         .app
         .host_tournament_use_case
-        .begin_tournament(tournament_id)
+        .begin_tournament(auth.user_id, tournament_id)
         .await
     {
         Ok(_) => {}
@@ -218,11 +209,6 @@ async fn finish_tournament(
     State(app): State<AppState>,
     Path(tournament_id): Path<String>,
 ) -> Result<(), ServiceError> {
-    if !auth.account.is_admin() {
-        return Err(ServiceError::Unauthorized(
-            "Only admins can finish tournaments".to_string(),
-        ));
-    }
     let tournament_id = TournamentId(
         tournament_id
             .parse()
@@ -231,7 +217,7 @@ async fn finish_tournament(
     match app
         .app
         .host_tournament_use_case
-        .finish_tournament(tournament_id)
+        .finish_tournament(auth.user_id, tournament_id)
         .await
     {
         Ok(_) => {}
@@ -249,11 +235,6 @@ async fn start_next_round_of_tournament(
     State(app): State<AppState>,
     Path(tournament_id): Path<String>,
 ) -> Result<(), ServiceError> {
-    if !auth.account.is_admin() {
-        return Err(ServiceError::Unauthorized(
-            "Only admins can start next round of tournaments".to_string(),
-        ));
-    }
     let tournament_id = TournamentId(
         tournament_id
             .parse()
@@ -262,7 +243,7 @@ async fn start_next_round_of_tournament(
     match app
         .app
         .host_tournament_use_case
-        .start_next_round(tournament_id)
+        .start_next_round(auth.user_id, tournament_id)
         .await
     {
         Ok(_) => {}
@@ -281,11 +262,6 @@ async fn set_registration_open(
     Path(tournament_id): Path<String>,
     Json(payload): Json<SetRegistrationOpenRequest>,
 ) -> Result<(), ServiceError> {
-    if !auth.account.is_admin() {
-        return Err(ServiceError::Unauthorized(
-            "Only admins can set registration open/closed".to_string(),
-        ));
-    }
     let tournament_id = TournamentId(
         tournament_id
             .parse()
@@ -294,7 +270,7 @@ async fn set_registration_open(
     match app
         .app
         .host_tournament_use_case
-        .set_registration_open(tournament_id, payload.registration_open)
+        .set_registration_open(auth.user_id, tournament_id, payload.registration_open)
         .await
     {
         Ok(_) => {}

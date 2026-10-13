@@ -32,9 +32,6 @@ async fn get_profile(
             "Invalid user ID format".to_string(),
         ));
     };
-    let Ok(Some(_)) = app.auth.get_account(user_id).await else {
-        return Err(ServiceError::NotFound("Account not found".to_string()));
-    };
     let profile = app
         .app
         .get_profile_use_case
@@ -93,9 +90,6 @@ async fn get_profile_picture(
         return Err(ServiceError::BadRequest(
             "Invalid user ID format".to_string(),
         ));
-    };
-    let Ok(Some(_)) = app.auth.get_account(user_id).await else {
-        return Err(ServiceError::NotFound("Account not found".to_string()));
     };
     let profile_picture = app
         .app

@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use crate::domain::{
-    RepoError, RepoRetrieveError, TournamentId,
+    RepoError, RepoRetrieveError, TournamentId, UserId,
     matches::{Match, MatchRepository, MatchSettings, MatchStatus, MatchTournamentInfo},
+    moderation::ModerationRepository,
     rating::RatingRepository,
     tournament::{
         Tournament, TournamentFormat, TournamentMetadata, TournamentPlayerRepository,
@@ -14,15 +15,29 @@ use crate::domain::{
 pub trait HostTournamentUseCase {
     async fn create_tournament(
         &self,
+        user_id: UserId,
         name: String,
         tournament_format: TournamentFormat,
         match_settings: MatchSettings,
     ) -> Result<TournamentId, ()>;
-    async fn begin_tournament(&self, tournament_id: TournamentId) -> Result<(), ()>;
-    async fn start_next_round(&self, tournament_id: TournamentId) -> Result<(), ()>;
-    async fn finish_tournament(&self, tournament_id: TournamentId) -> Result<(), ()>;
+    async fn begin_tournament(
+        &self,
+        user_id: UserId,
+        tournament_id: TournamentId,
+    ) -> Result<(), ()>;
+    async fn start_next_round(
+        &self,
+        user_id: UserId,
+        tournament_id: TournamentId,
+    ) -> Result<(), ()>;
+    async fn finish_tournament(
+        &self,
+        user_id: UserId,
+        tournament_id: TournamentId,
+    ) -> Result<(), ()>;
     async fn set_registration_open(
         &self,
+        user_id: UserId,
         tournament_id: TournamentId,
         open: bool,
     ) -> Result<(), ()>;
@@ -34,12 +49,14 @@ pub struct HostTournamentUseCaseImpl<
     TPR: TournamentPlayerRepository,
     TRR: TournamentRoundRepository,
     R: RatingRepository,
+    MO: ModerationRepository,
 > {
     tournament_repository: Arc<TR>,
     match_repository: Arc<M>,
     tournament_player_repository: Arc<TPR>,
     tournament_round_repository: Arc<TRR>,
     rating_repository: Arc<R>,
+    moderation_repository: Arc<MO>,
 }
 
 impl<
@@ -48,7 +65,8 @@ impl<
     TPR: TournamentPlayerRepository,
     TRR: TournamentRoundRepository,
     R: RatingRepository,
-> HostTournamentUseCaseImpl<TR, M, TPR, TRR, R>
+    MO: ModerationRepository,
+> HostTournamentUseCaseImpl<TR, M, TPR, TRR, R, MO>
 {
     pub fn new(
         tournament_repository: Arc<TR>,
@@ -56,6 +74,7 @@ impl<
         tournament_player_repository: Arc<TPR>,
         tournament_round_repository: Arc<TRR>,
         rating_repository: Arc<R>,
+        moderation_repository: Arc<MO>,
     ) -> Self {
         Self {
             tournament_repository,
@@ -63,6 +82,14 @@ impl<
             tournament_player_repository,
             tournament_round_repository,
             rating_repository,
+            moderation_repository,
+        }
+    }
+
+    async fn is_admin(&self, user_id: UserId) -> Result<bool, ()> {
+        match self.moderation_repository.get_moderation(user_id).await {
+            Ok(moderation) => Ok(moderation.is_admin()),
+            Err(_) => Err(()),
         }
     }
 }
@@ -74,15 +101,20 @@ impl<
     TPR: TournamentPlayerRepository + Send + Sync + 'static,
     TRR: TournamentRoundRepository + Send + Sync + 'static,
     R: RatingRepository + Send + Sync + 'static,
-> HostTournamentUseCase for HostTournamentUseCaseImpl<TR, M, TPR, TRR, R>
+    MO: ModerationRepository + Send + Sync + 'static,
+> HostTournamentUseCase for HostTournamentUseCaseImpl<TR, M, TPR, TRR, R, MO>
 {
     #[tracing::instrument(skip(self))]
     async fn create_tournament(
         &self,
+        user_id: UserId,
         name: String,
         tournament_format: TournamentFormat,
         match_settings: MatchSettings,
     ) -> Result<TournamentId, ()> {
+        if !self.is_admin(user_id).await? {
+            return Err(());
+        }
         let tournament = Tournament {
             metadata: TournamentMetadata {
                 name,
@@ -107,7 +139,14 @@ impl<
     }
 
     #[tracing::instrument(skip(self))]
-    async fn begin_tournament(&self, tournament_id: TournamentId) -> Result<(), ()> {
+    async fn begin_tournament(
+        &self,
+        user_id: UserId,
+        tournament_id: TournamentId,
+    ) -> Result<(), ()> {
+        if !self.is_admin(user_id).await? {
+            return Err(());
+        }
         let tournament = match self
             .tournament_repository
             .get_tournament(tournament_id)
@@ -206,7 +245,7 @@ impl<
             return Err(());
         }
 
-        if let Err(()) = self.start_next_round(tournament_id).await {
+        if let Err(()) = self.start_next_round(user_id, tournament_id).await {
             tracing::error!(
                 "Failed to start first round of tournament {} after beginning it",
                 tournament_id
@@ -217,7 +256,14 @@ impl<
     }
 
     #[tracing::instrument(skip(self))]
-    async fn start_next_round(&self, tournament_id: TournamentId) -> Result<(), ()> {
+    async fn start_next_round(
+        &self,
+        user_id: UserId,
+        tournament_id: TournamentId,
+    ) -> Result<(), ()> {
+        if !self.is_admin(user_id).await? {
+            return Err(());
+        }
         let tournament = match self
             .tournament_repository
             .get_tournament(tournament_id)
@@ -406,7 +452,14 @@ impl<
     }
 
     #[tracing::instrument(skip(self))]
-    async fn finish_tournament(&self, tournament_id: TournamentId) -> Result<(), ()> {
+    async fn finish_tournament(
+        &self,
+        user_id: UserId,
+        tournament_id: TournamentId,
+    ) -> Result<(), ()> {
+        if !self.is_admin(user_id).await? {
+            return Err(());
+        }
         let tournament = match self
             .tournament_repository
             .get_tournament(tournament_id)
@@ -469,9 +522,13 @@ impl<
 
     async fn set_registration_open(
         &self,
+        user_id: UserId,
         tournament_id: TournamentId,
         open: bool,
     ) -> Result<(), ()> {
+        if !self.is_admin(user_id).await? {
+            return Err(());
+        }
         let tournament = match self
             .tournament_repository
             .get_tournament(tournament_id)

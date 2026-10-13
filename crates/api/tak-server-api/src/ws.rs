@@ -164,7 +164,12 @@ async fn handle_client_message(
 ) -> Result<(), ServiceError> {
     match msg {
         ClientMessage::Authenticate { token } => {
-            let user_id = authenticate_ws_token(app, &token).await?;
+            let user_id = match app.auth.validate_account_jwt(&token) {
+                Some(id) => Ok(id),
+                None => Err(ServiceError::Unauthorized(
+                    "Invalid or expired authentication token".to_string(),
+                )),
+            }?;
             app.connection_driver
                 .associate_connection(user_id, connection_id)
                 .await;
@@ -312,21 +317,6 @@ async fn handle_authenticated_client_message(
                     .leave_room(&room_name, connection_id.0);
             }
             Ok(())
-        }
-    }
-}
-
-async fn authenticate_ws_token(app: &AppState, token: &str) -> Result<UserId, ServiceError> {
-    match app.auth.validate_account_jwt(token).await {
-        Ok(Some((id, _))) => Ok(id),
-        Ok(None) => Err(ServiceError::Unauthorized(
-            "Invalid or expired authentication token".to_string(),
-        )),
-        Err(e) => {
-            tracing::error!("Error validating JWT: {:?}", e);
-            Err(ServiceError::Internal(
-                "Failed to validate authentication token".to_string(),
-            ))
         }
     }
 }

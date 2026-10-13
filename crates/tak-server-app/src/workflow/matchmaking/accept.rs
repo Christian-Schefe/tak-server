@@ -4,7 +4,7 @@ use tak_core::{TakPlayer, TakTimeSettings};
 
 use crate::{
     domain::{
-        UserId, SeekId,
+        SeekId, UserId,
         matches::{Match, MatchMode, MatchRepository, MatchSettings},
         seek::SeekService,
     },
@@ -148,9 +148,9 @@ impl<
                 );
                 Err(AcceptSeekError::FailedToCreateGame)
             }
-            Err(CreateGameFromMatchError::RepositoryError) => {
+            Err(CreateGameFromMatchError::Internal) => {
                 tracing::error!(
-                    "Failed to create game from match {}: repository error",
+                    "Failed to create game from match {}: internal error",
                     match_id
                 );
                 Err(AcceptSeekError::FailedToCreateGame)

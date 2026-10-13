@@ -9,6 +9,7 @@ use tak_persistence_sea_orm::{
     chat::ChatRepositoryImpl,
     games::GameRepositoryImpl,
     matches::MatchRepositoryImpl,
+    moderation::ModerationRepositoryImpl,
     profile::ProfileRepositoryImpl,
     puzzle::PuzzleRepositoryImpl,
     rating_history::RatingHistoryRepositoryImpl,
@@ -99,6 +100,7 @@ async fn main() {
         Arc::new(TournamentPlayerRegistrationRepositoryImpl::new().await);
     let match_repo = Arc::new(MatchRepositoryImpl::new().await);
     let tournament_round_repo = Arc::new(TournamentRoundRepositoryImpl::new().await);
+    let moderation_repo = Arc::new(ModerationRepositoryImpl::new().await);
 
     let app = Arc::new(
         build_application(
@@ -120,6 +122,7 @@ async fn main() {
             tournament_player_registration_repo,
             match_repo,
             tournament_round_repo,
+            moderation_repo,
         )
         .await,
     );
@@ -142,7 +145,6 @@ async fn main() {
         app,
         authentication_adapter,
         ws_service,
-        email_adapter,
         connection_driver,
         on_shutdown,
     )

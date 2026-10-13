@@ -2,8 +2,8 @@ use chrono::{DateTime, Utc};
 use tak_core::{TakGameResult, TakPlayer};
 
 use crate::domain::{
-    GameId, MatchId, PaginatedResponse, Pagination, UserId, RepoError, RepoRetrieveError,
-    SortOrder,
+    GameId, MatchId, PaginatedResponse, Pagination, RepoError, RepoRetrieveError, SortOrder,
+    UserId,
     game::{FinishedGame, GameEvent, GameMetadata},
 };
 
@@ -18,12 +18,12 @@ pub struct GameRecord {
 
 #[derive(Debug, Clone)]
 pub struct PlayerSnapshot {
-    pub username: Option<String>,
+    pub username: String,
     pub rating: Option<f64>,
 }
 
 impl PlayerSnapshot {
-    pub fn new(username: Option<String>, rating: Option<f64>) -> Self {
+    pub fn new(username: String, rating: Option<f64>) -> Self {
         Self { username, rating }
     }
 }

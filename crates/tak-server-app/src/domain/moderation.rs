@@ -1,5 +1,67 @@
+use crate::domain::{RepoError, RepoRetrieveError, UserId};
+
+#[async_trait::async_trait]
+pub trait ModerationRepository {
+    async fn get_moderation(&self, user_id: UserId) -> Result<Moderation, RepoRetrieveError>;
+    async fn set_moderation(
+        &self,
+        user_id: UserId,
+        moderation: Moderation,
+    ) -> Result<(), RepoError>;
+}
+
+#[derive(Debug, Clone)]
+pub struct Moderation {
+    pub user_type: UserType,
+    pub role: UserRole,
+    pub flags: ModerationFlags,
+}
+
+impl Default for Moderation {
+    fn default() -> Self {
+        Self {
+            user_type: UserType::Player,
+            role: UserRole::User,
+            flags: ModerationFlags::empty(),
+        }
+    }
+}
+
+impl Moderation {
+    pub fn is_guest(&self) -> bool {
+        matches!(self.user_type, UserType::Guest)
+    }
+    pub fn is_admin(&self) -> bool {
+        matches!(self.role, UserRole::Admin)
+    }
+    pub fn set_banned(&mut self, is_banned: bool) {
+        if is_banned {
+            self.flags.set_flag(ModerationFlag::Banned);
+        } else {
+            self.flags.unset_flag(ModerationFlag::Banned);
+        }
+    }
+    pub fn set_silenced(&mut self, is_silenced: bool) {
+        if is_silenced {
+            self.flags.set_flag(ModerationFlag::Silenced);
+        } else {
+            self.flags.unset_flag(ModerationFlag::Silenced);
+        }
+    }
+    pub fn set_role(&mut self, role: UserRole) {
+        self.role = role;
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum UserType {
+    Player,
+    Guest,
+    Bot,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AccountRole {
+pub enum UserRole {
     User,
     Moderator,
     Admin,
@@ -52,34 +114,34 @@ impl ModerationFlags {
 }
 
 pub trait PermissionPolicy {
-    fn has_permissions(&self, requester: &AccountRole, target: &AccountRole) -> bool;
+    fn has_permissions(&self, requester: &Moderation, target: &Moderation) -> bool;
 }
 
-pub struct AdminAccountPolicy;
+pub struct AdminUserPolicy;
 
-impl PermissionPolicy for AdminAccountPolicy {
-    fn has_permissions(&self, requester: &AccountRole, target: &AccountRole) -> bool {
-        matches!(requester, AccountRole::Admin) && !matches!(target, AccountRole::Admin)
+impl PermissionPolicy for AdminUserPolicy {
+    fn has_permissions(&self, requester: &Moderation, target: &Moderation) -> bool {
+        matches!(requester.role, UserRole::Admin) && !matches!(target.role, UserRole::Admin)
     }
 }
 
-pub struct ModeratorAccountPolicy;
+pub struct ModeratorUserPolicy;
 
-impl PermissionPolicy for ModeratorAccountPolicy {
-    fn has_permissions(&self, requester: &AccountRole, target: &AccountRole) -> bool {
-        matches!(requester, AccountRole::Admin | AccountRole::Moderator)
-            && !matches!(target, AccountRole::Admin | AccountRole::Moderator)
+impl PermissionPolicy for ModeratorUserPolicy {
+    fn has_permissions(&self, requester: &Moderation, target: &Moderation) -> bool {
+        matches!(requester.role, UserRole::Admin | UserRole::Moderator)
+            && !matches!(target.role, UserRole::Admin | UserRole::Moderator)
     }
 }
 
-pub struct HigherRoleAccountPolicy;
+pub struct HigherRoleUserPolicy;
 
-impl PermissionPolicy for HigherRoleAccountPolicy {
-    fn has_permissions(&self, requester: &AccountRole, target: &AccountRole) -> bool {
-        match requester {
-            AccountRole::Admin => !matches!(target, AccountRole::Admin),
-            AccountRole::Moderator => matches!(target, AccountRole::User),
-            AccountRole::User => false,
+impl PermissionPolicy for HigherRoleUserPolicy {
+    fn has_permissions(&self, requester: &Moderation, target: &Moderation) -> bool {
+        match requester.role {
+            UserRole::Admin => !matches!(target.role, UserRole::Admin),
+            UserRole::Moderator => matches!(target.role, UserRole::User),
+            UserRole::User => false,
         }
     }
 }
