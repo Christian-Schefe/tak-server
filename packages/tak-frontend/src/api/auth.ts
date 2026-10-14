@@ -6,9 +6,8 @@ export type AccountInfo = z.infer<typeof accountInfoSchema>;
 
 const accountInfoSchema = z.object({
   userId: z.string(),
-  isGuest: z.boolean(),
-  isAdmin: z.boolean(),
-  newGuest: z.boolean(),
+  userRole: z.enum(['user', 'moderator', 'admin']),
+  userType: z.enum(['player', 'guest', 'bot']),
   jwt: z.string(),
 });
 

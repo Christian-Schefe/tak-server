@@ -184,7 +184,7 @@ const tournamentStatusSeverities = {
     </div>
 
     <div
-      v-if="tournament && tournament.status.type !== 'completed' && account?.isAdmin === true"
+      v-if="tournament && tournament.status.type !== 'completed' && account?.userRole === 'admin'"
       class="flex flex-col gap-2"
     >
       <h1 class="text-2xl font-semibold">Actions</h1>

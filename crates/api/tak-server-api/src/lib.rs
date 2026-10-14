@@ -4,7 +4,6 @@ use axum::{Router, response::IntoResponse, routing::get};
 use tak_player_connection::PlayerConnectionDriver;
 use tak_server_app::Application;
 
-pub use auth::ApiAuthPort;
 use tower_http::csrf::CsrfLayer;
 pub use ws::WsService;
 
@@ -23,21 +22,18 @@ mod ws;
 #[derive(Clone)]
 pub struct AppState {
     pub app: Arc<Application>,
-    pub auth: Arc<dyn ApiAuthPort + Send + Sync + 'static>,
     pub connection_driver: Arc<PlayerConnectionDriver>,
     pub ws: Arc<WsService>,
 }
 
 pub async fn serve(
     app: Arc<Application>,
-    auth: Arc<dyn ApiAuthPort + Send + Sync + 'static>,
     ws: Arc<WsService>,
     connection_driver: Arc<PlayerConnectionDriver>,
     shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
 ) {
     let state = AppState {
         app,
-        auth,
         ws,
         connection_driver,
     };

@@ -141,12 +141,5 @@ async fn main() {
         app_clone.shutdown_workflow.shutdown().await;
     };
 
-    tak_server_api::serve(
-        app,
-        authentication_adapter,
-        ws_service,
-        connection_driver,
-        on_shutdown,
-    )
-    .await;
+    tak_server_api::serve(app, ws_service, connection_driver, on_shutdown).await;
 }

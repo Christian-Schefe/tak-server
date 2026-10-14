@@ -31,7 +31,7 @@ const canEditProfile = computed(() => {
   return (
     account.value !== undefined &&
     account.value.userId === route.params.id &&
-    !account.value.isGuest
+    account.value.userType !== 'guest'
   );
 });
 

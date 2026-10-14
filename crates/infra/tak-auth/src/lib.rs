@@ -8,14 +8,12 @@ use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
 use rand::{TryRngCore, rngs::OsRng};
-use tak_server_api::ApiAuthPort;
 use tak_server_app::{
     domain::{RepoError, RepoRetrieveError, UserId},
     ports::authentication::{AccountInfo, AccountPort},
 };
 
 mod guest;
-mod jwt;
 
 #[async_trait::async_trait]
 pub trait AccountRepository {
@@ -48,20 +46,6 @@ impl<AR: AccountRepository> AuthService<AR> {
             argon2: Argon2::default(),
             reset_token_registry: Arc::new(Mutex::new(HashMap::new())),
         }
-    }
-}
-
-#[async_trait::async_trait]
-impl<AR> ApiAuthPort for AuthService<AR>
-where
-    AR: AccountRepository + Send + Sync + 'static,
-{
-    fn generate_account_jwt(&self, id: UserId, duration: Duration) -> String {
-        jwt::generate_jwt(id, duration)
-    }
-
-    fn validate_account_jwt(&self, token: &str) -> Option<UserId> {
-        jwt::validate_jwt(token)
     }
 }
 

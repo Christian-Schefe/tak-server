@@ -142,7 +142,7 @@ function isActive(path: string) {
         <LuSettings />
       </Button>
       <Button
-        v-if="account !== undefined && !account.isGuest"
+        v-if="account !== undefined && account.userType !== 'guest'"
         size="small"
         variant="text"
         severity="secondary"
@@ -152,7 +152,7 @@ function isActive(path: string) {
         <LuUser />
       </Button>
       <Button
-        v-if="account !== undefined && account.isGuest"
+        v-if="account !== undefined && account.userType === 'guest'"
         size="small"
         variant="text"
         severity="secondary"

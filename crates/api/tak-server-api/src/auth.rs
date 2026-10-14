@@ -1,18 +1,23 @@
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use axum::{
     Json, RequestPartsExt,
-    extract::{FromRequestParts, Query, State},
+    extract::{FromRequestParts, State},
     http::request::Parts,
-    routing::{get, post},
+    routing::post,
 };
 use axum_extra::{
     TypedHeader,
     headers::{Authorization, authorization::Bearer},
 };
-use tak_server_api_contract::auth::IdentityInfo;
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use tak_server_api_contract::auth::{JsonUserRole, JsonUserType};
 use tak_server_app::{
-    domain::UserId,
+    domain::{
+        UserId,
+        moderation::{UserRole, UserType},
+    },
     workflow::account::authentication::{LoginError, RecoverError, RegisterError, ResetError},
 };
 
@@ -25,14 +30,11 @@ pub struct Auth {
 impl FromRequestParts<AppState> for Auth {
     type Rejection = ServiceError;
 
-    async fn from_request_parts(
-        parts: &mut Parts,
-        app: &AppState,
-    ) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(parts: &mut Parts, _: &AppState) -> Result<Self, Self::Rejection> {
         if let Ok(TypedHeader(Authorization(bearer))) =
             parts.extract::<TypedHeader<Authorization<Bearer>>>().await
         {
-            match app.auth.validate_account_jwt(bearer.token()) {
+            match validate_jwt(bearer.token()) {
                 Some(user_id) => {
                     return Ok(Auth { user_id });
                 }
@@ -53,11 +55,11 @@ impl FromRequestParts<AppState> for Auth {
 pub fn register_routes() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/login", post(login))
+        .route("/login-guest", post(login_guest))
         .route("/register", post(register))
         .route("/api-token", post(create_api_token))
         .route("/recover", post(recover))
         .route("/reset", post(reset))
-        .route("/whoami", get(who_am_i))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -93,12 +95,21 @@ async fn login(
             return Err(ServiceError::Internal(format!("Failed to login",)));
         }
     };
+    let jwt = generate_account_jwt(&app, user_id, Duration::from_hours(24)).await?;
 
-    Ok(Json(LoginResponse {
-        jwt: app
-            .auth
-            .generate_account_jwt(user_id, std::time::Duration::from_secs(60 * 60 * 24)),
-    }))
+    Ok(Json(LoginResponse { jwt }))
+}
+
+async fn login_guest(State(app): State<AppState>) -> Result<Json<LoginResponse>, ServiceError> {
+    let user_id = match app.app.authentication_use_case.create_guest_account().await {
+        Ok(user_id) => user_id,
+        Err(RegisterError::Internal) => {
+            return Err(ServiceError::Internal(format!("Failed to login as guest")));
+        }
+    };
+    let jwt = generate_account_jwt(&app, user_id, Duration::from_hours(24)).await?;
+
+    Ok(Json(LoginResponse { jwt }))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -126,12 +137,9 @@ async fn register(
             ));
         }
     };
+    let jwt = generate_account_jwt(&app, user_id, Duration::from_hours(24)).await?;
 
-    Ok(Json(LoginResponse {
-        jwt: app
-            .auth
-            .generate_account_jwt(user_id, std::time::Duration::from_secs(60 * 60 * 24)),
-    }))
+    Ok(Json(LoginResponse { jwt }))
 }
 
 #[derive(serde::Deserialize)]
@@ -194,49 +202,28 @@ async fn reset(
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct WhoAmIQueryParams {
-    prevent_guest: Option<bool>,
-}
-
-async fn who_am_i(
-    auth: Result<Auth, ServiceError>,
-    State(app): State<AppState>,
-    Query(params): Query<WhoAmIQueryParams>,
-) -> Result<Json<IdentityInfo>, ServiceError> {
-    let (user_id, new_guest) = match auth {
-        Ok(auth) => (auth.user_id, false),
-        Err(e) => {
-            if let Some(true) = params.prevent_guest {
-                return Err(e);
-            }
-            match app.app.authentication_use_case.create_guest_account().await {
-                Ok(guest_account) => (guest_account, true),
-                Err(RegisterError::Internal) => {
-                    return Err(ServiceError::Internal(
-                        "Failed to create guest account".to_string(),
-                    ));
-                }
-            }
-        }
-    };
+async fn generate_account_jwt(
+    app: &AppState,
+    user_id: UserId,
+    duration: Duration,
+) -> Result<String, ServiceError> {
     let moderation = app
         .app
         .account_moderate_use_case
         .get_moderation(user_id)
         .await
         .map_err(|_| ServiceError::Internal("Failed to retrieve moderation info".to_string()))?;
-
-    Ok(Json(IdentityInfo {
-        user_id: user_id.to_string(),
-        is_guest: moderation.is_guest(),
-        is_admin: moderation.is_admin(),
-        new_guest,
-        jwt: app
-            .auth
-            .generate_account_jwt(user_id, std::time::Duration::from_secs(60 * 60 * 24)),
-    }))
+    let user_role = match moderation.role {
+        UserRole::User => JsonUserRole::User,
+        UserRole::Moderator => JsonUserRole::Moderator,
+        UserRole::Admin => JsonUserRole::Admin,
+    };
+    let user_type = match moderation.user_type {
+        UserType::Player => JsonUserType::Player,
+        UserType::Guest => JsonUserType::Guest,
+        UserType::Bot => JsonUserType::Bot,
+    };
+    Ok(generate_jwt(user_id, duration, user_role, user_type))
 }
 
 async fn create_api_token(
@@ -249,9 +236,7 @@ async fn create_api_token(
             "Duration must be between 1 second and 365 days".to_string(),
         ));
     }
-    let cert = app
-        .auth
-        .generate_account_jwt(auth.user_id, std::time::Duration::from_secs(req.duration));
+    let cert = generate_account_jwt(&app, auth.user_id, Duration::from_secs(req.duration)).await?;
     Ok(Json(serde_json::json!({ "certificate": cert })))
 }
 
@@ -260,8 +245,68 @@ struct CreateApiTokenRequest {
     duration: u64,
 }
 
-#[async_trait::async_trait]
-pub trait ApiAuthPort {
-    fn validate_account_jwt(&self, token: &str) -> Option<UserId>;
-    fn generate_account_jwt(&self, id: UserId, duration: Duration) -> String;
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Claims {
+    pub sub: String,
+    pub exp: usize,
+    pub user_role: JsonUserRole,
+    pub user_type: JsonUserType,
+}
+
+impl Claims {
+    pub fn from_token(token: &str) -> Result<Self, ()> {
+        let token_data =
+            decode::<Claims>(token, &KEYS.decoding, &Validation::default()).map_err(|_| ())?;
+
+        Ok(token_data.claims)
+    }
+}
+
+struct Keys {
+    encoding: EncodingKey,
+    decoding: DecodingKey,
+}
+
+impl Keys {
+    fn new(secret: &[u8]) -> Self {
+        Self {
+            encoding: EncodingKey::from_secret(secret),
+            decoding: DecodingKey::from_secret(secret),
+        }
+    }
+}
+
+static KEYS: LazyLock<Keys> = LazyLock::new(|| {
+    let secret = read_or_generate_secret();
+    Keys::new(&secret)
+});
+
+fn read_or_generate_secret() -> Vec<u8> {
+    let secret = std::env::var("TAK_JWT_SECRET").expect("TAK_JWT_SECRET must be set");
+    secret.as_bytes().to_vec()
+}
+
+fn generate_jwt(
+    user_id: UserId,
+    duration: Duration,
+    user_role: JsonUserRole,
+    user_type: JsonUserType,
+) -> String {
+    let claims = Claims {
+        sub: user_id.to_string(),
+        exp: (chrono::Utc::now()
+            + chrono::Duration::from_std(duration).unwrap_or_else(|_| chrono::Duration::MAX))
+        .timestamp() as usize,
+        user_role,
+        user_type,
+    };
+    let token = encode(&Header::default(), &claims, &KEYS.encoding).unwrap();
+    token
+}
+
+pub fn validate_jwt(token: &str) -> Option<UserId> {
+    let claims = Claims::from_token(token).ok()?;
+    let user_id = UserId::try_from(claims.sub).ok()?;
+    Some(user_id)
 }

@@ -37,7 +37,9 @@ use tokio_util::sync::CancellationToken;
 use unordered_pair::UnorderedPair;
 use uuid::Uuid;
 
-use crate::{AppState, ServiceError, game::from_metadata_view, seek::from_seek_view};
+use crate::{
+    AppState, ServiceError, auth::validate_jwt, game::from_metadata_view, seek::from_seek_view,
+};
 
 pub async fn ws_handler(ws: WebSocketUpgrade, State(app): State<AppState>) -> Response {
     ws.on_upgrade(move |socket| async move {
@@ -164,7 +166,7 @@ async fn handle_client_message(
 ) -> Result<(), ServiceError> {
     match msg {
         ClientMessage::Authenticate { token } => {
-            let user_id = match app.auth.validate_account_jwt(&token) {
+            let user_id = match validate_jwt(&token) {
                 Some(id) => Ok(id),
                 None => Err(ServiceError::Unauthorized(
                     "Invalid or expired authentication token".to_string(),
