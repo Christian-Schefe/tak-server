@@ -16,6 +16,8 @@ mod server_api;
 #[command(version, about, long_about = None)]
 struct Cli {
     bot_executable: String,
+    user_id: String,
+    token: String,
 }
 
 #[tokio::main]
@@ -36,12 +38,10 @@ async fn main() {
         "ws://localhost:3003/ws",
         "http://localhost:3003",
         server_msg_tx,
-        "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIyYmFiZmY5ZC1lNzI2LTQ4N2UtODc4MS1iNzU3ZjBmNzM1NjAiLCJleHAiOjE3ODE3NjI2NzV9.k821BtChfIV9suKkMKPOl5px-CuFPtcER9pUVv4HtOY".to_string(),
+        cli.token,
     );
-    let identity = server_api.who_am_i().await.expect("Failed to authenticate");
-    println!("Authenticated as {:?}", identity);
     let orchestrator = Orchestrator::new(
-        identity,
+        cli.user_id,
         server_api.clone(),
         game_service,
         seek_service,

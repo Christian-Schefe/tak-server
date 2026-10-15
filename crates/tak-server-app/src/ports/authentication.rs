@@ -25,7 +25,24 @@ pub trait AccountPort {
     ) -> Result<Option<()>, String>;
 
     fn generate_reset_token(&self, user_id: UserId, duration: Duration) -> Result<String, String>;
+    fn generate_refresh_token(
+        &self,
+        user_id: UserId,
+        duration: Duration,
+    ) -> Result<RefreshToken, String>;
+    fn rotate_refresh_token(
+        &self,
+        user_id: UserId,
+        refresh_token: &str,
+        duration: Duration,
+    ) -> Result<Option<RefreshToken>, String>;
     async fn get_account_info(&self, user_id: UserId) -> Result<Option<AccountInfo>, ()>;
+}
+
+#[derive(Clone, Debug)]
+pub struct RefreshToken {
+    pub token: String,
+    pub valid_until: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Clone, Debug)]

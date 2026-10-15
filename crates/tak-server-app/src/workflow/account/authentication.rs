@@ -6,8 +6,7 @@ use crate::{
     domain::{
         RepoError, UserId,
         moderation::{Moderation, ModerationRepository, UserType},
-    },
-    ports::{authentication::AccountPort, email::EmailPort},
+    }, ports::{authentication::{AccountPort, RefreshToken}, email::EmailPort},
 };
 
 pub enum RecoverError {
@@ -31,15 +30,30 @@ pub enum RegisterError {
     Internal,
 }
 
+pub enum RefreshError {
+    InvalidToken,
+    Internal,
+}
+
+#[derive(Clone, Debug)]
+pub struct AuthenticatedUser {
+    pub user_id: UserId,
+    pub refresh_token: RefreshToken,
+}
+
 #[async_trait::async_trait]
 pub trait AuthenticationUseCase {
-    async fn login(&self, identifier: String, password: String) -> Result<UserId, LoginError>;
+    async fn login(
+        &self,
+        identifier: String,
+        password: String,
+    ) -> Result<AuthenticatedUser, LoginError>;
     async fn register(
         &self,
         email: String,
         username: String,
         password: String,
-    ) -> Result<UserId, RegisterError>;
+    ) -> Result<AuthenticatedUser, RegisterError>;
     async fn recover(&self, identifier: String) -> Result<(), RecoverError>;
     async fn reset(
         &self,
@@ -47,7 +61,12 @@ pub trait AuthenticationUseCase {
         token: String,
         new_password: String,
     ) -> Result<(), ResetError>;
-    async fn create_guest_account(&self) -> Result<UserId, RegisterError>;
+    async fn create_guest_account(&self) -> Result<AuthenticatedUser, RegisterError>;
+    async fn refresh(
+        &self,
+        user_id: UserId,
+        refresh_token: String,
+    ) -> Result<AuthenticatedUser, RefreshError>;
 }
 
 pub struct AuthenticationUseCaseImpl<A: AccountPort, E: EmailPort, M: ModerationRepository> {
@@ -65,6 +84,8 @@ impl<A: AccountPort, E: EmailPort, M: ModerationRepository> AuthenticationUseCas
     }
 }
 
+const REFRESH_TOKEN_DURATION: Duration = Duration::from_secs(60 * 60 * 24 * 7);
+
 #[async_trait::async_trait]
 impl<
     A: AccountPort + Send + Sync + 'static,
@@ -72,13 +93,26 @@ impl<
     M: ModerationRepository + Send + Sync + 'static,
 > AuthenticationUseCase for AuthenticationUseCaseImpl<A, E, M>
 {
-    async fn login(&self, identifier: String, password: String) -> Result<UserId, LoginError> {
+    async fn login(
+        &self,
+        identifier: String,
+        password: String,
+    ) -> Result<AuthenticatedUser, LoginError> {
         match self
             .account_service
             .login_account(&identifier, &password)
             .await
         {
-            Ok(Some(user_id)) => Ok(user_id),
+            Ok(Some(user_id)) => Ok(AuthenticatedUser {
+                user_id,
+                refresh_token: self
+                    .account_service
+                    .generate_refresh_token(user_id.clone(), REFRESH_TOKEN_DURATION)
+                    .map_err(|e| {
+                        tracing::error!("Failed to generate refresh token: {:?}", e);
+                        LoginError::Internal
+                    })?,
+            }),
             Ok(None) => Err(LoginError::InvalidCredentials),
             Err(e) => {
                 tracing::error!("Failed to login account: {:?}", e);
@@ -92,7 +126,7 @@ impl<
         email: String,
         username: String,
         password: String,
-    ) -> Result<UserId, RegisterError> {
+    ) -> Result<AuthenticatedUser, RegisterError> {
         let user_id = match self
             .account_service
             .register_account(&email, &username, &password)
@@ -118,7 +152,18 @@ impl<
                 return Err(RegisterError::Internal);
             }
         }
-        Ok(user_id)
+        let refresh_token = self
+            .account_service
+            .generate_refresh_token(user_id.clone(), REFRESH_TOKEN_DURATION)
+            .map_err(|e| {
+                tracing::error!("Failed to generate refresh token: {:?}", e);
+                RegisterError::Internal
+            })?;
+
+        Ok(AuthenticatedUser {
+            user_id,
+            refresh_token,
+        })
     }
 
     async fn recover(&self, identifier: String) -> Result<(), RecoverError> {
@@ -208,7 +253,7 @@ impl<
         }
     }
 
-    async fn create_guest_account(&self) -> Result<UserId, RegisterError> {
+    async fn create_guest_account(&self) -> Result<AuthenticatedUser, RegisterError> {
         let user_id = match self.account_service.create_guest_account().await {
             Ok(user_id) => user_id,
             Err(e) => {
@@ -232,6 +277,39 @@ impl<
             }
         }
 
-        Ok(user_id)
+        let refresh_token = self
+            .account_service
+            .generate_refresh_token(user_id, REFRESH_TOKEN_DURATION)
+            .map_err(|e| {
+                tracing::error!("Failed to generate refresh token: {:?}", e);
+                RegisterError::Internal
+            })?;
+
+        Ok(AuthenticatedUser {
+            user_id: user_id,
+            refresh_token,
+        })
+    }
+
+    async fn refresh(
+        &self,
+        user_id: UserId,
+        refresh_token: String,
+    ) -> Result<AuthenticatedUser, RefreshError> {
+        match self.account_service.rotate_refresh_token(
+            user_id,
+            &refresh_token,
+            REFRESH_TOKEN_DURATION,
+        ) {
+            Ok(Some(new_refresh_token)) => Ok(AuthenticatedUser {
+                user_id,
+                refresh_token: new_refresh_token,
+            }),
+            Ok(None) => Err(RefreshError::InvalidToken),
+            Err(e) => {
+                tracing::error!("Error rotating refresh token: {:?}", e);
+                Err(RefreshError::Internal)
+            }
+        }
     }
 }

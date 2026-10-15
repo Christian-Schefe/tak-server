@@ -81,6 +81,12 @@ pub async fn ws_handler(ws: WebSocketUpgrade, State(app): State<AppState>) -> Re
     })
 }
 
+#[derive(serde::Deserialize, serde::Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct MinimalClientMessage {
+    response_id: Uuid,
+}
+
 async fn receive_ws(
     app: AppState,
     mut ws_receiver: SplitStream<WebSocket>,
@@ -115,10 +121,15 @@ async fn receive_ws(
                     }
                     Err(e) => {
                         tracing::warn!("Failed to parse WS message: {}", e);
+                        let response_id = match serde_json::from_str::<MinimalClientMessage>(&text)
+                        {
+                            Ok(minimal) => minimal.response_id,
+                            Err(_) => Uuid::new_v4(),
+                        };
                         let _ = sender.send(ServerMessage::Error {
                             message: "Invalid message format".to_string(),
                             code: 400,
-                            response_id: Uuid::new_v4(),
+                            response_id,
                         });
                     }
                 }

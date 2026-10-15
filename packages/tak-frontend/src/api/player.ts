@@ -6,6 +6,8 @@ import { paginatedResponseSchema, type PaginationQuery } from '.';
 
 const playerInfo = z.object({
   userId: z.string(),
+  userRole: z.enum(['user', 'moderator', 'admin']),
+  userType: z.enum(['player', 'guest', 'bot']),
   username: z.string(),
   participationRating: z.number().nullable(),
 });

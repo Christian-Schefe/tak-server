@@ -7,6 +7,12 @@ import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import z from 'zod';
 
+definePage({
+  meta: {
+    noAuth: true,
+  },
+});
+
 const resetFormSchema = z.object({
   identifier: z.string().min(1, 'Identifier is required'),
   newPassword: z.string().min(1, 'Password is required'),
@@ -47,7 +53,7 @@ async function onSubmit(data: ResetForm) {
     <h1>Reset Password</h1>
     <div class="flex flex-col items-stretch gap-2">
       <Form v-model="formContext" :validator="formValidator" @submit="onSubmit">
-        <div class="flex flex-col gap-2">
+        <div class="flex flex-col gap-4">
           <InputText label="Identifier" name="identifier" autocomplete="username" />
           <InputText label="Token" name="token" />
           <InputText

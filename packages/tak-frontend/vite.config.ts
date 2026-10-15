@@ -9,7 +9,7 @@ import { templateCompilerOptions } from '@tresjs/core';
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue({ ...templateCompilerOptions }), vueDevTools(), tailwindcss(), VueRouter({})],
+  plugins: [vue({ ...templateCompilerOptions }), tailwindcss(), VueRouter({}), vueDevTools()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

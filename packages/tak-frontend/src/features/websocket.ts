@@ -2,8 +2,8 @@ import { useWebSocket } from '@vueuse/core';
 import { defineStore } from 'pinia';
 import { computed, onUnmounted, ref, toValue, watch, type MaybeRefOrGetter } from 'vue';
 import z from 'zod';
-import { useAccount } from '@/api/auth';
 import { useQueryClient } from '@tanstack/vue-query';
+import { useAuthStore } from './auth';
 
 interface WsSubscription {
   type: string;
@@ -145,17 +145,17 @@ export const useWebSocketStore = defineStore('websocket', () => {
     });
   });
 
-  const { data: account } = useAccount();
+  const authStore = useAuthStore();
 
   const lastAuthenticated = ref<string | null>(null);
 
-  watch([account, status], ([newAccount, newStatus]) => {
-    if (newAccount !== undefined && newStatus === 'OPEN') {
-      console.log('Authenticating WebSocket connection with JWT', newAccount.jwt);
-      void sendMessage({ type: 'authenticate', token: newAccount.jwt })
+  watch([() => authStore.data, status], ([newAuthData, newStatus]) => {
+    if (newAuthData !== null && newStatus === 'OPEN') {
+      console.log('Authenticating WebSocket connection with JWT', newAuthData.jwt);
+      void sendMessage({ type: 'authenticate', token: newAuthData.jwt })
         .then(() => {
           console.log('WebSocket authentication successful');
-          lastAuthenticated.value = newAccount.userId;
+          lastAuthenticated.value = newAuthData.userId;
         })
         .catch((error: unknown) => {
           console.error('WebSocket authentication failed:', error);
@@ -166,8 +166,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const isAuthenticated = computed(() => {
     return (
       status.value === 'OPEN' &&
-      account.value !== undefined &&
-      lastAuthenticated.value === account.value.userId
+      authStore.data !== null &&
+      lastAuthenticated.value === authStore.data.userId
     );
   });
 

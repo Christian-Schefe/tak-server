@@ -4,7 +4,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tak_server_api_contract::{
-    auth::IdentityInfo,
     game::{JsonGameMetadata, JsonGameStatus},
     seek::{CreateSeekPayload, JsonSeek},
     ws::{ClientMessage, ClientMessageWrapper, ServerMessage},
@@ -209,10 +208,6 @@ impl ServerApiImpl {
             }
             eprintln!("Reconnecting to WebSocket...");
         }
-    }
-
-    pub async fn who_am_i(&self) -> Result<IdentityInfo, String> {
-        self.get_request("/whoami?preventGuest=true").await
     }
 
     async fn get_request<T: serde::de::DeserializeOwned>(

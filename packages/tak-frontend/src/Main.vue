@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { AppFrame, Button, Icon, SideBar } from '@tak-ui-lib/components';
 import { breakpointsTailwind, useBreakpoints } from '@vueuse/core';
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useNavigateOnGamesStartWebSocketSubscription } from './api/game.ts';
 import Navigation from './components/Navigation.vue';
-import { useJwtSync } from './features/auth.ts';
 import { useWebSocketStore } from './features/websocket.ts';
+import { useRoute } from 'vue-router';
 
-useJwtSync();
 useWebSocketStore();
 useNavigateOnGamesStartWebSocketSubscription();
 
@@ -21,11 +20,15 @@ watch(isMobile, (newIsMobile) => {
     sidebarVisible.value = false;
   }
 });
+const route = useRoute();
+const showSidebars = computed(() => {
+  return route.meta.noAuth !== true;
+});
 </script>
 
 <template>
   <AppFrame>
-    <template #top>
+    <template v-if="showSidebars" #top>
       <SideBar :visible="isMobile" direction="top">
         <Button
           size="small"
@@ -38,7 +41,7 @@ watch(isMobile, (newIsMobile) => {
         </Button>
       </SideBar>
     </template>
-    <template #left>
+    <template v-if="showSidebars" #left>
       <SideBar
         :visible="sidebarVisible || !isMobile"
         direction="left"

@@ -1,17 +1,14 @@
 <script setup lang="ts">
-import { useRefreshAccount } from '@/api/auth';
 import Page from '@/components/Page.vue';
-import { useJwtStore } from '@/features/auth';
+import { useAuthStore } from '@/features/auth';
 import { Button } from '@tak-ui-lib/components';
 import { useRouter } from 'vue-router';
 
-const jwtStore = useJwtStore();
-const refreshAccount = useRefreshAccount();
+const authStore = useAuthStore();
 const router = useRouter();
 
 async function onLogout() {
-  jwtStore.setJwt(null);
-  await refreshAccount();
+  authStore.setAuthData(null);
   await router.push('/login');
 }
 </script>

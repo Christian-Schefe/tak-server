@@ -12,13 +12,11 @@ use axum_extra::{
     headers::{Authorization, authorization::Bearer},
 };
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
-use tak_server_api_contract::auth::{JsonUserRole, JsonUserType};
 use tak_server_app::{
-    domain::{
-        UserId,
-        moderation::{UserRole, UserType},
+    domain::UserId,
+    workflow::account::authentication::{
+        LoginError, RecoverError, RefreshError, RegisterError, ResetError,
     },
-    workflow::account::authentication::{LoginError, RecoverError, RegisterError, ResetError},
 };
 
 use crate::{AppState, ServiceError};
@@ -60,6 +58,7 @@ pub fn register_routes() -> axum::Router<AppState> {
         .route("/api-token", post(create_api_token))
         .route("/recover", post(recover))
         .route("/reset", post(reset))
+        .route("/refresh", post(refresh))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -71,15 +70,20 @@ struct LoginRequest {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct LoginResponse {
+struct AuthenticatedUserResponse {
     jwt: String,
+    refresh_token: String,
+    #[serde(with = "chrono::serde::ts_milliseconds")]
+    refresh_token_valid_until: chrono::DateTime<chrono::Utc>,
 }
+
+const JWT_DURATION: Duration = Duration::from_mins(15); // short lived access token
 
 async fn login(
     State(app): State<AppState>,
     Json(req): Json<LoginRequest>,
-) -> Result<Json<LoginResponse>, ServiceError> {
-    let user_id = match app
+) -> Result<Json<AuthenticatedUserResponse>, ServiceError> {
+    let user = match app
         .app
         .authentication_use_case
         .login(req.identifier, req.password)
@@ -95,21 +99,69 @@ async fn login(
             return Err(ServiceError::Internal(format!("Failed to login",)));
         }
     };
-    let jwt = generate_account_jwt(&app, user_id, Duration::from_hours(24)).await?;
+    let jwt = generate_jwt(user.user_id, JWT_DURATION);
 
-    Ok(Json(LoginResponse { jwt }))
+    Ok(Json(AuthenticatedUserResponse {
+        jwt,
+        refresh_token: user.refresh_token.token,
+        refresh_token_valid_until: user.refresh_token.valid_until,
+    }))
 }
 
-async fn login_guest(State(app): State<AppState>) -> Result<Json<LoginResponse>, ServiceError> {
-    let user_id = match app.app.authentication_use_case.create_guest_account().await {
+async fn login_guest(
+    State(app): State<AppState>,
+) -> Result<Json<AuthenticatedUserResponse>, ServiceError> {
+    let user = match app.app.authentication_use_case.create_guest_account().await {
         Ok(user_id) => user_id,
         Err(RegisterError::Internal) => {
             return Err(ServiceError::Internal(format!("Failed to login as guest")));
         }
     };
-    let jwt = generate_account_jwt(&app, user_id, Duration::from_hours(24)).await?;
+    let jwt = generate_jwt(user.user_id, JWT_DURATION);
 
-    Ok(Json(LoginResponse { jwt }))
+    Ok(Json(AuthenticatedUserResponse {
+        jwt,
+        refresh_token: user.refresh_token.token,
+        refresh_token_valid_until: user.refresh_token.valid_until,
+    }))
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RefreshRequest {
+    user_id: String,
+    refresh_token: String,
+}
+
+async fn refresh(
+    State(app): State<AppState>,
+    Json(req): Json<RefreshRequest>,
+) -> Result<Json<AuthenticatedUserResponse>, ServiceError> {
+    let user_id = UserId::try_from(req.user_id.clone())
+        .map_err(|_| ServiceError::BadRequest("Invalid user ID".to_string()))?;
+    let user = match app
+        .app
+        .authentication_use_case
+        .refresh(user_id, req.refresh_token)
+        .await
+    {
+        Ok(user_id) => user_id,
+        Err(RefreshError::InvalidToken) => {
+            return Err(ServiceError::Unauthorized(
+                "Invalid refresh token".to_string(),
+            ));
+        }
+        Err(RefreshError::Internal) => {
+            return Err(ServiceError::Internal(format!("Failed to refresh token")));
+        }
+    };
+    let jwt = generate_jwt(user.user_id, JWT_DURATION);
+
+    Ok(Json(AuthenticatedUserResponse {
+        jwt,
+        refresh_token: user.refresh_token.token,
+        refresh_token_valid_until: user.refresh_token.valid_until,
+    }))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -123,8 +175,8 @@ struct RegisterRequest {
 async fn register(
     State(app): State<AppState>,
     Json(req): Json<RegisterRequest>,
-) -> Result<Json<LoginResponse>, ServiceError> {
-    let user_id = match app
+) -> Result<Json<AuthenticatedUserResponse>, ServiceError> {
+    let user = match app
         .app
         .authentication_use_case
         .register(req.email, req.username, req.password)
@@ -137,9 +189,13 @@ async fn register(
             ));
         }
     };
-    let jwt = generate_account_jwt(&app, user_id, Duration::from_hours(24)).await?;
+    let jwt = generate_jwt(user.user_id, JWT_DURATION);
 
-    Ok(Json(LoginResponse { jwt }))
+    Ok(Json(AuthenticatedUserResponse {
+        jwt,
+        refresh_token: user.refresh_token.token,
+        refresh_token_valid_until: user.refresh_token.valid_until,
+    }))
 }
 
 #[derive(serde::Deserialize)]
@@ -202,32 +258,7 @@ async fn reset(
     }
 }
 
-async fn generate_account_jwt(
-    app: &AppState,
-    user_id: UserId,
-    duration: Duration,
-) -> Result<String, ServiceError> {
-    let moderation = app
-        .app
-        .account_moderate_use_case
-        .get_moderation(user_id)
-        .await
-        .map_err(|_| ServiceError::Internal("Failed to retrieve moderation info".to_string()))?;
-    let user_role = match moderation.role {
-        UserRole::User => JsonUserRole::User,
-        UserRole::Moderator => JsonUserRole::Moderator,
-        UserRole::Admin => JsonUserRole::Admin,
-    };
-    let user_type = match moderation.user_type {
-        UserType::Player => JsonUserType::Player,
-        UserType::Guest => JsonUserType::Guest,
-        UserType::Bot => JsonUserType::Bot,
-    };
-    Ok(generate_jwt(user_id, duration, user_role, user_type))
-}
-
 async fn create_api_token(
-    State(app): State<AppState>,
     auth: Auth,
     Json(req): Json<CreateApiTokenRequest>,
 ) -> Result<Json<serde_json::Value>, ServiceError> {
@@ -236,7 +267,7 @@ async fn create_api_token(
             "Duration must be between 1 second and 365 days".to_string(),
         ));
     }
-    let cert = generate_account_jwt(&app, auth.user_id, Duration::from_secs(req.duration)).await?;
+    let cert = generate_jwt(auth.user_id, Duration::from_secs(req.duration));
     Ok(Json(serde_json::json!({ "certificate": cert })))
 }
 
@@ -250,8 +281,6 @@ struct CreateApiTokenRequest {
 pub struct Claims {
     pub sub: String,
     pub exp: usize,
-    pub user_role: JsonUserRole,
-    pub user_type: JsonUserType,
 }
 
 impl Claims {
@@ -287,19 +316,12 @@ fn read_or_generate_secret() -> Vec<u8> {
     secret.as_bytes().to_vec()
 }
 
-fn generate_jwt(
-    user_id: UserId,
-    duration: Duration,
-    user_role: JsonUserRole,
-    user_type: JsonUserType,
-) -> String {
+fn generate_jwt(user_id: UserId, duration: Duration) -> String {
     let claims = Claims {
         sub: user_id.to_string(),
         exp: (chrono::Utc::now()
             + chrono::Duration::from_std(duration).unwrap_or_else(|_| chrono::Duration::MAX))
         .timestamp() as usize,
-        user_role,
-        user_type,
     };
     let token = encode(&Header::default(), &claims, &KEYS.encoding).unwrap();
     token

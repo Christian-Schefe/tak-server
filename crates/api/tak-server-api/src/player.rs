@@ -4,8 +4,13 @@ use axum::{
     routing::get,
 };
 use chrono::{DateTime, Utc};
+use tak_server_api_contract::player::{JsonUserInfo, JsonUserRole, JsonUserType};
 use tak_server_app::{
-    domain::{Pagination, UserId, rating::RatingQuery},
+    domain::{
+        Pagination, UserId,
+        moderation::{UserRole, UserType},
+        rating::RatingQuery,
+    },
     workflow::player::PlayerStatsView,
 };
 use uuid::Uuid;
@@ -14,7 +19,7 @@ use crate::{AppState, PaginatedResponse, PaginationQuery, ServiceError};
 
 pub fn register_routes() -> axum::Router<AppState> {
     axum::Router::new()
-        .route("/player/{user_id}", get(get_player_info))
+        .route("/player/{user_id}", get(get_user_info))
         .route("/player/{user_id}/stats", get(get_player_stats))
         .route("/player/{user_id}/rating-history", get(get_rating_history))
         .route("/leaderboard", get(query_player_ratings))
@@ -26,10 +31,14 @@ async fn get_online_users(State(app): State<AppState>) -> Json<Vec<String>> {
     Json(users.into_iter().map(|a| a.to_string()).collect())
 }
 
-async fn get_player_info_helper(
-    app: &AppState,
-    user_id: UserId,
-) -> Result<PlayerInfo, ServiceError> {
+async fn get_user_info(
+    State(app): State<AppState>,
+    Path(user_id): Path<String>,
+) -> Result<Json<JsonUserInfo>, ServiceError> {
+    let user_id = UserId(
+        Uuid::parse_str(&user_id)
+            .map_err(|_| ServiceError::BadRequest("Invalid user ID".to_string()))?,
+    );
     let snapshot = match app
         .app
         .get_snapshot_workflow
@@ -43,23 +52,35 @@ async fn get_player_info_helper(
             ));
         }
     };
+    let moderation = match app
+        .app
+        .account_moderate_use_case
+        .get_moderation(user_id)
+        .await
+    {
+        Ok(moderation) => moderation,
+        Err(_) => {
+            return Err(ServiceError::Internal(
+                "Failed to retrieve moderation info".to_string(),
+            ));
+        }
+    };
 
-    Ok(PlayerInfo {
+    Ok(Json(JsonUserInfo {
         user_id: user_id.to_string(),
         username: snapshot.username,
         participation_rating: snapshot.rating,
-    })
-}
-
-async fn get_player_info(
-    State(app): State<AppState>,
-    Path(user_id): Path<String>,
-) -> Result<Json<PlayerInfo>, ServiceError> {
-    let user_id = UserId(
-        Uuid::parse_str(&user_id)
-            .map_err(|_| ServiceError::BadRequest("Invalid user ID".to_string()))?,
-    );
-    get_player_info_helper(&app, user_id).await.map(Json)
+        user_role: match moderation.role {
+            UserRole::User => JsonUserRole::User,
+            UserRole::Moderator => JsonUserRole::Moderator,
+            UserRole::Admin => JsonUserRole::Admin,
+        },
+        user_type: match moderation.user_type {
+            UserType::Guest => JsonUserType::Guest,
+            UserType::Bot => JsonUserType::Bot,
+            UserType::Player => JsonUserType::Player,
+        },
+    }))
 }
 
 async fn get_player_stats(
@@ -177,14 +198,6 @@ struct JsonRatingHistoryEntry {
     #[serde(with = "chrono::serde::ts_milliseconds")]
     timestamp: DateTime<Utc>,
     rating: f64,
-}
-
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct PlayerInfo {
-    user_id: String,
-    username: String,
-    participation_rating: Option<f64>,
 }
 
 #[derive(serde::Serialize)]

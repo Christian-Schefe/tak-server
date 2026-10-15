@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex};
 use tak_core::{TakPlayer, TakReserve};
 
 use tak_server_api_contract::{
-    auth::IdentityInfo,
     game::{
         JsonBaseGameSettings, JsonGameMetadata, JsonGameSettings, JsonGameStatus, JsonTakOpening,
         JsonTimeSettings,
@@ -25,7 +24,7 @@ pub trait ServerApi {
 }
 
 pub struct Orchestrator {
-    identity: IdentityInfo,
+    user_id: String,
     server_api: Arc<dyn ServerApi + Send + Sync>,
     game_service: Arc<GameService>,
     seek_service: Arc<SeekService>,
@@ -58,7 +57,7 @@ fn get_seek_payload() -> CreateSeekPayload {
 
 impl Orchestrator {
     pub fn new(
-        identity: IdentityInfo,
+        user_id: String,
         server_api: Arc<dyn ServerApi + Send + Sync>,
         game_service: Arc<GameService>,
         seek_service: Arc<SeekService>,
@@ -66,7 +65,7 @@ impl Orchestrator {
         rx: UnboundedReceiver<ServerMessage>,
     ) -> Arc<Self> {
         let this = Arc::new(Self {
-            identity,
+            user_id,
             server_api,
             game_service,
             seek_service,
@@ -83,9 +82,9 @@ impl Orchestrator {
     }
 
     fn get_player_color(&self, game: &JsonGameMetadata) -> Option<TakPlayer> {
-        if game.user_ids.white == self.identity.user_id {
+        if game.user_ids.white == self.user_id {
             Some(TakPlayer::White)
-        } else if game.user_ids.black == self.identity.user_id {
+        } else if game.user_ids.black == self.user_id {
             Some(TakPlayer::Black)
         } else {
             None

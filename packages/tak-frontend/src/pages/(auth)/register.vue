@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { useRefreshAccount, useRegister } from '@/api/auth';
+import { useRegister } from '@/api/auth';
 import Page from '@/components/Page.vue';
-import { useJwtStore } from '@/features/auth';
+import { useAuthStore } from '@/features/auth';
 import { zodFormValidator } from '@/utils/forms';
 import { Button, Form, InputText, useFormContext } from '@tak-ui-lib/components';
 import { useRouter } from 'vue-router';
 import z from 'zod';
+
+definePage({
+  meta: {
+    noAuth: true,
+  },
+});
 
 const registerFormSchema = z.object({
   email: z.email(),
@@ -21,16 +27,14 @@ const formContext = useFormContext({
   password: '',
 });
 
-const jwtStore = useJwtStore();
+const authStore = useAuthStore();
 const register = useRegister();
-const refreshAccount = useRefreshAccount();
 const router = useRouter();
 
 async function onSubmit(data: RegisterForm) {
   try {
-    const { jwt } = await register(data);
-    jwtStore.setJwt(jwt);
-    await refreshAccount();
+    const authData = await register(data);
+    authStore.setAuthData(authData);
     await router.push('/');
   } catch (error) {
     console.error('Error during registration:', error);
@@ -43,7 +47,7 @@ async function onSubmit(data: RegisterForm) {
     <h1>Sign Up</h1>
     <div class="flex flex-col items-stretch gap-2">
       <Form v-model="formContext" :validator="formValidator" @submit="onSubmit">
-        <div class="flex flex-col gap-2">
+        <div class="flex flex-col gap-4">
           <InputText label="Username" name="username" />
           <InputText label="Email" name="email" autocomplete="username" />
           <InputText label="Password" name="password" type="password" autocomplete="new-password" />

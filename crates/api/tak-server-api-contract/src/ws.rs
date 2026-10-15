@@ -140,11 +140,6 @@ pub enum ServerGameEventType {
 )]
 pub enum JsonChatConversation {
     Global,
-    Room {
-        room_name: String,
-    },
-    Private {
-        user_id1: String,
-        user_id2: String,
-    },
+    Room { room_name: String },
+    Private { user_id1: String, user_id2: String },
 }

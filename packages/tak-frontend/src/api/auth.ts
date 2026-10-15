@@ -1,31 +1,11 @@
+import { useAuthStore } from '@/features/auth';
 import { useFetch } from '@/utils/fetch';
-import { useQuery, useQueryClient } from '@tanstack/vue-query';
 import { z } from 'zod';
+import { usePlayerInfo } from './player';
 
-export type AccountInfo = z.infer<typeof accountInfoSchema>;
-
-const accountInfoSchema = z.object({
-  userId: z.string(),
-  userRole: z.enum(['user', 'moderator', 'admin']),
-  userType: z.enum(['player', 'guest', 'bot']),
-  jwt: z.string(),
-});
-
-export const accountQueryKey = ['account'] as const;
 export function useAccount() {
-  const { fetchTyped } = useFetch();
-  return useQuery({
-    queryKey: accountQueryKey,
-    queryFn: () => fetchTyped(accountInfoSchema, '/api/auth/whoami', 'GET', undefined, true, true),
-    staleTime: Infinity,
-  });
-}
-
-export function useRefreshAccount() {
-  const queryClient = useQueryClient();
-  return async function refreshAccount() {
-    await queryClient.refetchQueries({ queryKey: accountQueryKey });
-  };
+  const authStore = useAuthStore();
+  return usePlayerInfo(() => authStore.data?.userId);
 }
 
 export interface LoginRequest {
@@ -33,16 +13,25 @@ export interface LoginRequest {
   password: string;
 }
 
-export const loginResponseSchema = z.object({
+export const authenticatedUserResponseSchema = z.object({
   jwt: z.string(),
+  refreshToken: z.string(),
+  refreshTokenValidUntil: z.number(),
 });
 
-export type LoginResponse = z.infer<typeof loginResponseSchema>;
+export type AuthenticatedUserResponse = z.infer<typeof authenticatedUserResponseSchema>;
 
 export function useLogin() {
   const { fetchTyped } = useFetch();
   return async (request: LoginRequest) => {
-    return await fetchTyped(loginResponseSchema, '/api/auth/login', 'POST', request);
+    return await fetchTyped(authenticatedUserResponseSchema, '/api/auth/login', 'POST', request);
+  };
+}
+
+export function useLoginGuest() {
+  const { fetchTyped } = useFetch();
+  return async () => {
+    return await fetchTyped(authenticatedUserResponseSchema, '/api/auth/login-guest', 'POST');
   };
 }
 
@@ -55,7 +44,7 @@ export interface RegisterRequest {
 export function useRegister() {
   const { fetchTyped } = useFetch();
   return async (request: RegisterRequest) => {
-    return await fetchTyped(loginResponseSchema, '/api/auth/register', 'POST', request);
+    return await fetchTyped(authenticatedUserResponseSchema, '/api/auth/register', 'POST', request);
   };
 }
 
@@ -80,5 +69,17 @@ export function useReset() {
   const { fetch } = useFetch();
   return async (request: ResetRequest) => {
     return await fetch('/api/auth/reset', 'POST', request);
+  };
+}
+
+export interface RefreshRequest {
+  userId: string;
+  refreshToken: string;
+}
+
+export function useRefresh() {
+  const { fetchTyped } = useFetch();
+  return async (request: RefreshRequest) => {
+    return await fetchTyped(authenticatedUserResponseSchema, '/api/auth/refresh', 'POST', request);
   };
 }

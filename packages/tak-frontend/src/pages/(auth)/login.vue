@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { useLogin, useRefreshAccount } from '@/api/auth';
+import { useLogin, useLoginGuest } from '@/api/auth';
 import Page from '@/components/Page.vue';
-import { useJwtStore } from '@/features/auth';
+import { useAuthStore } from '@/features/auth';
 import { zodFormValidator } from '@/utils/forms';
 import { Button, Form, InputText, useFormContext } from '@tak-ui-lib/components';
 import { useRouter } from 'vue-router';
 import z from 'zod';
+
+definePage({
+  meta: {
+    noAuth: true,
+  },
+});
 
 const loginFormSchema = z.object({
   identifier: z.string().min(1, 'Identifier is required'),
@@ -19,19 +25,28 @@ const formContext = useFormContext({
   password: '',
 });
 
-const jwtStore = useJwtStore();
+const authStore = useAuthStore();
 const login = useLogin();
-const refreshAccount = useRefreshAccount();
+const loginGuest = useLoginGuest();
 const router = useRouter();
 
 async function onSubmit(data: LoginForm) {
   try {
-    const { jwt } = await login(data);
-    jwtStore.setJwt(jwt);
-    await refreshAccount();
+    const authData = await login(data);
+    authStore.setAuthData(authData);
     await router.push('/');
   } catch (error) {
     console.error('Error during login:', error);
+  }
+}
+
+async function onLoginGuest() {
+  try {
+    const authData = await loginGuest();
+    authStore.setAuthData(authData);
+    await router.push('/');
+  } catch (error) {
+    console.error('Error during guest login:', error);
   }
 }
 </script>
@@ -40,7 +55,7 @@ async function onSubmit(data: LoginForm) {
     <h1>Sign In</h1>
     <div class="flex flex-col items-stretch gap-2">
       <Form v-model="formContext" :validator="formValidator" @submit="onSubmit">
-        <div class="flex flex-col gap-2">
+        <div class="flex flex-col gap-4">
           <InputText label="Identifier" name="identifier" autocomplete="username" />
           <InputText
             label="Password"
@@ -48,7 +63,8 @@ async function onSubmit(data: LoginForm) {
             type="password"
             autocomplete="current-password"
           />
-          <div class="flex justify-end">
+          <div class="flex justify-end gap-2">
+            <Button variant="text" type="button" @click="onLoginGuest">Sign In as Guest</Button>
             <Button type="submit">Sign In</Button>
           </div>
         </div>

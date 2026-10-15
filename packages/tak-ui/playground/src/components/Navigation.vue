@@ -28,7 +28,7 @@ const navigationItems: NavigationItem[] = [
 const route = useRoute();
 
 function isActive(path: string) {
-  return route.path === path;
+  return route.name === path;
 }
 
 const themeManager = useThemeManager();

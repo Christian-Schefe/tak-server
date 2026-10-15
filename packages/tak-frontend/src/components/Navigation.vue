@@ -5,7 +5,6 @@ import { useSeeks } from '@/api/seek';
 import { Button } from '@tak-ui-lib/components';
 import { computed, ref } from 'vue';
 import {
-  LuLogIn,
   LuMedal,
   LuPlay,
   LuPuzzle,
@@ -101,7 +100,7 @@ const items = computed<MenuItem[]>(() => {
 const route = useRoute();
 
 function isActive(path: string) {
-  return route.path === path;
+  return route.name === path;
 }
 </script>
 
@@ -142,7 +141,7 @@ function isActive(path: string) {
         <LuSettings />
       </Button>
       <Button
-        v-if="account !== undefined && account.userType !== 'guest'"
+        v-if="account !== undefined"
         size="small"
         variant="text"
         severity="secondary"
@@ -150,16 +149,6 @@ function isActive(path: string) {
         icon-only
       >
         <LuUser />
-      </Button>
-      <Button
-        v-if="account !== undefined && account.userType === 'guest'"
-        size="small"
-        variant="text"
-        severity="secondary"
-        :as="{ component: RouterLink, props: { to: '/login' } }"
-        icon-only
-      >
-        <LuLogIn />
       </Button>
     </div>
     <div class="p-2">
