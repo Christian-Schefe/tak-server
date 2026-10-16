@@ -11,7 +11,7 @@ use tak_core::{TakGameResult, TakPlayer};
 use tak_domain::{
     MatchId,
     game::FinishedGame,
-    game_history::{GameHistoryService, GameRatingInfo, GameRepository},
+    game_history::{GameFinishedUpdate, GameRatingInfo, GameRepository},
     matches::{MatchRepository, MatchStatus},
     moderation::{Moderation, ModerationRepository},
     rating::{PlayerRating, RatingRepository, RatingService},
@@ -30,7 +30,6 @@ pub struct FinalizeGameWorkflowImpl<
     G: GameRepository,
     R: RatingService,
     RP: RatingRepository,
-    GH: GameHistoryService,
     M: MatchRepository,
     NP: NotifyPlayerWorkflow,
     SPS: SpectatorService,
@@ -43,7 +42,6 @@ pub struct FinalizeGameWorkflowImpl<
     game_repository: Arc<G>,
     rating_service: Arc<R>,
     rating_repository: Arc<RP>,
-    game_history_service: Arc<GH>,
     match_repository: Arc<M>,
     notify_player_workflow: Arc<NP>,
     spectator_service: Arc<SPS>,
@@ -58,7 +56,6 @@ impl<
     G: GameRepository,
     R: RatingService,
     RP: RatingRepository,
-    GH: GameHistoryService,
     M: MatchRepository,
     NP: NotifyPlayerWorkflow,
     SPS: SpectatorService,
@@ -67,13 +64,12 @@ impl<
     S: StatsRepository,
     RH: RatingHistoryRepository,
     TM: TournamentMatchWorkflow,
-> FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, MR, S, RH, TM>
+> FinalizeGameWorkflowImpl<G, R, RP, M, NP, SPS, L, MR, S, RH, TM>
 {
     pub fn new(
         game_repository: Arc<G>,
         rating_service: Arc<R>,
         rating_repository: Arc<RP>,
-        game_history_service: Arc<GH>,
         match_repository: Arc<M>,
         notify_player_workflow: Arc<NP>,
         spectator_service: Arc<SPS>,
@@ -87,7 +83,6 @@ impl<
             game_repository,
             rating_service,
             rating_repository,
-            game_history_service,
             match_repository,
             notify_player_workflow,
             spectator_service,
@@ -160,7 +155,6 @@ impl<
     G: GameRepository + Send + Sync + 'static,
     R: RatingService + Send + Sync + 'static,
     RP: RatingRepository + Send + Sync + 'static,
-    GH: GameHistoryService + Send + Sync + 'static,
     M: MatchRepository + Send + Sync + 'static,
     NP: NotifyPlayerWorkflow + Send + Sync + 'static,
     SPS: SpectatorService + Send + Sync + 'static,
@@ -169,7 +163,7 @@ impl<
     S: StatsRepository + Send + Sync + 'static,
     RH: RatingHistoryRepository + Send + Sync + 'static,
     TM: TournamentMatchWorkflow + Send + Sync + 'static,
-> FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, GH, M, NP, SPS, L, MR, S, RH, TM>
+> FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, M, NP, SPS, L, MR, S, RH, TM>
 {
     #[tracing::instrument(skip(self, ended_game), fields(game_id = %ended_game.game_id))]
     async fn finalize_game(&self, ended_game: FinishedGame) {
@@ -264,9 +258,8 @@ impl<
         )
         .await;
 
-        let game_record_update = self
-            .game_history_service
-            .get_finished_game_record_update(ended_game, game_rating_info);
+        let game_record_update =
+            GameFinishedUpdate::from_game(ended_game, game_rating_info);
         if let Err(e) = self
             .game_repository
             .update_finished_game(game_id, game_record_update)

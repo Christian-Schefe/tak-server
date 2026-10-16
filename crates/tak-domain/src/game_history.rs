@@ -16,6 +16,19 @@ pub struct GameRecord {
     pub events: Vec<GameEvent>,
 }
 
+impl GameRecord {
+    pub fn for_ongoing_game(metadata: GameMetadata, white: PlayerSnapshot, black: PlayerSnapshot) -> Self {
+        Self {
+            metadata,
+            white,
+            black,
+            rating_info: None,
+            result: None,
+            events: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PlayerSnapshot {
     pub username: String,
@@ -81,6 +94,16 @@ pub struct GameFinishedUpdate {
     pub rating_info: Option<GameRatingInfo>,
 }
 
+impl GameFinishedUpdate {
+    pub fn from_game(game: FinishedGame, rating_info: Option<GameRatingInfo>) -> Self {
+        Self {
+            result: game.game.game_result().clone(),
+            events: game.events.clone(),
+            rating_info,
+        }
+    }
+}
+
 #[async_trait::async_trait]
 pub trait GameRepository {
     async fn save_ongoing_game(&self, game: GameRecord) -> Result<GameId, RepoError>;
@@ -98,56 +121,4 @@ pub trait GameRepository {
         &self,
         match_id: MatchId,
     ) -> Result<Vec<(GameId, GameRecord)>, RepoError>;
-}
-
-pub trait GameHistoryService {
-    fn get_ongoing_game_record(
-        &self,
-        metadata: GameMetadata,
-        white: PlayerSnapshot,
-        black: PlayerSnapshot,
-    ) -> GameRecord;
-    fn get_finished_game_record_update(
-        &self,
-        game: FinishedGame,
-        rating_info: Option<GameRatingInfo>,
-    ) -> GameFinishedUpdate;
-}
-
-pub struct GameHistoryServiceImpl;
-
-impl GameHistoryServiceImpl {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl GameHistoryService for GameHistoryServiceImpl {
-    fn get_ongoing_game_record(
-        &self,
-        metadata: GameMetadata,
-        white: PlayerSnapshot,
-        black: PlayerSnapshot,
-    ) -> GameRecord {
-        GameRecord {
-            metadata,
-            white,
-            black,
-            rating_info: None,
-            result: None,
-            events: Vec::new(),
-        }
-    }
-
-    fn get_finished_game_record_update(
-        &self,
-        game: FinishedGame,
-        rating_info: Option<GameRatingInfo>,
-    ) -> GameFinishedUpdate {
-        GameFinishedUpdate {
-            result: game.game.game_result().clone(),
-            events: game.events.clone(),
-            rating_info,
-        }
-    }
 }

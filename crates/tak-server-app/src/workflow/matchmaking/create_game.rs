@@ -10,7 +10,7 @@ use crate::{
 use tak_domain::{
     MatchId, RepoRetrieveError,
     game::GameService,
-    game_history::{GameHistoryService, GameRepository},
+    game_history::{GameRecord, GameRepository},
     matches::MatchRepository,
 };
 
@@ -31,7 +31,6 @@ pub enum CreateGameFromMatchError {
 
 pub struct CreateGameFromMatchWorkflowImpl<
     M: MatchRepository,
-    GH: GameHistoryService,
     GR: GameRepository,
     G: GameService,
     GT: GameTimeoutRunner,
@@ -39,7 +38,6 @@ pub struct CreateGameFromMatchWorkflowImpl<
     S: GetSnapshotWorkflow,
 > {
     match_repo: Arc<M>,
-    game_history_service: Arc<GH>,
     game_repository: Arc<GR>,
     game_service: Arc<G>,
     game_timeout_runner: Arc<GT>,
@@ -48,17 +46,15 @@ pub struct CreateGameFromMatchWorkflowImpl<
 }
 impl<
     M: MatchRepository,
-    GH: GameHistoryService,
     GR: GameRepository,
     G: GameService,
     GT: GameTimeoutRunner,
     L: ListenerNotificationPort,
     S: GetSnapshotWorkflow,
-> CreateGameFromMatchWorkflowImpl<M, GH, GR, G, GT, L, S>
+> CreateGameFromMatchWorkflowImpl<M, GR, G, GT, L, S>
 {
     pub fn new(
         match_repo: Arc<M>,
-        game_history_service: Arc<GH>,
         game_repository: Arc<GR>,
         game_service: Arc<G>,
         game_timeout_runner: Arc<GT>,
@@ -67,7 +63,6 @@ impl<
     ) -> Self {
         Self {
             match_repo,
-            game_history_service,
             game_repository,
             game_service,
             game_timeout_runner,
@@ -80,13 +75,12 @@ impl<
 #[async_trait::async_trait]
 impl<
     M: MatchRepository + Send + Sync,
-    GH: GameHistoryService + Send + Sync,
     GR: GameRepository + Send + Sync,
     G: GameService + Send + Sync,
     GT: GameTimeoutRunner + Send + Sync,
     L: ListenerNotificationPort + Send + Sync,
     S: GetSnapshotWorkflow + Send + Sync,
-> CreateGameFromMatchWorkflow for CreateGameFromMatchWorkflowImpl<M, GH, GR, G, GT, L, S>
+> CreateGameFromMatchWorkflow for CreateGameFromMatchWorkflowImpl<M, GR, G, GT, L, S>
 {
     #[tracing::instrument(skip(self))]
     async fn create_game_from_match(
@@ -142,11 +136,8 @@ impl<
             Some(match_id),
         );
 
-        let game_record = self.game_history_service.get_ongoing_game_record(
-            metadata.clone(),
-            snapshot_white,
-            snapshot_black,
-        );
+        let game_record =
+            GameRecord::for_ongoing_game(metadata.clone(), snapshot_white, snapshot_black);
 
         let game_id = match self.game_repository.save_ongoing_game(game_record).await {
             Ok(id) => id,

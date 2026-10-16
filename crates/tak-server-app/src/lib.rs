@@ -71,7 +71,7 @@ use tak_domain::{
     chat::{ChatRepository, ChatRoomServiceImpl, RustrictContentPolicy},
     event::EventRepository,
     game::GameServiceImpl,
-    game_history::{GameHistoryServiceImpl, GameRepository},
+    game_history::GameRepository,
     matches::{MatchReadinessServiceImpl, MatchRepository},
     moderation::{
         AdminUserPolicy, HigherRoleUserPolicy, ModerationRepository, ModeratorUserPolicy,
@@ -184,7 +184,6 @@ pub async fn build_application<
     let game_service = Arc::new(GameServiceImpl::new());
     let spectator_service = Arc::new(SpectatorServiceImpl::new());
     let chat_room_service = Arc::new(ChatRoomServiceImpl::new());
-    let game_history_service = Arc::new(GameHistoryServiceImpl::new());
     let rating_service = Arc::new(RatingServiceImpl::new());
     let chat_content_policy = Arc::new(RustrictContentPolicy::new());
     let match_readiness_service = Arc::new(MatchReadinessServiceImpl::new());
@@ -218,7 +217,6 @@ pub async fn build_application<
         game_repository.clone(),
         rating_service.clone(),
         rating_repository.clone(),
-        game_history_service.clone(),
         match_repository.clone(),
         notify_player_workflow.clone(),
         spectator_service.clone(),
@@ -241,7 +239,6 @@ pub async fn build_application<
 
     let create_game_from_match_workflow = Arc::new(CreateGameFromMatchWorkflowImpl::new(
         match_repository.clone(),
-        game_history_service.clone(),
         game_repository.clone(),
         game_service.clone(),
         game_timeout_scheduler.clone(),
