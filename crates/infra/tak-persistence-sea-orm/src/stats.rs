@@ -4,7 +4,7 @@ use crate::create_db_pool;
 use sea_orm::TransactionTrait;
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, TransactionError};
 use tak_persistence_sea_orm_entities::stats;
-use tak_server_app::domain::{
+use tak_domain::{
     UserId, RepoError, RepoRetrieveError,
     stats::{PlayerStats, StatsRepository},
 };

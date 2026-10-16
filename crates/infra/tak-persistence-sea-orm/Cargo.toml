@@ -27,7 +27,7 @@ tak-auth = { path = "../tak-auth" }
 tak-core = { path = "../../tak-core" }
 tak-persistence-sea-orm-entities = { path = "../tak-persistence-sea-orm-entities" }
 tak-persistence-sea-orm-migrations = { path = "../tak-persistence-sea-orm-migrations" }
-tak-server-app = { path = "../../tak-server-app" }
+tak-domain = { path = "../../tak-domain" }
 tokio = { version = "1.47.1", features = [ "full" ] }
 tracing = "0.1.44"
 uuid = { version = "1.18.1", features = [ "v4" ] }

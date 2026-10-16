@@ -1,11 +1,10 @@
 use chrono::{DateTime, Utc};
 
-use crate::domain::{UserId, RepoError, RepoRetrieveError};
+use crate::{RepoError, RepoRetrieveError, UserId};
 
 #[async_trait::async_trait]
 pub trait StatsRepository {
-    async fn get_player_stats(&self, user_id: UserId)
-    -> Result<PlayerStats, RepoRetrieveError>;
+    async fn get_player_stats(&self, user_id: UserId) -> Result<PlayerStats, RepoRetrieveError>;
     async fn update_player_game(
         &self,
         user_id: UserId,

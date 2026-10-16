@@ -6,6 +6,7 @@ version           = "0.1.0"
 [dependencies]
 dotenvy                          = "0.15.7"
 tak-auth                         = { path = "../infra/tak-auth" }
+tak-domain                       = { path = "../tak-domain" }
 tak-email-lettre                 = { path = "../infra/tak-email-lettre" }
 tak-events-google-sheets         = { path = "../infra/tak-events-google-sheets" }
 tak-persistence-profile-pictures = { path = "../infra/tak-persistence-profile-pictures" }

@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
-use crate::{
-    domain::{UserId, SeekId, seek::SeekService},
-    ports::notification::{ListenerMessage, ListenerNotificationPort},
-};
+use crate::ports::notification::{ListenerMessage, ListenerNotificationPort};
+use tak_domain::{SeekId, UserId, seek::SeekService};
 
 pub trait CancelSeekUseCase {
     fn cancel_seeks(&self, player: UserId);

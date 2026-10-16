@@ -4,15 +4,13 @@ use axum::{
     routing::get,
 };
 use chrono::{DateTime, Utc};
-use tak_server_api_contract::player::{JsonUserInfo, JsonUserRole, JsonUserType};
-use tak_server_app::{
-    domain::{
-        Pagination, UserId,
-        moderation::{UserRole, UserType},
-        rating::RatingQuery,
-    },
-    workflow::player::PlayerStatsView,
+use tak_domain::{
+    Pagination, UserId,
+    moderation::{UserRole, UserType},
+    rating::RatingQuery,
 };
+use tak_server_api_contract::player::{JsonUserInfo, JsonUserRole, JsonUserType};
+use tak_server_app::workflow::player::PlayerStatsView;
 use uuid::Uuid;
 
 use crate::{AppState, PaginatedResponse, PaginationQuery, ServiceError};

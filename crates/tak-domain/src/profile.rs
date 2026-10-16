@@ -1,7 +1,7 @@
 use country_code_enum::CountryCode;
 use image::DynamicImage;
 
-use crate::domain::{UserId, RepoError, RepoRetrieveError};
+use crate::{UserId, RepoError, RepoRetrieveError};
 
 #[async_trait::async_trait]
 pub trait AccountProfileRepository {

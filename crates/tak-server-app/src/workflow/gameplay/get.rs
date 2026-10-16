@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
-use crate::{
-    domain::{GameId, game::GameService},
-    workflow::gameplay::OngoingGameView,
-};
+use crate::workflow::gameplay::OngoingGameView;
+use tak_domain::{GameId, game::GameService};
 
 pub trait GetOngoingGameUseCase {
     fn get_game(&self, game_id: GameId) -> Option<OngoingGameView>;

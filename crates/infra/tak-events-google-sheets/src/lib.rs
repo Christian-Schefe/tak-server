@@ -5,10 +5,7 @@ use google_sheets4::{
     hyper_rustls::{HttpsConnector, HttpsConnectorBuilder},
     oauth2::{ServiceAccountAuthenticator, read_service_account_key},
 };
-use tak_server_app::{
-    domain::event::Event,
-    domain::event::{EventRepository, GetEventsError},
-};
+use tak_domain::event::{Event, EventRepository, GetEventsError};
 
 pub struct GoogleSheetsEventRepository {
     hub: Sheets<HttpsConnector<HttpConnector>>,

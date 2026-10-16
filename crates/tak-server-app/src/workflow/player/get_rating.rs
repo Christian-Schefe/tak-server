@@ -2,13 +2,11 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 
-use crate::{
-    domain::{
-        PaginatedResponse, UserId,
-        rating::{RatingQuery, RatingRepository},
-        stats::RatingHistoryRepository,
-    },
-    workflow::player::{RatingHistoryEntryView, RatingHistoryRangeView},
+use crate::workflow::player::{RatingHistoryEntryView, RatingHistoryRangeView};
+use tak_domain::{
+    PaginatedResponse, UserId,
+    rating::{RatingQuery, RatingRepository},
+    stats::RatingHistoryRepository,
 };
 
 #[async_trait::async_trait]

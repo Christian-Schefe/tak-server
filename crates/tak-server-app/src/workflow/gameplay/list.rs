@@ -1,6 +1,6 @@
+use crate::workflow::gameplay::OngoingGameView;
 use std::sync::Arc;
-
-use crate::{domain::game::GameService, workflow::gameplay::OngoingGameView};
+use tak_domain::game::GameService;
 
 pub trait ListOngoingGameUseCase {
     fn list_games(&self) -> Vec<OngoingGameView>;

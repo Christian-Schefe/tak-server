@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::domain::{
+use tak_domain::{
     MatchId, UserId, TournamentId,
     matches::MatchSettings,
     tournament::{

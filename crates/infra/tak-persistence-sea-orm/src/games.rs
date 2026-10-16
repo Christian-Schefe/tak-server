@@ -10,7 +10,7 @@ use tak_core::{
     ptn::{action_from_ptn, action_to_ptn, game_result_from_string, game_result_to_string},
 };
 use tak_persistence_sea_orm_entities::game;
-use tak_server_app::domain::{
+use tak_domain::{
     GameId, MatchId, PaginatedResponse, RepoError, RepoRetrieveError, SortOrder, UserId,
     game::{GameEvent, GameEventType, GameMetadata, GameOverEventType, request::GameRequest},
     game_history::{

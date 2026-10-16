@@ -1,6 +1,6 @@
 use country_code_enum::CountryCode;
 
-use crate::domain::profile::{AccountProfile, ProfilePictureVersion};
+use tak_domain::profile::{AccountProfile, ProfilePictureVersion};
 
 pub mod authentication;
 pub mod get_online;

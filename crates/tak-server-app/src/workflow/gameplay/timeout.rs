@@ -1,13 +1,8 @@
+use crate::workflow::gameplay::finalize_game::FinalizeGameWorkflow;
 use std::{sync::Arc, time::Instant};
-
-use crate::{
-    domain::{
-        GameId, UserId,
-        game::{
-            CheckDisconnectTimeoutResult, CheckTimeoutResult, GamePlayerActionResult, GameService,
-        },
-    },
-    workflow::gameplay::finalize_game::FinalizeGameWorkflow,
+use tak_domain::{
+    GameId, UserId,
+    game::{CheckDisconnectTimeoutResult, CheckTimeoutResult, GamePlayerActionResult, GameService},
 };
 
 pub enum ObserveOutcome {
@@ -70,9 +65,7 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
         let games = self
             .game_service
             .get_games()
-            .filter(|game| {
-                game.metadata.white_id == user_id || game.metadata.black_id == user_id
-            })
+            .filter(|game| game.metadata.white_id == user_id || game.metadata.black_id == user_id)
             .collect::<Vec<_>>();
 
         let mut wait_duration = None;

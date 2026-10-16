@@ -2,19 +2,17 @@ use axum::{
     Json,
     extract::{Path, State},
 };
+use tak_domain::{
+    MatchId,
+    matches::{Match, MatchMode, MatchSettings, MatchStatus},
+};
 use tak_server_api_contract::{
     game::{JsonEndedGameInfo, JsonGameSettings},
     matches::MatchReadinessStatus,
 };
-use tak_server_app::{
-    domain::{
-        MatchId,
-        matches::{Match, MatchMode, MatchSettings, MatchStatus},
-    },
-    workflow::{
-        history::query::GameQueryError,
-        matchmaking::{get::GetMatchError, readiness::MatchReadinessError},
-    },
+use tak_server_app::workflow::{
+    history::query::GameQueryError,
+    matchmaking::{get::GetMatchError, readiness::MatchReadinessError},
 };
 
 use crate::{AppState, ServiceError, auth::Auth, game::from_game_record};

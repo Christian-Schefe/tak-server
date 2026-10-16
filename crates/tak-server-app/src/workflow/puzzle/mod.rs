@@ -1,6 +1,6 @@
 use tak_core::{TakAction, TakBaseGameSettings};
 
-use crate::domain::{PuzzleId, puzzle::Puzzle};
+use tak_domain::{PuzzleId, puzzle::Puzzle};
 
 pub mod get;
 pub mod solve;

@@ -1,0 +1,18 @@
+[package]
+edition.workspace = true
+name              = "tak-domain"
+version           = "0.1.0"
+
+[dependencies]
+async-trait          = "0.1.89"
+bytes                = "1.11.1"
+chrono               = "0.4.42"
+country-code-enum    = "0.2.0"
+dashmap              = "6.1.0"
+futures              = "0.3.31"
+image                = "0.25.9"
+more-concurrent-maps = { path = "../more-concurrent-maps" }
+rustrict             = "0.7.36"
+tak-core             = { path = "../tak-core" }
+unordered-pair       = "0.2.5"
+uuid                 = { version = "1.18.1", features = ["v4"] }

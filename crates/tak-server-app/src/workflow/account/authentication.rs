@@ -1,13 +1,14 @@
 use std::{sync::Arc, time::Duration};
 
-use url::Url;
-
-use crate::{
-    domain::{
-        RepoError, UserId,
-        moderation::{Moderation, ModerationRepository, UserType},
-    }, ports::{authentication::{AccountPort, RefreshToken}, email::EmailPort},
+use crate::ports::{
+    authentication::{AccountPort, RefreshToken},
+    email::EmailPort,
 };
+use tak_domain::{
+    RepoError, UserId,
+    moderation::{Moderation, ModerationRepository, UserType},
+};
+use url::Url;
 
 pub enum RecoverError {
     AccountNotFound,

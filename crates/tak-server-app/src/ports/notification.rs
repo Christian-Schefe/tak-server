@@ -1,14 +1,12 @@
 use tak_core::{TakAction, TakGameResult, TakTimeInfo};
 
-use crate::{
-    domain::{
-        GameId, ListenerId, MatchId, UserId, chat::ChatConversation, game::PlayerGameRequest,
-    },
-    workflow::{
-        chat::ChatMessageView,
-        gameplay::{FinishedGameView, OngoingGameView},
-        matchmaking::SeekView,
-    },
+use crate::workflow::{
+    chat::ChatMessageView,
+    gameplay::{FinishedGameView, OngoingGameView},
+    matchmaking::SeekView,
+};
+use tak_domain::{
+    GameId, ListenerId, MatchId, UserId, chat::ChatConversation, game::PlayerGameRequest,
 };
 
 pub trait ListenerNotificationPort {

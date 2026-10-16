@@ -3,7 +3,7 @@ use axum::{
     extract::{Path, Query, State},
 };
 use tak_server_api_contract::ws::JsonChatMessage;
-use tak_server_app::domain::{UserId, ChatMessageId, chat::ChatConversation};
+use tak_domain::{UserId, ChatMessageId, chat::ChatConversation};
 use unordered_pair::UnorderedPair;
 
 use crate::{AppState, ServiceError};

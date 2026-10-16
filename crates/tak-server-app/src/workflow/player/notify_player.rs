@@ -1,15 +1,13 @@
 use std::sync::Arc;
 
-use crate::{
-    domain::{
-        GameId, UserId,
-        game::{GameMetadata, GameService},
-        spectator::SpectatorService,
-    },
-    ports::{
-        connection::UserConnectionPort,
-        notification::{ListenerMessage, ListenerNotificationPort},
-    },
+use crate::ports::{
+    connection::UserConnectionPort,
+    notification::{ListenerMessage, ListenerNotificationPort},
+};
+use tak_domain::{
+    GameId, UserId,
+    game::{GameMetadata, GameService},
+    spectator::SpectatorService,
 };
 
 #[async_trait::async_trait]

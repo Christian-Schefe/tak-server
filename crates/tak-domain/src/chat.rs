@@ -4,7 +4,7 @@ use more_concurrent_maps::multi::ConcurrentMultiMap;
 use rustrict::{Censor, Type};
 use unordered_pair::UnorderedPair;
 
-use crate::domain::{ChatMessageId, ListenerId, RepoError, UserId};
+use crate::{ChatMessageId, ListenerId, RepoError, UserId};
 
 #[async_trait::async_trait]
 pub trait ChatRepository {

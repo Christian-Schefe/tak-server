@@ -8,10 +8,8 @@ use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
 use rand::{TryRngCore, rngs::OsRng};
-use tak_server_app::{
-    domain::{RepoError, RepoRetrieveError, UserId},
-    ports::authentication::{AccountInfo, AccountPort, RefreshToken},
-};
+use tak_domain::{RepoError, RepoRetrieveError, UserId};
+use tak_server_app::ports::authentication::{AccountInfo, AccountPort, RefreshToken};
 
 mod guest;
 

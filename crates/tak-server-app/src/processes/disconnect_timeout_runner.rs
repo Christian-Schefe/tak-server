@@ -1,13 +1,11 @@
 use std::{sync::Arc, time::Instant};
 
 use dashmap::DashMap;
+use tak_domain::UserId;
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 
-use crate::{
-    domain::UserId,
-    workflow::gameplay::timeout::{ObserveGameTimeoutUseCase, ObserveOutcome},
-};
+use crate::workflow::gameplay::timeout::{ObserveGameTimeoutUseCase, ObserveOutcome};
 
 pub trait DisconnectTimeoutRunner {
     fn start_disconnect_timeout(this: Arc<Self>, user_id: UserId);

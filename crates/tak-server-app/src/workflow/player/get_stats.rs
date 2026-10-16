@@ -1,12 +1,10 @@
 use std::sync::Arc;
 
-use crate::{
-    domain::{
-        UserId, RepoRetrieveError,
-        rating::RatingRepository,
-        stats::{PlayerStats, StatsRepository},
-    },
-    workflow::player::PlayerStatsView,
+use crate::workflow::player::PlayerStatsView;
+use tak_domain::{
+    RepoRetrieveError, UserId,
+    rating::RatingRepository,
+    stats::{PlayerStats, StatsRepository},
 };
 
 #[async_trait::async_trait]

@@ -3,14 +3,12 @@ use axum::{
     extract::{Path, Query, State},
     routing::get,
 };
-use tak_server_api_contract::game::JsonEndedGameInfo;
-use tak_server_app::{
-    domain::{
-        Pagination, UserId, SortOrder,
-        game_history::{GamePlayerFilter, GameQuery, GameSortBy},
-    },
-    workflow::history::query::GameQueryError,
+use tak_domain::{
+    Pagination, SortOrder, UserId,
+    game_history::{GamePlayerFilter, GameQuery, GameSortBy},
 };
+use tak_server_api_contract::game::JsonEndedGameInfo;
+use tak_server_app::workflow::history::query::GameQueryError;
 
 use crate::{AppState, PaginatedResponse, PaginationQuery, ServiceError, game::from_game_record};
 

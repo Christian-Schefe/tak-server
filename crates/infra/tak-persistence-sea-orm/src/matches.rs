@@ -3,10 +3,10 @@ use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use tak_core::TakPlayer;
 use tak_persistence_sea_orm_entities::matches;
-use tak_server_app::domain::matches::{
+use tak_domain::matches::{
     Match, MatchMode, MatchPlayer, MatchRepository, MatchSettings, MatchStatus, MatchTournamentInfo,
 };
-use tak_server_app::domain::{MatchId, UserId, RepoError, RepoRetrieveError, TournamentId};
+use tak_domain::{MatchId, UserId, RepoError, RepoRetrieveError, TournamentId};
 
 pub struct MatchRepositoryImpl {
     db: DatabaseConnection,

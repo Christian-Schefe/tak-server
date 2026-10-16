@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::domain::{matches::Match, tournament::TournamentPlayerRepository};
+use tak_domain::{matches::Match, tournament::TournamentPlayerRepository};
 
 #[async_trait::async_trait]
 pub trait TournamentMatchWorkflow {

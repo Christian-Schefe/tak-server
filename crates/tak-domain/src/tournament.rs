@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use tak_core::TakPlayer;
 
-use crate::domain::{
-    MatchId, UserId, RepoError, RepoRetrieveError, TournamentId,
+use crate::{
+    MatchId, RepoError, RepoRetrieveError, TournamentId, UserId,
     matches::{Match, MatchSettings},
 };
 
@@ -187,8 +187,7 @@ impl TournamentFormat {
         if round_index >= total_rounds {
             return None;
         }
-        let mut players: Vec<Option<UserId>> =
-            players.iter().map(|tp| Some(tp.user_id)).collect();
+        let mut players: Vec<Option<UserId>> = players.iter().map(|tp| Some(tp.user_id)).collect();
         if players.len() % 2 != 0 {
             players.push(None);
         }

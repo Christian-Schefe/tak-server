@@ -3,7 +3,7 @@ use sea_orm::{
     QuerySelect,
 };
 use tak_persistence_sea_orm_entities::chat;
-use tak_server_app::domain::{
+use tak_domain::{
     ChatMessageId, RepoError, UserId,
     chat::{ChatConversation, ChatMessage, ChatRepository},
 };

@@ -1,4 +1,4 @@
-use crate::domain::{ListenerId, UserId};
+use tak_domain::{ListenerId, UserId};
 
 #[async_trait::async_trait]
 pub trait UserConnectionPort {

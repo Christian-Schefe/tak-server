@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::domain::{ListenerId, chat::ChatRoomService};
+use tak_domain::{ListenerId, chat::ChatRoomService};
 
 pub trait ChatRoomUseCase {
     fn join_room(&self, room_name: &String, listener_id: ListenerId);

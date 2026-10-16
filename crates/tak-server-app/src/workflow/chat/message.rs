@@ -1,15 +1,14 @@
-use std::sync::Arc;
-
 use crate::{
-    domain::{
-        ChatMessageId, RepoError, UserId,
-        chat::{ChatConversation, ChatMessage, ChatRepository, ChatRoomService, ContentPolicy},
-    },
     ports::{
         connection::UserConnectionPort,
         notification::{ListenerMessage, ListenerNotificationPort},
     },
     workflow::chat::ChatMessageView,
+};
+use std::sync::Arc;
+use tak_domain::{
+    ChatMessageId, RepoError, UserId,
+    chat::{ChatConversation, ChatMessage, ChatRepository, ChatRoomService, ContentPolicy},
 };
 
 #[async_trait::async_trait]

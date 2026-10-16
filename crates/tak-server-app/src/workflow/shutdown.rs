@@ -1,6 +1,6 @@
+use crate::workflow::gameplay::finalize_game::FinalizeGameWorkflow;
 use std::{sync::Arc, time::Instant};
-
-use crate::{domain::game::GameService, workflow::gameplay::finalize_game::FinalizeGameWorkflow};
+use tak_domain::game::GameService;
 
 #[async_trait::async_trait]
 pub trait ShutdownWorkflow {

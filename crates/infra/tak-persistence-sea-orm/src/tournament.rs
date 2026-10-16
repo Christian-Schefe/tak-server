@@ -2,12 +2,12 @@ use crate::create_db_pool;
 use crate::matches::JsonMatchSettings;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, ExprTrait, QueryFilter};
 use tak_persistence_sea_orm_entities::{tournament, tournament_players, tournament_round};
-use tak_server_app::domain::tournament::{
+use tak_domain::tournament::{
     Tournament, TournamentFormat, TournamentMetadata, TournamentPlayer, TournamentPlayerRepository,
     TournamentRepository, TournamentRound, TournamentRoundRepository, TournamentStatus,
 };
-use tak_server_app::domain::{MatchId, TournamentId, UserId};
-use tak_server_app::domain::{RepoError, RepoRetrieveError};
+use tak_domain::{MatchId, TournamentId, UserId};
+use tak_domain::{RepoError, RepoRetrieveError};
 
 pub struct TournamentRepositoryImpl {
     db: DatabaseConnection,

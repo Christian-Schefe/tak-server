@@ -1,11 +1,8 @@
+use crate::workflow::account::AccountProfileView;
 use std::sync::Arc;
-
-use crate::{
-    domain::{
-        RepoRetrieveError, UserId,
-        profile::{AccountProfileRepository, ProfilePicture, ProfilePictureRepository},
-    },
-    workflow::account::AccountProfileView,
+use tak_domain::{
+    RepoRetrieveError, UserId,
+    profile::{AccountProfileRepository, ProfilePicture, ProfilePictureRepository},
 };
 
 #[async_trait::async_trait]

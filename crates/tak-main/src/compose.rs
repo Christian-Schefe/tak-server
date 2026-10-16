@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
-use tak_server_app::{
-    domain::ListenerId,
-    ports::notification::{ListenerMessage, ListenerNotificationPort},
-};
+use tak_domain::ListenerId;
+use tak_server_app::ports::notification::{ListenerMessage, ListenerNotificationPort};
 
 pub struct ComposedListenerNotificationService {
     services: Vec<Arc<dyn ListenerNotificationPort + Send + Sync>>,

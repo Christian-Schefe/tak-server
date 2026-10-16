@@ -1,24 +1,23 @@
 use std::sync::Arc;
 
-use tak_core::{TakGameResult, TakPlayer};
-
 use crate::{
-    domain::{
-        MatchId,
-        game::FinishedGame,
-        game_history::{GameHistoryService, GameRatingInfo, GameRepository},
-        matches::{MatchRepository, MatchStatus},
-        moderation::{Moderation, ModerationRepository},
-        rating::{PlayerRating, RatingRepository, RatingService},
-        spectator::SpectatorService,
-        stats::{
-            GameOutcome, PlayerStats, RatingHistoryEntry, RatingHistoryRepository, StatsRepository,
-        },
-    },
     ports::notification::{ListenerGameMessageType, ListenerMessage, ListenerNotificationPort},
     workflow::{
         gameplay::FinishedGameView, player::notify_player::NotifyPlayerWorkflow,
         tournament::tournament_match::TournamentMatchWorkflow,
+    },
+};
+use tak_core::{TakGameResult, TakPlayer};
+use tak_domain::{
+    MatchId,
+    game::FinishedGame,
+    game_history::{GameHistoryService, GameRatingInfo, GameRepository},
+    matches::{MatchRepository, MatchStatus},
+    moderation::{Moderation, ModerationRepository},
+    rating::{PlayerRating, RatingRepository, RatingService},
+    spectator::SpectatorService,
+    stats::{
+        GameOutcome, PlayerStats, RatingHistoryEntry, RatingHistoryRepository, StatsRepository,
     },
 };
 
@@ -113,14 +112,24 @@ impl<
 
         match game.game.game_result() {
             TakGameResult::Draw => match_data.end_game_in_match(None),
-            TakGameResult::Win {
-                winner: TakPlayer::White,
-                ..
-            } => match_data.end_game_in_match(Some(game.metadata.white_id)),
-            TakGameResult::Win {
-                winner: TakPlayer::Black,
-                ..
-            } => match_data.end_game_in_match(Some(game.metadata.black_id)),
+            TakGameResult::Win { winner, .. } => {
+                let winner_id = match winner {
+                    TakPlayer::White => game.metadata.white_id,
+                    TakPlayer::Black => game.metadata.black_id,
+                };
+                let is_player_one = if winner_id == match_data.player1.user_id {
+                    true
+                } else if winner_id == match_data.player2.user_id {
+                    false
+                } else {
+                    tracing::error!(
+                        "Winner ID {} does not match any player in the match",
+                        winner_id
+                    );
+                    return;
+                };
+                match_data.end_game_in_match(Some(is_player_one));
+            }
             TakGameResult::Aborted => match_data.abort_game_in_match(),
         };
 

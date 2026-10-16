@@ -11,7 +11,7 @@ use tak_core::{
     ptn::{action_from_ptn, action_to_ptn},
 };
 use tak_persistence_sea_orm_entities::puzzle;
-use tak_server_app::domain::{
+use tak_domain::{
     PuzzleId, RepoError, RepoRetrieveError,
     puzzle::{Puzzle, PuzzleRepository, PuzzleResponseEntry},
 };

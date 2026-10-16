@@ -3,12 +3,12 @@ use std::sync::Arc;
 use tak_core::{TakGameSettings, TakPlayer};
 
 use crate::{
-    domain::{
-        UserId,
-        seek::{CreateSeekError, SeekService},
-    },
     ports::notification::{ListenerMessage, ListenerNotificationPort},
     workflow::matchmaking::SeekView,
+};
+use tak_domain::{
+    UserId,
+    seek::{CreateSeekError, SeekService},
 };
 
 pub trait CreateSeekUseCase {

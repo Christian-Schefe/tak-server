@@ -5,9 +5,9 @@ use std::{
 
 use more_concurrent_maps::bijection::BiMap;
 use parking_lot::RwLock;
+use tak_domain::{ListenerId, UserId};
 use tak_server_app::{
     Application,
-    domain::{ListenerId, UserId},
     ports::{
         connection::{UserConnectionPort, UserOnlineStatusPort},
         notification::{ListenerMessage, ListenerNotificationPort},

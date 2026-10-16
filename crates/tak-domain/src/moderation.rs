@@ -1,4 +1,4 @@
-use crate::domain::{RepoError, RepoRetrieveError, UserId};
+use crate::{RepoError, RepoRetrieveError, UserId};
 
 #[async_trait::async_trait]
 pub trait ModerationRepository {

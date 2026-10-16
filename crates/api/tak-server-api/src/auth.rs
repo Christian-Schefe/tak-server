@@ -12,11 +12,9 @@ use axum_extra::{
     headers::{Authorization, authorization::Bearer},
 };
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
-use tak_server_app::{
-    domain::UserId,
-    workflow::account::authentication::{
-        LoginError, RecoverError, RefreshError, RegisterError, ResetError,
-    },
+use tak_domain::UserId;
+use tak_server_app::workflow::account::authentication::{
+    LoginError, RecoverError, RefreshError, RegisterError, ResetError,
 };
 
 use crate::{AppState, ServiceError};

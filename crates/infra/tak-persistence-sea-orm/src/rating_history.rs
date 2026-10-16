@@ -5,7 +5,7 @@ use sea_orm::{
     sea_query::OnConflict,
 };
 use tak_persistence_sea_orm_entities::rating_history;
-use tak_server_app::domain::{
+use tak_domain::{
     UserId, RepoError,
     stats::{RatingHistoryEntry, RatingHistoryRange, RatingHistoryRepository},
 };

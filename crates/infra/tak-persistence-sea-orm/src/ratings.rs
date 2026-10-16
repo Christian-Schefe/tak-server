@@ -6,7 +6,7 @@ use sea_orm::{
     QueryOrder, QuerySelect, TransactionError, TransactionTrait,
 };
 use tak_persistence_sea_orm_entities::rating;
-use tak_server_app::domain::{
+use tak_domain::{
     PaginatedResponse, UserId, RepoError, RepoRetrieveError, SortOrder,
     rating::{PlayerRating, RatingQuery, RatingRepository, RatingSortBy},
 };

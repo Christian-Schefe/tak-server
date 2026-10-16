@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::domain::{ListenerId, chat::ChatRoomService, spectator::SpectatorService};
+use tak_domain::{ListenerId, chat::ChatRoomService, spectator::SpectatorService};
 
 pub trait ListenerDisconnectUseCase {
     fn handle_listener_disconnect(&self, listener_id: ListenerId);

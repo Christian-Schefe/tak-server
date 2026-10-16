@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 
 use tak_core::{TakGameSettings, TakPlayer};
 
-use crate::domain::{UserId, SeekId, seek::Seek};
+use tak_domain::{UserId, SeekId, seek::Seek};
 
 pub mod accept;
 pub mod cancel;

@@ -3,11 +3,9 @@ use axum::{
     extract::{Path, State},
 };
 use tak_core::ptn::{action_from_ptn, action_to_ptn};
+use tak_domain::{PuzzleId, puzzle::PuzzleResponse};
 use tak_server_api_contract::game::JsonBaseGameSettings;
-use tak_server_app::{
-    domain::{PuzzleId, puzzle::PuzzleResponse},
-    workflow::puzzle::{PuzzleView, get::GetPuzzleError, solve::SolvePuzzleError},
-};
+use tak_server_app::workflow::puzzle::{PuzzleView, get::GetPuzzleError, solve::SolvePuzzleError};
 
 use crate::{AppState, ServiceError};
 

@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 
-use crate::domain::{rating::PlayerRating, stats::PlayerStats};
+use tak_domain::{rating::PlayerRating, stats::PlayerStats};
 
 pub mod get_rating;
 pub mod get_stats;

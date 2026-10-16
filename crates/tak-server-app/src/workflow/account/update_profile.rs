@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use country_code_enum::CountryCode;
 
-use crate::domain::{
+use tak_domain::{
     RepoError, RepoRetrieveError, UserId,
     moderation::ModerationRepository,
     profile::{

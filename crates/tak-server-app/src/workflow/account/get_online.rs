@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use crate::{domain::UserId, ports::connection::UserOnlineStatusPort};
+use tak_domain::UserId;
+
+use crate::ports::connection::UserOnlineStatusPort;
 
 pub trait GetOnlineUsersUseCase {
     fn get_online_users(&self) -> Vec<UserId>;

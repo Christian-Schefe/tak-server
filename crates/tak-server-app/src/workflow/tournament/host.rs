@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::domain::{
+use tak_domain::{
     RepoError, RepoRetrieveError, TournamentId, UserId,
     matches::{Match, MatchRepository, MatchSettings, MatchStatus, MatchTournamentInfo},
     moderation::ModerationRepository,

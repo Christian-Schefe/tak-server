@@ -8,10 +8,8 @@ use axum::{
     response::Response,
     routing::{get, post},
 };
-use tak_server_app::{
-    domain::{UserId, profile::ProfilePictureFileType},
-    workflow::account::AccountProfileView,
-};
+use tak_domain::{UserId, profile::ProfilePictureFileType};
+use tak_server_app::workflow::account::AccountProfileView;
 
 use crate::{AppState, ServiceError, auth::Auth};
 

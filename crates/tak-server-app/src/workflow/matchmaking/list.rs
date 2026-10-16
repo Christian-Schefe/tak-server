@@ -1,6 +1,6 @@
+use crate::workflow::matchmaking::SeekView;
 use std::sync::Arc;
-
-use crate::{domain::seek::SeekService, workflow::matchmaking::SeekView};
+use tak_domain::seek::SeekService;
 
 pub trait ListSeeksUseCase {
     fn list_seeks(&self) -> Vec<SeekView>;

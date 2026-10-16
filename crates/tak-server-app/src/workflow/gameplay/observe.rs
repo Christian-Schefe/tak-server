@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::domain::{GameId, ListenerId, game::GameService, spectator::SpectatorService};
+use tak_domain::{GameId, ListenerId, game::GameService, spectator::SpectatorService};
 
 pub trait ObserveGameUseCase {
     fn observe_game(

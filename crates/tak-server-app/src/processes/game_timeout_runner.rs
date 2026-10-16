@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
-use crate::{
-    domain::GameId,
-    workflow::gameplay::timeout::{ObserveGameTimeoutUseCase, ObserveOutcome},
-};
+use tak_domain::GameId;
+
+use crate::workflow::gameplay::timeout::{ObserveGameTimeoutUseCase, ObserveOutcome};
 
 pub trait GameTimeoutRunner {
     fn schedule_game_timeout_check(this: Arc<Self>, game_id: GameId);

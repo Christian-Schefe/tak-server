@@ -4,7 +4,7 @@ use std::{
 };
 use tak_core::{TakGameSettings, TakPlayer};
 
-use crate::domain::{UserId, SeekId};
+use crate::{SeekId, UserId};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Seek {
@@ -27,8 +27,7 @@ pub trait SeekService {
         game_settings: TakGameSettings,
         is_rated: bool,
     ) -> Result<Seek, CreateSeekError>;
-    fn cancel_player_seeks(&self, player: UserId, predicate: impl Fn(&Seek) -> bool)
-    -> Vec<Seek>;
+    fn cancel_player_seeks(&self, player: UserId, predicate: impl Fn(&Seek) -> bool) -> Vec<Seek>;
     fn cancel_seek(&self, player: UserId, seek_id: SeekId) -> Option<Seek>;
     fn get_seek(&self, seek_id: SeekId) -> Option<Seek>;
     fn list_seeks(&self) -> Vec<Seek>;
@@ -169,11 +168,7 @@ impl SeekService for SeekServiceImpl {
             }))
     }
 
-    fn cancel_player_seeks(
-        &self,
-        player: UserId,
-        predicate: impl Fn(&Seek) -> bool,
-    ) -> Vec<Seek> {
+    fn cancel_player_seeks(&self, player: UserId, predicate: impl Fn(&Seek) -> bool) -> Vec<Seek> {
         self.seek_registry
             .write()
             .unwrap()

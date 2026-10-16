@@ -1,18 +1,17 @@
 use std::{sync::Arc, time::Instant};
 
-use tak_core::TakAction;
-
 use crate::{
-    domain::{
-        GameId, UserId,
-        game::{
-            DoActionResult, FinishedGame, GamePlayerActionResult, GameService,
-            request::{GameRequest, GameRequestType},
-        },
-    },
     ports::notification::{ListenerGameMessageType, ListenerMessage},
     workflow::{
         gameplay::finalize_game::FinalizeGameWorkflow, player::notify_player::NotifyPlayerWorkflow,
+    },
+};
+use tak_core::TakAction;
+use tak_domain::{
+    GameId, UserId,
+    game::{
+        DoActionResult, FinishedGame, GamePlayerActionResult, GameService,
+        request::{GameRequest, GameRequestType},
     },
 };
 
@@ -227,8 +226,7 @@ impl<
             GameRequestType::Draw => {
                 match self
                     .handle_game_action_result(
-                        self.game_service
-                            .accept_draw_request(game_id, user_id, now),
+                        self.game_service.accept_draw_request(game_id, user_id, now),
                     )
                     .await
                 {
@@ -255,8 +253,7 @@ impl<
             GameRequestType::Undo => {
                 match self
                     .handle_game_action_result(
-                        self.game_service
-                            .accept_undo_request(game_id, user_id, now),
+                        self.game_service.accept_undo_request(game_id, user_id, now),
                     )
                     .await
                 {

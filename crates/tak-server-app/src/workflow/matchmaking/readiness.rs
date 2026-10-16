@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
 use crate::{
-    domain::{
-        MatchId, UserId, RepoRetrieveError,
-        matches::{Match, MatchReadinessService, MatchRepository, MatchStatus},
-    },
     ports::notification::{ListenerMatchEventType, ListenerMessage},
     workflow::{
         matchmaking::{MatchReadinessStatus, create_game::CreateGameFromMatchWorkflow},
         player::notify_player::NotifyPlayerWorkflow,
     },
+};
+use tak_domain::{
+    MatchId, RepoRetrieveError, UserId,
+    matches::{Match, MatchReadinessService, MatchRepository, MatchStatus},
 };
 
 #[async_trait::async_trait]
@@ -110,8 +110,7 @@ impl<
         user_id: UserId,
     ) -> Result<(), MatchReadinessError> {
         let match_entry = self.get_match(match_id).await?;
-        if match_entry.player1.user_id != user_id && match_entry.player2.user_id != user_id
-        {
+        if match_entry.player1.user_id != user_id && match_entry.player2.user_id != user_id {
             tracing::error!(
                 "Player {} is not a participant in match {}",
                 user_id,
@@ -164,8 +163,7 @@ impl<
         user_id: UserId,
     ) -> Result<(), MatchReadinessError> {
         let match_entry = self.get_match(match_id).await?;
-        if match_entry.player1.user_id != user_id && match_entry.player2.user_id != user_id
-        {
+        if match_entry.player1.user_id != user_id && match_entry.player2.user_id != user_id {
             tracing::error!(
                 "Player {} is not a participant in match {}",
                 user_id,

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use tak_core::{TakAction, TakBaseGameSettings};
 
-use crate::domain::{PuzzleId, RepoError, RepoRetrieveError};
+use crate::{PuzzleId, RepoError, RepoRetrieveError};
 
 #[async_trait::async_trait]
 pub trait PuzzleRepository {

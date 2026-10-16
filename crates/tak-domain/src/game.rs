@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::domain::{
+use crate::{
     GameId, MatchId, UserId,
     game::request::{GameRequest, GameRequestSystem, GameRequestType},
 };

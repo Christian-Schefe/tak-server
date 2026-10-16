@@ -3,7 +3,7 @@ use std::borrow::Borrow;
 use chrono::{DateTime, Utc};
 use tak_core::{TakFinishedGame, TakGameSettings, TakOngoingGame};
 
-use crate::domain::{
+use tak_domain::{
     GameId, MatchId, UserId,
     game::{FinishedGame, GameMetadata, OngoingGame, request::GameRequests},
 };

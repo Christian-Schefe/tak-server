@@ -1,4 +1,4 @@
-use crate::domain::{UserId, ChatMessageId, chat::ChatMessage};
+use tak_domain::{UserId, ChatMessageId, chat::ChatMessage};
 
 pub mod message;
 pub mod room;

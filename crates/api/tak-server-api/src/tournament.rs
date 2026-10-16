@@ -2,15 +2,13 @@ use axum::{
     Json,
     extract::{Path, State},
 };
-use tak_server_app::{
-    domain::{
-        TournamentId,
-        tournament::{TournamentFormat, TournamentStatus},
-    },
-    workflow::tournament::{
-        TournamentDetailView, TournamentMetadataView, TournamentView,
-        register::TournamentRegistrationError,
-    },
+use tak_domain::{
+    TournamentId,
+    tournament::{TournamentFormat, TournamentStatus},
+};
+use tak_server_app::workflow::tournament::{
+    TournamentDetailView, TournamentMetadataView, TournamentView,
+    register::TournamentRegistrationError,
 };
 
 use crate::{AppState, ServiceError, auth::Auth, matches::JsonMatchSettings};

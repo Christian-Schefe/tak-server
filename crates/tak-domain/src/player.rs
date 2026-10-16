@@ -1,4 +1,4 @@
-use crate::domain::UserId;
+use crate::UserId;
 
 pub struct Player {
     pub user_id: UserId,

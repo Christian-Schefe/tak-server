@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tak_core::TakAction;
 
-use crate::domain::{
+use tak_domain::{
     PuzzleId, RepoRetrieveError,
     puzzle::{PuzzleRepository, PuzzleResponse},
 };

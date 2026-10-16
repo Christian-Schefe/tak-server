@@ -6,23 +6,21 @@ use axum::{
     routing::{get, post},
 };
 use tak_core::ptn::{action_to_ptn, game_result_to_string};
+use tak_domain::{
+    GameId,
+    game::request::{GameRequest, GameRequestType},
+};
 use tak_server_api_contract::game::{
     ForPlayer, GameStatusType, JsonEndedGameInfo, JsonGameMetadata, JsonGameRatingInfo,
     JsonGameRequest, JsonGameRequestType, JsonGameRequests, JsonGameSettings, JsonGameStatus,
     JsonPlayerSnapshot,
 };
-use tak_server_app::{
-    domain::{
-        GameId,
-        game::request::{GameRequest, GameRequestType},
+use tak_server_app::workflow::{
+    gameplay::{
+        GameMetadataView,
+        do_action::{ActionResult, HandleRequestError, PlayerActionError},
     },
-    workflow::{
-        gameplay::{
-            GameMetadataView,
-            do_action::{ActionResult, HandleRequestError, PlayerActionError},
-        },
-        history::{GameRecordView, query::GameQueryError},
-    },
+    history::{GameRecordView, query::GameQueryError},
 };
 
 use crate::{AppState, ServiceError, auth::Auth};

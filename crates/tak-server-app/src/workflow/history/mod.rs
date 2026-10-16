@@ -1,12 +1,9 @@
+use crate::workflow::gameplay::GameMetadataView;
 use tak_core::{TakAction, TakGameResult, TakTimeInfo, TakTimeSettings};
-
-use crate::{
-    domain::{
-        GameId,
-        game::{GameEvent, GameEventType},
-        game_history::{GameRatingInfo, GameRecord, PlayerSnapshot},
-    },
-    workflow::gameplay::GameMetadataView,
+use tak_domain::{
+    GameId,
+    game::{GameEvent, GameEventType},
+    game_history::{GameRatingInfo, GameRecord, PlayerSnapshot},
 };
 
 pub mod query;

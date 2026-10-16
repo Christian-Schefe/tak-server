@@ -1,8 +1,8 @@
 use std::{io::Cursor, path::PathBuf};
 
 use image::DynamicImage;
-use tak_server_app::domain::{
-    UserId, RepoError, RepoRetrieveError,
+use tak_domain::{
+    RepoError, RepoRetrieveError, UserId,
     profile::{ProfilePicture, ProfilePictureFileType, ProfilePictureRepository},
 };
 

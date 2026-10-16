@@ -1,23 +1,6 @@
 use std::sync::Arc;
 
 use crate::{
-    domain::{
-        chat::{ChatRepository, ChatRoomServiceImpl, RustrictContentPolicy},
-        event::EventRepository,
-        game::GameServiceImpl,
-        game_history::{GameHistoryServiceImpl, GameRepository},
-        matches::{MatchReadinessServiceImpl, MatchRepository},
-        moderation::{
-            AdminUserPolicy, HigherRoleUserPolicy, ModerationRepository, ModeratorUserPolicy,
-        },
-        profile::{AccountProfileRepository, ProfilePictureRepository},
-        puzzle::PuzzleRepository,
-        rating::{RatingRepository, RatingServiceImpl},
-        seek::SeekServiceImpl,
-        spectator::SpectatorServiceImpl,
-        stats::{RatingHistoryRepository, StatsRepository},
-        tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
-    },
     ports::{
         authentication::AccountPort,
         connection::{UserConnectionPort, UserOnlineStatusPort},
@@ -84,8 +67,24 @@ use crate::{
         },
     },
 };
+use tak_domain::{
+    chat::{ChatRepository, ChatRoomServiceImpl, RustrictContentPolicy},
+    event::EventRepository,
+    game::GameServiceImpl,
+    game_history::{GameHistoryServiceImpl, GameRepository},
+    matches::{MatchReadinessServiceImpl, MatchRepository},
+    moderation::{
+        AdminUserPolicy, HigherRoleUserPolicy, ModerationRepository, ModeratorUserPolicy,
+    },
+    profile::{AccountProfileRepository, ProfilePictureRepository},
+    puzzle::PuzzleRepository,
+    rating::{RatingRepository, RatingServiceImpl},
+    seek::SeekServiceImpl,
+    spectator::SpectatorServiceImpl,
+    stats::{RatingHistoryRepository, StatsRepository},
+    tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
+};
 
-pub mod domain;
 pub mod ports;
 pub mod processes;
 pub mod workflow;

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use more_concurrent_maps::multi::ConcurrentMultiMap;
 
-use crate::domain::{GameId, ListenerId};
+use crate::{GameId, ListenerId};
 
 pub trait SpectatorService {
     fn observe_game(&self, game_id: GameId, listener_id: ListenerId);

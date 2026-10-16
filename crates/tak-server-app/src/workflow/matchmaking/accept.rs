@@ -1,15 +1,14 @@
 use std::sync::Arc;
 
-use tak_core::{TakPlayer, TakTimeSettings};
-
 use crate::{
-    domain::{
-        SeekId, UserId,
-        matches::{Match, MatchMode, MatchRepository, MatchSettings},
-        seek::SeekService,
-    },
     ports::notification::{ListenerMessage, ListenerNotificationPort},
     workflow::matchmaking::create_game::{CreateGameFromMatchError, CreateGameFromMatchWorkflow},
+};
+use tak_core::{TakPlayer, TakTimeSettings};
+use tak_domain::{
+    SeekId, UserId,
+    matches::{Match, MatchMode, MatchRepository, MatchSettings},
+    seek::SeekService,
 };
 
 #[async_trait::async_trait]

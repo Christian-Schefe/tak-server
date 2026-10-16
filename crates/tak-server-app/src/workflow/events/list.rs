@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::domain::event::{Event, EventRepository, GetEventsError};
+use tak_domain::event::{Event, EventRepository, GetEventsError};
 
 #[async_trait::async_trait]
 pub trait ListEventsUseCase {

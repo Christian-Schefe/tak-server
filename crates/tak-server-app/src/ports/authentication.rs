@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::domain::UserId;
+use tak_domain::UserId;
 
 #[async_trait::async_trait]
 pub trait AccountPort {

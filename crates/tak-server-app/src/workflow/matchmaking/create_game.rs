@@ -3,15 +3,15 @@ use std::sync::Arc;
 use tak_core::TakPlayer;
 
 use crate::{
-    domain::{
-        MatchId, RepoRetrieveError,
-        game::GameService,
-        game_history::{GameHistoryService, GameRepository},
-        matches::MatchRepository,
-    },
     ports::notification::{ListenerMessage, ListenerNotificationPort},
     processes::game_timeout_runner::GameTimeoutRunner,
     workflow::{account::get_snapshot::GetSnapshotWorkflow, gameplay::OngoingGameView},
+};
+use tak_domain::{
+    MatchId, RepoRetrieveError,
+    game::GameService,
+    game_history::{GameHistoryService, GameRepository},
+    matches::MatchRepository,
 };
 
 #[async_trait::async_trait]

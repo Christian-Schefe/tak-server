@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use chrono::{DateTime, TimeDelta, Utc};
 use tak_core::{TakGameResult, TakGameSettings, TakPlayer, TakTimeSettings};
 
-use crate::domain::{
-    PaginatedResponse, Pagination, UserId, RepoError, RepoRetrieveError, SortOrder,
+use crate::{
+    PaginatedResponse, Pagination, RepoError, RepoRetrieveError, SortOrder, UserId,
     game::FinishedGame, game_history::GameRatingInfo,
 };
 
@@ -35,10 +35,7 @@ impl PlayerRating {
 
 #[async_trait::async_trait]
 pub trait RatingRepository {
-    async fn get_player_rating(
-        &self,
-        user_id: UserId,
-    ) -> Result<PlayerRating, RepoRetrieveError>;
+    async fn get_player_rating(&self, user_id: UserId) -> Result<PlayerRating, RepoRetrieveError>;
     async fn get_player_ranking(
         &self,
         user_id: UserId,

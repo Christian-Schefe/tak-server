@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use tak_core::{TakGameResult, TakPlayer};
 
-use crate::domain::{
+use crate::{
     GameId, MatchId, PaginatedResponse, Pagination, RepoError, RepoRetrieveError, SortOrder,
     UserId,
     game::{FinishedGame, GameEvent, GameMetadata},

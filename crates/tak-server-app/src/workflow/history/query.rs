@@ -1,11 +1,8 @@
+use crate::workflow::history::GameRecordView;
 use std::sync::Arc;
-
-use crate::{
-    domain::{
-        GameId, MatchId, PaginatedResponse, RepoError, RepoRetrieveError,
-        game_history::{GameQuery, GameRepository},
-    },
-    workflow::history::GameRecordView,
+use tak_domain::{
+    GameId, MatchId, PaginatedResponse, RepoError, RepoRetrieveError,
+    game_history::{GameQuery, GameRepository},
 };
 
 #[async_trait::async_trait]

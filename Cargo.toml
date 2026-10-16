@@ -15,7 +15,7 @@ members = [
     "crates/infra/tak-player-connection",
     "crates/more-concurrent-maps",
     "crates/tak-bot-tei-bridge",
-    "crates/tak-core",
+    "crates/tak-core", "crates/tak-domain",
     "crates/tak-main",
     "crates/tak-server-app",
     "crates/tak-wasm-engine",

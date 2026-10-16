@@ -3,7 +3,7 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use tak_core::{TakGameSettings, TakPlayer};
 
-use crate::domain::{MatchId, UserId, RepoError, RepoRetrieveError, TournamentId};
+use crate::{MatchId, RepoError, RepoRetrieveError, TournamentId, UserId};
 
 #[async_trait::async_trait]
 pub trait MatchRepository {
@@ -99,21 +99,13 @@ impl Match {
         self.status = MatchStatus::Waiting;
     }
 
-    pub fn end_game_in_match(&mut self, winner: Option<UserId>) {
+    pub fn end_game_in_match(&mut self, winner: Option<bool>) {
         match winner {
-            Some(winner) => {
-                if winner == self.player1.user_id {
+            Some(is_player_one) => {
+                if is_player_one {
                     self.player1.score += 2;
-                } else if winner == self.player2.user_id {
-                    self.player2.score += 2;
                 } else {
-                    tracing::error!(
-                        "Winner {} is not part of the match between {} and {}",
-                        winner,
-                        self.player1.user_id,
-                        self.player2.user_id
-                    );
-                    return;
+                    self.player2.score += 2;
                 }
             }
             None => {

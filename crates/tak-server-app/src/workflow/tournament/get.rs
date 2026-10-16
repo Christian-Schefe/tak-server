@@ -1,11 +1,9 @@
 use std::sync::Arc;
 
-use crate::{
-    domain::{
-        RepoError, RepoRetrieveError, TournamentId,
-        tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
-    },
-    workflow::tournament::{TournamentDetailView, TournamentView},
+use crate::workflow::tournament::{TournamentDetailView, TournamentView};
+use tak_domain::{
+    RepoError, RepoRetrieveError, TournamentId,
+    tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
 };
 
 #[async_trait::async_trait]

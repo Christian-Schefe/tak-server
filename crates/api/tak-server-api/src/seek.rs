@@ -4,14 +4,12 @@ use axum::{
     routing::{delete, get, post},
 };
 use tak_core::TakPlayer;
+use tak_domain::{SeekId, seek::CreateSeekError};
 use tak_server_api_contract::{
     game::JsonGameSettings,
     seek::{CreateSeekPayload, JsonSeek},
 };
-use tak_server_app::{
-    domain::{SeekId, seek::CreateSeekError},
-    workflow::matchmaking::{SeekView, accept::AcceptSeekError},
-};
+use tak_server_app::workflow::matchmaking::{SeekView, accept::AcceptSeekError};
 
 use crate::{AppState, ServiceError, auth::Auth};
 
