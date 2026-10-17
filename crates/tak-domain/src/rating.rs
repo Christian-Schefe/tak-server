@@ -3,10 +3,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, TimeDelta, Utc};
 use tak_core::{TakGameResult, TakGameSettings, TakPlayer, TakTimeSettings};
 
-use crate::{
-    PaginatedResponse, Pagination, RepoError, RepoRetrieveError, SortOrder, UserId,
-    game::FinishedGame, game_history::GameRatingInfo,
-};
+use crate::{UserId, game::FinishedGame, game_history::GameRatingInfo};
 
 #[derive(Clone, Debug)]
 pub struct PlayerRating {
@@ -31,43 +28,6 @@ impl PlayerRating {
             fatigue: HashMap::new(),
         }
     }
-}
-
-#[async_trait::async_trait]
-pub trait RatingRepository {
-    async fn get_player_rating(&self, user_id: UserId) -> Result<PlayerRating, RepoRetrieveError>;
-    async fn get_player_ranking(
-        &self,
-        user_id: UserId,
-    ) -> Result<(u32, PlayerRating), RepoRetrieveError>;
-    async fn query_player_ratings(
-        &self,
-        query: RatingQuery,
-    ) -> Result<PaginatedResponse<PlayerRating>, RepoError>;
-    async fn update_player_ratings<R: Send + 'static>(
-        &self,
-        white: UserId,
-        black: UserId,
-        calc_fn: impl FnOnce(
-            Option<PlayerRating>,
-            Option<PlayerRating>,
-        ) -> (PlayerRating, PlayerRating, R)
-        + Send
-        + 'static,
-    ) -> Result<R, RepoError>;
-}
-
-#[derive(Debug, Clone)]
-pub enum RatingSortBy {
-    Rating,
-    RatedGames,
-    MaxRating,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct RatingQuery {
-    pub pagination: Pagination,
-    pub sort: Option<(SortOrder, RatingSortBy)>,
 }
 
 pub trait RatingService {

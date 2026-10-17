@@ -5,10 +5,11 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect, TransactionError, TransactionTrait,
 };
+use tak_domain::{UserId, rating::PlayerRating};
 use tak_persistence_sea_orm_entities::rating;
-use tak_domain::{
-    PaginatedResponse, UserId, RepoError, RepoRetrieveError, SortOrder,
-    rating::{PlayerRating, RatingQuery, RatingRepository, RatingSortBy},
+use tak_server_app::ports::{
+    PaginatedResponse, RepoError, RepoRetrieveError, SortOrder,
+    rating::{RatingQuery, RatingRepository, RatingSortBy},
 };
 
 pub struct RatingRepositoryImpl {
@@ -68,10 +69,7 @@ impl RatingRepositoryImpl {
 
 #[async_trait::async_trait]
 impl RatingRepository for RatingRepositoryImpl {
-    async fn get_player_rating(
-        &self,
-        user_id: UserId,
-    ) -> Result<PlayerRating, RepoRetrieveError> {
+    async fn get_player_rating(&self, user_id: UserId) -> Result<PlayerRating, RepoRetrieveError> {
         if let Some(cached) = self.ratings_cache.get(&user_id) {
             return Ok(cached);
         }

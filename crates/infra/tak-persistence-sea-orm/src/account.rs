@@ -1,7 +1,8 @@
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use tak_auth::{Account, AccountRepository};
-use tak_domain::{RepoError, RepoRetrieveError, UserId};
+use tak_domain::UserId;
 use tak_persistence_sea_orm_entities::account;
+use tak_server_app::ports::{RepoError, RepoRetrieveError};
 
 use crate::create_db_pool;
 

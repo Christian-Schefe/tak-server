@@ -1,9 +1,12 @@
-use crate::workflow::account::AccountProfileView;
-use std::sync::Arc;
-use tak_domain::{
-    RepoRetrieveError, UserId,
-    profile::{AccountProfileRepository, ProfilePicture, ProfilePictureRepository},
+use crate::{
+    ports::{
+        RepoRetrieveError,
+        profile::{AccountProfileRepository, ProfilePictureRepository},
+    },
+    workflow::account::AccountProfileView,
 };
+use std::sync::Arc;
+use tak_domain::{UserId, profile::ProfilePicture};
 
 #[async_trait::async_trait]
 pub trait GetProfileUseCase {

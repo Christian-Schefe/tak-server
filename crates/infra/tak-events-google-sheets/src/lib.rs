@@ -5,7 +5,8 @@ use google_sheets4::{
     hyper_rustls::{HttpsConnector, HttpsConnectorBuilder},
     oauth2::{ServiceAccountAuthenticator, read_service_account_key},
 };
-use tak_domain::event::{Event, EventRepository, GetEventsError};
+use tak_domain::event::Event;
+use tak_server_app::ports::{RepoError, event::EventRepository};
 
 pub struct GoogleSheetsEventRepository {
     hub: Sheets<HttpsConnector<HttpConnector>>,
@@ -70,7 +71,7 @@ fn validate_link(s: &str) -> Option<String> {
 
 #[async_trait::async_trait]
 impl EventRepository for GoogleSheetsEventRepository {
-    async fn get_events(&self) -> Result<Vec<Event>, GetEventsError> {
+    async fn get_events(&self) -> Result<Vec<Event>, RepoError> {
         let resp = self
             .hub
             .spreadsheets()
@@ -78,7 +79,7 @@ impl EventRepository for GoogleSheetsEventRepository {
             .add_scope(Scope::SpreadsheetReadonly)
             .doit()
             .await
-            .map_err(|e| GetEventsError::RetrievalError(e.to_string()))?;
+            .map_err(|e| RepoError::StorageError(e.to_string()))?;
 
         let rows = resp.1.values.unwrap_or_default();
 
@@ -112,7 +113,7 @@ pub struct NoopEventRepository;
 
 #[async_trait::async_trait]
 impl EventRepository for NoopEventRepository {
-    async fn get_events(&self) -> Result<Vec<Event>, GetEventsError> {
+    async fn get_events(&self) -> Result<Vec<Event>, RepoError> {
         Ok(Vec::new())
     }
 }

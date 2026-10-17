@@ -1,13 +1,18 @@
 use crate::create_db_pool;
 use crate::matches::JsonMatchSettings;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, ExprTrait, QueryFilter};
-use tak_persistence_sea_orm_entities::{tournament, tournament_players, tournament_round};
-use tak_domain::tournament::{
-    Tournament, TournamentFormat, TournamentMetadata, TournamentPlayer, TournamentPlayerRepository,
-    TournamentRepository, TournamentRound, TournamentRoundRepository, TournamentStatus,
+use tak_domain::{
+    MatchId, TournamentId, UserId,
+    tournament::{
+        Tournament, TournamentFormat, TournamentMetadata, TournamentPlayer, TournamentRound,
+        TournamentStatus,
+    },
 };
-use tak_domain::{MatchId, TournamentId, UserId};
-use tak_domain::{RepoError, RepoRetrieveError};
+use tak_persistence_sea_orm_entities::{tournament, tournament_players, tournament_round};
+use tak_server_app::ports::{
+    RepoError, RepoRetrieveError,
+    tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
+};
 
 pub struct TournamentRepositoryImpl {
     db: DatabaseConnection,

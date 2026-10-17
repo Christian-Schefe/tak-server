@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
-use crate::workflow::tournament::{TournamentDetailView, TournamentView};
-use tak_domain::{
-    RepoError, RepoRetrieveError, TournamentId,
-    tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
+use crate::{
+    ports::{
+        RepoError, RepoRetrieveError, tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
+    }, workflow::tournament::{TournamentDetailView, TournamentView},
 };
+use tak_domain::TournamentId;
 
 #[async_trait::async_trait]
 pub trait GetTournamentUseCase {

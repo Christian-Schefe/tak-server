@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
-use crate::ports::{authentication::AccountPort, email::EmailPort};
+use crate::ports::{
+    RepoError, RepoRetrieveError, authentication::AccountPort, email::EmailPort,
+    moderation::ModerationRepository,
+};
 use tak_domain::{
-    RepoError, RepoRetrieveError, UserId,
-    moderation::{Moderation, ModerationRepository, PermissionPolicy, UserRole},
+    UserId,
+    moderation::{Moderation, PermissionPolicy, UserRole},
 };
 
 #[async_trait::async_trait]

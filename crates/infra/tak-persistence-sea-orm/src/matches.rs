@@ -2,11 +2,13 @@ use crate::{JsonGameSettings, create_db_pool};
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use tak_core::TakPlayer;
-use tak_persistence_sea_orm_entities::matches;
 use tak_domain::matches::{
-    Match, MatchMode, MatchPlayer, MatchRepository, MatchSettings, MatchStatus, MatchTournamentInfo,
+    Match, MatchMode, MatchPlayer, MatchSettings, MatchStatus, MatchTournamentInfo,
 };
-use tak_domain::{MatchId, UserId, RepoError, RepoRetrieveError, TournamentId};
+use tak_domain::{MatchId, TournamentId, UserId};
+use tak_persistence_sea_orm_entities::matches;
+use tak_server_app::ports::matches::MatchRepository;
+use tak_server_app::ports::{RepoError, RepoRetrieveError};
 
 pub struct MatchRepositoryImpl {
     db: DatabaseConnection,

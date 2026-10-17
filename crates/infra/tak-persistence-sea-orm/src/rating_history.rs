@@ -4,11 +4,12 @@ use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QueryTrait,
     sea_query::OnConflict,
 };
-use tak_persistence_sea_orm_entities::rating_history;
 use tak_domain::{
-    UserId, RepoError,
-    stats::{RatingHistoryEntry, RatingHistoryRange, RatingHistoryRepository},
+    UserId,
+    stats::{RatingHistoryEntry, RatingHistoryRange},
 };
+use tak_persistence_sea_orm_entities::rating_history;
+use tak_server_app::ports::{RepoError, stats::RatingHistoryRepository};
 
 pub struct RatingHistoryRepositoryImpl {
     db: DatabaseConnection,

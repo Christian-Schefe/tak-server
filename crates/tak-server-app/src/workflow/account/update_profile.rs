@@ -2,15 +2,17 @@ use std::sync::Arc;
 
 use country_code_enum::CountryCode;
 
-use tak_domain::{
-    RepoError, RepoRetrieveError, UserId,
-    moderation::ModerationRepository,
-    profile::{
-        AccountProfile, AccountProfileRepository, ProfilePicture, ProfilePictureRepository,
-        ProfilePictureVersion,
-    },
-};
 use image::DynamicImage;
+use tak_domain::{
+    UserId,
+    profile::{AccountProfile, ProfilePicture, ProfilePictureVersion},
+};
+
+use crate::ports::{
+    RepoError, RepoRetrieveError,
+    moderation::ModerationRepository,
+    profile::{AccountProfileRepository, ProfilePictureRepository},
+};
 
 #[async_trait::async_trait]
 pub trait UpdateProfileUseCase {

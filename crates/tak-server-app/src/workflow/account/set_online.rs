@@ -3,17 +3,14 @@ use std::sync::Arc;
 use crate::{
     ports::{
         connection::UserOnlineStatusPort,
+        matches::MatchRepository,
         notification::{ListenerMatchEventType, ListenerMessage, ListenerNotificationPort},
     },
     processes::disconnect_timeout_runner::DisconnectTimeoutRunner,
     workflow::player::notify_player::NotifyPlayerWorkflow,
 };
 use tak_core::TakTimeSettings;
-use tak_domain::{
-    UserId,
-    matches::{MatchReadinessService, MatchRepository},
-    seek::SeekService,
-};
+use tak_domain::{UserId, matches::MatchReadinessService, seek::SeekService};
 
 #[async_trait::async_trait]
 pub trait SetAccountOnlineUseCase {

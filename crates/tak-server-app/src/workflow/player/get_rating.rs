@@ -2,12 +2,15 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 
-use crate::workflow::player::{RatingHistoryEntryView, RatingHistoryRangeView};
-use tak_domain::{
-    PaginatedResponse, UserId,
-    rating::{RatingQuery, RatingRepository},
-    stats::RatingHistoryRepository,
+use crate::{
+    ports::{
+        PaginatedResponse,
+        rating::{RatingQuery, RatingRepository},
+        stats::RatingHistoryRepository,
+    },
+    workflow::player::{RatingHistoryEntryView, RatingHistoryRangeView},
 };
+use tak_domain::UserId;
 
 #[async_trait::async_trait]
 pub trait PlayerGetRatingUseCase {

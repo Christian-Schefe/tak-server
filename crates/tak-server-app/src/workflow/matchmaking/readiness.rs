@@ -1,15 +1,19 @@
 use std::sync::Arc;
 
 use crate::{
-    ports::notification::{ListenerMatchEventType, ListenerMessage},
+    ports::{
+        RepoRetrieveError,
+        matches::MatchRepository,
+        notification::{ListenerMatchEventType, ListenerMessage},
+    },
     workflow::{
         matchmaking::{MatchReadinessStatus, create_game::CreateGameFromMatchWorkflow},
         player::notify_player::NotifyPlayerWorkflow,
     },
 };
 use tak_domain::{
-    MatchId, RepoRetrieveError, UserId,
-    matches::{Match, MatchReadinessService, MatchRepository, MatchStatus},
+    MatchId, UserId,
+    matches::{Match, MatchReadinessService, MatchStatus},
 };
 
 #[async_trait::async_trait]

@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
-use crate::workflow::player::PlayerStatsView;
-use tak_domain::{
-    RepoRetrieveError, UserId,
-    rating::RatingRepository,
-    stats::{PlayerStats, StatsRepository},
+use crate::{
+    ports::{RepoRetrieveError, rating::RatingRepository, stats::StatsRepository},
+    workflow::player::PlayerStatsView,
 };
+use tak_domain::{UserId, stats::PlayerStats};
 
 #[async_trait::async_trait]
 pub trait GetPlayerStatsUseCase {

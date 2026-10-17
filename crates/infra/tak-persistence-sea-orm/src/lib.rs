@@ -8,7 +8,7 @@ use tak_core::{
     TakReserve, TakTimeSettings,
 };
 use tak_persistence_sea_orm_migrations::Migrator;
-use tak_domain::RepoRetrieveError;
+use tak_server_app::ports::RepoRetrieveError;
 
 pub mod account;
 pub mod chat;

@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
-use crate::workflow::puzzle::PuzzleView;
-use tak_domain::{PuzzleId, RepoError, RepoRetrieveError, puzzle::PuzzleRepository};
+use crate::{
+    ports::{RepoError, RepoRetrieveError, puzzle::PuzzleRepository},
+    workflow::puzzle::PuzzleView,
+};
+use tak_domain::PuzzleId;
 
 #[async_trait::async_trait]
 pub trait GetPuzzleUseCase {

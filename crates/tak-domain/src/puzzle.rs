@@ -2,13 +2,7 @@ use std::collections::HashMap;
 
 use tak_core::{TakAction, TakBaseGameSettings};
 
-use crate::{PuzzleId, RepoError, RepoRetrieveError};
-
-#[async_trait::async_trait]
-pub trait PuzzleRepository {
-    async fn get_puzzle(&self, id: PuzzleId) -> Result<Puzzle, RepoRetrieveError>;
-    async fn select_random_puzzle(&self) -> Result<PuzzleId, RepoError>;
-}
+use crate::PuzzleId;
 
 #[derive(Clone, Debug)]
 pub struct Puzzle {

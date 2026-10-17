@@ -1,10 +1,6 @@
-use crate::ports::authentication::AccountPort;
+use crate::ports::{RepoRetrieveError, authentication::AccountPort, rating::RatingRepository};
 use std::sync::Arc;
-use tak_domain::{
-    RepoRetrieveError, UserId,
-    game_history::PlayerSnapshot,
-    rating::{RatingRepository, RatingService},
-};
+use tak_domain::{UserId, game_history::PlayerSnapshot, rating::RatingService};
 
 pub enum GetSnapshotError {
     NotFound,

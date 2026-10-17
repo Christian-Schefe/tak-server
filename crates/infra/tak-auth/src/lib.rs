@@ -8,8 +8,12 @@ use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
 use rand::{TryRngCore, rngs::OsRng};
-use tak_domain::{RepoError, RepoRetrieveError, UserId};
-use tak_server_app::ports::authentication::{AccountInfo, AccountPort, RefreshToken};
+use sha2::Digest;
+use tak_domain::UserId;
+use tak_server_app::ports::{
+    RepoError, RepoRetrieveError,
+    authentication::{AccountInfo, AccountPort, RefreshToken},
+};
 
 mod guest;
 
@@ -30,12 +34,16 @@ pub struct Account {
     pub unique_name: Option<String>,
 }
 
-//TODO: Evict expired reset tokens from the registry periodically to prevent memory bloat.
 pub struct AuthService<AR: AccountRepository> {
     account_repo: Arc<AR>,
     argon2: Argon2<'static>,
-    reset_token_registry: Arc<Mutex<HashMap<UserId, (String, DateTime<Utc>)>>>,
-    refresh_token_registry: Arc<Mutex<HashMap<UserId, (String, DateTime<Utc>)>>>,
+    reset_token_registry: Arc<Mutex<HashMap<UserId, (Vec<u8>, DateTime<Utc>)>>>,
+    refresh_token_registry: Arc<Mutex<HashMap<UserId, (Vec<u8>, DateTime<Utc>)>>>,
+}
+
+fn evict_expired_tokens<T>(registry: &mut HashMap<UserId, (T, DateTime<Utc>)>) {
+    let now = Utc::now();
+    registry.retain(|_, (_, expiry)| *expiry > now);
 }
 
 impl<AR: AccountRepository> AuthService<AR> {
@@ -49,6 +57,39 @@ impl<AR: AccountRepository> AuthService<AR> {
     }
 }
 
+async fn hash_password(argon2: &Argon2<'static>, password: &str) -> Result<String, String> {
+    tokio::task::spawn_blocking({
+        let argon2 = argon2.clone();
+        let password = password.to_string();
+        move || {
+            argon2
+                .hash_password(password.as_bytes())
+                .map_err(|_| "Failed to hash password".to_string())
+                .map(|hash| hash.to_string())
+        }
+    })
+    .await
+    .map_err(|_| "Failed to hash password".to_string())?
+}
+async fn verify_password(
+    argon2: &Argon2<'static>,
+    password: &str,
+    password_hash: &str,
+) -> Result<bool, String> {
+    tokio::task::spawn_blocking({
+        let argon2 = argon2.clone();
+        let password = password.to_string();
+        let password_hash = password_hash.to_string();
+        move || match argon2.verify_password(password.as_bytes(), password_hash.as_str()) {
+            Ok(()) => Ok(true),
+            Err(argon2::password_hash::Error::PasswordInvalid) => Ok(false),
+            Err(_) => Err("Failed to verify password".to_string()),
+        }
+    })
+    .await
+    .map_err(|_| "Failed to verify password".to_string())?
+}
+
 #[async_trait::async_trait]
 impl<AR> AccountPort for AuthService<AR>
 where
@@ -60,13 +101,7 @@ where
         username: &str,
         password: &str,
     ) -> Result<UserId, String> {
-        let password_hash = match self.argon2.hash_password(password.as_bytes()) {
-            Ok(hash) => hash.to_string(),
-            Err(e) => {
-                tracing::error!("Failed to hash password: {}", e);
-                return Err("Failed to hash password".into());
-            }
-        };
+        let password_hash = hash_password(&self.argon2, password).await?;
         let user_id = UserId::new();
         let account = Account {
             user_id: user_id.clone(),
@@ -106,16 +141,11 @@ where
         let Some(password_hash) = &account.password_hash else {
             return Ok(None);
         };
-        match self
-            .argon2
-            .verify_password(password.as_bytes(), password_hash.as_str())
-        {
-            Ok(()) => Ok(Some(account.user_id)),
-            Err(argon2::password_hash::Error::PasswordInvalid) => Ok(None),
-            Err(e) => {
-                tracing::error!("Failed to verify password: {}", e);
-                Err("Failed to verify password".into())
-            }
+        let valid = verify_password(&self.argon2, password, password_hash).await?;
+        if valid {
+            Ok(Some(account.user_id))
+        } else {
+            Ok(None)
         }
     }
 
@@ -160,14 +190,11 @@ where
             .map_err(|_| "Failed to generate reset token".to_string())?;
         let token = URL_SAFE_NO_PAD.encode(bytes);
         let mut registry = self.reset_token_registry.lock().unwrap();
+        evict_expired_tokens(&mut registry);
         let expiry = Utc::now()
             + chrono::Duration::from_std(duration)
                 .map_err(|_| "Failed to calculate expiry time".to_string())?;
-        let token_hash = self
-            .argon2
-            .hash_password(token.as_bytes())
-            .map_err(|_| "Failed to hash reset token".to_string())?
-            .to_string();
+        let token_hash = sha2::Sha256::digest(token.as_bytes()).to_vec();
         registry.insert(user_id, (token_hash, expiry));
         Ok(token)
     }
@@ -186,24 +213,12 @@ where
                 registry.remove(&user_id);
                 return Ok(None);
             }
-            match self
-                .argon2
-                .verify_password(token.as_bytes(), token_hash.as_str())
-            {
-                Ok(()) => {}
-                Err(argon2::password_hash::Error::PasswordInvalid) => return Ok(None),
-                Err(e) => {
-                    tracing::error!("Failed to verify reset token: {}", e);
-                    return Err("Failed to verify reset token".to_string());
-                }
+            let provided_token_hash = sha2::Sha256::digest(token.as_bytes()).to_vec();
+            if provided_token_hash != *token_hash {
+                return Ok(None);
             }
-            registry.remove(&user_id);
         }
-        let new_password_hash = self
-            .argon2
-            .hash_password(new_password.as_bytes())
-            .map_err(|_| "Failed to hash new password".to_string())?
-            .to_string();
+        let new_password_hash = hash_password(&self.argon2, new_password).await?;
         let mut account = self
             .account_repo
             .get_account(user_id)
@@ -214,6 +229,10 @@ where
             .update_account(account)
             .await
             .map_err(|_| "Failed to update account".to_string())?;
+        {
+            let mut registry = self.reset_token_registry.lock().unwrap();
+            registry.remove(&user_id);
+        }
         Ok(Some(()))
     }
 
@@ -236,25 +255,8 @@ where
         user_id: UserId,
         duration: Duration,
     ) -> Result<RefreshToken, String> {
-        let mut bytes = [0u8; 32];
-        OsRng
-            .try_fill_bytes(&mut bytes)
-            .map_err(|_| "Failed to generate reset token".to_string())?;
-        let token = URL_SAFE_NO_PAD.encode(bytes);
         let mut registry = self.refresh_token_registry.lock().unwrap();
-        let expiry = Utc::now()
-            + chrono::Duration::from_std(duration)
-                .map_err(|_| "Failed to calculate expiry time".to_string())?;
-        let token_hash = self
-            .argon2
-            .hash_password(token.as_bytes())
-            .map_err(|_| "Failed to hash reset token".to_string())?
-            .to_string();
-        registry.insert(user_id, (token_hash, expiry));
-        Ok(RefreshToken {
-            token,
-            valid_until: expiry,
-        })
+        generate_refresh_token(&mut registry, user_id, duration)
     }
     fn rotate_refresh_token(
         &self,
@@ -262,28 +264,40 @@ where
         refresh_token: &str,
         duration: Duration,
     ) -> Result<Option<RefreshToken>, String> {
-        {
-            let mut registry = self.refresh_token_registry.lock().unwrap();
-            let Some((token_hash, expiry)) = registry.get(&user_id) else {
-                return Ok(None);
-            };
-            if Utc::now() > *expiry {
-                registry.remove(&user_id);
-                return Ok(None);
-            }
-            match self
-                .argon2
-                .verify_password(refresh_token.as_bytes(), token_hash.as_str())
-            {
-                Ok(()) => {}
-                Err(argon2::password_hash::Error::PasswordInvalid) => return Ok(None),
-                Err(e) => {
-                    tracing::error!("Failed to verify refresh token: {}", e);
-                    return Err("Failed to verify refresh token".to_string());
-                }
-            }
+        let mut registry = self.refresh_token_registry.lock().unwrap();
+        let Some((token_hash, expiry)) = registry.get(&user_id) else {
+            return Ok(None);
+        };
+        if Utc::now() > *expiry {
             registry.remove(&user_id);
+            return Ok(None);
         }
-        self.generate_refresh_token(user_id, duration).map(Some)
+        let provided_token_hash = sha2::Sha256::digest(refresh_token.as_bytes()).to_vec();
+        if provided_token_hash != *token_hash {
+            return Ok(None);
+        }
+        generate_refresh_token(&mut registry, user_id, duration).map(Some)
     }
+}
+
+fn generate_refresh_token(
+    registry: &mut HashMap<UserId, (Vec<u8>, DateTime<Utc>)>,
+    user_id: UserId,
+    duration: Duration,
+) -> Result<RefreshToken, String> {
+    let mut bytes = [0u8; 32];
+    OsRng
+        .try_fill_bytes(&mut bytes)
+        .map_err(|_| "Failed to generate reset token".to_string())?;
+    let token = URL_SAFE_NO_PAD.encode(bytes);
+    evict_expired_tokens(registry);
+    let expiry = Utc::now()
+        + chrono::Duration::from_std(duration)
+            .map_err(|_| "Failed to calculate expiry time".to_string())?;
+    let token_hash = sha2::Sha256::digest(token.as_bytes()).to_vec();
+    registry.insert(user_id, (token_hash, expiry));
+    Ok(RefreshToken {
+        token,
+        valid_until: expiry,
+    })
 }

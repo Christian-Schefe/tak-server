@@ -1,15 +1,3 @@
-use crate::{RepoError, RepoRetrieveError, UserId};
-
-#[async_trait::async_trait]
-pub trait ModerationRepository {
-    async fn get_moderation(&self, user_id: UserId) -> Result<Moderation, RepoRetrieveError>;
-    async fn set_moderation(
-        &self,
-        user_id: UserId,
-        moderation: Moderation,
-    ) -> Result<(), RepoError>;
-}
-
 #[derive(Debug, Clone)]
 pub struct Moderation {
     pub user_type: UserType,

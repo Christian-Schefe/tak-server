@@ -1,12 +1,3 @@
-#[async_trait::async_trait]
-pub trait EventRepository {
-    async fn get_events(&self) -> Result<Vec<Event>, GetEventsError>;
-}
-
-pub enum GetEventsError {
-    RetrievalError(String),
-}
-
 pub struct Event {
     pub name: String,
     pub event: String,

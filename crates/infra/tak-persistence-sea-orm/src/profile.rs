@@ -3,11 +3,12 @@ use std::{str::FromStr, sync::Arc};
 use crate::create_db_pool;
 use country_code_enum::CountryCode;
 use sea_orm::{DatabaseConnection, EntityTrait, Iterable, sea_query::OnConflict};
-use tak_persistence_sea_orm_entities::profile;
 use tak_domain::{
-    RepoError, RepoRetrieveError, UserId,
-    profile::{AccountProfile, AccountProfileRepository, ProfilePictureVersion},
+    UserId,
+    profile::{AccountProfile, ProfilePictureVersion},
 };
+use tak_persistence_sea_orm_entities::profile;
+use tak_server_app::ports::{RepoError, RepoRetrieveError, profile::AccountProfileRepository};
 
 pub struct ProfileRepositoryImpl {
     db: DatabaseConnection,

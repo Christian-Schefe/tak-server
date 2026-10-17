@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
-use crate::workflow::matchmaking::SeekView;
-use tak_domain::{
-    MatchId, RepoRetrieveError, SeekId,
-    matches::{Match, MatchRepository},
-    seek::SeekService,
+use crate::{
+    ports::{RepoRetrieveError, matches::MatchRepository},
+    workflow::matchmaking::SeekView,
 };
+use tak_domain::{MatchId, SeekId, matches::Match, seek::SeekService};
 
 pub trait GetSeekUseCase {
     fn get_seek(&self, seek_id: SeekId) -> Option<SeekView>;

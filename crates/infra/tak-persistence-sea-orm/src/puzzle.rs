@@ -10,11 +10,12 @@ use tak_core::{
     TakBaseGameSettings, TakOpening, TakReserve,
     ptn::{action_from_ptn, action_to_ptn},
 };
-use tak_persistence_sea_orm_entities::puzzle;
 use tak_domain::{
-    PuzzleId, RepoError, RepoRetrieveError,
-    puzzle::{Puzzle, PuzzleRepository, PuzzleResponseEntry},
+    PuzzleId,
+    puzzle::{Puzzle, PuzzleResponseEntry},
 };
+use tak_persistence_sea_orm_entities::puzzle;
+use tak_server_app::ports::{RepoError, RepoRetrieveError, puzzle::PuzzleRepository};
 
 use crate::{create_db_pool, tak_opening_from_string, tak_opening_to_string};
 

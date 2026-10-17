@@ -7,7 +7,8 @@ version = "0.1.0"
 async-trait    = "0.1.89"
 image          = "0.25.9"
 sha2           = "0.10.9"
-tak-domain = { path = "../../tak-domain" }
+tak-domain     = { path = "../../tak-domain" }
+tak-server-app = { path = "../../tak-server-app" }
 tokio          = { version = "1.47.1", features = [ "full" ] }
 tokio-util     = { version = "0.7.16", features = [ "full" ] }
-tracing               = "0.1.44"
+tracing        = "0.1.44"

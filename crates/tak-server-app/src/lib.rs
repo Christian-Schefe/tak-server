@@ -3,9 +3,19 @@ use std::sync::Arc;
 use crate::{
     ports::{
         authentication::AccountPort,
+        chat::ChatRepository,
         connection::{UserConnectionPort, UserOnlineStatusPort},
         email::EmailPort,
+        event::EventRepository,
+        game_history::GameRepository,
+        matches::MatchRepository,
+        moderation::ModerationRepository,
         notification::ListenerNotificationPort,
+        profile::{AccountProfileRepository, ProfilePictureRepository},
+        puzzle::PuzzleRepository,
+        rating::RatingRepository,
+        stats::{RatingHistoryRepository, StatsRepository},
+        tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
     },
     processes::{
         disconnect_timeout_runner::DisconnectTimeoutRunnerImpl,
@@ -68,21 +78,13 @@ use crate::{
     },
 };
 use tak_domain::{
-    chat::{ChatRepository, ChatRoomServiceImpl, RustrictContentPolicy},
-    event::EventRepository,
+    chat::{ChatRoomServiceImpl, RustrictContentPolicy},
     game::GameServiceImpl,
-    game_history::GameRepository,
-    matches::{MatchReadinessServiceImpl, MatchRepository},
-    moderation::{
-        AdminUserPolicy, HigherRoleUserPolicy, ModerationRepository, ModeratorUserPolicy,
-    },
-    profile::{AccountProfileRepository, ProfilePictureRepository},
-    puzzle::PuzzleRepository,
-    rating::{RatingRepository, RatingServiceImpl},
+    matches::MatchReadinessServiceImpl,
+    moderation::{AdminUserPolicy, HigherRoleUserPolicy, ModeratorUserPolicy},
+    rating::RatingServiceImpl,
     seek::SeekServiceImpl,
     spectator::SpectatorServiceImpl,
-    stats::{RatingHistoryRepository, StatsRepository},
-    tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
 };
 
 pub mod ports;

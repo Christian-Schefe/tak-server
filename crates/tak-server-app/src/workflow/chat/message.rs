@@ -1,5 +1,7 @@
 use crate::{
     ports::{
+        RepoError,
+        chat::ChatRepository,
         connection::UserConnectionPort,
         notification::{ListenerMessage, ListenerNotificationPort},
     },
@@ -7,8 +9,8 @@ use crate::{
 };
 use std::sync::Arc;
 use tak_domain::{
-    ChatMessageId, RepoError, UserId,
-    chat::{ChatConversation, ChatMessage, ChatRepository, ChatRoomService, ContentPolicy},
+    ChatMessageId, UserId,
+    chat::{ChatConversation, ChatMessage, ChatRoomService, ContentPolicy},
 };
 
 #[async_trait::async_trait]

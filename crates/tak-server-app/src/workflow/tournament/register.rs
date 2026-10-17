@@ -1,10 +1,13 @@
 use std::sync::Arc;
 
 use tak_domain::{
-    UserId, RepoRetrieveError, TournamentId,
-    tournament::{
-        TournamentPlayer, TournamentPlayerRepository, TournamentRepository, TournamentStatus,
-    },
+    TournamentId, UserId,
+    tournament::{TournamentPlayer, TournamentStatus},
+};
+
+use crate::ports::{
+    RepoRetrieveError,
+    tournament::{TournamentPlayerRepository, TournamentRepository},
 };
 
 #[async_trait::async_trait]

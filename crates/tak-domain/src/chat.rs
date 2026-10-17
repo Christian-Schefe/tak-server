@@ -4,22 +4,7 @@ use more_concurrent_maps::multi::ConcurrentMultiMap;
 use rustrict::{Censor, Type};
 use unordered_pair::UnorderedPair;
 
-use crate::{ChatMessageId, ListenerId, RepoError, UserId};
-
-#[async_trait::async_trait]
-pub trait ChatRepository {
-    async fn save_message(
-        &self,
-        conversation: &ChatConversation,
-        message: &ChatMessage,
-    ) -> Result<ChatMessageId, RepoError>;
-    async fn get_messages(
-        &self,
-        conversation: &ChatConversation,
-        cursor: Option<ChatMessageId>,
-        limit: usize,
-    ) -> Result<Vec<(ChatMessageId, ChatMessage)>, RepoError>;
-}
+use crate::{ListenerId, UserId};
 
 #[derive(Clone, Debug)]
 pub struct ChatMessage {

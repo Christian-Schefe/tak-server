@@ -2,10 +2,9 @@ use std::sync::Arc;
 
 use tak_core::TakAction;
 
-use tak_domain::{
-    PuzzleId, RepoRetrieveError,
-    puzzle::{PuzzleRepository, PuzzleResponse},
-};
+use tak_domain::{PuzzleId, puzzle::PuzzleResponse};
+
+use crate::ports::{RepoRetrieveError, puzzle::PuzzleRepository};
 
 #[async_trait::async_trait]
 pub trait SolvePuzzleUseCase {

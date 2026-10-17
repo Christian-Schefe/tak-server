@@ -1,12 +1,11 @@
 use sea_orm::{DatabaseConnection, EntityTrait, Iterable, sea_query::OnConflict};
 
-use tak_persistence_sea_orm_entities::moderation;
 use tak_domain::{
-    RepoError, RepoRetrieveError, UserId,
-    moderation::{
-        Moderation, ModerationFlag, ModerationFlags, ModerationRepository, UserRole, UserType,
-    },
+    UserId,
+    moderation::{Moderation, ModerationFlag, ModerationFlags, UserRole, UserType},
 };
+use tak_persistence_sea_orm_entities::moderation;
+use tak_server_app::ports::{RepoError, RepoRetrieveError, moderation::ModerationRepository};
 
 use crate::create_db_pool;
 

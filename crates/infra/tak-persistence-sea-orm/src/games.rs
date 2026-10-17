@@ -6,16 +6,20 @@ use sea_orm::{
 };
 use serde::Deserialize;
 use tak_core::{
-    TakAction, TakBaseGameSettings, TakGameSettings, TakPlayer, TakReserve, TakTimeInfo,
+    TakAction, TakBaseGameSettings, TakGameResult, TakGameSettings, TakPlayer, TakReserve,
+    TakTimeInfo,
     ptn::{action_from_ptn, action_to_ptn, game_result_from_string, game_result_to_string},
 };
-use tak_persistence_sea_orm_entities::game;
 use tak_domain::{
-    GameId, MatchId, PaginatedResponse, RepoError, RepoRetrieveError, SortOrder, UserId,
+    GameId, MatchId, UserId,
     game::{GameEvent, GameEventType, GameMetadata, GameOverEventType, request::GameRequest},
+    game_history::{GameRatingInfo, GameRecord, PlayerSnapshot},
+};
+use tak_persistence_sea_orm_entities::game;
+use tak_server_app::ports::{
+    PaginatedResponse, RepoError, RepoRetrieveError, SortOrder,
     game_history::{
-        DateSelector, GameFinishedUpdate, GameIdSelector, GamePlayerFilter, GameQuery,
-        GameRatingInfo, GameRecord, GameRepository, GameSortBy, PlayerSnapshot,
+        DateSelector, GameIdSelector, GamePlayerFilter, GameQuery, GameRepository, GameSortBy,
     },
 };
 
@@ -345,10 +349,11 @@ impl GameRepository for GameRepositoryImpl {
     async fn update_finished_game(
         &self,
         game_id: GameId,
-        update: GameFinishedUpdate,
+        result: TakGameResult,
+        events: Vec<GameEvent>,
+        rating_info: Option<GameRatingInfo>,
     ) -> Result<(), RepoRetrieveError> {
-        let events = update
-            .events
+        let events = events
             .iter()
             .map(|event| JsonEventRecord {
                 timestamp: event.date,
@@ -359,20 +364,14 @@ impl GameRepository for GameRepositoryImpl {
         let events = serde_json::to_value(&events)
             .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
 
-        let result_val = game_result_to_string(&update.result);
+        let result_val = game_result_to_string(&result);
 
         let model = game::ActiveModel {
             id: Set(game_id.0),
             events: Set(events),
             result: Set(Some(result_val)),
-            rating_change_white: Set(update
-                .rating_info
-                .as_ref()
-                .map(|info| info.rating_change_white)),
-            rating_change_black: Set(update
-                .rating_info
-                .as_ref()
-                .map(|info| info.rating_change_black)),
+            rating_change_white: Set(rating_info.as_ref().map(|info| info.rating_change_white)),
+            rating_change_black: Set(rating_info.as_ref().map(|info| info.rating_change_black)),
 
             ..Default::default()
         };

@@ -1,7 +1,14 @@
 use std::sync::Arc;
 
 use crate::{
-    ports::notification::{ListenerGameMessageType, ListenerMessage, ListenerNotificationPort},
+    ports::{
+        game_history::GameRepository,
+        matches::MatchRepository,
+        moderation::ModerationRepository,
+        notification::{ListenerGameMessageType, ListenerMessage, ListenerNotificationPort},
+        rating::RatingRepository,
+        stats::{RatingHistoryRepository, StatsRepository},
+    },
     workflow::{
         gameplay::FinishedGameView, player::notify_player::NotifyPlayerWorkflow,
         tournament::tournament_match::TournamentMatchWorkflow,
@@ -11,14 +18,12 @@ use tak_core::{TakGameResult, TakPlayer};
 use tak_domain::{
     MatchId,
     game::FinishedGame,
-    game_history::{GameFinishedUpdate, GameRatingInfo, GameRepository},
-    matches::{MatchRepository, MatchStatus},
-    moderation::{Moderation, ModerationRepository},
-    rating::{PlayerRating, RatingRepository, RatingService},
+    game_history::GameRatingInfo,
+    matches::MatchStatus,
+    moderation::Moderation,
+    rating::{PlayerRating, RatingService},
     spectator::SpectatorService,
-    stats::{
-        GameOutcome, PlayerStats, RatingHistoryEntry, RatingHistoryRepository, StatsRepository,
-    },
+    stats::{GameOutcome, PlayerStats, RatingHistoryEntry},
 };
 
 #[async_trait::async_trait]
@@ -258,11 +263,14 @@ impl<
         )
         .await;
 
-        let game_record_update =
-            GameFinishedUpdate::from_game(ended_game, game_rating_info);
         if let Err(e) = self
             .game_repository
-            .update_finished_game(game_id, game_record_update)
+            .update_finished_game(
+                game_id,
+                ended_game.game.game_result().clone(),
+                ended_game.events.clone(),
+                game_rating_info,
+            )
             .await
         {
             tracing::error!(

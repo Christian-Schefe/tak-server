@@ -2,11 +2,12 @@ use sea_orm::{
     ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
     QuerySelect,
 };
-use tak_persistence_sea_orm_entities::chat;
 use tak_domain::{
-    ChatMessageId, RepoError, UserId,
-    chat::{ChatConversation, ChatMessage, ChatRepository},
+    ChatMessageId, UserId,
+    chat::{ChatConversation, ChatMessage},
 };
+use tak_persistence_sea_orm_entities::chat;
+use tak_server_app::ports::{RepoError, chat::ChatRepository};
 
 use crate::create_db_pool;
 

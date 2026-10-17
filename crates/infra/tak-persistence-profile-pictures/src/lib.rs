@@ -2,9 +2,10 @@ use std::{io::Cursor, path::PathBuf};
 
 use image::DynamicImage;
 use tak_domain::{
-    RepoError, RepoRetrieveError, UserId,
-    profile::{ProfilePicture, ProfilePictureFileType, ProfilePictureRepository},
+    UserId,
+    profile::{ProfilePicture, ProfilePictureFileType},
 };
+use tak_server_app::ports::{RepoError, RepoRetrieveError, profile::ProfilePictureRepository};
 
 pub struct ProfilePictureRepositoryImpl {
     file_path: PathBuf,

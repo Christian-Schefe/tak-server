@@ -3,11 +3,10 @@ use std::sync::Arc;
 use crate::create_db_pool;
 use sea_orm::TransactionTrait;
 use sea_orm::{ActiveModelTrait, DatabaseConnection, EntityTrait, TransactionError};
+use tak_domain::{UserId, stats::PlayerStats};
 use tak_persistence_sea_orm_entities::stats;
-use tak_domain::{
-    UserId, RepoError, RepoRetrieveError,
-    stats::{PlayerStats, StatsRepository},
-};
+use tak_server_app::ports::stats::StatsRepository;
+use tak_server_app::ports::{RepoError, RepoRetrieveError};
 
 pub struct StatsRepositoryImpl {
     db: DatabaseConnection,
@@ -54,10 +53,7 @@ impl StatsRepositoryImpl {
 
 #[async_trait::async_trait]
 impl StatsRepository for StatsRepositoryImpl {
-    async fn get_player_stats(
-        &self,
-        user_id: UserId,
-    ) -> Result<PlayerStats, RepoRetrieveError> {
+    async fn get_player_stats(&self, user_id: UserId) -> Result<PlayerStats, RepoRetrieveError> {
         if let Some(cached_stats) = self.stats_cache.get(&user_id) {
             return Ok(cached_stats);
         }
@@ -131,10 +127,7 @@ impl StatsRepository for StatsRepositoryImpl {
     }
 
     async fn remove_player_stats(&self, user_id: UserId) -> Result<(), RepoError> {
-        match stats::Entity::delete_by_id(user_id.0)
-            .exec(&self.db)
-            .await
-        {
+        match stats::Entity::delete_by_id(user_id.0).exec(&self.db).await {
             Ok(_) => {
                 self.stats_cache.invalidate(&user_id);
                 Ok(())
