@@ -97,30 +97,29 @@ async fn main() {
     let chat_repo = Arc::new(ChatRepositoryImpl);
     let rating_history_repo = Arc::new(RatingHistoryRepositoryImpl::new().await);
     let tournament_repo = Arc::new(TournamentRepositoryImpl::new().await);
-    let tournament_player_registration_repo =
-        Arc::new(TournamentPlayerRegistrationRepositoryImpl::new().await);
-    let match_repo = Arc::new(MatchRepositoryImpl::new().await);
+    let tournament_player_registration_repo = Arc::new(TournamentPlayerRegistrationRepositoryImpl);
+    let match_repo = Arc::new(MatchRepositoryImpl);
     let tournament_round_repo = Arc::new(TournamentRoundRepositoryImpl::new().await);
     let moderation_repo = Arc::new(ModerationRepositoryImpl::new().await);
 
     let transaction_manager = Arc::new(TransactionManagerImpl::new().await);
 
     let ports = Arc::new(PortsCollectionImpl::new(
-        game_repo,
-        rating_repo,
-        event_repo,
-        stats_repo,
-        profile_repo,
-        profile_picture_repo,
-        puzzle_repo,
-        chat_repo,
-        rating_history_repo,
-        tournament_repo,
-        tournament_player_registration_repo,
-        match_repo,
-        tournament_round_repo,
-        moderation_repo,
-        transaction_manager,
+        game_repo.clone(),
+        rating_repo.clone(),
+        event_repo.clone(),
+        stats_repo.clone(),
+        profile_repo.clone(),
+        profile_picture_repo.clone(),
+        puzzle_repo.clone(),
+        chat_repo.clone(),
+        rating_history_repo.clone(),
+        tournament_repo.clone(),
+        tournament_player_registration_repo.clone(),
+        match_repo.clone(),
+        tournament_round_repo.clone(),
+        moderation_repo.clone(),
+        transaction_manager.clone(),
     ));
     let app = Arc::new(
         build_application(
@@ -136,14 +135,8 @@ async fn main() {
             account_online_status_adapter,
             profile_picture_repo,
             puzzle_repo,
-            chat_repo,
             rating_history_repo,
-            tournament_repo,
-            tournament_player_registration_repo,
-            match_repo,
-            tournament_round_repo,
             moderation_repo,
-            transaction_manager,
             ports,
         )
         .await,

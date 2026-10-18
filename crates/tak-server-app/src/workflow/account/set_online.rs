@@ -6,7 +6,7 @@ use crate::{
         connection::UserOnlineStatusPort,
         matches::MatchRepository,
         notification::{ListenerMatchEventType, ListenerMessage, ListenerNotificationPort},
-        transaction::TransactionManager,
+        transaction::{TransactionError, TransactionItem, TransactionManager},
     },
     processes::disconnect_timeout_runner::DisconnectTimeoutRunner,
     workflow::player::notify_player::NotifyPlayerWorkflow,
@@ -111,21 +111,32 @@ impl<
         let cancelled_match_readiness = self
             .match_readiness_service
             .set_player_not_ready_everywhere(user_id);
-        let match_futures = cancelled_match_readiness
-            .into_iter()
-            .map(|match_id| async move {
-                (
-                    match_id,
+
+        let matches = match self
+            .ports
+            .transaction_manager()
+            .execute_without_transaction(TransactionItem::try_parallel(
+                cancelled_match_readiness.into_iter().map(|match_id| {
                     self.ports
                         .match_repository()
-                        .get_match(&self.ports.transaction_manager().get_context(), match_id)
-                        .await,
-                )
-            });
-        let matches = futures::future::join_all(match_futures).await;
+                        .get_match(match_id)
+                        .map_value(move |m| (match_id, m))
+                }),
+            ))
+            .await
+        {
+            Ok(matches) => matches,
+            Err(TransactionError(e)) => {
+                tracing::error!(
+                    "Failed to retrieve match entries when setting account offline: {:?}",
+                    e
+                );
+                return;
+            }
+        };
         for (match_id, match_entry) in matches {
             match match_entry {
-                Ok(match_entry) => {
+                Some(match_entry) => {
                     let message = ListenerMessage::MatchEvent {
                         match_id: match_id,
                         event_type: ListenerMatchEventType::MatchReadinessChanged { user_id: None },
@@ -137,11 +148,8 @@ impl<
                         )
                         .await;
                 }
-                Err(e) => {
-                    tracing::error!(
-                        "Failed to retrieve match {match_id} entry when setting account offline: {:?}",
-                        e
-                    );
+                None => {
+                    tracing::error!("Match {match_id} not found when setting account offline",);
                 }
             }
         }

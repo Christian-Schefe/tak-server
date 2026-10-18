@@ -1,9 +1,13 @@
 use std::sync::Arc;
 
 use crate::{
+    PortsCollection,
     ports::{
-        RepoError, RepoRetrieveError, tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
-    }, workflow::tournament::{TournamentDetailView, TournamentView},
+        RepoError, RepoRetrieveError,
+        tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
+        transaction::{TransactionError, TransactionManager},
+    },
+    workflow::tournament::{TournamentDetailView, TournamentView},
 };
 use tak_domain::TournamentId;
 
@@ -16,41 +20,22 @@ pub trait GetTournamentUseCase {
     ) -> Result<Option<TournamentDetailView>, ()>;
 }
 
-pub struct GetTournamentUseCaseImpl<
-    TR: TournamentRepository,
-    TPR: TournamentPlayerRepository,
-    TRR: TournamentRoundRepository,
-> {
-    tournament_repository: Arc<TR>,
-    tournament_player_repository: Arc<TPR>,
-    tournament_round_repository: Arc<TRR>,
+pub struct GetTournamentUseCaseImpl<Ports: PortsCollection> {
+    ports: Arc<Ports>,
 }
 
-impl<TR: TournamentRepository, TPR: TournamentPlayerRepository, TRR: TournamentRoundRepository>
-    GetTournamentUseCaseImpl<TR, TPR, TRR>
-{
-    pub fn new(
-        tournament_repository: Arc<TR>,
-        tournament_player_repository: Arc<TPR>,
-        tournament_round_repository: Arc<TRR>,
-    ) -> Self {
-        Self {
-            tournament_repository,
-            tournament_player_repository,
-            tournament_round_repository,
-        }
+impl<Ports: PortsCollection> GetTournamentUseCaseImpl<Ports> {
+    pub fn new(ports: Arc<Ports>) -> Self {
+        Self { ports }
     }
 }
 
 #[async_trait::async_trait]
-impl<
-    TR: TournamentRepository + Send + Sync + 'static,
-    TPR: TournamentPlayerRepository + Send + Sync + 'static,
-    TRR: TournamentRoundRepository + Send + Sync + 'static,
-> GetTournamentUseCase for GetTournamentUseCaseImpl<TR, TPR, TRR>
+impl<Ports: PortsCollection + Send + Sync + 'static> GetTournamentUseCase
+    for GetTournamentUseCaseImpl<Ports>
 {
     async fn get_tournaments(&self) -> Result<Vec<TournamentView>, ()> {
-        match self.tournament_repository.list_tournaments().await {
+        match self.ports.tournament_repository().list_tournaments().await {
             Ok(tournaments) => Ok(tournaments
                 .into_iter()
                 .map(|(id, t)| TournamentView::from_tournament(id, t))
@@ -66,12 +51,16 @@ impl<
         &self,
         tournament_id: TournamentId,
     ) -> Result<Option<TournamentDetailView>, ()> {
+        let tournament_repo = self.ports.tournament_repository();
+        let transaction_manager = self.ports.transaction_manager();
+        let tournament_player_repo = self.ports.tournament_player_repository();
+        let tournament_round_repo = self.ports.tournament_round_repository();
         match futures::join!(
-            self.tournament_repository.get_tournament(tournament_id),
-            self.tournament_player_repository
-                .get_tournament_players(tournament_id),
-            self.tournament_round_repository
-                .get_tournament_rounds(tournament_id)
+            tournament_repo.get_tournament(tournament_id),
+            transaction_manager.execute_without_transaction(
+                tournament_player_repo.get_tournament_players(tournament_id)
+            ),
+            tournament_round_repo.get_tournament_rounds(tournament_id)
         ) {
             (Ok(tournament), Ok(tournament_players), Ok(rounds)) => {
                 Ok(Some(TournamentDetailView::from_tournament(
@@ -83,7 +72,7 @@ impl<
             }
             (Err(RepoRetrieveError::NotFound), _, _) => Ok(None),
             (Err(RepoRetrieveError::StorageError(e)), _, _)
-            | (_, Err(RepoError::StorageError(e)), _)
+            | (_, Err(TransactionError(e)), _)
             | (_, _, Err(RepoError::StorageError(e))) => {
                 tracing::error!(
                     "Failed to get tournament with id {}: {:?}",

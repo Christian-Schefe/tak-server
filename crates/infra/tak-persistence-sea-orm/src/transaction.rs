@@ -2,11 +2,10 @@ use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr, ExecResult,
     QueryResult, Statement, TransactionTrait,
 };
-use tak_server_app::ports::{RepoError, transaction::TransactionManager};
+use tak_server_app::ports::transaction::{TransactionError, TransactionItem, TransactionManager};
 
 use crate::create_db_pool;
 
-#[derive(Clone)]
 pub enum TransactionContext {
     Transaction(DatabaseTransaction),
     Connection(DatabaseConnection),
@@ -59,41 +58,36 @@ impl TransactionManagerImpl {
 
 #[async_trait::async_trait]
 impl TransactionManager<TransactionContext> for TransactionManagerImpl {
-    fn get_context(&self) -> TransactionContext {
-        TransactionContext::Connection(self.db.clone())
-    }
-    async fn in_transaction<F, Fut, R, E>(&self, f: F) -> Result<Result<R, E>, RepoError>
-    where
-        F: FnOnce(TransactionContext) -> Fut + Send,
-        R: Send,
-        E: Send,
-        Fut: std::future::Future<Output = Result<R, E>> + Send,
-    {
-        let tr = self
-            .db
-            .begin()
-            .await
-            .map_err(|e| RepoError::StorageError(e.to_string()))?;
-        let tr = TransactionContext::Transaction(tr);
-        match f(tr).await {
-            Ok(result) => {
-                let TransactionContext::Transaction(tr) = tr else {
-                    unreachable!("TransactionContext should be a Transaction here");
-                };
-                tr.commit()
-                    .await
-                    .map_err(|e| RepoError::StorageError(e.to_string()))?;
-                Ok(Ok(result))
+    async fn execute<Out: Send + Sync + 'static>(
+        &self,
+        item: TransactionItem<TransactionContext, Result<Out, TransactionError>>,
+    ) -> Result<Out, TransactionError> {
+        let tr = self.db.begin().await.map_err(|e| {
+            tracing::error!("Failed to begin transaction: {:?}", e);
+            TransactionError::new(format!("Failed to begin transaction: {:?}", e))
+        })?;
+        let ctx = TransactionContext::Transaction(tr);
+        let res = item.execute(&ctx).await;
+        let tr = match ctx {
+            TransactionContext::Transaction(tr) => tr,
+            _ => unreachable!(),
+        };
+        match res {
+            Ok(out) => {
+                tr.commit().await.unwrap();
+                Ok(out)
             }
-            Err(e) => {
-                let TransactionContext::Transaction(tr) = tr else {
-                    unreachable!("TransactionContext should be a Transaction here");
-                };
-                tr.rollback()
-                    .await
-                    .map_err(|e| RepoError::StorageError(e.to_string()))?;
-                Ok(Err(e))
+            Err(err) => {
+                tr.rollback().await.unwrap();
+                Err(err)
             }
         }
+    }
+    async fn execute_without_transaction<Out: Send + Sync + 'static>(
+        &self,
+        item: TransactionItem<TransactionContext, Result<Out, TransactionError>>,
+    ) -> Result<Out, TransactionError> {
+        item.execute(&TransactionContext::Connection(self.db.clone()))
+            .await
     }
 }

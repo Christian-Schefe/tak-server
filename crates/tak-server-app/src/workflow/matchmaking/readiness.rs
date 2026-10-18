@@ -3,10 +3,9 @@ use std::sync::Arc;
 use crate::{
     PortsCollection,
     ports::{
-        RepoRetrieveError,
         matches::MatchRepository,
         notification::{ListenerMatchEventType, ListenerMessage},
-        transaction::TransactionManager,
+        transaction::{TransactionError, TransactionManager},
     },
     workflow::{
         matchmaking::{MatchReadinessStatus, create_game::CreateGameFromMatchWorkflow},
@@ -67,26 +66,19 @@ impl<
     }
 
     async fn get_match(&self, match_id: MatchId) -> Result<Match, MatchReadinessError> {
-        let match_entry = self
+        match self
             .ports
-            .match_repository()
-            .get_match(&self.ports.transaction_manager().get_context(), match_id)
+            .transaction_manager()
+            .execute_without_transaction(self.ports.match_repository().get_match(match_id))
             .await
-            .map_err(|e| match e {
-                RepoRetrieveError::NotFound => {
-                    tracing::error!("Match not found for match ID {}: {}", match_id, e);
-                    MatchReadinessError::MatchNotFound
-                }
-                RepoRetrieveError::StorageError(err) => {
-                    tracing::error!(
-                        "Database error while retrieving match {}: {}",
-                        match_id,
-                        err
-                    );
-                    MatchReadinessError::Internal
-                }
-            })?;
-        Ok(match_entry)
+        {
+            Ok(Some(match_entry)) => Ok(match_entry),
+            Ok(None) => Err(MatchReadinessError::MatchNotFound),
+            Err(TransactionError(e)) => {
+                tracing::error!("Database error while retrieving match {}: {}", match_id, e);
+                Err(MatchReadinessError::Internal)
+            }
+        }
     }
 }
 

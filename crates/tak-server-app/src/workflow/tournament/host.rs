@@ -16,7 +16,7 @@ use crate::{
         moderation::ModerationRepository,
         rating::RatingRepository,
         tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
-        transaction::TransactionManager,
+        transaction::{TransactionError, TransactionManager},
     },
 };
 
@@ -148,12 +148,16 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
 
         let tournament_players = match self
             .ports
-            .tournament_player_repository()
-            .get_tournament_players(tournament_id)
+            .transaction_manager()
+            .execute_without_transaction(
+                self.ports
+                    .tournament_player_repository()
+                    .get_tournament_players(tournament_id),
+            )
             .await
         {
             Ok(players) => players,
-            Err(e) => {
+            Err(TransactionError(e)) => {
                 tracing::error!(
                     "Failed to retrieve player registrations for tournament {}: {:?}",
                     tournament_id,
@@ -182,10 +186,14 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
                     return Err(());
                 }
             };
-            if let Err(e) = self
+            if let Err(TransactionError(e)) = self
                 .ports
-                .tournament_player_repository()
-                .set_player_seeding_score(tournament_id, player.user_id, seeding_score)
+                .transaction_manager()
+                .execute_without_transaction(
+                    self.ports
+                        .tournament_player_repository()
+                        .set_player_seeding_score(tournament_id, player.user_id, seeding_score),
+                )
                 .await
             {
                 tracing::error!(
@@ -269,13 +277,14 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
         };
         let tournament_matches = self
             .ports
-            .match_repository()
-            .get_matches_of_tournament(
-                &self.ports.transaction_manager().get_context(),
-                tournament_id,
+            .transaction_manager()
+            .execute_without_transaction(
+                self.ports
+                    .match_repository()
+                    .get_matches_of_tournament(tournament_id),
             )
             .await
-            .map_err(|e| {
+            .map_err(|TransactionError(e)| {
                 tracing::error!(
                     "Failed to retrieve matches for tournament {}: {:?}",
                     tournament_id,
@@ -294,10 +303,14 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
         }
         let mut all_players = self
             .ports
-            .tournament_player_repository()
-            .get_tournament_players(tournament_id)
+            .transaction_manager()
+            .execute_without_transaction(
+                self.ports
+                    .tournament_player_repository()
+                    .get_tournament_players(tournament_id),
+            )
             .await
-            .map_err(|e| {
+            .map_err(|TransactionError(e)| {
                 tracing::error!(
                     "Failed to retrieve player registrations for tournament {}: {:?}",
                     tournament_id,
@@ -343,10 +356,14 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
         };
 
         let bye_futures = pairings.byes.into_iter().map(|user_id| async move {
-            if let Err(e) = self
+            if let Err(TransactionError(e)) = self
                 .ports
-                .tournament_player_repository()
-                .increase_player_score(tournament_id, user_id, 2)
+                .transaction_manager()
+                .execute_without_transaction(
+                    self.ports
+                        .tournament_player_repository()
+                        .increase_player_score(tournament_id, user_id, 2),
+                )
                 .await
             {
                 tracing::error!(
@@ -376,12 +393,14 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
                 async move {
                     let match_id = match self
                         .ports
-                        .match_repository()
-                        .create_match(&self.ports.transaction_manager().get_context(), match_data)
+                        .transaction_manager()
+                        .execute_without_transaction(
+                            self.ports.match_repository().create_match(match_data),
+                        )
                         .await
                     {
                         Ok(id) => id,
-                        Err(e) => {
+                        Err(TransactionError(e)) => {
                             tracing::error!(
                                 "Failed to create match for tournament {} round {}: {:?}",
                                 tournament_id,
@@ -479,13 +498,14 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
         };
         let tournament_matches = self
             .ports
-            .match_repository()
-            .get_matches_of_tournament(
-                &self.ports.transaction_manager().get_context(),
-                tournament_id,
+            .transaction_manager()
+            .execute_without_transaction(
+                self.ports
+                    .match_repository()
+                    .get_matches_of_tournament(tournament_id),
             )
             .await
-            .map_err(|e| {
+            .map_err(|TransactionError(e)| {
                 tracing::error!(
                     "Failed to retrieve matches for tournament {}: {:?}",
                     tournament_id,

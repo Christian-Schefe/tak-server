@@ -153,7 +153,7 @@ pub struct PortsCollectionImpl<
     CR: ChatRepository<TrCtx>,
     RH: RatingHistoryRepository,
     TO: TournamentRepository,
-    TPR: TournamentPlayerRepository,
+    TPR: TournamentPlayerRepository<TrCtx>,
     MR: MatchRepository<TrCtx>,
     TRR: TournamentRoundRepository,
     MO: ModerationRepository,
@@ -189,7 +189,7 @@ impl<
     CR: ChatRepository<TrCtx>,
     RH: RatingHistoryRepository,
     TO: TournamentRepository,
-    TPR: TournamentPlayerRepository,
+    TPR: TournamentPlayerRepository<TrCtx>,
     MR: MatchRepository<TrCtx>,
     TRR: TournamentRoundRepository,
     MO: ModerationRepository,
@@ -246,7 +246,7 @@ pub trait PortsCollection {
     type ChatRepo: ChatRepository<Self::TrCtx> + Send + Sync + 'static;
     type RatingHistoryRepo: RatingHistoryRepository + Send + Sync + 'static;
     type TournamentRepo: TournamentRepository + Send + Sync + 'static;
-    type TournamentPlayerRepo: TournamentPlayerRepository + Send + Sync + 'static;
+    type TournamentPlayerRepo: TournamentPlayerRepository<Self::TrCtx> + Send + Sync + 'static;
     type MatchRepo: MatchRepository<Self::TrCtx> + Send + Sync + 'static;
     type TournamentRoundRepo: TournamentRoundRepository + Send + Sync + 'static;
     type ModerationRepo: ModerationRepository + Send + Sync + 'static;
@@ -280,7 +280,7 @@ impl<
     CR: ChatRepository<TrCtx> + Send + Sync + 'static,
     RH: RatingHistoryRepository + Send + Sync + 'static,
     TO: TournamentRepository + Send + Sync + 'static,
-    TPR: TournamentPlayerRepository + Send + Sync + 'static,
+    TPR: TournamentPlayerRepository<TrCtx> + Send + Sync + 'static,
     MR: MatchRepository<TrCtx> + Send + Sync + 'static,
     TRR: TournamentRoundRepository + Send + Sync + 'static,
     MO: ModerationRepository + Send + Sync + 'static,
@@ -365,16 +365,9 @@ pub async fn build_application<
     AC: UserOnlineStatusPort + Send + Sync + 'static,
     PFP: ProfilePictureRepository + Send + Sync + 'static,
     PZR: PuzzleRepository + Send + Sync + 'static,
-    CR: ChatRepository<TrCtx> + Send + Sync + 'static,
     RH: RatingHistoryRepository + Send + Sync + 'static,
-    TR: TournamentRepository + Send + Sync + 'static,
-    TPR: TournamentPlayerRepository + Send + Sync + 'static,
-    MR: MatchRepository<TrCtx> + Send + Sync + 'static,
-    TRR: TournamentRoundRepository + Send + Sync + 'static,
     MO: ModerationRepository + Send + Sync + 'static,
-    TRA: TransactionManager<TrCtx> + Send + Sync + 'static,
     Ports: PortsCollection + Send + Sync + 'static,
-    TrCtx: Send + Sync + 'static,
 >(
     game_repository: Arc<G>,
     rating_repository: Arc<R>,
@@ -388,14 +381,8 @@ pub async fn build_application<
     account_online_status_port: Arc<AC>,
     profile_picture_repo: Arc<PFP>,
     puzzle_repository: Arc<PZR>,
-    chat_repository: Arc<CR>,
     rating_history_repository: Arc<RH>,
-    tournament_repository: Arc<TR>,
-    tournament_player_repository: Arc<TPR>,
-    match_repository: Arc<MR>,
-    tournament_round_repository: Arc<TRR>,
     moderation_repository: Arc<MO>,
-    transaction_manager: Arc<TRA>,
     ports: Arc<Ports>,
 ) -> Application {
     let seek_service = Arc::new(SeekServiceImpl::new());
@@ -427,22 +414,14 @@ pub async fn build_application<
         spectator_service.clone(),
     ));
 
-    let tournament_match_workflow = Arc::new(TournamentMatchWorkflowImpl::new(
-        tournament_player_repository.clone(),
-    ));
+    let tournament_match_workflow = Arc::new(TournamentMatchWorkflowImpl::new(ports.clone()));
 
     let finalize_game_workflow = Arc::new(FinalizeGameWorkflowImpl::new(
-        transaction_manager.clone(),
-        game_repository.clone(),
+        ports.clone(),
         rating_service.clone(),
-        rating_repository.clone(),
-        match_repository.clone(),
         notify_player_workflow.clone(),
         spectator_service.clone(),
         listener_notification_port.clone(),
-        moderation_repository.clone(),
-        stats_repository.clone(),
-        rating_history_repository.clone(),
         tournament_match_workflow.clone(),
     ));
     let observe_game_timeout_use_case = Arc::new(ObserveGameTimeoutUseCaseImpl::new(
@@ -534,12 +513,11 @@ pub async fn build_application<
         )),
 
         chat_message_use_case: Arc::new(ChatMessageUseCaseImpl::new(
+            ports.clone(),
             listener_notification_port.clone(),
             player_connection_port.clone(),
             chat_room_service.clone(),
             chat_content_policy.clone(),
-            chat_repository.clone(),
-            transaction_manager.clone(),
         )),
         chat_room_use_case: Arc::new(ChatRoomUseCaseImpl::new(chat_room_service.clone())),
 
@@ -571,16 +549,9 @@ pub async fn build_application<
         get_puzzle_use_case: Arc::new(GetPuzzleUseCaseImpl::new(puzzle_repository.clone())),
         solve_puzzle_use_case: Arc::new(SolvePuzzleUseCaseImpl::new(puzzle_repository.clone())),
 
-        get_tournaments_use_case: Arc::new(GetTournamentUseCaseImpl::new(
-            tournament_repository.clone(),
-            tournament_player_repository.clone(),
-            tournament_round_repository.clone(),
-        )),
+        get_tournaments_use_case: Arc::new(GetTournamentUseCaseImpl::new(ports.clone())),
         tournament_player_registration_use_case: Arc::new(
-            TournamentPlayerRegistrationUseCaseImpl::new(
-                tournament_repository.clone(),
-                tournament_player_repository.clone(),
-            ),
+            TournamentPlayerRegistrationUseCaseImpl::new(ports.clone()),
         ),
         host_tournament_use_case: Arc::new(HostTournamentUseCaseImpl::new(ports.clone())),
 

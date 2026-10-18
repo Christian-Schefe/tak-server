@@ -1,14 +1,14 @@
 use crate::{
+    PortsCollection,
     ports::{
-        RepoError,
         chat::ChatRepository,
         connection::UserConnectionPort,
         notification::{ListenerMessage, ListenerNotificationPort},
-        transaction::TransactionManager,
+        transaction::{TransactionError, TransactionManager},
     },
     workflow::chat::ChatMessageView,
 };
-use std::{marker::PhantomData, sync::Arc};
+use std::sync::Arc;
 use tak_domain::{
     ChatMessageId, UserId,
     chat::{ChatConversation, ChatMessage, ChatRoomService, ContentPolicy},
@@ -36,63 +36,52 @@ pub enum ChatSendMessageError {
 }
 
 pub struct ChatMessageUseCaseImpl<
+    Ports: PortsCollection,
     L: ListenerNotificationPort,
     P: UserConnectionPort,
     C: ChatRoomService,
     Co: ContentPolicy,
-    CR: ChatRepository<TrCtx>,
-    TR: TransactionManager<TrCtx>,
-    TrCtx,
 > {
+    ports: Arc<Ports>,
     listener_notification_port: Arc<L>,
     player_connection_port: Arc<P>,
     chat_room_service: Arc<C>,
     content_policy: Arc<Co>,
-    chat_repository: Arc<CR>,
-    transaction_manager: Arc<TR>,
-    ctx: PhantomData<TrCtx>,
 }
 
 impl<
+    Ports: PortsCollection,
     L: ListenerNotificationPort,
     P: UserConnectionPort,
     C: ChatRoomService,
     Co: ContentPolicy,
-    CR: ChatRepository<TrCtx>,
-    TR: TransactionManager<TrCtx>,
-    TrCtx,
-> ChatMessageUseCaseImpl<L, P, C, Co, CR, TR, TrCtx>
+> ChatMessageUseCaseImpl<Ports, L, P, C, Co>
 {
     pub fn new(
+        ports: Arc<Ports>,
         listener_notification_port: Arc<L>,
         player_connection_port: Arc<P>,
         chat_room_service: Arc<C>,
         content_policy: Arc<Co>,
-        chat_repository: Arc<CR>,
-        transaction_manager: Arc<TR>,
     ) -> Self {
         Self {
+            ports,
             listener_notification_port,
             player_connection_port,
             chat_room_service,
             content_policy,
-            chat_repository,
-            transaction_manager,
-            ctx: PhantomData,
         }
     }
 }
 
 #[async_trait::async_trait]
 impl<
+    Ports: PortsCollection + Send + Sync + 'static,
     L: ListenerNotificationPort + Send + Sync + 'static,
     P: UserConnectionPort + Send + Sync + 'static,
     C: ChatRoomService + Send + Sync + 'static,
     Co: ContentPolicy + Send + Sync + 'static,
-    CR: ChatRepository<TrCtx> + Send + Sync + 'static,
-    TR: TransactionManager<TrCtx> + Send + Sync + 'static,
-    TrCtx: Send + Sync + 'static,
-> ChatMessageUseCase for ChatMessageUseCaseImpl<L, P, C, Co, CR, TR, TrCtx>
+> ChatMessageUseCase for ChatMessageUseCaseImpl<Ports, L, P, C, Co>
 {
     async fn send_message(
         &self,
@@ -125,16 +114,17 @@ impl<
         };
 
         let msg_id = match self
-            .chat_repository
-            .save_message(
-                &self.transaction_manager.get_context(),
-                conversation,
-                &chat_msg,
+            .ports
+            .transaction_manager()
+            .execute_without_transaction(
+                self.ports
+                    .chat_repository()
+                    .save_message(conversation.clone(), chat_msg.clone()),
             )
             .await
         {
             Ok(id) => id,
-            Err(e) => {
+            Err(TransactionError(e)) => {
                 tracing::error!("Failed to save chat message: {}", e);
                 return Err(ChatSendMessageError::RepositoryError);
             }
@@ -182,20 +172,20 @@ impl<
         limit: usize,
     ) -> Result<Vec<ChatMessageView>, ()> {
         match self
-            .chat_repository
-            .get_messages(
-                &self.transaction_manager.get_context(),
-                &conversation,
+            .ports
+            .transaction_manager()
+            .execute_without_transaction(self.ports.chat_repository().get_messages(
+                conversation.clone(),
                 before,
                 limit,
-            )
+            ))
             .await
         {
             Ok(messages) => Ok(messages
                 .into_iter()
                 .map(|(id, msg)| ChatMessageView::from(id, msg))
                 .collect()),
-            Err(RepoError::StorageError(e)) => {
+            Err(TransactionError(e)) => {
                 tracing::error!("Failed to retrieve chat messages: {}", e);
                 Err(())
             }

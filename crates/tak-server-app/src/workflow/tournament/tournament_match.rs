@@ -2,77 +2,62 @@ use std::sync::Arc;
 
 use tak_domain::matches::Match;
 
-use crate::ports::tournament::TournamentPlayerRepository;
+use crate::{
+    PortsCollection,
+    ports::{
+        tournament::TournamentPlayerRepository,
+        transaction::{TransactionError, TransactionItem},
+    },
+};
 
-#[async_trait::async_trait]
-pub trait TournamentMatchWorkflow {
-    async fn handle_completed_match(&self, match_entry: Match);
+pub trait TournamentMatchWorkflow<TrCtx> {
+    fn handle_completed_match(
+        &self,
+        match_entry: Match,
+    ) -> Option<TransactionItem<TrCtx, Result<(), TransactionError>>>;
 }
 
-pub struct TournamentMatchWorkflowImpl<TPR: TournamentPlayerRepository> {
-    tournament_player_repository: Arc<TPR>,
+pub struct TournamentMatchWorkflowImpl<Ports: PortsCollection> {
+    ports: Arc<Ports>,
 }
 
-impl<TPR: TournamentPlayerRepository> TournamentMatchWorkflowImpl<TPR> {
-    pub fn new(tournament_player_repository: Arc<TPR>) -> Self {
-        Self {
-            tournament_player_repository,
-        }
+impl<Ports: PortsCollection> TournamentMatchWorkflowImpl<Ports> {
+    pub fn new(ports: Arc<Ports>) -> Self {
+        Self { ports }
     }
 }
 
-#[async_trait::async_trait]
-impl<TPR: TournamentPlayerRepository + Send + Sync + 'static> TournamentMatchWorkflow
-    for TournamentMatchWorkflowImpl<TPR>
+impl<Ports: PortsCollection + Send + Sync + 'static> TournamentMatchWorkflow<Ports::TrCtx>
+    for TournamentMatchWorkflowImpl<Ports>
 {
     #[tracing::instrument(skip(self))]
-    async fn handle_completed_match(&self, match_entry: Match) {
+    fn handle_completed_match(
+        &self,
+        match_entry: Match,
+    ) -> Option<TransactionItem<Ports::TrCtx, Result<(), TransactionError>>> {
         let Some(tournament_info) = &match_entry.tournament_info else {
-            return;
+            return None;
         };
         let winner = match_entry.get_winner();
+        let repo = self.ports.tournament_player_repository();
         if let Some(winner_id) = winner {
-            if let Err(e) = self
-                .tournament_player_repository
-                .increase_player_score(tournament_info.tournament_id, winner_id, 2)
-                .await
-            {
-                tracing::error!(
-                    "Failed to update tournament player score for player {:?} in tournament {:?}: {:?}",
-                    winner_id,
-                    tournament_info.tournament_id,
-                    e
-                );
-            }
+            Some(repo.increase_player_score(tournament_info.tournament_id, winner_id, 2))
         } else {
-            let (player1_res, player2_res) = futures::join!(
-                self.tournament_player_repository.increase_player_score(
-                    tournament_info.tournament_id,
-                    match_entry.player1.user_id,
-                    1,
-                ),
-                self.tournament_player_repository.increase_player_score(
-                    tournament_info.tournament_id,
-                    match_entry.player2.user_id,
-                    1,
-                ),
-            );
-            if let Err(e) = player1_res {
-                tracing::error!(
-                    "Failed to update tournament player score for player {:?} in tournament {:?}: {:?}",
-                    match_entry.player1.user_id,
-                    tournament_info.tournament_id,
-                    e
-                );
-            }
-            if let Err(e) = player2_res {
-                tracing::error!(
-                    "Failed to update tournament player score for player {:?} in tournament {:?}: {:?}",
-                    match_entry.player2.user_id,
-                    tournament_info.tournament_id,
-                    e
-                );
-            }
+            Some(
+                TransactionItem::try_parallel(vec![
+                    repo.increase_player_score(
+                        tournament_info.tournament_id,
+                        match_entry.player1.user_id,
+                        1,
+                    ),
+                    repo.increase_player_score(
+                        tournament_info.tournament_id,
+                        match_entry.player2.user_id,
+                        1,
+                    ),
+                ])
+                .map_value(|_| ()),
+            )
         }
     }
 }

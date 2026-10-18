@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use crate::{
     PortsCollection,
-    ports::{RepoRetrieveError, matches::MatchRepository, transaction::TransactionManager},
+    ports::{
+        matches::MatchRepository,
+        transaction::{TransactionError, TransactionManager},
+    },
     workflow::matchmaking::SeekView,
 };
 use tak_domain::{MatchId, SeekId, matches::Match, seek::SeekService};
@@ -54,13 +57,13 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GetMatchUseCase
     async fn get_match(&self, match_id: MatchId) -> Result<Match, GetMatchError> {
         match self
             .ports
-            .match_repository()
-            .get_match(&self.ports.transaction_manager().get_context(), match_id)
+            .transaction_manager()
+            .execute_without_transaction(self.ports.match_repository().get_match(match_id))
             .await
         {
-            Ok(m) => Ok(m),
-            Err(RepoRetrieveError::NotFound) => Err(GetMatchError::NotFound),
-            Err(RepoRetrieveError::StorageError(e)) => {
+            Ok(Some(m)) => Ok(m),
+            Ok(None) => Err(GetMatchError::NotFound),
+            Err(TransactionError(e)) => {
                 tracing::error!("Failed to retrieve match {}: {:?}", match_id, e);
                 Err(GetMatchError::InternalError)
             }

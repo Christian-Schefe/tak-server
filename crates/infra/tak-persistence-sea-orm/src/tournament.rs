@@ -1,5 +1,5 @@
-use crate::create_db_pool;
 use crate::matches::JsonMatchSettings;
+use crate::{create_db_pool, transaction::TransactionContext};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, ExprTrait, QueryFilter};
 use tak_domain::{
     MatchId, TournamentId, UserId,
@@ -9,6 +9,7 @@ use tak_domain::{
     },
 };
 use tak_persistence_sea_orm_entities::{tournament, tournament_players, tournament_round};
+use tak_server_app::ports::transaction::{TransactionError, TransactionItem};
 use tak_server_app::ports::{
     RepoError, RepoRetrieveError,
     tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
@@ -222,139 +223,146 @@ impl TournamentRepository for TournamentRepositoryImpl {
     }
 }
 
-pub struct TournamentPlayerRegistrationRepositoryImpl {
-    db: DatabaseConnection,
-}
+pub struct TournamentPlayerRegistrationRepositoryImpl;
 
-impl TournamentPlayerRegistrationRepositoryImpl {
-    pub async fn new() -> Self {
-        let db = create_db_pool().await;
-        Self { db }
-    }
-}
-
-#[async_trait::async_trait]
-impl TournamentPlayerRepository for TournamentPlayerRegistrationRepositoryImpl {
-    async fn get_tournament_players(
+impl TournamentPlayerRepository<TransactionContext> for TournamentPlayerRegistrationRepositoryImpl {
+    fn get_tournament_players(
         &self,
         tournament_id: TournamentId,
-    ) -> Result<Vec<TournamentPlayer>, RepoError> {
-        let registration_models = tournament_players::Entity::find()
-            .filter(tournament_players::Column::TournamentId.eq(tournament_id.0))
-            .all(&self.db)
-            .await
-            .map_err(|e| {
-                RepoError::StorageError(format!(
-                    "Failed to retrieve player registrations for tournament {}: {}",
-                    tournament_id.0, e
-                ))
-            })?;
+    ) -> TransactionItem<TransactionContext, Result<Vec<TournamentPlayer>, TransactionError>> {
+        TransactionItem::new(Box::new(move |ctx| {
+            Box::pin(async move {
+                let registration_models = tournament_players::Entity::find()
+                    .filter(tournament_players::Column::TournamentId.eq(tournament_id.0))
+                    .all(ctx)
+                    .await
+                    .map_err(|e| {
+                        TransactionError(format!(
+                            "Failed to retrieve player registrations for tournament {}: {}",
+                            tournament_id.0, e
+                        ))
+                    })?;
 
-        let user_ids = registration_models
-            .into_iter()
-            .map(|m| TournamentPlayer {
-                user_id: UserId(m.user_id),
-                score: m.score as u32,
-                seeding_score: m.seeding_score,
+                let user_ids = registration_models
+                    .into_iter()
+                    .map(|m| TournamentPlayer {
+                        user_id: UserId(m.user_id),
+                        score: m.score as u32,
+                        seeding_score: m.seeding_score,
+                    })
+                    .collect();
+
+                Ok(user_ids)
             })
-            .collect();
-
-        Ok(user_ids)
+        }))
     }
 
-    async fn create_tournament_player(
+    fn create_tournament_player(
         &self,
         tournament_id: TournamentId,
         player: TournamentPlayer,
-    ) -> Result<(), RepoError> {
-        let model = tournament_players::ActiveModel {
-            tournament_id: sea_orm::Set(tournament_id.0),
-            user_id: sea_orm::Set(player.user_id.0),
-            score: sea_orm::Set(player.score as i32),
-            seeding_score: sea_orm::Set(player.seeding_score),
-        };
-        match tournament_players::Entity::insert(model)
-            .on_conflict_do_nothing()
-            .exec(&self.db)
-            .await
-        {
-            Ok(_) => Ok(()),
-            Err(e) => Err(RepoError::StorageError(format!(
-                "Failed to register player to tournament: {}",
-                e
-            ))),
-        }
+    ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
+        TransactionItem::new(Box::new(move |ctx| {
+            Box::pin(async move {
+                let model = tournament_players::ActiveModel {
+                    tournament_id: sea_orm::Set(tournament_id.0),
+                    user_id: sea_orm::Set(player.user_id.0),
+                    score: sea_orm::Set(player.score as i32),
+                    seeding_score: sea_orm::Set(player.seeding_score),
+                };
+                match tournament_players::Entity::insert(model)
+                    .on_conflict_do_nothing()
+                    .exec(ctx)
+                    .await
+                {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(TransactionError(format!(
+                        "Failed to register player to tournament: {}",
+                        e
+                    ))),
+                }
+            })
+        }))
     }
 
-    async fn remove_tournament_player(
+    fn remove_tournament_player(
         &self,
         tournament_id: TournamentId,
         user_id: UserId,
-    ) -> Result<(), RepoError> {
-        let model = tournament_players::ActiveModel {
-            tournament_id: sea_orm::Set(tournament_id.0),
-            user_id: sea_orm::Set(user_id.0),
-            ..Default::default()
-        };
-        match tournament_players::Entity::delete(model)
-            .exec(&self.db)
-            .await
-        {
-            Ok(_) => Ok(()),
-            Err(e) => Err(RepoError::StorageError(format!(
-                "Failed to unregister player from tournament: {}",
-                e
-            ))),
-        }
+    ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
+        TransactionItem::new(Box::new(move |ctx| {
+            Box::pin(async move {
+                let model = tournament_players::ActiveModel {
+                    tournament_id: sea_orm::Set(tournament_id.0),
+                    user_id: sea_orm::Set(user_id.0),
+                    ..Default::default()
+                };
+                match tournament_players::Entity::delete(model).exec(ctx).await {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(TransactionError(format!(
+                        "Failed to unregister player from tournament: {}",
+                        e
+                    ))),
+                }
+            })
+        }))
     }
 
-    async fn increase_player_score(
+    fn increase_player_score(
         &self,
         tournament_id: TournamentId,
         user_id: UserId,
         score_increase: u32,
-    ) -> Result<(), RepoError> {
-        tournament_players::Entity::update_many()
-            .col_expr(
-                tournament_players::Column::Score,
-                sea_orm::sea_query::Expr::col(tournament_players::Column::Score)
-                    .add(score_increase as i32),
-            )
-            .filter(tournament_players::Column::TournamentId.eq(tournament_id.0))
-            .filter(tournament_players::Column::UserId.eq(user_id.0))
-            .exec(&self.db)
-            .await
-            .map_err(|e| {
-                RepoError::StorageError(format!(
-                    "Failed to increase player score in tournament: {}",
-                    e
-                ))
-            })?;
-        Ok(())
+    ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
+        TransactionItem::new(Box::new(move |ctx| {
+            Box::pin(async move {
+                match tournament_players::Entity::update_many()
+                    .col_expr(
+                        tournament_players::Column::Score,
+                        sea_orm::sea_query::Expr::col(tournament_players::Column::Score)
+                            .add(score_increase as i32),
+                    )
+                    .filter(tournament_players::Column::TournamentId.eq(tournament_id.0))
+                    .filter(tournament_players::Column::UserId.eq(user_id.0))
+                    .exec(ctx)
+                    .await
+                {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(TransactionError(format!(
+                        "Failed to increase player score in tournament: {}",
+                        e
+                    ))),
+                }
+            })
+        }))
     }
 
-    async fn set_player_seeding_score(
+    fn set_player_seeding_score(
         &self,
         tournament_id: TournamentId,
         user_id: UserId,
         seeding_score: i32,
-    ) -> Result<(), RepoError> {
-        let active_model = tournament_players::ActiveModel {
-            tournament_id: sea_orm::Set(tournament_id.0),
-            user_id: sea_orm::Set(user_id.0),
-            seeding_score: sea_orm::Set(seeding_score),
-            ..Default::default()
-        };
-        tournament_players::Entity::update(active_model)
-            .exec(&self.db)
-            .await
-            .map_err(|e| {
-                RepoError::StorageError(format!(
-                    "Failed to set player seeding score in tournament: {}",
-                    e
-                ))
-            })?;
-        Ok(())
+    ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
+        TransactionItem::new(Box::new(move |ctx| {
+            Box::pin(async move {
+                let active_model = tournament_players::ActiveModel {
+                    tournament_id: sea_orm::Set(tournament_id.0),
+                    user_id: sea_orm::Set(user_id.0),
+                    seeding_score: sea_orm::Set(seeding_score),
+                    ..Default::default()
+                };
+                match tournament_players::Entity::update(active_model)
+                    .exec(ctx)
+                    .await
+                {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(TransactionError(format!(
+                        "Failed to set player seeding score in tournament: {}",
+                        e
+                    ))),
+                }
+            })
+        }))
     }
 }
 

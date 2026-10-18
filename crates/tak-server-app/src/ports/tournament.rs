@@ -3,7 +3,10 @@ use tak_domain::{
     tournament::{Tournament, TournamentPlayer, TournamentRound, TournamentStatus},
 };
 
-use crate::ports::{RepoError, RepoRetrieveError};
+use crate::ports::{
+    RepoError, RepoRetrieveError,
+    transaction::{TransactionError, TransactionItem},
+};
 
 #[async_trait::async_trait]
 pub trait TournamentRepository {
@@ -34,32 +37,31 @@ pub trait TournamentRoundRepository {
     ) -> Result<(), RepoError>;
 }
 
-#[async_trait::async_trait]
-pub trait TournamentPlayerRepository {
-    async fn get_tournament_players(
+pub trait TournamentPlayerRepository<TrCtx> {
+    fn get_tournament_players(
         &self,
         tournament_id: TournamentId,
-    ) -> Result<Vec<TournamentPlayer>, RepoError>;
-    async fn create_tournament_player(
+    ) -> TransactionItem<TrCtx, Result<Vec<TournamentPlayer>, TransactionError>>;
+    fn create_tournament_player(
         &self,
         tournament_id: TournamentId,
         player: TournamentPlayer,
-    ) -> Result<(), RepoError>;
-    async fn increase_player_score(
+    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
+    fn increase_player_score(
         &self,
         tournament_id: TournamentId,
         user_id: UserId,
         score_increase: u32,
-    ) -> Result<(), RepoError>;
-    async fn remove_tournament_player(
+    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
+    fn remove_tournament_player(
         &self,
         tournament_id: TournamentId,
         user_id: UserId,
-    ) -> Result<(), RepoError>;
-    async fn set_player_seeding_score(
+    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
+    fn set_player_seeding_score(
         &self,
         tournament_id: TournamentId,
         user_id: UserId,
         seeding_score: i32,
-    ) -> Result<(), RepoError>;
+    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
 }

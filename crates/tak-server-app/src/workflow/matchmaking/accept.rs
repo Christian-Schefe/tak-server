@@ -5,7 +5,7 @@ use crate::{
     ports::{
         matches::MatchRepository,
         notification::{ListenerMessage, ListenerNotificationPort},
-        transaction::TransactionManager,
+        transaction::{TransactionError, TransactionManager},
     },
     workflow::matchmaking::create_game::{CreateGameFromMatchError, CreateGameFromMatchWorkflow},
 };
@@ -129,12 +129,12 @@ impl<
 
         let match_id = match self
             .ports
-            .match_repository()
-            .create_match(&self.ports.transaction_manager().get_context(), match_data)
+            .transaction_manager()
+            .execute_without_transaction(self.ports.match_repository().create_match(match_data))
             .await
         {
             Ok(id) => id,
-            Err(e) => {
+            Err(TransactionError(e)) => {
                 tracing::error!(
                     "Failed to create match from accepted seek {}: {}",
                     seek_id,

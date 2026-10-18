@@ -5,9 +5,13 @@ use tak_domain::{
     tournament::{TournamentPlayer, TournamentStatus},
 };
 
-use crate::ports::{
-    RepoRetrieveError,
-    tournament::{TournamentPlayerRepository, TournamentRepository},
+use crate::{
+    PortsCollection,
+    ports::{
+        RepoRetrieveError,
+        tournament::{TournamentPlayerRepository, TournamentRepository},
+        transaction::{TransactionError, TransactionManager},
+    },
 };
 
 #[async_trait::async_trait]
@@ -30,30 +34,19 @@ pub enum TournamentRegistrationError {
     StorageError,
 }
 
-pub struct TournamentPlayerRegistrationUseCaseImpl<
-    TR: TournamentRepository,
-    TPR: TournamentPlayerRepository,
-> {
-    tournament_repository: Arc<TR>,
-    tournament_player_repository: Arc<TPR>,
+pub struct TournamentPlayerRegistrationUseCaseImpl<Ports: PortsCollection> {
+    ports: Arc<Ports>,
 }
 
-impl<TR: TournamentRepository, TPR: TournamentPlayerRepository>
-    TournamentPlayerRegistrationUseCaseImpl<TR, TPR>
-{
-    pub fn new(tournament_repository: Arc<TR>, tournament_player_repository: Arc<TPR>) -> Self {
-        Self {
-            tournament_repository,
-            tournament_player_repository,
-        }
+impl<Ports: PortsCollection> TournamentPlayerRegistrationUseCaseImpl<Ports> {
+    pub fn new(ports: Arc<Ports>) -> Self {
+        Self { ports }
     }
 }
 
 #[async_trait::async_trait]
-impl<
-    TR: TournamentRepository + Send + Sync + 'static,
-    TPR: TournamentPlayerRepository + Send + Sync + 'static,
-> TournamentPlayerRegistrationUseCase for TournamentPlayerRegistrationUseCaseImpl<TR, TPR>
+impl<Ports: PortsCollection + Send + Sync + 'static> TournamentPlayerRegistrationUseCase
+    for TournamentPlayerRegistrationUseCaseImpl<Ports>
 {
     #[tracing::instrument(skip(self))]
     async fn register_player_in_tournament(
@@ -62,7 +55,8 @@ impl<
         user_id: UserId,
     ) -> Result<(), TournamentRegistrationError> {
         let tournament = match self
-            .tournament_repository
+            .ports
+            .tournament_repository()
             .get_tournament(tournament_id)
             .await
         {
@@ -90,9 +84,14 @@ impl<
             );
             return Err(TournamentRegistrationError::TournamentNotUpcoming);
         };
-        if let Err(e) = self
-            .tournament_player_repository
-            .create_tournament_player(tournament_id, TournamentPlayer::new(user_id))
+        if let Err(TransactionError(e)) = self
+            .ports
+            .transaction_manager()
+            .execute_without_transaction(
+                self.ports
+                    .tournament_player_repository()
+                    .create_tournament_player(tournament_id, TournamentPlayer::new(user_id)),
+            )
             .await
         {
             tracing::error!(
@@ -114,7 +113,8 @@ impl<
         user_id: UserId,
     ) -> Result<(), TournamentRegistrationError> {
         let tournament = match self
-            .tournament_repository
+            .ports
+            .tournament_repository()
             .get_tournament(tournament_id)
             .await
         {
@@ -142,9 +142,14 @@ impl<
             );
             return Err(TournamentRegistrationError::TournamentNotUpcoming);
         };
-        if let Err(e) = self
-            .tournament_player_repository
-            .remove_tournament_player(tournament_id, user_id)
+        if let Err(TransactionError(e)) = self
+            .ports
+            .transaction_manager()
+            .execute_without_transaction(
+                self.ports
+                    .tournament_player_repository()
+                    .remove_tournament_player(tournament_id, user_id),
+            )
             .await
         {
             tracing::error!(
