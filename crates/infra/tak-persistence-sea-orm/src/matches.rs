@@ -1,6 +1,7 @@
-use crate::{JsonGameSettings, create_db_pool};
+use crate::JsonGameSettings;
+use crate::transaction::TransactionContext;
 use sea_orm::ActiveValue::Set;
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use tak_core::TakPlayer;
 use tak_domain::matches::{
     Match, MatchMode, MatchPlayer, MatchSettings, MatchStatus, MatchTournamentInfo,
@@ -10,9 +11,7 @@ use tak_persistence_sea_orm_entities::matches;
 use tak_server_app::ports::matches::MatchRepository;
 use tak_server_app::ports::{RepoError, RepoRetrieveError};
 
-pub struct MatchRepositoryImpl {
-    db: DatabaseConnection,
-}
+pub struct MatchRepositoryImpl;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum JsonMatchMode {
@@ -65,11 +64,6 @@ impl JsonMatchSettings {
 }
 
 impl MatchRepositoryImpl {
-    pub async fn new() -> Self {
-        let db = create_db_pool().await;
-        Self { db }
-    }
-
     fn model_to_match(model: matches::Model) -> Result<(MatchId, Match), String> {
         Ok((
             MatchId(model.match_id),
@@ -162,12 +156,16 @@ impl MatchRepositoryImpl {
 }
 
 #[async_trait::async_trait]
-impl MatchRepository for MatchRepositoryImpl {
-    async fn create_match(&self, new_match: Match) -> Result<MatchId, RepoError> {
+impl MatchRepository<TransactionContext> for MatchRepositoryImpl {
+    async fn create_match(
+        &self,
+        ctx: &TransactionContext,
+        new_match: Match,
+    ) -> Result<MatchId, RepoError> {
         let active_model = Self::match_to_model(None, &new_match).map_err(|e| {
             RepoError::StorageError(format!("Failed to convert match to model: {}", e))
         })?;
-        match matches::Entity::insert(active_model).exec(&self.db).await {
+        match matches::Entity::insert(active_model).exec(ctx).await {
             Ok(inserted) => Ok(MatchId(inserted.last_insert_id)),
             Err(e) => Err(RepoError::StorageError(format!(
                 "Failed to insert match into database: {}",
@@ -176,8 +174,12 @@ impl MatchRepository for MatchRepositoryImpl {
         }
     }
 
-    async fn get_match(&self, match_id: MatchId) -> Result<Match, RepoRetrieveError> {
-        match matches::Entity::find_by_id(match_id.0).one(&self.db).await {
+    async fn get_match(
+        &self,
+        ctx: &TransactionContext,
+        match_id: MatchId,
+    ) -> Result<Match, RepoRetrieveError> {
+        match matches::Entity::find_by_id(match_id.0).one(ctx).await {
             Ok(Some(model)) => Self::model_to_match(model)
                 .map_err(|e| {
                     RepoRetrieveError::StorageError(format!(
@@ -194,11 +196,16 @@ impl MatchRepository for MatchRepositoryImpl {
         }
     }
 
-    async fn update_match(&self, match_id: MatchId, updated_match: Match) -> Result<(), RepoError> {
+    async fn update_match(
+        &self,
+        ctx: &TransactionContext,
+        match_id: MatchId,
+        updated_match: Match,
+    ) -> Result<(), RepoError> {
         let active_model = Self::match_to_model(Some(match_id), &updated_match).map_err(|e| {
             RepoError::StorageError(format!("Failed to convert match to model: {}", e))
         })?;
-        match matches::Entity::update(active_model).exec(&self.db).await {
+        match matches::Entity::update(active_model).exec(ctx).await {
             Ok(_) => Ok(()),
             Err(e) => Err(RepoError::StorageError(format!(
                 "Failed to update match in database: {}",
@@ -209,11 +216,12 @@ impl MatchRepository for MatchRepositoryImpl {
 
     async fn get_matches_of_tournament(
         &self,
+        ctx: &TransactionContext,
         tournament_id: TournamentId,
     ) -> Result<Vec<(MatchId, Match)>, RepoError> {
         match matches::Entity::find()
             .filter(matches::Column::TournamentId.eq(tournament_id.0))
-            .all(&self.db)
+            .all(ctx)
             .await
         {
             Ok(models) => models

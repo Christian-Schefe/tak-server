@@ -3,11 +3,13 @@ use std::sync::Arc;
 use tak_core::TakPlayer;
 
 use crate::{
+    PortsCollection,
     ports::{
         RepoRetrieveError,
         game_history::GameRepository,
         matches::MatchRepository,
         notification::{ListenerMessage, ListenerNotificationPort},
+        transaction::TransactionManager,
     },
     processes::game_timeout_runner::GameTimeoutRunner,
     workflow::{account::get_snapshot::GetSnapshotWorkflow, gameplay::OngoingGameView},
@@ -30,40 +32,35 @@ pub enum CreateGameFromMatchError {
 }
 
 pub struct CreateGameFromMatchWorkflowImpl<
-    M: MatchRepository,
-    GR: GameRepository,
+    Ports: PortsCollection,
     G: GameService,
     GT: GameTimeoutRunner,
     L: ListenerNotificationPort,
     S: GetSnapshotWorkflow,
 > {
-    match_repo: Arc<M>,
-    game_repository: Arc<GR>,
+    ports: Arc<Ports>,
     game_service: Arc<G>,
     game_timeout_runner: Arc<GT>,
     listener_notification_port: Arc<L>,
     get_snapshot_workflow: Arc<S>,
 }
 impl<
-    M: MatchRepository,
-    GR: GameRepository,
+    Ports: PortsCollection,
     G: GameService,
     GT: GameTimeoutRunner,
     L: ListenerNotificationPort,
     S: GetSnapshotWorkflow,
-> CreateGameFromMatchWorkflowImpl<M, GR, G, GT, L, S>
+> CreateGameFromMatchWorkflowImpl<Ports, G, GT, L, S>
 {
     pub fn new(
-        match_repo: Arc<M>,
-        game_repository: Arc<GR>,
+        ports: Arc<Ports>,
         game_service: Arc<G>,
         game_timeout_runner: Arc<GT>,
         listener_notification_port: Arc<L>,
         get_snapshot_workflow: Arc<S>,
     ) -> Self {
         Self {
-            match_repo,
-            game_repository,
+            ports,
             game_service,
             game_timeout_runner,
             listener_notification_port,
@@ -74,13 +71,12 @@ impl<
 
 #[async_trait::async_trait]
 impl<
-    M: MatchRepository + Send + Sync,
-    GR: GameRepository + Send + Sync,
+    Ports: PortsCollection + Send + Sync + 'static,
     G: GameService + Send + Sync,
     GT: GameTimeoutRunner + Send + Sync,
     L: ListenerNotificationPort + Send + Sync,
     S: GetSnapshotWorkflow + Send + Sync,
-> CreateGameFromMatchWorkflow for CreateGameFromMatchWorkflowImpl<M, GR, G, GT, L, S>
+> CreateGameFromMatchWorkflow for CreateGameFromMatchWorkflowImpl<Ports, G, GT, L, S>
 {
     #[tracing::instrument(skip(self))]
     async fn create_game_from_match(
@@ -89,82 +85,113 @@ impl<
     ) -> Result<(), CreateGameFromMatchError> {
         let date = chrono::Utc::now();
 
-        let mut match_entry = self
-            .match_repo
-            .get_match(match_id)
-            .await
-            .map_err(|e| match e {
-                RepoRetrieveError::NotFound => CreateGameFromMatchError::MatchNotFound,
-                RepoRetrieveError::StorageError(e) => {
-                    tracing::error!("Storage error while retrieving match {}: {}", match_id, e);
-                    CreateGameFromMatchError::Internal
+        self.ports
+            .transaction_manager()
+            .in_transaction(move |ctx| async move {
+                let mut match_entry = self
+                    .ports
+                    .match_repository()
+                    .get_match(&ctx, match_id)
+                    .await
+                    .map_err(|e| match e {
+                        RepoRetrieveError::NotFound => CreateGameFromMatchError::MatchNotFound,
+                        RepoRetrieveError::StorageError(e) => {
+                            tracing::error!(
+                                "Storage error while retrieving match {}: {}",
+                                match_id,
+                                e
+                            );
+                            CreateGameFromMatchError::Internal
+                        }
+                    })?;
+                let player1_color = match_entry.try_begin_game().map_err(|e| {
+                    tracing::error!("Failed to start game for match {}: {}", match_id, e);
+                    CreateGameFromMatchError::AlreadyInProgress
+                })?;
+
+                let (white_id, black_id) = match player1_color {
+                    TakPlayer::White => (match_entry.player1.user_id, match_entry.player2.user_id),
+                    TakPlayer::Black => (match_entry.player2.user_id, match_entry.player1.user_id),
+                };
+
+                let snapshot_white = match self
+                    .get_snapshot_workflow
+                    .get_snapshot(white_id, date)
+                    .await
+                {
+                    Ok(snapshot) => snapshot,
+                    Err(_) => return Err(CreateGameFromMatchError::Internal),
+                };
+                let snapshot_black = match self
+                    .get_snapshot_workflow
+                    .get_snapshot(black_id, date)
+                    .await
+                {
+                    Ok(snapshot) => snapshot,
+                    Err(_) => return Err(CreateGameFromMatchError::Internal),
+                };
+
+                let metadata = self.game_service.create_game_metadata(
+                    date,
+                    white_id,
+                    black_id,
+                    match_entry.settings.is_rated,
+                    match_entry.settings.game_settings.clone(),
+                    Some(match_id),
+                );
+
+                let game_record =
+                    GameRecord::for_ongoing_game(metadata.clone(), snapshot_white, snapshot_black);
+
+                let game_id = match self
+                    .ports
+                    .game_repository()
+                    .save_ongoing_game(game_record)
+                    .await
+                {
+                    Ok(id) => id,
+                    Err(e) => {
+                        tracing::error!(
+                            "Failed to save ongoing game for match {}: {}",
+                            match_id,
+                            e
+                        );
+                        return Err(CreateGameFromMatchError::Internal);
+                    }
+                };
+
+                if let Err(e) = self
+                    .ports
+                    .match_repository()
+                    .update_match(&ctx, match_id, match_entry)
+                    .await
+                {
+                    tracing::error!(
+                        "Failed to start game {} in match {}: {}",
+                        game_id,
+                        match_id,
+                        e
+                    );
+                    return Err(CreateGameFromMatchError::MatchNotFound);
                 }
-            })?;
-        let player1_color = match_entry.try_begin_game().map_err(|e| {
-            tracing::error!("Failed to start game for match {}: {}", match_id, e);
-            CreateGameFromMatchError::AlreadyInProgress
-        })?;
+                let game = self.game_service.create_game(game_id, metadata);
+                GameTimeoutRunner::schedule_game_timeout_check(
+                    self.game_timeout_runner.clone(),
+                    game_id,
+                );
+                let msg = ListenerMessage::GameStarted {
+                    game: OngoingGameView::from(&game),
+                };
+                self.listener_notification_port.notify_all(&msg);
 
-        let (white_id, black_id) = match player1_color {
-            TakPlayer::White => (match_entry.player1.user_id, match_entry.player2.user_id),
-            TakPlayer::Black => (match_entry.player2.user_id, match_entry.player1.user_id),
-        };
-
-        let snapshot_white = match self
-            .get_snapshot_workflow
-            .get_snapshot(white_id, date)
+                Ok(())
+            })
             .await
-        {
-            Ok(snapshot) => snapshot,
-            Err(_) => return Err(CreateGameFromMatchError::Internal),
-        };
-        let snapshot_black = match self
-            .get_snapshot_workflow
-            .get_snapshot(black_id, date)
-            .await
-        {
-            Ok(snapshot) => snapshot,
-            Err(_) => return Err(CreateGameFromMatchError::Internal),
-        };
+            .map_err(|e| {
+                tracing::error!("Failed to create game from match {}: {}", match_id, e);
+                CreateGameFromMatchError::Internal
+            })??;
 
-        let metadata = self.game_service.create_game_metadata(
-            date,
-            white_id,
-            black_id,
-            match_entry.settings.is_rated,
-            match_entry.settings.game_settings.clone(),
-            Some(match_id),
-        );
-
-        let game_record =
-            GameRecord::for_ongoing_game(metadata.clone(), snapshot_white, snapshot_black);
-
-        let game_id = match self.game_repository.save_ongoing_game(game_record).await {
-            Ok(id) => id,
-            Err(e) => {
-                tracing::error!("Failed to save ongoing game for match {}: {}", match_id, e);
-                return Err(CreateGameFromMatchError::Internal);
-            }
-        };
-
-        if let Err(e) = self.match_repo.update_match(match_id, match_entry).await {
-            tracing::error!(
-                "Failed to start game {} in match {}: {}",
-                game_id,
-                match_id,
-                e
-            );
-            return Err(CreateGameFromMatchError::MatchNotFound);
-        }
-
-        let game = self.game_service.create_game(game_id, metadata);
-
-        GameTimeoutRunner::schedule_game_timeout_check(self.game_timeout_runner.clone(), game_id);
-
-        let msg = ListenerMessage::GameStarted {
-            game: OngoingGameView::from(&game),
-        };
-        self.listener_notification_port.notify_all(&msg);
         Ok(())
     }
 }

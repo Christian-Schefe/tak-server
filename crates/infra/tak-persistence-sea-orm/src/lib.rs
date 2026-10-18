@@ -21,6 +21,7 @@ pub mod rating_history;
 pub mod ratings;
 pub mod stats;
 pub mod tournament;
+pub mod transaction;
 
 static DB_POOL: OnceCell<DatabaseConnection> = OnceCell::new();
 

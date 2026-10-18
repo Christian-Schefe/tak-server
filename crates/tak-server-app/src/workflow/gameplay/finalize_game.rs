@@ -8,6 +8,7 @@ use crate::{
         notification::{ListenerGameMessageType, ListenerMessage, ListenerNotificationPort},
         rating::RatingRepository,
         stats::{RatingHistoryRepository, StatsRepository},
+        transaction::TransactionManager,
     },
     workflow::{
         gameplay::FinishedGameView, player::notify_player::NotifyPlayerWorkflow,
@@ -32,10 +33,11 @@ pub trait FinalizeGameWorkflow {
 }
 
 pub struct FinalizeGameWorkflowImpl<
+    TR: TransactionManager<TrCtx>,
     G: GameRepository,
     R: RatingService,
     RP: RatingRepository,
-    M: MatchRepository,
+    M: MatchRepository<TrCtx>,
     NP: NotifyPlayerWorkflow,
     SPS: SpectatorService,
     L: ListenerNotificationPort,
@@ -43,7 +45,9 @@ pub struct FinalizeGameWorkflowImpl<
     S: StatsRepository,
     RH: RatingHistoryRepository,
     TM: TournamentMatchWorkflow,
+    TrCtx,
 > {
+    transaction_manager: Arc<TR>,
     game_repository: Arc<G>,
     rating_service: Arc<R>,
     rating_repository: Arc<RP>,
@@ -55,13 +59,15 @@ pub struct FinalizeGameWorkflowImpl<
     stats_repository: Arc<S>,
     rating_history_repository: Arc<RH>,
     tournament_match_workflow: Arc<TM>,
+    ctx: std::marker::PhantomData<TrCtx>,
 }
 
 impl<
+    TR: TransactionManager<TrCtx>,
     G: GameRepository,
     R: RatingService,
     RP: RatingRepository,
-    M: MatchRepository,
+    M: MatchRepository<TrCtx>,
     NP: NotifyPlayerWorkflow,
     SPS: SpectatorService,
     L: ListenerNotificationPort,
@@ -69,9 +75,11 @@ impl<
     S: StatsRepository,
     RH: RatingHistoryRepository,
     TM: TournamentMatchWorkflow,
-> FinalizeGameWorkflowImpl<G, R, RP, M, NP, SPS, L, MR, S, RH, TM>
+    TrCtx,
+> FinalizeGameWorkflowImpl<TR, G, R, RP, M, NP, SPS, L, MR, S, RH, TM, TrCtx>
 {
     pub fn new(
+        transaction_manager: Arc<TR>,
         game_repository: Arc<G>,
         rating_service: Arc<R>,
         rating_repository: Arc<RP>,
@@ -85,6 +93,7 @@ impl<
         tournament_match_workflow: Arc<TM>,
     ) -> Self {
         Self {
+            transaction_manager,
             game_repository,
             rating_service,
             rating_repository,
@@ -96,13 +105,14 @@ impl<
             stats_repository,
             rating_history_repository,
             tournament_match_workflow,
+            ctx: std::marker::PhantomData,
         }
     }
 
-    async fn handle_match(&self, match_id: MatchId, game: &FinishedGame) {
+    async fn handle_match(&self, ctx: &TrCtx, match_id: MatchId, game: &FinishedGame) {
         tracing::info!("Finalizing game {} in match {}", game.game_id, match_id);
 
-        let mut match_data = match self.match_repository.get_match(match_id).await {
+        let mut match_data = match self.match_repository.get_match(ctx, match_id).await {
             Ok(m) => m,
             Err(e) => {
                 tracing::error!("Failed to retrieve match {}: {}", match_id, e);
@@ -135,7 +145,7 @@ impl<
 
         if let Err(e) = self
             .match_repository
-            .update_match(match_id, match_data.clone())
+            .update_match(ctx, match_id, match_data.clone())
             .await
         {
             tracing::error!("Failed to update match {}: {}", match_id, e);
@@ -157,10 +167,11 @@ impl<
 
 #[async_trait::async_trait]
 impl<
+    TR: TransactionManager<TrCtx> + Send + Sync + 'static,
     G: GameRepository + Send + Sync + 'static,
     R: RatingService + Send + Sync + 'static,
     RP: RatingRepository + Send + Sync + 'static,
-    M: MatchRepository + Send + Sync + 'static,
+    M: MatchRepository<TrCtx> + Send + Sync + 'static,
     NP: NotifyPlayerWorkflow + Send + Sync + 'static,
     SPS: SpectatorService + Send + Sync + 'static,
     L: ListenerNotificationPort + Send + Sync + 'static,
@@ -168,118 +179,130 @@ impl<
     S: StatsRepository + Send + Sync + 'static,
     RH: RatingHistoryRepository + Send + Sync + 'static,
     TM: TournamentMatchWorkflow + Send + Sync + 'static,
-> FinalizeGameWorkflow for FinalizeGameWorkflowImpl<G, R, RP, M, NP, SPS, L, MR, S, RH, TM>
+    TrCtx: Send + Sync + 'static,
+> FinalizeGameWorkflow
+    for FinalizeGameWorkflowImpl<TR, G, R, RP, M, NP, SPS, L, MR, S, RH, TM, TrCtx>
 {
     #[tracing::instrument(skip(self, ended_game), fields(game_id = %ended_game.game_id))]
     async fn finalize_game(&self, ended_game: FinishedGame) {
-        tracing::info!("Finalizing game {}", ended_game.game_id);
-        let game_id = ended_game.game_id;
-        let over_msg = ListenerMessage::GameEvent {
-            game_id,
-            event_type: ListenerGameMessageType::GameOver {
-                game_result: ended_game.game.game_result().clone(),
-            },
-            time_info: ended_game.game.get_time_info(),
-        };
+        match self.transaction_manager.in_transaction(move |ctx| async move {
+            tracing::info!("Finalizing game {}", ended_game.game_id);
+            let game_id = ended_game.game_id;
+            let over_msg = ListenerMessage::GameEvent {
+                game_id,
+                event_type: ListenerGameMessageType::GameOver {
+                    game_result: ended_game.game.game_result().clone(),
+                },
+                time_info: ended_game.game.get_time_info(),
+            };
 
-        self.notify_player_workflow
-            .notify_players(
-                &[ended_game.metadata.white_id, ended_game.metadata.black_id],
-                &over_msg,
+            self.notify_player_workflow
+                .notify_players(
+                    &[ended_game.metadata.white_id, ended_game.metadata.black_id],
+                    &over_msg,
+                )
+                .await;
+
+            let observers = self.spectator_service.remove_game(game_id);
+            self.listener_notification_port
+                .notify_listeners(&observers, &over_msg);
+
+            let ended_msg = ListenerMessage::GameEnded {
+                game: FinishedGameView::from(&ended_game),
+            };
+            self.listener_notification_port.notify_all(&ended_msg);
+
+            tracing::debug!(
+                "Notified players and spectators about game {} ending, updating ratings and stats",
+                game_id
+            );
+
+            let white_account = match self
+                .moderation_repository
+                .get_moderation(ended_game.metadata.white_id)
+                .await
+            {
+                Ok(account) => Some(account),
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to retrieve account for white player {}: {:?}",
+                        ended_game.metadata.white_id,
+                        e
+                    );
+                    None
+                }
+            };
+            let black_account = match self
+                .moderation_repository
+                .get_moderation(ended_game.metadata.black_id)
+                .await
+            {
+                Ok(account) => Some(account),
+                Err(e) => {
+                    tracing::error!(
+                        "Failed to retrieve account for black player {}: {:?}",
+                        ended_game.metadata.black_id,
+                        e
+                    );
+                    None
+                }
+            };
+
+            let game_rating_info = update_ratings(
+                &self.rating_service,
+                &self.rating_repository,
+                &self.rating_history_repository,
+                &ended_game,
+                white_account.as_ref(),
+                black_account.as_ref(),
             )
             .await;
 
-        let observers = self.spectator_service.remove_game(game_id);
-        self.listener_notification_port
-            .notify_listeners(&observers, &over_msg);
-
-        let ended_msg = ListenerMessage::GameEnded {
-            game: FinishedGameView::from(&ended_game),
-        };
-        self.listener_notification_port.notify_all(&ended_msg);
-
-        tracing::debug!(
-            "Notified players and spectators about game {} ending, updating ratings and stats",
-            game_id
-        );
-
-        let white_account = match self
-            .moderation_repository
-            .get_moderation(ended_game.metadata.white_id)
-            .await
-        {
-            Ok(account) => Some(account),
-            Err(e) => {
-                tracing::error!(
-                    "Failed to retrieve account for white player {}: {:?}",
-                    ended_game.metadata.white_id,
-                    e
-                );
-                None
-            }
-        };
-        let black_account = match self
-            .moderation_repository
-            .get_moderation(ended_game.metadata.black_id)
-            .await
-        {
-            Ok(account) => Some(account),
-            Err(e) => {
-                tracing::error!(
-                    "Failed to retrieve account for black player {}: {:?}",
-                    ended_game.metadata.black_id,
-                    e
-                );
-                None
-            }
-        };
-
-        let game_rating_info = update_ratings(
-            &self.rating_service,
-            &self.rating_repository,
-            &self.rating_history_repository,
-            &ended_game,
-            white_account.as_ref(),
-            black_account.as_ref(),
-        )
-        .await;
-
-        tracing::debug!(
-            "Ratings updated for game {}, updating match and game history",
-            game_id
-        );
-
-        if let Some(match_id) = ended_game.metadata.match_id {
-            self.handle_match(match_id, &ended_game).await;
-        } else {
-            tracing::info!("Game {} is not part of a match", game_id);
-        }
-
-        update_stats(
-            &self.stats_repository,
-            &ended_game,
-            white_account.as_ref(),
-            black_account.as_ref(),
-        )
-        .await;
-
-        if let Err(e) = self
-            .game_repository
-            .update_finished_game(
-                game_id,
-                ended_game.game.game_result().clone(),
-                ended_game.events.clone(),
-                game_rating_info,
-            )
-            .await
-        {
-            tracing::error!(
-                "Failed to update finished game record for game {}: {}",
-                game_id,
-                e
+            tracing::debug!(
+                "Ratings updated for game {}, updating match and game history",
+                game_id
             );
+
+            if let Some(match_id) = ended_game.metadata.match_id {
+                self.handle_match(&ctx, match_id, &ended_game).await;
+            } else {
+                tracing::info!("Game {} is not part of a match", game_id);
+            }
+
+            update_stats(
+                &self.stats_repository,
+                &ended_game,
+                white_account.as_ref(),
+                black_account.as_ref(),
+            )
+            .await;
+
+            if let Err(e) = self
+                .game_repository
+                .update_finished_game(
+                    game_id,
+                    ended_game.game.game_result().clone(),
+                    ended_game.events.clone(),
+                    game_rating_info,
+                )
+                .await
+            {
+                tracing::error!(
+                    "Failed to update finished game record for game {}: {}",
+                    game_id,
+                    e
+                );
+                return Err(e);
+            }
+            tracing::debug!("Finished finalizing game {}", game_id);
+            Ok(())
+        }).await {
+            Ok(_) =>{},
+            Err(e) => tracing::error!(
+                "Failed to finalize game: {}",
+                e
+            ),
         }
-        tracing::debug!("Finished finalizing game {}", game_id);
     }
 }
 

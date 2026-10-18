@@ -12,6 +12,7 @@ pub mod puzzle;
 pub mod rating;
 pub mod stats;
 pub mod tournament;
+pub mod transaction;
 
 #[derive(Debug)]
 pub enum RepoError {

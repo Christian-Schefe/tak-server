@@ -1,7 +1,4 @@
-use sea_orm::{
-    ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder,
-    QuerySelect,
-};
+use sea_orm::{ActiveValue::Set, ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 use tak_domain::{
     ChatMessageId, UserId,
     chat::{ChatConversation, ChatMessage},
@@ -9,18 +6,9 @@ use tak_domain::{
 use tak_persistence_sea_orm_entities::chat;
 use tak_server_app::ports::{RepoError, chat::ChatRepository};
 
-use crate::create_db_pool;
+use crate::transaction::TransactionContext;
 
-pub struct ChatRepositoryImpl {
-    db: DatabaseConnection,
-}
-
-impl ChatRepositoryImpl {
-    pub async fn new() -> Self {
-        let db = create_db_pool().await;
-        Self { db }
-    }
-}
+pub struct ChatRepositoryImpl;
 
 fn conversation_id_from_chat_conversation(conversation: &ChatConversation) -> String {
     match conversation {
@@ -34,9 +22,10 @@ fn conversation_id_from_chat_conversation(conversation: &ChatConversation) -> St
 }
 
 #[async_trait::async_trait]
-impl ChatRepository for ChatRepositoryImpl {
+impl ChatRepository<TransactionContext> for ChatRepositoryImpl {
     async fn save_message(
         &self,
+        ctx: &TransactionContext,
         conversation: &ChatConversation,
         message: &ChatMessage,
     ) -> Result<ChatMessageId, RepoError> {
@@ -48,7 +37,7 @@ impl ChatRepository for ChatRepositoryImpl {
             message: Set(message.message.to_string()),
         };
         let inserted_message = chat::Entity::insert(new_message)
-            .exec(&self.db)
+            .exec(ctx)
             .await
             .map_err(|e| RepoError::StorageError(e.to_string()))?;
         Ok(ChatMessageId::new(inserted_message.last_insert_id))
@@ -56,6 +45,7 @@ impl ChatRepository for ChatRepositoryImpl {
 
     async fn get_messages(
         &self,
+        ctx: &TransactionContext,
         conversation: &ChatConversation,
         before: Option<ChatMessageId>,
         limit: usize,
@@ -69,7 +59,7 @@ impl ChatRepository for ChatRepositoryImpl {
         query = query.order_by_desc(chat::Column::Date).limit(limit as u64);
 
         let results = query
-            .all(&self.db)
+            .all(ctx)
             .await
             .map_err(|e| RepoError::StorageError(e.to_string()))?;
 

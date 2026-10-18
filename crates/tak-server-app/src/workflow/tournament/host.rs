@@ -8,12 +8,16 @@ use tak_domain::{
     },
 };
 
-use crate::ports::{
-    RepoError, RepoRetrieveError,
-    matches::MatchRepository,
-    moderation::ModerationRepository,
-    rating::RatingRepository,
-    tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
+use crate::{
+    PortsCollection,
+    ports::{
+        RepoError, RepoRetrieveError,
+        matches::MatchRepository,
+        moderation::ModerationRepository,
+        rating::RatingRepository,
+        tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
+        transaction::TransactionManager,
+    },
 };
 
 #[async_trait::async_trait]
@@ -48,51 +52,22 @@ pub trait HostTournamentUseCase {
     ) -> Result<(), ()>;
 }
 
-pub struct HostTournamentUseCaseImpl<
-    TR: TournamentRepository,
-    M: MatchRepository,
-    TPR: TournamentPlayerRepository,
-    TRR: TournamentRoundRepository,
-    R: RatingRepository,
-    MO: ModerationRepository,
-> {
-    tournament_repository: Arc<TR>,
-    match_repository: Arc<M>,
-    tournament_player_repository: Arc<TPR>,
-    tournament_round_repository: Arc<TRR>,
-    rating_repository: Arc<R>,
-    moderation_repository: Arc<MO>,
+pub struct HostTournamentUseCaseImpl<Ports: PortsCollection> {
+    ports: Arc<Ports>,
 }
 
-impl<
-    TR: TournamentRepository,
-    M: MatchRepository,
-    TPR: TournamentPlayerRepository,
-    TRR: TournamentRoundRepository,
-    R: RatingRepository,
-    MO: ModerationRepository,
-> HostTournamentUseCaseImpl<TR, M, TPR, TRR, R, MO>
-{
-    pub fn new(
-        tournament_repository: Arc<TR>,
-        match_repository: Arc<M>,
-        tournament_player_repository: Arc<TPR>,
-        tournament_round_repository: Arc<TRR>,
-        rating_repository: Arc<R>,
-        moderation_repository: Arc<MO>,
-    ) -> Self {
-        Self {
-            tournament_repository,
-            match_repository,
-            tournament_player_repository,
-            tournament_round_repository,
-            rating_repository,
-            moderation_repository,
-        }
+impl<Ports: PortsCollection> HostTournamentUseCaseImpl<Ports> {
+    pub fn new(ports: Arc<Ports>) -> Self {
+        Self { ports }
     }
 
     async fn is_admin(&self, user_id: UserId) -> Result<bool, ()> {
-        match self.moderation_repository.get_moderation(user_id).await {
+        match self
+            .ports
+            .moderation_repository()
+            .get_moderation(user_id)
+            .await
+        {
             Ok(moderation) => Ok(moderation.is_admin()),
             Err(_) => Err(()),
         }
@@ -100,14 +75,8 @@ impl<
 }
 
 #[async_trait::async_trait]
-impl<
-    TR: TournamentRepository + Send + Sync + 'static,
-    M: MatchRepository + Send + Sync + 'static,
-    TPR: TournamentPlayerRepository + Send + Sync + 'static,
-    TRR: TournamentRoundRepository + Send + Sync + 'static,
-    R: RatingRepository + Send + Sync + 'static,
-    MO: ModerationRepository + Send + Sync + 'static,
-> HostTournamentUseCase for HostTournamentUseCaseImpl<TR, M, TPR, TRR, R, MO>
+impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
+    for HostTournamentUseCaseImpl<Ports>
 {
     #[tracing::instrument(skip(self))]
     async fn create_tournament(
@@ -131,7 +100,8 @@ impl<
             },
         };
         match self
-            .tournament_repository
+            .ports
+            .tournament_repository()
             .create_tournament(tournament)
             .await
         {
@@ -153,7 +123,8 @@ impl<
             return Err(());
         }
         let tournament = match self
-            .tournament_repository
+            .ports
+            .tournament_repository()
             .get_tournament(tournament_id)
             .await
         {
@@ -176,7 +147,8 @@ impl<
         };
 
         let tournament_players = match self
-            .tournament_player_repository
+            .ports
+            .tournament_player_repository()
             .get_tournament_players(tournament_id)
             .await
         {
@@ -193,7 +165,8 @@ impl<
 
         let set_seeding_futures = tournament_players.into_iter().map(|player| async move {
             let seeding_score = match self
-                .rating_repository
+                .ports
+                .rating_repository()
                 .get_player_rating(player.user_id)
                 .await
             {
@@ -210,7 +183,8 @@ impl<
                 }
             };
             if let Err(e) = self
-                .tournament_player_repository
+                .ports
+                .tournament_player_repository()
                 .set_player_seeding_score(tournament_id, player.user_id, seeding_score)
                 .await
             {
@@ -238,7 +212,8 @@ impl<
         }
 
         if let Err(e) = self
-            .tournament_repository
+            .ports
+            .tournament_repository()
             .set_tournament_status(tournament_id, TournamentStatus::Ongoing)
             .await
         {
@@ -270,7 +245,8 @@ impl<
             return Err(());
         }
         let tournament = match self
-            .tournament_repository
+            .ports
+            .tournament_repository()
             .get_tournament(tournament_id)
             .await
         {
@@ -292,8 +268,12 @@ impl<
             return Err(());
         };
         let tournament_matches = self
-            .match_repository
-            .get_matches_of_tournament(tournament_id)
+            .ports
+            .match_repository()
+            .get_matches_of_tournament(
+                &self.ports.transaction_manager().get_context(),
+                tournament_id,
+            )
             .await
             .map_err(|e| {
                 tracing::error!(
@@ -313,7 +293,8 @@ impl<
             return Err(());
         }
         let mut all_players = self
-            .tournament_player_repository
+            .ports
+            .tournament_player_repository()
             .get_tournament_players(tournament_id)
             .await
             .map_err(|e| {
@@ -327,7 +308,8 @@ impl<
         all_players.sort_by_key(|x| (std::cmp::Reverse(x.seeding_score), x.user_id.0));
 
         let rounds = match self
-            .tournament_round_repository
+            .ports
+            .tournament_round_repository()
             .get_tournament_rounds(tournament_id)
             .await
         {
@@ -362,7 +344,8 @@ impl<
 
         let bye_futures = pairings.byes.into_iter().map(|user_id| async move {
             if let Err(e) = self
-                .tournament_player_repository
+                .ports
+                .tournament_player_repository()
                 .increase_player_score(tournament_id, user_id, 2)
                 .await
             {
@@ -391,7 +374,12 @@ impl<
                     color,
                 );
                 async move {
-                    let match_id = match self.match_repository.create_match(match_data).await {
+                    let match_id = match self
+                        .ports
+                        .match_repository()
+                        .create_match(&self.ports.transaction_manager().get_context(), match_data)
+                        .await
+                    {
                         Ok(id) => id,
                         Err(e) => {
                             tracing::error!(
@@ -441,7 +429,8 @@ impl<
         };
         let round = TournamentRound::new(pairing_match_ids, byes);
         if let Err(e) = self
-            .tournament_round_repository
+            .ports
+            .tournament_round_repository()
             .create_tournament_round(tournament_id, next_round_index, round)
             .await
         {
@@ -466,7 +455,8 @@ impl<
             return Err(());
         }
         let tournament = match self
-            .tournament_repository
+            .ports
+            .tournament_repository()
             .get_tournament(tournament_id)
             .await
         {
@@ -488,8 +478,12 @@ impl<
             return Err(());
         };
         let tournament_matches = self
-            .match_repository
-            .get_matches_of_tournament(tournament_id)
+            .ports
+            .match_repository()
+            .get_matches_of_tournament(
+                &self.ports.transaction_manager().get_context(),
+                tournament_id,
+            )
             .await
             .map_err(|e| {
                 tracing::error!(
@@ -511,7 +505,8 @@ impl<
         }
 
         if let Err(e) = self
-            .tournament_repository
+            .ports
+            .tournament_repository()
             .set_tournament_status(tournament_id, TournamentStatus::Completed)
             .await
         {
@@ -535,7 +530,8 @@ impl<
             return Err(());
         }
         let tournament = match self
-            .tournament_repository
+            .ports
+            .tournament_repository()
             .get_tournament(tournament_id)
             .await
         {
@@ -560,7 +556,8 @@ impl<
             return Ok(());
         }
         if let Err(e) = self
-            .tournament_repository
+            .ports
+            .tournament_repository()
             .set_tournament_status(
                 tournament_id,
                 TournamentStatus::Upcoming {

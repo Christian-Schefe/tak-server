@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
 use crate::{
+    PortsCollection,
     ports::{
         RepoRetrieveError,
         matches::MatchRepository,
         notification::{ListenerMatchEventType, ListenerMessage},
+        transaction::TransactionManager,
     },
     workflow::{
         matchmaking::{MatchReadinessStatus, create_game::CreateGameFromMatchWorkflow},
@@ -32,32 +34,32 @@ pub trait MatchReadinessUseCase {
 }
 
 pub struct MatchReadinessUseCaseImpl<
-    M: MatchRepository,
+    Ports: PortsCollection,
     C: CreateGameFromMatchWorkflow,
     RS: MatchReadinessService,
     L: NotifyPlayerWorkflow,
 > {
-    match_repo: Arc<M>,
+    ports: Arc<Ports>,
     create_game_workflow: Arc<C>,
     match_readiness_service: Arc<RS>,
     notification_port: Arc<L>,
 }
 
 impl<
-    M: MatchRepository,
+    Ports: PortsCollection,
     C: CreateGameFromMatchWorkflow,
     RS: MatchReadinessService,
     L: NotifyPlayerWorkflow,
-> MatchReadinessUseCaseImpl<M, C, RS, L>
+> MatchReadinessUseCaseImpl<Ports, C, RS, L>
 {
     pub fn new(
-        match_repo: Arc<M>,
+        ports: Arc<Ports>,
         create_game_workflow: Arc<C>,
         match_readiness_service: Arc<RS>,
         notification_port: Arc<L>,
     ) -> Self {
         Self {
-            match_repo,
+            ports,
             create_game_workflow,
             match_readiness_service,
             notification_port,
@@ -66,8 +68,9 @@ impl<
 
     async fn get_match(&self, match_id: MatchId) -> Result<Match, MatchReadinessError> {
         let match_entry = self
-            .match_repo
-            .get_match(match_id)
+            .ports
+            .match_repository()
+            .get_match(&self.ports.transaction_manager().get_context(), match_id)
             .await
             .map_err(|e| match e {
                 RepoRetrieveError::NotFound => {
@@ -95,11 +98,11 @@ pub enum MatchReadinessError {
 
 #[async_trait::async_trait]
 impl<
-    M: MatchRepository + Send + Sync + 'static,
+    Ports: PortsCollection + Send + Sync + 'static,
     C: CreateGameFromMatchWorkflow + Send + Sync + 'static,
     RS: MatchReadinessService + Send + Sync + 'static,
     L: NotifyPlayerWorkflow + Send + Sync + 'static,
-> MatchReadinessUseCase for MatchReadinessUseCaseImpl<M, C, RS, L>
+> MatchReadinessUseCase for MatchReadinessUseCaseImpl<Ports, C, RS, L>
 {
     fn get_readiness_status(&self, match_id: MatchId) -> MatchReadinessStatus {
         MatchReadinessStatus {

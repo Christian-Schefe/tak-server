@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use crate::{
-    ports::{RepoRetrieveError, matches::MatchRepository},
+    PortsCollection,
+    ports::{RepoRetrieveError, matches::MatchRepository, transaction::TransactionManager},
     workflow::matchmaking::SeekView,
 };
 use tak_domain::{MatchId, SeekId, matches::Match, seek::SeekService};
@@ -36,20 +37,27 @@ pub enum GetMatchError {
     InternalError,
 }
 
-pub struct GetMatchUseCaseImpl<M: MatchRepository> {
-    match_repo: Arc<M>,
+pub struct GetMatchUseCaseImpl<Ports: PortsCollection> {
+    ports: Arc<Ports>,
 }
 
-impl<M: MatchRepository> GetMatchUseCaseImpl<M> {
-    pub fn new(match_repo: Arc<M>) -> Self {
-        Self { match_repo }
+impl<Ports: PortsCollection> GetMatchUseCaseImpl<Ports> {
+    pub fn new(ports: Arc<Ports>) -> Self {
+        Self { ports }
     }
 }
 
 #[async_trait::async_trait]
-impl<M: MatchRepository + Send + Sync + 'static> GetMatchUseCase for GetMatchUseCaseImpl<M> {
+impl<Ports: PortsCollection + Send + Sync + 'static> GetMatchUseCase
+    for GetMatchUseCaseImpl<Ports>
+{
     async fn get_match(&self, match_id: MatchId) -> Result<Match, GetMatchError> {
-        match self.match_repo.get_match(match_id).await {
+        match self
+            .ports
+            .match_repository()
+            .get_match(&self.ports.transaction_manager().get_context(), match_id)
+            .await
+        {
             Ok(m) => Ok(m),
             Err(RepoRetrieveError::NotFound) => Err(GetMatchError::NotFound),
             Err(RepoRetrieveError::StorageError(e)) => {

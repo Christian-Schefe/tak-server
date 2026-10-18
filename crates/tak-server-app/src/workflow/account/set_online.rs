@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
 use crate::{
+    PortsCollection,
     ports::{
         connection::UserOnlineStatusPort,
         matches::MatchRepository,
         notification::{ListenerMatchEventType, ListenerMessage, ListenerNotificationPort},
+        transaction::TransactionManager,
     },
     processes::disconnect_timeout_runner::DisconnectTimeoutRunner,
     workflow::player::notify_player::NotifyPlayerWorkflow,
@@ -19,49 +21,49 @@ pub trait SetAccountOnlineUseCase {
 }
 
 pub struct SetAccountOnlineUseCaseImpl<
+    Ports: PortsCollection,
     P: UserOnlineStatusPort,
     L: ListenerNotificationPort,
     S: SeekService,
     D: DisconnectTimeoutRunner,
     M: MatchReadinessService,
-    MR: MatchRepository,
     NP: NotifyPlayerWorkflow,
 > {
+    ports: Arc<Ports>,
     account_online_status_port: Arc<P>,
     notification_port: Arc<L>,
     seek_service: Arc<S>,
     disconnect_timeout_runner: Arc<D>,
     match_readiness_service: Arc<M>,
-    match_repository: Arc<MR>,
     notify_player_workflow: Arc<NP>,
 }
 
 impl<
+    Ports: PortsCollection,
     P: UserOnlineStatusPort,
     L: ListenerNotificationPort,
     S: SeekService,
     D: DisconnectTimeoutRunner,
     M: MatchReadinessService,
-    MR: MatchRepository,
     NP: NotifyPlayerWorkflow,
-> SetAccountOnlineUseCaseImpl<P, L, S, D, M, MR, NP>
+> SetAccountOnlineUseCaseImpl<Ports, P, L, S, D, M, NP>
 {
     pub fn new(
+        ports: Arc<Ports>,
         account_online_status_port: Arc<P>,
         notification_port: Arc<L>,
         seek_service: Arc<S>,
         disconnect_timeout_runner: Arc<D>,
         match_readiness_service: Arc<M>,
-        match_repository: Arc<MR>,
         notify_player_workflow: Arc<NP>,
     ) -> Self {
         Self {
+            ports,
             account_online_status_port,
             notification_port,
             seek_service,
             disconnect_timeout_runner,
             match_readiness_service,
-            match_repository,
             notify_player_workflow,
         }
     }
@@ -69,14 +71,14 @@ impl<
 
 #[async_trait::async_trait]
 impl<
+    Ports: PortsCollection + Send + Sync + 'static,
     P: UserOnlineStatusPort + Send + Sync + 'static,
     L: ListenerNotificationPort + Send + Sync + 'static,
     S: SeekService + Send + Sync + 'static,
     D: DisconnectTimeoutRunner + Send + Sync + 'static,
     M: MatchReadinessService + Send + Sync + 'static,
-    MR: MatchRepository + Send + Sync + 'static,
     NP: NotifyPlayerWorkflow + Send + Sync + 'static,
-> SetAccountOnlineUseCase for SetAccountOnlineUseCaseImpl<P, L, S, D, M, MR, NP>
+> SetAccountOnlineUseCase for SetAccountOnlineUseCaseImpl<Ports, P, L, S, D, M, NP>
 {
     #[tracing::instrument(skip(self))]
     async fn set_online(&self, user_id: UserId) {
@@ -109,12 +111,17 @@ impl<
         let cancelled_match_readiness = self
             .match_readiness_service
             .set_player_not_ready_everywhere(user_id);
-        let match_futures =
-            cancelled_match_readiness
-                .into_iter()
-                .map(|match_id| async move {
-                    (match_id, self.match_repository.get_match(match_id).await)
-                });
+        let match_futures = cancelled_match_readiness
+            .into_iter()
+            .map(|match_id| async move {
+                (
+                    match_id,
+                    self.ports
+                        .match_repository()
+                        .get_match(&self.ports.transaction_manager().get_context(), match_id)
+                        .await,
+                )
+            });
         let matches = futures::future::join_all(match_futures).await;
         for (match_id, match_entry) in matches {
             match match_entry {

@@ -19,12 +19,13 @@ use tak_persistence_sea_orm::{
         TournamentPlayerRegistrationRepositoryImpl, TournamentRepositoryImpl,
         TournamentRoundRepositoryImpl,
     },
+    transaction::TransactionManagerImpl,
 };
 use tak_player_connection::{
     AccountOnlineStatusService, PlayerConnectionDriver, PlayerConnectionService,
 };
 use tak_server_api::WsService;
-use tak_server_app::build_application;
+use tak_server_app::{PortsCollectionImpl, build_application};
 
 use crate::{compose::ComposedListenerNotificationService, logs::init_logger};
 
@@ -93,7 +94,7 @@ async fn main() {
     let account_online_status_adapter = Arc::new(AccountOnlineStatusService::new());
     let profile_picture_repo = Arc::new(ProfilePictureRepositoryImpl::new().await);
     let puzzle_repo = Arc::new(PuzzleRepositoryImpl::new().await);
-    let chat_repo = Arc::new(ChatRepositoryImpl::new().await);
+    let chat_repo = Arc::new(ChatRepositoryImpl);
     let rating_history_repo = Arc::new(RatingHistoryRepositoryImpl::new().await);
     let tournament_repo = Arc::new(TournamentRepositoryImpl::new().await);
     let tournament_player_registration_repo =
@@ -102,6 +103,25 @@ async fn main() {
     let tournament_round_repo = Arc::new(TournamentRoundRepositoryImpl::new().await);
     let moderation_repo = Arc::new(ModerationRepositoryImpl::new().await);
 
+    let transaction_manager = Arc::new(TransactionManagerImpl::new().await);
+
+    let ports = Arc::new(PortsCollectionImpl::new(
+        game_repo,
+        rating_repo,
+        event_repo,
+        stats_repo,
+        profile_repo,
+        profile_picture_repo,
+        puzzle_repo,
+        chat_repo,
+        rating_history_repo,
+        tournament_repo,
+        tournament_player_registration_repo,
+        match_repo,
+        tournament_round_repo,
+        moderation_repo,
+        transaction_manager,
+    ));
     let app = Arc::new(
         build_application(
             game_repo,
@@ -123,6 +143,8 @@ async fn main() {
             match_repo,
             tournament_round_repo,
             moderation_repo,
+            transaction_manager,
+            ports,
         )
         .await,
     );

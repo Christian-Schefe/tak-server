@@ -4,10 +4,11 @@ use crate::{
         chat::ChatRepository,
         connection::UserConnectionPort,
         notification::{ListenerMessage, ListenerNotificationPort},
+        transaction::TransactionManager,
     },
     workflow::chat::ChatMessageView,
 };
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 use tak_domain::{
     ChatMessageId, UserId,
     chat::{ChatConversation, ChatMessage, ChatRoomService, ContentPolicy},
@@ -39,13 +40,17 @@ pub struct ChatMessageUseCaseImpl<
     P: UserConnectionPort,
     C: ChatRoomService,
     Co: ContentPolicy,
-    CR: ChatRepository,
+    CR: ChatRepository<TrCtx>,
+    TR: TransactionManager<TrCtx>,
+    TrCtx,
 > {
     listener_notification_port: Arc<L>,
     player_connection_port: Arc<P>,
     chat_room_service: Arc<C>,
     content_policy: Arc<Co>,
     chat_repository: Arc<CR>,
+    transaction_manager: Arc<TR>,
+    ctx: PhantomData<TrCtx>,
 }
 
 impl<
@@ -53,8 +58,10 @@ impl<
     P: UserConnectionPort,
     C: ChatRoomService,
     Co: ContentPolicy,
-    CR: ChatRepository,
-> ChatMessageUseCaseImpl<L, P, C, Co, CR>
+    CR: ChatRepository<TrCtx>,
+    TR: TransactionManager<TrCtx>,
+    TrCtx,
+> ChatMessageUseCaseImpl<L, P, C, Co, CR, TR, TrCtx>
 {
     pub fn new(
         listener_notification_port: Arc<L>,
@@ -62,6 +69,7 @@ impl<
         chat_room_service: Arc<C>,
         content_policy: Arc<Co>,
         chat_repository: Arc<CR>,
+        transaction_manager: Arc<TR>,
     ) -> Self {
         Self {
             listener_notification_port,
@@ -69,6 +77,8 @@ impl<
             chat_room_service,
             content_policy,
             chat_repository,
+            transaction_manager,
+            ctx: PhantomData,
         }
     }
 }
@@ -79,8 +89,10 @@ impl<
     P: UserConnectionPort + Send + Sync + 'static,
     C: ChatRoomService + Send + Sync + 'static,
     Co: ContentPolicy + Send + Sync + 'static,
-    CR: ChatRepository + Send + Sync + 'static,
-> ChatMessageUseCase for ChatMessageUseCaseImpl<L, P, C, Co, CR>
+    CR: ChatRepository<TrCtx> + Send + Sync + 'static,
+    TR: TransactionManager<TrCtx> + Send + Sync + 'static,
+    TrCtx: Send + Sync + 'static,
+> ChatMessageUseCase for ChatMessageUseCaseImpl<L, P, C, Co, CR, TR, TrCtx>
 {
     async fn send_message(
         &self,
@@ -114,7 +126,11 @@ impl<
 
         let msg_id = match self
             .chat_repository
-            .save_message(conversation, &chat_msg)
+            .save_message(
+                &self.transaction_manager.get_context(),
+                conversation,
+                &chat_msg,
+            )
             .await
         {
             Ok(id) => id,
@@ -167,7 +183,12 @@ impl<
     ) -> Result<Vec<ChatMessageView>, ()> {
         match self
             .chat_repository
-            .get_messages(&conversation, before, limit)
+            .get_messages(
+                &self.transaction_manager.get_context(),
+                &conversation,
+                before,
+                limit,
+            )
             .await
         {
             Ok(messages) => Ok(messages

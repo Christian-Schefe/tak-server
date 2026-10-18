@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
 use crate::{
+    PortsCollection,
     ports::{
         matches::MatchRepository,
         notification::{ListenerMessage, ListenerNotificationPort},
+        transaction::TransactionManager,
     },
     workflow::matchmaking::create_game::{CreateGameFromMatchError, CreateGameFromMatchWorkflow},
 };
@@ -20,33 +22,33 @@ pub trait AcceptSeekUseCase {
 }
 
 pub struct AcceptSeekUseCaseImpl<
+    Ports: PortsCollection,
     S: SeekService,
-    M: MatchRepository,
     L: ListenerNotificationPort,
     C: CreateGameFromMatchWorkflow,
 > {
+    ports: Arc<Ports>,
     seek_service: Arc<S>,
-    match_repo: Arc<M>,
     notification_port: Arc<L>,
     create_game_workflow: Arc<C>,
 }
 
 impl<
+    Ports: PortsCollection,
     S: SeekService,
-    M: MatchRepository,
     L: ListenerNotificationPort,
     C: CreateGameFromMatchWorkflow,
-> AcceptSeekUseCaseImpl<S, M, L, C>
+> AcceptSeekUseCaseImpl<Ports, S, L, C>
 {
     pub fn new(
+        ports: Arc<Ports>,
         seek_service: Arc<S>,
-        match_repo: Arc<M>,
         notification_port: Arc<L>,
         create_game_workflow: Arc<C>,
     ) -> Self {
         Self {
+            ports,
             seek_service,
-            match_repo,
             notification_port,
             create_game_workflow,
         }
@@ -60,11 +62,11 @@ pub enum AcceptSeekError {
 
 #[async_trait::async_trait]
 impl<
+    Ports: PortsCollection + Send + Sync + 'static,
     S: SeekService + Send + Sync + 'static,
-    M: MatchRepository + Send + Sync + 'static,
     L: ListenerNotificationPort + Send + Sync + 'static,
     C: CreateGameFromMatchWorkflow + Send + Sync + 'static,
-> AcceptSeekUseCase for AcceptSeekUseCaseImpl<S, M, L, C>
+> AcceptSeekUseCase for AcceptSeekUseCaseImpl<Ports, S, L, C>
 {
     #[tracing::instrument(skip(self))]
     async fn accept_seek(&self, player: UserId, seek_id: SeekId) -> Result<(), AcceptSeekError> {
@@ -125,7 +127,12 @@ impl<
             initial_color,
         );
 
-        let match_id = match self.match_repo.create_match(match_data).await {
+        let match_id = match self
+            .ports
+            .match_repository()
+            .create_match(&self.ports.transaction_manager().get_context(), match_data)
+            .await
+        {
             Ok(id) => id,
             Err(e) => {
                 tracing::error!(
