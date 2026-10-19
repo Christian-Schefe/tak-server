@@ -1,8 +1,13 @@
 use std::sync::Arc;
 
-use crate::ports::{
-    RepoError, RepoRetrieveError, authentication::AccountPort, email::EmailPort,
-    moderation::ModerationRepository,
+use crate::{
+    PortsCollection,
+    ports::{
+        authentication::AccountPort,
+        email::EmailPort,
+        moderation::ModerationRepository,
+        transaction::{TransactionError, TransactionManager},
+    },
 };
 use tak_domain::{
     UserId,
@@ -64,29 +69,29 @@ pub struct ModerationPolicies {
     pub set_user_policy: Arc<dyn PermissionPolicy + Send + Sync + 'static>,
 }
 
-pub struct ModeratePlayerUseCaseImpl<E: EmailPort, M: ModerationRepository, A: AccountPort> {
+pub struct ModeratePlayerUseCaseImpl<Ports: PortsCollection, E: EmailPort, A: AccountPort> {
+    ports: Arc<Ports>,
     email_port: Arc<E>,
     policies: ModerationPolicies,
-    moderation_repo: Arc<M>,
     account_info_service: Arc<A>,
 }
 
 impl<
+    Ports: PortsCollection + Send + Sync + 'static,
     E: EmailPort + Send + Sync + 'static,
-    M: ModerationRepository + Send + Sync + 'static,
     A: AccountPort + Send + Sync + 'static,
-> ModeratePlayerUseCaseImpl<E, M, A>
+> ModeratePlayerUseCaseImpl<Ports, E, A>
 {
     pub fn new(
+        ports: Arc<Ports>,
         email_port: Arc<E>,
         policies: ModerationPolicies,
-        moderation_repo: Arc<M>,
         account_info_service: Arc<A>,
     ) -> Self {
         Self {
+            ports,
             email_port,
             policies,
-            moderation_repo,
             account_info_service,
         }
     }
@@ -98,8 +103,45 @@ impl<
         policy: Arc<dyn PermissionPolicy + Send + Sync + 'static>,
         task: impl FnOnce(&mut Moderation),
     ) -> Result<(), ModerationError> {
-        let executing_account = self.get_moderation(user_id).await?;
-        let mut target_account = self.get_moderation(target_user_id).await?;
+        let executing_account = match self
+            .ports
+            .transaction_manager()
+            .execute(self.ports.moderation_repository().get_moderation(user_id))
+            .await
+        {
+            Ok(Some(account)) => account,
+            Ok(None) => {
+                return Err(ModerationError::UserNotFound);
+            }
+            Err(TransactionError(e)) => {
+                tracing::error!("Failed to retrieve account for user {}: {}", user_id, e);
+                return Err(ModerationError::Internal);
+            }
+        };
+        let mut target_account = match self
+            .ports
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .moderation_repository()
+                    .get_moderation(target_user_id),
+            )
+            .await
+        {
+            Ok(Some(account)) => account,
+            Ok(None) => {
+                tracing::error!("Target user {} not found", target_user_id);
+                return Err(ModerationError::UserNotFound);
+            }
+            Err(TransactionError(e)) => {
+                tracing::error!(
+                    "Failed to retrieve account for user {}: {}",
+                    target_user_id,
+                    e
+                );
+                return Err(ModerationError::Internal);
+            }
+        };
 
         if !policy.has_permissions(&executing_account, &target_account) {
             return Err(ModerationError::InsufficientPermissions);
@@ -108,12 +150,17 @@ impl<
         task(&mut target_account);
 
         match self
-            .moderation_repo
-            .set_moderation(target_user_id, target_account)
+            .ports
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .moderation_repository()
+                    .set_moderation(target_user_id, target_account),
+            )
             .await
         {
             Ok(()) => Ok(()),
-            Err(RepoError::StorageError(e)) => {
+            Err(TransactionError(e)) => {
                 tracing::error!("Failed to set moderation: {}", e);
                 Err(ModerationError::Internal)
             }
@@ -175,16 +222,21 @@ impl<
 
 #[async_trait::async_trait]
 impl<
+    Ports: PortsCollection + Send + Sync + 'static,
     E: EmailPort + Send + Sync + 'static,
-    M: ModerationRepository + Send + Sync + 'static,
     A: AccountPort + Send + Sync + 'static,
-> ModeratePlayerUseCase for ModeratePlayerUseCaseImpl<E, M, A>
+> ModeratePlayerUseCase for ModeratePlayerUseCaseImpl<Ports, E, A>
 {
     async fn get_moderation(&self, user_id: UserId) -> Result<Moderation, ModerationError> {
-        match self.moderation_repo.get_moderation(user_id).await {
-            Ok(moderation) => Ok(moderation),
-            Err(RepoRetrieveError::NotFound) => Err(ModerationError::UserNotFound),
-            Err(RepoRetrieveError::StorageError(e)) => {
+        match self
+            .ports
+            .transaction_manager()
+            .execute(self.ports.moderation_repository().get_moderation(user_id))
+            .await
+        {
+            Ok(Some(moderation)) => Ok(moderation),
+            Ok(None) => Err(ModerationError::UserNotFound),
+            Err(TransactionError(e)) => {
                 tracing::error!(
                     "Failed to retrieve moderation for user_id: {}: {:?}",
                     user_id,

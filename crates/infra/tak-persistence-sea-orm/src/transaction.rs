@@ -83,11 +83,4 @@ impl TransactionManager<TransactionContext> for TransactionManagerImpl {
             }
         }
     }
-    async fn execute_without_transaction<Out: Send + Sync + 'static>(
-        &self,
-        item: TransactionItem<TransactionContext, Result<Out, TransactionError>>,
-    ) -> Result<Out, TransactionError> {
-        item.execute(&TransactionContext::Connection(self.db.clone()))
-            .await
-    }
 }

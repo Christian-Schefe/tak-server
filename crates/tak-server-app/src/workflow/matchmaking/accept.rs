@@ -130,7 +130,7 @@ impl<
         let match_id = match self
             .ports
             .transaction_manager()
-            .execute_without_transaction(self.ports.match_repository().create_match(match_data))
+            .execute(self.ports.match_repository().create_match(match_data))
             .await
         {
             Ok(id) => id,

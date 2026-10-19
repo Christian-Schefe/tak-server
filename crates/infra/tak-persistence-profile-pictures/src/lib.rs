@@ -5,7 +5,7 @@ use tak_domain::{
     UserId,
     profile::{ProfilePicture, ProfilePictureFileType},
 };
-use tak_server_app::ports::{RepoError, RepoRetrieveError, profile::ProfilePictureRepository};
+use tak_server_app::ports::{profile::ProfilePictureRepository, transaction::TransactionError};
 
 pub struct ProfilePictureRepositoryImpl {
     file_path: PathBuf,
@@ -43,35 +43,42 @@ impl ProfilePictureRepository for ProfilePictureRepositoryImpl {
         &self,
         user_id: UserId,
         image: DynamicImage,
-    ) -> Result<(), RepoError> {
+    ) -> Result<(), TransactionError> {
         let (shard_path, file_name) = self.get_file_path(user_id);
         let file_path = shard_path.join(file_name);
         let mut bytes: Vec<u8> = Vec::new();
         image
             .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::WebP)
-            .map_err(|e| RepoError::StorageError(format!("Failed to encode image: {}", e)))?;
-        tokio::fs::create_dir_all(shard_path).await.map_err(|e| {
-            RepoError::StorageError(format!("Failed to create shard directory: {}", e))
-        })?;
+            .map_err(|e| TransactionError(format!("Failed to encode image: {}", e)))?;
+        tokio::fs::create_dir_all(shard_path)
+            .await
+            .map_err(|e| TransactionError(format!("Failed to create shard directory: {}", e)))?;
         tokio::fs::write(file_path, bytes)
             .await
-            .map_err(|e| RepoError::StorageError(format!("Failed to write image file: {}", e)))?;
+            .map_err(|e| TransactionError(format!("Failed to write image file: {}", e)))?;
         Ok(())
     }
 
     async fn get_profile_picture(
         &self,
         user_id: UserId,
-    ) -> Result<ProfilePicture, RepoRetrieveError> {
+    ) -> Result<Option<ProfilePicture>, TransactionError> {
         let (shard_path, file_name) = self.get_file_path(user_id);
         let file_path = shard_path.join(file_name);
-        let file = tokio::fs::File::open(&file_path)
-            .await
-            .map_err(|_| RepoRetrieveError::NotFound)?;
+        let file = match tokio::fs::File::open(&file_path).await {
+            Ok(file) => file,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => {
+                return Err(TransactionError(format!(
+                    "Failed to open profile picture file: {}",
+                    e
+                )));
+            }
+        };
         let stream = tokio_util::io::ReaderStream::new(file);
-        Ok(ProfilePicture::new(
+        Ok(Some(ProfilePicture::new(
             Box::new(stream),
             ProfilePictureFileType::WebP,
-        ))
+        )))
     }
 }

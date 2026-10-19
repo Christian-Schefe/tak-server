@@ -76,11 +76,11 @@ async fn main() {
     let _guard = init_logger();
     let ws_service = Arc::new(WsService::new());
 
-    let game_repo = Arc::new(GameRepositoryImpl::new().await);
-    let rating_repo = Arc::new(RatingRepositoryImpl::new().await);
-    let profile_repo = Arc::new(ProfileRepositoryImpl::new().await);
+    let game_repo = Arc::new(GameRepositoryImpl);
+    let rating_repo = Arc::new(RatingRepositoryImpl);
+    let profile_repo = Arc::new(ProfileRepositoryImpl);
     let event_repo = Arc::new(NoopEventRepository);
-    let stats_repo = Arc::new(StatsRepositoryImpl::new().await);
+    let stats_repo = Arc::new(StatsRepositoryImpl);
     let email_adapter = Arc::new(LettreEmailAdapter::new());
     let player_connection_adapter =
         Arc::new(PlayerConnectionService::new(vec![ws_service.clone()]));
@@ -93,14 +93,14 @@ async fn main() {
 
     let account_online_status_adapter = Arc::new(AccountOnlineStatusService::new());
     let profile_picture_repo = Arc::new(ProfilePictureRepositoryImpl::new().await);
-    let puzzle_repo = Arc::new(PuzzleRepositoryImpl::new().await);
+    let puzzle_repo = Arc::new(PuzzleRepositoryImpl);
     let chat_repo = Arc::new(ChatRepositoryImpl);
-    let rating_history_repo = Arc::new(RatingHistoryRepositoryImpl::new().await);
+    let rating_history_repo = Arc::new(RatingHistoryRepositoryImpl);
     let tournament_repo = Arc::new(TournamentRepositoryImpl::new().await);
     let tournament_player_registration_repo = Arc::new(TournamentPlayerRegistrationRepositoryImpl);
     let match_repo = Arc::new(MatchRepositoryImpl);
     let tournament_round_repo = Arc::new(TournamentRoundRepositoryImpl::new().await);
-    let moderation_repo = Arc::new(ModerationRepositoryImpl::new().await);
+    let moderation_repo = Arc::new(ModerationRepositoryImpl);
 
     let transaction_manager = Arc::new(TransactionManagerImpl::new().await);
 
@@ -123,20 +123,12 @@ async fn main() {
     ));
     let app = Arc::new(
         build_application(
-            game_repo,
-            rating_repo,
             event_repo,
-            stats_repo,
             email_adapter.clone(),
             listener_notification_adapter.clone(),
             player_connection_adapter.clone(),
             authentication_adapter.clone(),
-            profile_repo,
             account_online_status_adapter,
-            profile_picture_repo,
-            puzzle_repo,
-            rating_history_repo,
-            moderation_repo,
             ports,
         )
         .await,

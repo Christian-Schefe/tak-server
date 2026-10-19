@@ -1,10 +1,13 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::ports::{
-    RepoError,
-    authentication::{AccountPort, RefreshToken},
-    email::EmailPort,
-    moderation::ModerationRepository,
+use crate::{
+    PortsCollection,
+    ports::{
+        authentication::{AccountPort, RefreshToken},
+        email::EmailPort,
+        moderation::ModerationRepository,
+        transaction::{TransactionError, TransactionManager},
+    },
 };
 use tak_domain::{
     UserId,
@@ -72,17 +75,17 @@ pub trait AuthenticationUseCase {
     ) -> Result<AuthenticatedUser, RefreshError>;
 }
 
-pub struct AuthenticationUseCaseImpl<A: AccountPort, E: EmailPort, M: ModerationRepository> {
+pub struct AuthenticationUseCaseImpl<Ports: PortsCollection, A: AccountPort, E: EmailPort> {
+    ports: Arc<Ports>,
     account_service: Arc<A>,
     email_service: Arc<E>,
-    moderation_repo: Arc<M>,
 }
-impl<A: AccountPort, E: EmailPort, M: ModerationRepository> AuthenticationUseCaseImpl<A, E, M> {
-    pub fn new(account_service: Arc<A>, email_service: Arc<E>, moderation_repo: Arc<M>) -> Self {
+impl<Ports: PortsCollection, A: AccountPort, E: EmailPort> AuthenticationUseCaseImpl<Ports, A, E> {
+    pub fn new(ports: Arc<Ports>, account_service: Arc<A>, email_service: Arc<E>) -> Self {
         Self {
+            ports,
             account_service,
             email_service,
-            moderation_repo,
         }
     }
 }
@@ -91,10 +94,10 @@ const REFRESH_TOKEN_DURATION: Duration = Duration::from_secs(60 * 60 * 24 * 7);
 
 #[async_trait::async_trait]
 impl<
+    Ports: PortsCollection + Send + Sync + 'static,
     A: AccountPort + Send + Sync + 'static,
     E: EmailPort + Send + Sync + 'static,
-    M: ModerationRepository + Send + Sync + 'static,
-> AuthenticationUseCase for AuthenticationUseCaseImpl<A, E, M>
+> AuthenticationUseCase for AuthenticationUseCaseImpl<Ports, A, E>
 {
     async fn login(
         &self,
@@ -145,12 +148,17 @@ impl<
         moderation.user_type = UserType::Guest;
 
         match self
-            .moderation_repo
-            .set_moderation(user_id, moderation)
+            .ports
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .moderation_repository()
+                    .set_moderation(user_id, moderation),
+            )
             .await
         {
             Ok(()) => (),
-            Err(RepoError::StorageError(e)) => {
+            Err(TransactionError(e)) => {
                 tracing::error!("Failed to set moderation for guest account: {:?}", e);
                 return Err(RegisterError::Internal);
             }
@@ -269,12 +277,17 @@ impl<
         moderation.user_type = UserType::Guest;
 
         match self
-            .moderation_repo
-            .set_moderation(user_id, moderation)
+            .ports
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .moderation_repository()
+                    .set_moderation(user_id, moderation),
+            )
             .await
         {
             Ok(()) => (),
-            Err(RepoError::StorageError(e)) => {
+            Err(TransactionError(e)) => {
                 tracing::error!("Failed to set moderation for guest account: {:?}", e);
                 return Err(RegisterError::Internal);
             }

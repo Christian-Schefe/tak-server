@@ -160,7 +160,7 @@ impl MatchRepository<TransactionContext> for MatchRepositoryImpl {
         &self,
         new_match: Match,
     ) -> TransactionItem<TransactionContext, Result<MatchId, TransactionError>> {
-        TransactionItem::new(Box::new(move |ctx| {
+        TransactionItem::simple(Box::new(move |ctx| {
             Box::pin(async move {
                 let active_model = Self::match_to_model(None, &new_match).map_err(|e| {
                     TransactionError(format!("Failed to convert match to model: {}", e))
@@ -180,7 +180,7 @@ impl MatchRepository<TransactionContext> for MatchRepositoryImpl {
         &self,
         match_id: MatchId,
     ) -> TransactionItem<TransactionContext, Result<Option<Match>, TransactionError>> {
-        TransactionItem::new(Box::new(move |ctx| {
+        TransactionItem::simple(Box::new(move |ctx| {
             Box::pin(async move {
                 match matches::Entity::find_by_id(match_id.0).one(ctx).await {
                     Ok(Some(model)) => Self::model_to_match(model)
@@ -203,7 +203,7 @@ impl MatchRepository<TransactionContext> for MatchRepositoryImpl {
         match_id: MatchId,
         updated_match: Match,
     ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
-        TransactionItem::new(Box::new(move |ctx| {
+        TransactionItem::simple(Box::new(move |ctx| {
             Box::pin(async move {
                 let active_model =
                     Self::match_to_model(Some(match_id), &updated_match).map_err(|e| {
@@ -224,7 +224,7 @@ impl MatchRepository<TransactionContext> for MatchRepositoryImpl {
         &self,
         tournament_id: TournamentId,
     ) -> TransactionItem<TransactionContext, Result<Vec<(MatchId, Match)>, TransactionError>> {
-        TransactionItem::new(Box::new(move |ctx| {
+        TransactionItem::simple(Box::new(move |ctx| {
             Box::pin(async move {
                 match matches::Entity::find()
                     .filter(matches::Column::TournamentId.eq(tournament_id.0))

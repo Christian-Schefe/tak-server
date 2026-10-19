@@ -4,7 +4,13 @@ use tak_core::TakAction;
 
 use tak_domain::{PuzzleId, puzzle::PuzzleResponse};
 
-use crate::ports::{RepoRetrieveError, puzzle::PuzzleRepository};
+use crate::{
+    PortsCollection,
+    ports::{
+        puzzle::PuzzleRepository,
+        transaction::{TransactionError, TransactionManager},
+    },
+};
 
 #[async_trait::async_trait]
 pub trait SolvePuzzleUseCase {
@@ -21,33 +27,39 @@ pub enum SolvePuzzleError {
     InvalidInput(String),
 }
 
-pub struct SolvePuzzleUseCaseImpl<P: PuzzleRepository> {
-    puzzle_repository: Arc<P>,
+pub struct SolvePuzzleUseCaseImpl<Ports: PortsCollection> {
+    ports: Arc<Ports>,
 }
 
-impl<P: PuzzleRepository> SolvePuzzleUseCaseImpl<P> {
-    pub fn new(puzzle_repository: Arc<P>) -> Self {
-        Self { puzzle_repository }
+impl<Ports: PortsCollection> SolvePuzzleUseCaseImpl<Ports> {
+    pub fn new(ports: Arc<Ports>) -> Self {
+        Self { ports }
     }
 }
 
 #[async_trait::async_trait]
-impl<P: PuzzleRepository + Send + Sync + 'static> SolvePuzzleUseCase for SolvePuzzleUseCaseImpl<P> {
+impl<Ports: PortsCollection + Send + Sync + 'static> SolvePuzzleUseCase
+    for SolvePuzzleUseCaseImpl<Ports>
+{
     async fn attempt_solve_puzzle(
         &self,
         id: PuzzleId,
         actions: Vec<TakAction>,
     ) -> Result<PuzzleResponse, SolvePuzzleError> {
-        let puzzle = self
-            .puzzle_repository
-            .get_puzzle(id)
+        match self
+            .ports
+            .transaction_manager()
+            .execute(self.ports.puzzle_repository().get_puzzle(id))
             .await
-            .map_err(|e| match e {
-                RepoRetrieveError::NotFound => SolvePuzzleError::NotFound,
-                RepoRetrieveError::StorageError(_) => SolvePuzzleError::InternalError,
-            })?;
-        Ok(puzzle
-            .do_response(&actions)
-            .ok_or_else(|| SolvePuzzleError::InvalidInput("Invalid action sequence".to_string()))?)
+        {
+            Ok(Some(puzzle)) => Ok(puzzle.do_response(&actions).ok_or_else(|| {
+                SolvePuzzleError::InvalidInput("Invalid action sequence".to_string())
+            })?),
+            Ok(None) => Err(SolvePuzzleError::NotFound),
+            Err(TransactionError(e)) => {
+                tracing::error!("Error retrieving puzzle {}: {}", id.0, e);
+                Err(SolvePuzzleError::InternalError)
+            }
+        }
     }
 }

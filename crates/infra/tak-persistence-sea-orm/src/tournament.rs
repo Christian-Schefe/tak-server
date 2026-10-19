@@ -230,7 +230,7 @@ impl TournamentPlayerRepository<TransactionContext> for TournamentPlayerRegistra
         &self,
         tournament_id: TournamentId,
     ) -> TransactionItem<TransactionContext, Result<Vec<TournamentPlayer>, TransactionError>> {
-        TransactionItem::new(Box::new(move |ctx| {
+        TransactionItem::simple(Box::new(move |ctx| {
             Box::pin(async move {
                 let registration_models = tournament_players::Entity::find()
                     .filter(tournament_players::Column::TournamentId.eq(tournament_id.0))
@@ -262,7 +262,7 @@ impl TournamentPlayerRepository<TransactionContext> for TournamentPlayerRegistra
         tournament_id: TournamentId,
         player: TournamentPlayer,
     ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
-        TransactionItem::new(Box::new(move |ctx| {
+        TransactionItem::simple(Box::new(move |ctx| {
             Box::pin(async move {
                 let model = tournament_players::ActiveModel {
                     tournament_id: sea_orm::Set(tournament_id.0),
@@ -290,7 +290,7 @@ impl TournamentPlayerRepository<TransactionContext> for TournamentPlayerRegistra
         tournament_id: TournamentId,
         user_id: UserId,
     ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
-        TransactionItem::new(Box::new(move |ctx| {
+        TransactionItem::simple(Box::new(move |ctx| {
             Box::pin(async move {
                 let model = tournament_players::ActiveModel {
                     tournament_id: sea_orm::Set(tournament_id.0),
@@ -314,7 +314,7 @@ impl TournamentPlayerRepository<TransactionContext> for TournamentPlayerRegistra
         user_id: UserId,
         score_increase: u32,
     ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
-        TransactionItem::new(Box::new(move |ctx| {
+        TransactionItem::simple(Box::new(move |ctx| {
             Box::pin(async move {
                 match tournament_players::Entity::update_many()
                     .col_expr(
@@ -343,7 +343,7 @@ impl TournamentPlayerRepository<TransactionContext> for TournamentPlayerRegistra
         user_id: UserId,
         seeding_score: i32,
     ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
-        TransactionItem::new(Box::new(move |ctx| {
+        TransactionItem::simple(Box::new(move |ctx| {
             Box::pin(async move {
                 let active_model = tournament_players::ActiveModel {
                     tournament_id: sea_orm::Set(tournament_id.0),

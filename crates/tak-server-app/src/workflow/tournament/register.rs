@@ -87,7 +87,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> TournamentPlayerRegistratio
         if let Err(TransactionError(e)) = self
             .ports
             .transaction_manager()
-            .execute_without_transaction(
+            .execute(
                 self.ports
                     .tournament_player_repository()
                     .create_tournament_player(tournament_id, TournamentPlayer::new(user_id)),
@@ -145,7 +145,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> TournamentPlayerRegistratio
         if let Err(TransactionError(e)) = self
             .ports
             .transaction_manager()
-            .execute_without_transaction(
+            .execute(
                 self.ports
                     .tournament_player_repository()
                     .remove_tournament_player(tournament_id, user_id),

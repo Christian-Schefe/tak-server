@@ -30,7 +30,7 @@ impl ChatRepository<TransactionContext> for ChatRepositoryImpl {
         conversation: ChatConversation,
         message: ChatMessage,
     ) -> TransactionItem<TransactionContext, Result<ChatMessageId, TransactionError>> {
-        TransactionItem::new(Box::new(move |ctx| {
+        TransactionItem::simple(Box::new(move |ctx| {
             Box::pin(async move {
                 let new_message = chat::ActiveModel {
                     conversation: Set(conversation_id_from_chat_conversation(&conversation)),
@@ -57,7 +57,7 @@ impl ChatRepository<TransactionContext> for ChatRepositoryImpl {
         TransactionContext,
         Result<Vec<(ChatMessageId, ChatMessage)>, TransactionError>,
     > {
-        TransactionItem::new(Box::new(move |ctx| {
+        TransactionItem::simple(Box::new(move |ctx| {
             Box::pin(async move {
                 let mut query = chat::Entity::find().filter(
                     chat::Column::Conversation

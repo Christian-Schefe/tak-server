@@ -1,7 +1,11 @@
 use std::sync::Arc;
 
 use crate::{
-    ports::{RepoError, RepoRetrieveError, puzzle::PuzzleRepository},
+    PortsCollection,
+    ports::{
+        puzzle::PuzzleRepository,
+        transaction::{TransactionError, TransactionManager},
+    },
     workflow::puzzle::PuzzleView,
 };
 use tak_domain::PuzzleId;
@@ -17,40 +21,48 @@ pub enum GetPuzzleError {
     InternalError,
 }
 
-pub struct GetPuzzleUseCaseImpl<P: PuzzleRepository> {
-    puzzle_repository: Arc<P>,
+pub struct GetPuzzleUseCaseImpl<Ports: PortsCollection> {
+    ports: Arc<Ports>,
 }
 
-impl<P: PuzzleRepository> GetPuzzleUseCaseImpl<P> {
-    pub fn new(puzzle_repository: Arc<P>) -> Self {
-        Self { puzzle_repository }
+impl<Ports: PortsCollection> GetPuzzleUseCaseImpl<Ports> {
+    pub fn new(ports: Arc<Ports>) -> Self {
+        Self { ports }
     }
 }
 
 #[async_trait::async_trait]
-impl<P: PuzzleRepository + Send + Sync + 'static> GetPuzzleUseCase for GetPuzzleUseCaseImpl<P> {
+impl<Ports: PortsCollection + Send + Sync + 'static> GetPuzzleUseCase
+    for GetPuzzleUseCaseImpl<Ports>
+{
     async fn get_puzzle(&self, id: PuzzleId) -> Result<PuzzleView, GetPuzzleError> {
-        let puzzle = self
-            .puzzle_repository
-            .get_puzzle(id)
+        match self
+            .ports
+            .transaction_manager()
+            .execute(self.ports.puzzle_repository().get_puzzle(id))
             .await
-            .map_err(|e| match e {
-                RepoRetrieveError::NotFound => GetPuzzleError::NotFound,
-                RepoRetrieveError::StorageError(msg) => {
-                    tracing::error!("Error retrieving puzzle {}: {}", id.0, msg);
-                    GetPuzzleError::InternalError
-                }
-            })?;
-        Ok(PuzzleView::from(&puzzle))
+        {
+            Ok(Some(puzzle)) => Ok(PuzzleView::from(&puzzle)),
+            Ok(None) => Err(GetPuzzleError::NotFound),
+            Err(TransactionError(e)) => {
+                tracing::error!("Error retrieving puzzle {}: {}", id.0, e);
+                Err(GetPuzzleError::InternalError)
+            }
+        }
     }
 
     async fn select_random_puzzle(&self) -> Result<PuzzleId, ()> {
-        self.puzzle_repository
-            .select_random_puzzle()
+        match self
+            .ports
+            .transaction_manager()
+            .execute(self.ports.puzzle_repository().select_random_puzzle())
             .await
-            .map_err(|RepoError::StorageError(e)| {
+        {
+            Ok(id) => Ok(id),
+            Err(TransactionError(e)) => {
                 tracing::error!("Error selecting random puzzle: {}", e);
-                ()
-            })
+                Err(())
+            }
+        }
     }
 }

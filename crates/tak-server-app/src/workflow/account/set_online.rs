@@ -115,7 +115,7 @@ impl<
         let matches = match self
             .ports
             .transaction_manager()
-            .execute_without_transaction(TransactionItem::try_parallel(
+            .execute(TransactionItem::try_parallel(
                 cancelled_match_readiness.into_iter().map(|match_id| {
                     self.ports
                         .match_repository()

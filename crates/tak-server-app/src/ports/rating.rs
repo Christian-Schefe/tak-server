@@ -1,29 +1,28 @@
 use tak_domain::{UserId, rating::PlayerRating};
 
-use crate::ports::{PaginatedResponse, Pagination, RepoError, RepoRetrieveError, SortOrder};
+use crate::ports::{
+    PaginatedResponse, Pagination, SortOrder,
+    transaction::{TransactionError, TransactionItem},
+};
 
-#[async_trait::async_trait]
-pub trait RatingRepository {
-    async fn get_player_rating(&self, user_id: UserId) -> Result<PlayerRating, RepoRetrieveError>;
-    async fn get_player_ranking(
+pub trait RatingRepository<TrCtx> {
+    fn get_player_rating(
         &self,
         user_id: UserId,
-    ) -> Result<(u32, PlayerRating), RepoRetrieveError>;
-    async fn query_player_ratings(
+    ) -> TransactionItem<TrCtx, Result<Option<PlayerRating>, TransactionError>>;
+    fn get_player_ranking(
+        &self,
+        user_id: UserId,
+    ) -> TransactionItem<TrCtx, Result<Option<(u32, PlayerRating)>, TransactionError>>;
+    fn query_player_ratings(
         &self,
         query: RatingQuery,
-    ) -> Result<PaginatedResponse<PlayerRating>, RepoError>;
-    async fn update_player_ratings<R: Send + 'static>(
+    ) -> TransactionItem<TrCtx, Result<PaginatedResponse<PlayerRating>, TransactionError>>;
+    fn set_player_rating(
         &self,
-        white: UserId,
-        black: UserId,
-        calc_fn: impl FnOnce(
-            Option<PlayerRating>,
-            Option<PlayerRating>,
-        ) -> (PlayerRating, PlayerRating, R)
-        + Send
-        + 'static,
-    ) -> Result<R, RepoError>;
+        user_id: UserId,
+        rating: PlayerRating,
+    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
 }
 
 #[derive(Debug, Clone)]

@@ -69,7 +69,7 @@ impl<
         match self
             .ports
             .transaction_manager()
-            .execute_without_transaction(self.ports.match_repository().get_match(match_id))
+            .execute(self.ports.match_repository().get_match(match_id))
             .await
         {
             Ok(Some(match_entry)) => Ok(match_entry),

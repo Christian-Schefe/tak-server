@@ -58,7 +58,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GetMatchUseCase
         match self
             .ports
             .transaction_manager()
-            .execute_without_transaction(self.ports.match_repository().get_match(match_id))
+            .execute(self.ports.match_repository().get_match(match_id))
             .await
         {
             Ok(Some(m)) => Ok(m),

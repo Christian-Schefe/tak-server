@@ -1,4 +1,11 @@
-use crate::ports::{RepoRetrieveError, authentication::AccountPort, rating::RatingRepository};
+use crate::{
+    PortsCollection,
+    ports::{
+        authentication::AccountPort,
+        rating::RatingRepository,
+        transaction::{TransactionError, TransactionManager},
+    },
+};
 use std::sync::Arc;
 use tak_domain::{UserId, game_history::PlayerSnapshot, rating::RatingService};
 
@@ -16,21 +23,19 @@ pub trait GetSnapshotWorkflow {
     ) -> Result<PlayerSnapshot, GetSnapshotError>;
 }
 
-pub struct GetSnapshotWorkflowImpl<A: AccountPort, R: RatingRepository, RS: RatingService> {
+pub struct GetSnapshotWorkflowImpl<Ports: PortsCollection, A: AccountPort, RS: RatingService> {
+    ports: Arc<Ports>,
     account_info_service: Arc<A>,
-    rating_repository: Arc<R>,
     rating_service: Arc<RS>,
 }
 
-impl<A: AccountPort, R: RatingRepository, RS: RatingService> GetSnapshotWorkflowImpl<A, R, RS> {
-    pub fn new(
-        account_info_service: Arc<A>,
-        rating_repository: Arc<R>,
-        rating_service: Arc<RS>,
-    ) -> Self {
+impl<Ports: PortsCollection, A: AccountPort, RS: RatingService>
+    GetSnapshotWorkflowImpl<Ports, A, RS>
+{
+    pub fn new(ports: Arc<Ports>, account_info_service: Arc<A>, rating_service: Arc<RS>) -> Self {
         Self {
+            ports,
             account_info_service,
-            rating_repository,
             rating_service,
         }
     }
@@ -38,10 +43,10 @@ impl<A: AccountPort, R: RatingRepository, RS: RatingService> GetSnapshotWorkflow
 
 #[async_trait::async_trait]
 impl<
+    Ports: PortsCollection + Send + Sync + 'static,
     A: AccountPort + Send + Sync + 'static,
-    R: RatingRepository + Send + Sync + 'static,
     RS: RatingService + Send + Sync + 'static,
-> GetSnapshotWorkflow for GetSnapshotWorkflowImpl<A, R, RS>
+> GetSnapshotWorkflow for GetSnapshotWorkflowImpl<Ports, A, RS>
 {
     async fn get_snapshot(
         &self,
@@ -59,10 +64,15 @@ impl<
                 return Err(GetSnapshotError::Internal);
             }
         };
-        let current_rating = match self.rating_repository.get_player_rating(user_id).await {
-            Ok(rating) => Some(self.rating_service.get_current_rating(&rating, date)),
-            Err(RepoRetrieveError::NotFound) => None,
-            Err(RepoRetrieveError::StorageError(e)) => {
+        let current_rating = match self
+            .ports
+            .transaction_manager()
+            .execute(self.ports.rating_repository().get_player_rating(user_id))
+            .await
+        {
+            Ok(Some(rating)) => Some(self.rating_service.get_current_rating(&rating, date)),
+            Ok(None) => None,
+            Err(TransactionError(e)) => {
                 tracing::error!(
                     "Failed to retrieve rating for player {}: {}",
                     user_id.to_string(),

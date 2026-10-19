@@ -6,27 +6,35 @@ use tak_domain::{
     game_history::{GameRatingInfo, GameRecord},
 };
 
-use crate::ports::{PaginatedResponse, Pagination, RepoError, RepoRetrieveError, SortOrder};
+use crate::ports::{
+    PaginatedResponse, Pagination, SortOrder,
+    transaction::{TransactionError, TransactionItem},
+};
 
-#[async_trait::async_trait]
-pub trait GameRepository {
-    async fn save_ongoing_game(&self, game: GameRecord) -> Result<GameId, RepoError>;
-    async fn update_finished_game(
+pub trait GameRepository<TrCtx> {
+    fn save_ongoing_game(
+        &self,
+        game: GameRecord,
+    ) -> TransactionItem<TrCtx, Result<GameId, TransactionError>>;
+    fn update_finished_game(
         &self,
         game_id: GameId,
         result: TakGameResult,
         events: Vec<GameEvent>,
         rating_info: Option<GameRatingInfo>,
-    ) -> Result<(), RepoRetrieveError>;
-    async fn get_game_record(&self, game_id: GameId) -> Result<GameRecord, RepoRetrieveError>;
-    async fn query_games(
+    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
+    fn get_game_record(
+        &self,
+        game_id: GameId,
+    ) -> TransactionItem<TrCtx, Result<Option<GameRecord>, TransactionError>>;
+    fn query_games(
         &self,
         query: GameQuery,
-    ) -> Result<PaginatedResponse<(GameId, GameRecord)>, RepoError>;
-    async fn get_games_of_match(
+    ) -> TransactionItem<TrCtx, Result<PaginatedResponse<(GameId, GameRecord)>, TransactionError>>;
+    fn get_games_of_match(
         &self,
         match_id: MatchId,
-    ) -> Result<Vec<(GameId, GameRecord)>, RepoError>;
+    ) -> TransactionItem<TrCtx, Result<Vec<(GameId, GameRecord)>, TransactionError>>;
 }
 
 #[derive(Debug, Clone, Default)]

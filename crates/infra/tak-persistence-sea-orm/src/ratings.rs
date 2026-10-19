@@ -1,34 +1,21 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
-use crate::create_db_pool;
+use crate::transaction::TransactionContext;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, TransactionError, TransactionTrait,
+    ColumnTrait, EntityTrait, Iterable, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    sea_query::OnConflict,
 };
 use tak_domain::{UserId, rating::PlayerRating};
 use tak_persistence_sea_orm_entities::rating;
 use tak_server_app::ports::{
-    PaginatedResponse, RepoError, RepoRetrieveError, SortOrder,
+    PaginatedResponse, SortOrder,
     rating::{RatingQuery, RatingRepository, RatingSortBy},
+    transaction::{TransactionError, TransactionItem},
 };
 
-pub struct RatingRepositoryImpl {
-    db: DatabaseConnection,
-    ratings_cache: Arc<moka::sync::Cache<UserId, PlayerRating>>,
-}
+pub struct RatingRepositoryImpl;
 
 impl RatingRepositoryImpl {
-    pub async fn new() -> Self {
-        let db = create_db_pool().await;
-        let ratings_cache = Arc::new(
-            moka::sync::Cache::builder()
-                .max_capacity(10_000)
-                .time_to_live(std::time::Duration::from_secs(60 * 5))
-                .build(),
-        );
-        Self { db, ratings_cache }
-    }
-
     fn model_to_rating(model: rating::Model) -> PlayerRating {
         PlayerRating {
             user_id: UserId(model.user_id),
@@ -67,172 +54,134 @@ impl RatingRepositoryImpl {
     }
 }
 
-#[async_trait::async_trait]
-impl RatingRepository for RatingRepositoryImpl {
-    async fn get_player_rating(&self, user_id: UserId) -> Result<PlayerRating, RepoRetrieveError> {
-        if let Some(cached) = self.ratings_cache.get(&user_id) {
-            return Ok(cached);
-        }
-        let rating_model = rating::Entity::find_by_id(user_id.0)
-            .one(&self.db)
-            .await
-            .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
-        match rating_model {
-            Some(model) => {
-                let rating = Self::model_to_rating(model);
-                self.ratings_cache.insert(user_id, rating.clone());
-                Ok(rating)
-            }
-            None => Err(RepoRetrieveError::NotFound),
-        }
-    }
-
-    async fn update_player_ratings<R: Send + 'static>(
-        &self,
-        white: UserId,
-        black: UserId,
-        calc_fn: impl FnOnce(
-            Option<PlayerRating>,
-            Option<PlayerRating>,
-        ) -> (PlayerRating, PlayerRating, R)
-        + Send
-        + 'static,
-    ) -> Result<R, RepoError> {
-        let res = self
-            .db
-            .transaction::<_, R, RepoError>(|c| {
-                Box::pin(async move {
-                    let white_rating_model = rating::Entity::find_by_id(white.0)
-                        .one(c)
-                        .await
-                        .map_err(|e| RepoError::StorageError(e.to_string()))?;
-                    let black_rating_model = rating::Entity::find_by_id(black.0)
-                        .one(c)
-                        .await
-                        .map_err(|e| RepoError::StorageError(e.to_string()))?;
-
-                    let white_rating = white_rating_model.map(|model| Self::model_to_rating(model));
-                    let black_rating = black_rating_model.map(|model| Self::model_to_rating(model));
-
-                    let has_white_rating = white_rating.is_some();
-                    let has_black_rating = black_rating.is_some();
-
-                    let (new_white_rating, new_black_rating, res) =
-                        calc_fn(white_rating, black_rating);
-
-                    let white_active_model = Self::rating_to_model(white, &new_white_rating);
-                    let black_active_model = Self::rating_to_model(black, &new_black_rating);
-
-                    if has_white_rating {
-                        white_active_model
-                            .update(c)
-                            .await
-                            .map_err(|e| RepoError::StorageError(e.to_string()))?;
-                    } else {
-                        white_active_model
-                            .insert(c)
-                            .await
-                            .map_err(|e| RepoError::StorageError(e.to_string()))?;
-                    }
-
-                    if has_black_rating {
-                        black_active_model
-                            .update(c)
-                            .await
-                            .map_err(|e| RepoError::StorageError(e.to_string()))?;
-                    } else {
-                        black_active_model
-                            .insert(c)
-                            .await
-                            .map_err(|e| RepoError::StorageError(e.to_string()))?;
-                    }
-                    Ok(res)
-                })
-            })
-            .await;
-
-        match res {
-            Ok(result) => {
-                self.ratings_cache.invalidate(&white);
-                self.ratings_cache.invalidate(&black);
-                Ok(result)
-            }
-            Err(TransactionError::Transaction(e)) => Err(e),
-            Err(TransactionError::Connection(e)) => Err(RepoError::StorageError(e.to_string())),
-        }
-    }
-
-    async fn get_player_ranking(
+impl RatingRepository<TransactionContext> for RatingRepositoryImpl {
+    fn get_player_rating(
         &self,
         user_id: UserId,
-    ) -> Result<(u32, PlayerRating), RepoRetrieveError> {
-        let rating_model = rating::Entity::find_by_id(user_id.0)
-            .one(&self.db)
-            .await
-            .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
-        match rating_model {
-            Some(model) => {
-                let player_rating = Self::model_to_rating(model);
-                let better_count = rating::Entity::find()
-                    .filter(rating::Column::Rating.gt(player_rating.rating))
-                    .count(&self.db)
+    ) -> TransactionItem<TransactionContext, Result<Option<PlayerRating>, TransactionError>> {
+        TransactionItem::simple(Box::new(move |ctx| {
+            Box::pin(async move {
+                let rating_model = rating::Entity::find_by_id(user_id.0)
+                    .one(ctx)
                     .await
-                    .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
-                Ok(((better_count + 1) as u32, player_rating))
-            }
-            None => Err(RepoRetrieveError::NotFound),
-        }
+                    .map_err(|e| TransactionError(e.to_string()))?;
+                match rating_model {
+                    Some(model) => Ok(Some(Self::model_to_rating(model))),
+                    None => Ok(None),
+                }
+            })
+        }))
     }
 
-    async fn query_player_ratings(
+    fn get_player_ranking(
+        &self,
+        user_id: UserId,
+    ) -> TransactionItem<TransactionContext, Result<Option<(u32, PlayerRating)>, TransactionError>>
+    {
+        TransactionItem::simple(Box::new(move |ctx| {
+            Box::pin(async move {
+                let rating_model = rating::Entity::find_by_id(user_id.0)
+                    .one(ctx)
+                    .await
+                    .map_err(|e| TransactionError(e.to_string()))?;
+                match rating_model {
+                    Some(model) => {
+                        let player_rating = Self::model_to_rating(model);
+                        let better_count = rating::Entity::find()
+                            .filter(rating::Column::Rating.gt(player_rating.rating))
+                            .count(ctx)
+                            .await
+                            .map_err(|e| TransactionError(e.to_string()))?;
+                        Ok(Some(((better_count + 1) as u32, player_rating)))
+                    }
+                    None => Ok(None),
+                }
+            })
+        }))
+    }
+
+    fn query_player_ratings(
         &self,
         filter: RatingQuery,
-    ) -> Result<PaginatedResponse<PlayerRating>, RepoError> {
-        let mut query = rating::Entity::find();
+    ) -> TransactionItem<
+        TransactionContext,
+        Result<PaginatedResponse<PlayerRating>, TransactionError>,
+    > {
+        TransactionItem::simple(Box::new(move |ctx| {
+            Box::pin(async move {
+                let mut query = rating::Entity::find();
 
-        let total_count = query
-            .clone()
-            .count(&self.db)
-            .await
-            .map_err(|e| RepoError::StorageError(e.to_string()))?;
+                let total_count = query
+                    .clone()
+                    .count(ctx)
+                    .await
+                    .map_err(|e| TransactionError(e.to_string()))?;
 
-        if let Some((sort_order, sort_by)) = filter.sort {
-            let order = match sort_order {
-                SortOrder::Ascending => sea_orm::Order::Asc,
-                SortOrder::Descending => sea_orm::Order::Desc,
-            };
-            match sort_by {
-                RatingSortBy::Rating => {
-                    query = query.order_by(rating::Column::Rating, order);
+                if let Some((sort_order, sort_by)) = filter.sort {
+                    let order = match sort_order {
+                        SortOrder::Ascending => sea_orm::Order::Asc,
+                        SortOrder::Descending => sea_orm::Order::Desc,
+                    };
+                    match sort_by {
+                        RatingSortBy::Rating => {
+                            query = query.order_by(rating::Column::Rating, order);
+                        }
+                        RatingSortBy::RatedGames => {
+                            query = query.order_by(rating::Column::RatedGames, order);
+                        }
+                        RatingSortBy::MaxRating => {
+                            query = query.order_by(rating::Column::MaxRating, order);
+                        }
+                    }
+                } else {
+                    query = query.order_by_desc(rating::Column::Rating);
                 }
-                RatingSortBy::RatedGames => {
-                    query = query.order_by(rating::Column::RatedGames, order);
+                if let Some(offset) = filter.pagination.offset {
+                    query = query.offset(offset as u64);
                 }
-                RatingSortBy::MaxRating => {
-                    query = query.order_by(rating::Column::MaxRating, order);
+                if let Some(limit) = filter.pagination.limit {
+                    query = query.limit(limit as u64);
                 }
-            }
-        } else {
-            query = query.order_by_desc(rating::Column::Rating);
-        }
-        if let Some(offset) = filter.pagination.offset {
-            query = query.offset(offset as u64);
-        }
-        if let Some(limit) = filter.pagination.limit {
-            query = query.limit(limit as u64);
-        }
 
-        let items = query
-            .all(&self.db)
-            .await
-            .map_err(|e| RepoError::StorageError(e.to_string()))?
-            .into_iter()
-            .map(Self::model_to_rating)
-            .collect::<Vec<_>>();
+                let items = query
+                    .all(ctx)
+                    .await
+                    .map_err(|e| TransactionError(e.to_string()))?
+                    .into_iter()
+                    .map(Self::model_to_rating)
+                    .collect::<Vec<_>>();
 
-        Ok(PaginatedResponse {
-            total_count: total_count as usize,
-            items,
-        })
+                Ok(PaginatedResponse {
+                    total_count: total_count as usize,
+                    items,
+                })
+            })
+        }))
+    }
+
+    fn set_player_rating(
+        &self,
+        user_id: UserId,
+        rating: PlayerRating,
+    ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
+        TransactionItem::simple(Box::new(move |ctx| {
+            Box::pin(async move {
+                let active_model = Self::rating_to_model(user_id, &rating);
+                rating::Entity::insert(active_model)
+                    .on_conflict(
+                        OnConflict::column(rating::Column::UserId)
+                            .update_columns(
+                                rating::Column::iter()
+                                    .filter(|c| !matches!(c, rating::Column::UserId))
+                                    .collect::<Vec<_>>(),
+                            )
+                            .to_owned(),
+                    )
+                    .exec(ctx)
+                    .await
+                    .map_err(|e| TransactionError(e.to_string()))?;
+                Ok(())
+            })
+        }))
     }
 }

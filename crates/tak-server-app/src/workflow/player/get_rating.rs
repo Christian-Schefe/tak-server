@@ -3,10 +3,12 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 
 use crate::{
+    PortsCollection,
     ports::{
         PaginatedResponse,
         rating::{RatingQuery, RatingRepository},
         stats::RatingHistoryRepository,
+        transaction::{TransactionError, TransactionManager},
     },
     workflow::player::{RatingHistoryEntryView, RatingHistoryRangeView},
 };
@@ -26,17 +28,13 @@ pub trait PlayerGetRatingUseCase {
     ) -> Result<PaginatedResponse<(UserId, f64)>, GetRatingError>;
 }
 
-pub struct PlayerGetRatingUseCaseImpl<R: RatingRepository, RH: RatingHistoryRepository> {
-    rating_repository: Arc<R>,
-    rating_history_repository: Arc<RH>,
+pub struct PlayerGetRatingUseCaseImpl<Ports: PortsCollection> {
+    ports: Arc<Ports>,
 }
 
-impl<R: RatingRepository, RH: RatingHistoryRepository> PlayerGetRatingUseCaseImpl<R, RH> {
-    pub fn new(rating_repository: Arc<R>, rating_history_repository: Arc<RH>) -> Self {
-        Self {
-            rating_repository,
-            rating_history_repository,
-        }
+impl<Ports: PortsCollection> PlayerGetRatingUseCaseImpl<Ports> {
+    pub fn new(ports: Arc<Ports>) -> Self {
+        Self { ports }
     }
 }
 
@@ -45,10 +43,8 @@ pub enum GetRatingError {
 }
 
 #[async_trait::async_trait]
-impl<
-    R: RatingRepository + Send + Sync + 'static,
-    RH: RatingHistoryRepository + Send + Sync + 'static,
-> PlayerGetRatingUseCase for PlayerGetRatingUseCaseImpl<R, RH>
+impl<Ports: PortsCollection + Send + Sync + 'static> PlayerGetRatingUseCase
+    for PlayerGetRatingUseCaseImpl<Ports>
 {
     async fn get_rating_history(
         &self,
@@ -57,10 +53,15 @@ impl<
         to: Option<DateTime<Utc>>,
     ) -> Result<RatingHistoryRangeView, GetRatingError> {
         let rating_history_range = self
-            .rating_history_repository
-            .get_rating_history(user_id, from, to)
+            .ports
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .rating_history_repository()
+                    .get_rating_history(user_id, from, to),
+            )
             .await
-            .map_err(|e| {
+            .map_err(|TransactionError(e)| {
                 tracing::error!(
                     "Error retrieving rating history for player {}: {}",
                     user_id,
@@ -91,10 +92,11 @@ impl<
         query: RatingQuery,
     ) -> Result<PaginatedResponse<(UserId, f64)>, GetRatingError> {
         let paginated_ratings = self
-            .rating_repository
-            .query_player_ratings(query)
+            .ports
+            .transaction_manager()
+            .execute(self.ports.rating_repository().query_player_ratings(query))
             .await
-            .map_err(|e| {
+            .map_err(|TransactionError(e)| {
                 tracing::error!("Error querying player ratings: {}", e);
                 GetRatingError::Internal
             })?;

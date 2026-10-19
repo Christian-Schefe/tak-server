@@ -11,19 +11,22 @@ use rand::{TryRngCore, rngs::OsRng};
 use sha2::Digest;
 use tak_domain::UserId;
 use tak_server_app::ports::{
-    RepoError, RepoRetrieveError,
     authentication::{AccountInfo, AccountPort, RefreshToken},
+    transaction::TransactionError,
 };
 
 mod guest;
 
 #[async_trait::async_trait]
 pub trait AccountRepository {
-    async fn create_account(&self, account: Account) -> Result<(), RepoError>;
-    async fn get_account(&self, user_id: UserId) -> Result<Account, RepoRetrieveError>;
-    async fn update_account(&self, account: Account) -> Result<(), RepoError>;
-    async fn get_account_by_username(&self, username: &str) -> Result<Account, RepoRetrieveError>;
-    async fn get_account_by_email(&self, email: &str) -> Result<Account, RepoRetrieveError>;
+    async fn create_account(&self, account: Account) -> Result<(), TransactionError>;
+    async fn get_account(&self, user_id: UserId) -> Result<Option<Account>, TransactionError>;
+    async fn update_account(&self, account: Account) -> Result<(), TransactionError>;
+    async fn get_account_by_username(
+        &self,
+        username: &str,
+    ) -> Result<Option<Account>, TransactionError>;
+    async fn get_account_by_email(&self, email: &str) -> Result<Option<Account>, TransactionError>;
 }
 
 pub struct Account {
@@ -113,7 +116,7 @@ where
 
         match self.account_repo.create_account(account).await {
             Ok(()) => Ok(user_id),
-            Err(e) => {
+            Err(TransactionError(e)) => {
                 tracing::error!("Failed to create account: {}", e);
                 Err("Failed to create account".into())
             }
@@ -131,9 +134,9 @@ where
         } else {
             self.account_repo.get_account_by_username(identifier).await
         } {
-            Ok(account) => account,
-            Err(RepoRetrieveError::NotFound) => return Ok(None),
-            Err(RepoRetrieveError::StorageError(e)) => {
+            Ok(Some(account)) => account,
+            Ok(None) => return Ok(None),
+            Err(TransactionError(e)) => {
                 tracing::error!("Failed to retrieve account {}: {}", identifier, e);
                 return Err("Failed to retrieve account".into());
             }
@@ -156,9 +159,9 @@ where
         } else {
             self.account_repo.get_account_by_username(identifier).await
         } {
-            Ok(account) => Ok(Some(account.user_id)),
-            Err(RepoRetrieveError::NotFound) => Ok(None),
-            Err(RepoRetrieveError::StorageError(e)) => {
+            Ok(Some(account)) => Ok(Some(account.user_id)),
+            Ok(None) => Ok(None),
+            Err(TransactionError(e)) => {
                 tracing::error!("Failed to retrieve account {}: {}", identifier, e);
                 Err("Failed to retrieve account".into())
             }
@@ -177,7 +180,7 @@ where
         };
         match self.account_repo.create_account(account).await {
             Ok(()) => Ok(user_id),
-            Err(e) => {
+            Err(TransactionError(e)) => {
                 tracing::error!("Failed to create guest account: {}", e);
                 Err("Failed to create guest account".into())
             }
@@ -219,11 +222,14 @@ where
             }
         }
         let new_password_hash = hash_password(&self.argon2, new_password).await?;
-        let mut account = self
-            .account_repo
-            .get_account(user_id)
-            .await
-            .map_err(|_| "Failed to retrieve account".to_string())?;
+        let mut account = match self.account_repo.get_account(user_id).await {
+            Ok(Some(account)) => account,
+            Ok(None) => return Ok(None),
+            Err(TransactionError(e)) => {
+                tracing::error!("Failed to retrieve account {}: {}", user_id, e);
+                return Err("Failed to retrieve account".into());
+            }
+        };
         account.password_hash = Some(new_password_hash);
         self.account_repo
             .update_account(account)
@@ -238,12 +244,12 @@ where
 
     async fn get_account_info(&self, user_id: UserId) -> Result<Option<AccountInfo>, ()> {
         match self.account_repo.get_account(user_id).await {
-            Ok(account) => Ok(Some(AccountInfo {
+            Ok(Some(account)) => Ok(Some(AccountInfo {
                 username: account.username,
                 email: account.email,
             })),
-            Err(RepoRetrieveError::NotFound) => Ok(None),
-            Err(RepoRetrieveError::StorageError(e)) => {
+            Ok(None) => Ok(None),
+            Err(TransactionError(e)) => {
                 tracing::error!("Failed to retrieve account {}: {}", user_id, e);
                 Err(())
             }

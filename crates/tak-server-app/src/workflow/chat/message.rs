@@ -116,7 +116,7 @@ impl<
         let msg_id = match self
             .ports
             .transaction_manager()
-            .execute_without_transaction(
+            .execute(
                 self.ports
                     .chat_repository()
                     .save_message(conversation.clone(), chat_msg.clone()),
@@ -174,7 +174,7 @@ impl<
         match self
             .ports
             .transaction_manager()
-            .execute_without_transaction(self.ports.chat_repository().get_messages(
+            .execute(self.ports.chat_repository().get_messages(
                 conversation.clone(),
                 before,
                 limit,

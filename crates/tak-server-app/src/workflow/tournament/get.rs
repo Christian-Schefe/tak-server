@@ -57,7 +57,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GetTournamentUseCase
         let tournament_round_repo = self.ports.tournament_round_repository();
         match futures::join!(
             tournament_repo.get_tournament(tournament_id),
-            transaction_manager.execute_without_transaction(
+            transaction_manager.execute(
                 tournament_player_repo.get_tournament_players(tournament_id)
             ),
             tournament_round_repo.get_tournament_rounds(tournament_id)

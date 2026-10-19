@@ -1,13 +1,15 @@
 use tak_domain::{UserId, moderation::Moderation};
 
-use crate::ports::{RepoError, RepoRetrieveError};
+use crate::ports::transaction::{TransactionError, TransactionItem};
 
-#[async_trait::async_trait]
-pub trait ModerationRepository {
-    async fn get_moderation(&self, user_id: UserId) -> Result<Moderation, RepoRetrieveError>;
-    async fn set_moderation(
+pub trait ModerationRepository<TrCtx> {
+    fn get_moderation(
+        &self,
+        user_id: UserId,
+    ) -> TransactionItem<TrCtx, Result<Option<Moderation>, TransactionError>>;
+    fn set_moderation(
         &self,
         user_id: UserId,
         moderation: Moderation,
-    ) -> Result<(), RepoError>;
+    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
 }

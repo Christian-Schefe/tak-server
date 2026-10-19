@@ -8,10 +8,13 @@ use tak_domain::{
     profile::{AccountProfile, ProfilePicture, ProfilePictureVersion},
 };
 
-use crate::ports::{
-    RepoError, RepoRetrieveError,
-    moderation::ModerationRepository,
-    profile::{AccountProfileRepository, ProfilePictureRepository},
+use crate::{
+    PortsCollection,
+    ports::{
+        moderation::ModerationRepository,
+        profile::{AccountProfileRepository, ProfilePictureRepository},
+        transaction::{TransactionError, TransactionManager},
+    },
 };
 
 #[async_trait::async_trait]
@@ -34,38 +37,19 @@ pub enum UpdateProfileError {
     Internal,
 }
 
-pub struct UpdateProfileUseCaseImpl<
-    PF: AccountProfileRepository,
-    M: ModerationRepository,
-    PFP: ProfilePictureRepository,
-> {
-    profile_information_repo: Arc<PF>,
-    moderation_repo: Arc<M>,
-    profile_picture_repo: Arc<PFP>,
+pub struct UpdateProfileUseCaseImpl<Ports: PortsCollection> {
+    ports: Arc<Ports>,
 }
 
-impl<PF: AccountProfileRepository, M: ModerationRepository, PFP: ProfilePictureRepository>
-    UpdateProfileUseCaseImpl<PF, M, PFP>
-{
-    pub fn new(
-        profile_information_repo: Arc<PF>,
-        moderation_repo: Arc<M>,
-        profile_picture_repo: Arc<PFP>,
-    ) -> Self {
-        Self {
-            profile_information_repo,
-            moderation_repo,
-            profile_picture_repo,
-        }
+impl<Ports: PortsCollection> UpdateProfileUseCaseImpl<Ports> {
+    pub fn new(ports: Arc<Ports>) -> Self {
+        Self { ports }
     }
 }
 
 #[async_trait::async_trait]
-impl<
-    PF: AccountProfileRepository + Send + Sync + 'static,
-    M: ModerationRepository + Send + Sync + 'static,
-    PFP: ProfilePictureRepository + Send + Sync + 'static,
-> UpdateProfileUseCase for UpdateProfileUseCaseImpl<PF, M, PFP>
+impl<Ports: PortsCollection + Send + Sync + 'static> UpdateProfileUseCase
+    for UpdateProfileUseCaseImpl<Ports>
 {
     async fn update_profile(
         &self,
@@ -73,16 +57,21 @@ impl<
         display_name: Option<String>,
         country: Option<CountryCode>,
     ) -> Result<(), UpdateProfileError> {
-        match self.moderation_repo.get_moderation(user_id).await {
-            Ok(acc) => {
+        match self
+            .ports
+            .transaction_manager()
+            .execute(self.ports.moderation_repository().get_moderation(user_id))
+            .await
+        {
+            Ok(Some(acc)) => {
                 if acc.is_guest() {
                     return Err(UpdateProfileError::AccountNotFound);
                 }
             }
-            Err(RepoRetrieveError::NotFound) => {
+            Ok(None) => {
                 return Err(UpdateProfileError::AccountNotFound);
             }
-            Err(RepoRetrieveError::StorageError(e)) => {
+            Err(TransactionError(e)) => {
                 tracing::error!(
                     "Failed to retrieve moderation for account {}: {}",
                     user_id,
@@ -90,15 +79,21 @@ impl<
                 );
                 return Err(UpdateProfileError::Internal);
             }
-        };
+        }
+
         let mut profile_data = match self
-            .profile_information_repo
-            .get_profile_information(user_id)
+            .ports
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .profile_repository()
+                    .get_profile_information(user_id),
+            )
             .await
         {
-            Ok(data) => data,
-            Err(RepoRetrieveError::NotFound) => AccountProfile::new(),
-            Err(RepoRetrieveError::StorageError(e)) => {
+            Ok(Some(data)) => data,
+            Ok(None) => AccountProfile::new(),
+            Err(TransactionError(e)) => {
                 tracing::error!(
                     "Failed to retrieve profile information for account {}: {}",
                     user_id,
@@ -110,12 +105,17 @@ impl<
         profile_data.country = country;
         profile_data.display_name = display_name;
         match self
-            .profile_information_repo
-            .insert_profile_information(user_id, profile_data)
+            .ports
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .profile_repository()
+                    .insert_profile_information(user_id, profile_data),
+            )
             .await
         {
             Ok(()) => Ok(()),
-            Err(RepoError::StorageError(e)) => {
+            Err(TransactionError(e)) => {
                 tracing::error!(
                     "Failed to update profile information for account {}: {}",
                     user_id,
@@ -131,16 +131,21 @@ impl<
         user_id: UserId,
         picture_data: DynamicImage,
     ) -> Result<ProfilePictureVersion, UpdateProfileError> {
-        match self.moderation_repo.get_moderation(user_id).await {
-            Ok(acc) => {
+        match self
+            .ports
+            .transaction_manager()
+            .execute(self.ports.moderation_repository().get_moderation(user_id))
+            .await
+        {
+            Ok(Some(acc)) => {
                 if acc.is_guest() {
                     return Err(UpdateProfileError::AccountNotFound);
                 }
             }
-            Err(RepoRetrieveError::NotFound) => {
+            Ok(None) => {
                 return Err(UpdateProfileError::AccountNotFound);
             }
-            Err(RepoRetrieveError::StorageError(e)) => {
+            Err(TransactionError(e)) => {
                 tracing::error!(
                     "Failed to retrieve moderation for account {}: {}",
                     user_id,
@@ -150,13 +155,18 @@ impl<
             }
         };
         let profile_data = match self
-            .profile_information_repo
-            .get_profile_information(user_id)
+            .ports
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .profile_repository()
+                    .get_profile_information(user_id),
+            )
             .await
         {
-            Ok(data) => data,
-            Err(RepoRetrieveError::NotFound) => AccountProfile::new(),
-            Err(RepoRetrieveError::StorageError(e)) => {
+            Ok(Some(data)) => data,
+            Ok(None) => AccountProfile::new(),
+            Err(TransactionError(e)) => {
                 tracing::error!(
                     "Failed to retrieve profile information for account {}: {}",
                     user_id,
@@ -174,20 +184,23 @@ impl<
             user_id,
             new_version.0
         );
+        let new_profile_data = AccountProfile {
+            country: profile_data.country,
+            profile_picture_version: Some(new_version),
+            display_name: profile_data.display_name,
+        };
         match self
-            .profile_information_repo
-            .insert_profile_information(
-                user_id,
-                AccountProfile {
-                    country: profile_data.country,
-                    profile_picture_version: Some(new_version),
-                    display_name: profile_data.display_name,
-                },
+            .ports
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .profile_repository()
+                    .insert_profile_information(user_id, new_profile_data),
             )
             .await
         {
             Ok(()) => (),
-            Err(RepoError::StorageError(e)) => {
+            Err(TransactionError(e)) => {
                 tracing::error!(
                     "Failed to update profile information for account {}: {}",
                     user_id,
@@ -203,12 +216,13 @@ impl<
         );
         let prepared_image = ProfilePicture::prepare_image(picture_data);
         match self
-            .profile_picture_repo
+            .ports
+            .profile_picture_repository()
             .set_profile_picture(user_id, prepared_image)
             .await
         {
             Ok(()) => Ok(new_version),
-            Err(RepoError::StorageError(e)) => {
+            Err(TransactionError(e)) => {
                 tracing::error!(
                     "Failed to set profile picture for account {}: {}",
                     user_id,

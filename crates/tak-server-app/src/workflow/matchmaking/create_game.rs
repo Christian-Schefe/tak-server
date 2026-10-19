@@ -87,7 +87,7 @@ impl<
         let mut match_entry = match self
             .ports
             .transaction_manager()
-            .execute_without_transaction(self.ports.match_repository().get_match(match_id))
+            .execute(self.ports.match_repository().get_match(match_id))
             .await
         {
             Ok(Some(match_entry)) => match_entry,
@@ -141,12 +141,14 @@ impl<
 
         let game_id = match self
             .ports
-            .game_repository()
-            .save_ongoing_game(game_record)
+            .transaction_manager()
+            .execute(
+                self.ports.game_repository().save_ongoing_game(game_record),
+            )
             .await
         {
             Ok(id) => id,
-            Err(e) => {
+            Err(TransactionError(e)) => {
                 tracing::error!("Failed to save ongoing game for match {}: {}", match_id, e);
                 return Err(CreateGameFromMatchError::Internal);
             }
@@ -155,7 +157,7 @@ impl<
         if let Err(TransactionError(e)) = self
             .ports
             .transaction_manager()
-            .execute_without_transaction(
+            .execute(
                 self.ports
                     .match_repository()
                     .update_match(match_id, match_entry),

@@ -8,7 +8,6 @@ use tak_core::{
     TakReserve, TakTimeSettings,
 };
 use tak_persistence_sea_orm_migrations::Migrator;
-use tak_server_app::ports::RepoRetrieveError;
 
 pub mod account;
 pub mod chat;
@@ -90,15 +89,6 @@ pub async fn create_db_pool() -> DatabaseConnection {
         })
         .await
         .clone()
-}
-
-pub fn db_error_to_repo_retrieve_error(e: sea_orm::DbErr) -> RepoRetrieveError {
-    match e {
-        sea_orm::DbErr::RecordNotFound(_) | sea_orm::DbErr::RecordNotUpdated => {
-            RepoRetrieveError::NotFound
-        }
-        e => RepoRetrieveError::StorageError(e.to_string()),
-    }
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

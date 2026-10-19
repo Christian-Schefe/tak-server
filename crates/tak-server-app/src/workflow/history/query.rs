@@ -1,7 +1,9 @@
 use crate::{
+    PortsCollection,
     ports::{
-        PaginatedResponse, RepoError, RepoRetrieveError,
+        PaginatedResponse,
         game_history::{GameQuery, GameRepository},
+        transaction::{TransactionError, TransactionManager},
     },
     workflow::history::GameRecordView,
 };
@@ -25,29 +27,34 @@ pub enum GameQueryError {
     RepositoryError,
 }
 
-pub struct GameHistoryQueryUseCaseImpl<G: GameRepository> {
-    game_repository: Arc<G>,
+pub struct GameHistoryQueryUseCaseImpl<Ports: PortsCollection> {
+    ports: Arc<Ports>,
 }
 
-impl<G: GameRepository> GameHistoryQueryUseCaseImpl<G> {
-    pub fn new(game_repository: Arc<G>) -> Self {
-        Self { game_repository }
+impl<Ports: PortsCollection> GameHistoryQueryUseCaseImpl<Ports> {
+    pub fn new(ports: Arc<Ports>) -> Self {
+        Self { ports }
     }
 }
 
 #[async_trait::async_trait]
-impl<G: GameRepository + Send + Sync + 'static> GameHistoryQueryUseCase
-    for GameHistoryQueryUseCaseImpl<G>
+impl<Ports: PortsCollection + Send + Sync + 'static> GameHistoryQueryUseCase
+    for GameHistoryQueryUseCaseImpl<Ports>
 {
     async fn query_games(
         &self,
         filter: GameQuery,
     ) -> Result<PaginatedResponse<GameRecordView>, GameQueryError> {
-        match self.game_repository.query_games(filter).await {
+        match self
+            .ports
+            .transaction_manager()
+            .execute(self.ports.game_repository().query_games(filter))
+            .await
+        {
             Ok(result) => {
                 Ok(result.map(|(id, record)| GameRecordView::from_game_record(id, record)))
             }
-            Err(RepoError::StorageError(e)) => {
+            Err(TransactionError(e)) => {
                 tracing::error!("Error querying games: {}", e);
                 Err(GameQueryError::RepositoryError)
             }
@@ -55,13 +62,18 @@ impl<G: GameRepository + Send + Sync + 'static> GameHistoryQueryUseCase
     }
 
     async fn get_game(&self, game_id: GameId) -> Result<Option<GameRecordView>, GameQueryError> {
-        match self.game_repository.get_game_record(game_id).await {
-            Ok(result) => Ok(Some(GameRecordView::from_game_record(game_id, result))),
-            Err(RepoRetrieveError::StorageError(e)) => {
+        match self
+            .ports
+            .transaction_manager()
+            .execute(self.ports.game_repository().get_game_record(game_id))
+            .await
+        {
+            Ok(Some(result)) => Ok(Some(GameRecordView::from_game_record(game_id, result))),
+            Ok(None) => Ok(None),
+            Err(TransactionError(e)) => {
                 tracing::error!("Error getting game record: {}", e);
                 Err(GameQueryError::RepositoryError)
             }
-            Err(RepoRetrieveError::NotFound) => Ok(None),
         }
     }
 
@@ -69,12 +81,17 @@ impl<G: GameRepository + Send + Sync + 'static> GameHistoryQueryUseCase
         &self,
         match_id: MatchId,
     ) -> Result<Vec<GameRecordView>, GameQueryError> {
-        match self.game_repository.get_games_of_match(match_id).await {
+        match self
+            .ports
+            .transaction_manager()
+            .execute(self.ports.game_repository().get_games_of_match(match_id))
+            .await
+        {
             Ok(game_records) => Ok(game_records
                 .into_iter()
                 .map(|(id, record)| GameRecordView::from_game_record(id, record))
                 .collect()),
-            Err(RepoError::StorageError(e)) => {
+            Err(TransactionError(e)) => {
                 tracing::error!("Error getting games of match {}: {}", match_id, e);
                 Err(GameQueryError::RepositoryError)
             }

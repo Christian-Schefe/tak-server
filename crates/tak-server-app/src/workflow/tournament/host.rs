@@ -11,7 +11,7 @@ use tak_domain::{
 use crate::{
     PortsCollection,
     ports::{
-        RepoError, RepoRetrieveError,
+        RepoError,
         matches::MatchRepository,
         moderation::ModerationRepository,
         rating::RatingRepository,
@@ -64,12 +64,20 @@ impl<Ports: PortsCollection> HostTournamentUseCaseImpl<Ports> {
     async fn is_admin(&self, user_id: UserId) -> Result<bool, ()> {
         match self
             .ports
-            .moderation_repository()
-            .get_moderation(user_id)
+            .transaction_manager()
+            .execute(self.ports.moderation_repository().get_moderation(user_id))
             .await
         {
-            Ok(moderation) => Ok(moderation.is_admin()),
-            Err(_) => Err(()),
+            Ok(Some(moderation)) => Ok(moderation.is_admin()),
+            Ok(None) => Err(()),
+            Err(TransactionError(e)) => {
+                tracing::error!(
+                    "Failed to retrieve moderation for user_id: {}: {:?}",
+                    user_id,
+                    e
+                );
+                Err(())
+            }
         }
     }
 }
@@ -149,7 +157,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
         let tournament_players = match self
             .ports
             .transaction_manager()
-            .execute_without_transaction(
+            .execute(
                 self.ports
                     .tournament_player_repository()
                     .get_tournament_players(tournament_id),
@@ -170,16 +178,20 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
         let set_seeding_futures = tournament_players.into_iter().map(|player| async move {
             let seeding_score = match self
                 .ports
-                .rating_repository()
-                .get_player_rating(player.user_id)
+                .transaction_manager()
+                .execute(
+                    self.ports
+                        .rating_repository()
+                        .get_player_rating(player.user_id),
+                )
                 .await
             {
-                Ok(rating) => rating.rating as i32,
+                Ok(Some(rating)) => rating.rating as i32,
                 // Player is a guest or not rated yet, use default rating of 1000
-                Err(RepoRetrieveError::NotFound) => 1000,
-                Err(RepoRetrieveError::StorageError(e)) => {
+                Ok(None) => 1000,
+                Err(TransactionError(e)) => {
                     tracing::error!(
-                        "Failed to retrieve rating for player {}: {:?}",
+                        "Failed to retrieve rating for player {}: {}",
                         player.user_id,
                         e
                     );
@@ -189,7 +201,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
             if let Err(TransactionError(e)) = self
                 .ports
                 .transaction_manager()
-                .execute_without_transaction(
+                .execute(
                     self.ports
                         .tournament_player_repository()
                         .set_player_seeding_score(tournament_id, player.user_id, seeding_score),
@@ -278,7 +290,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
         let tournament_matches = self
             .ports
             .transaction_manager()
-            .execute_without_transaction(
+            .execute(
                 self.ports
                     .match_repository()
                     .get_matches_of_tournament(tournament_id),
@@ -304,7 +316,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
         let mut all_players = self
             .ports
             .transaction_manager()
-            .execute_without_transaction(
+            .execute(
                 self.ports
                     .tournament_player_repository()
                     .get_tournament_players(tournament_id),
@@ -359,7 +371,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
             if let Err(TransactionError(e)) = self
                 .ports
                 .transaction_manager()
-                .execute_without_transaction(
+                .execute(
                     self.ports
                         .tournament_player_repository()
                         .increase_player_score(tournament_id, user_id, 2),
@@ -394,7 +406,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
                     let match_id = match self
                         .ports
                         .transaction_manager()
-                        .execute_without_transaction(
+                        .execute(
                             self.ports.match_repository().create_match(match_data),
                         )
                         .await
@@ -499,7 +511,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
         let tournament_matches = self
             .ports
             .transaction_manager()
-            .execute_without_transaction(
+            .execute(
                 self.ports
                     .match_repository()
                     .get_matches_of_tournament(tournament_id),

@@ -1,26 +1,21 @@
-use sea_orm::{DatabaseConnection, EntityTrait, Iterable, sea_query::OnConflict};
+use sea_orm::{EntityTrait, Iterable, sea_query::OnConflict};
 
 use tak_domain::{
     UserId,
     moderation::{Moderation, ModerationFlag, ModerationFlags, UserRole, UserType},
 };
 use tak_persistence_sea_orm_entities::moderation;
-use tak_server_app::ports::{RepoError, RepoRetrieveError, moderation::ModerationRepository};
+use tak_server_app::ports::{
+    moderation::ModerationRepository,
+    transaction::{TransactionError, TransactionItem},
+};
 
-use crate::create_db_pool;
+use crate::transaction::TransactionContext;
 
-pub struct ModerationRepositoryImpl {
-    db: DatabaseConnection,
-}
+pub struct ModerationRepositoryImpl;
 
 impl ModerationRepositoryImpl {
-    pub async fn new() -> Self {
-        let db = create_db_pool().await;
-        Self { db }
-    }
-
     fn moderation_to_active_model(
-        &self,
         user_id: UserId,
         moderation: &Moderation,
     ) -> moderation::ActiveModel {
@@ -48,10 +43,7 @@ impl ModerationRepositoryImpl {
             ),
         }
     }
-    fn model_to_moderation(
-        &self,
-        model: moderation::Model,
-    ) -> Result<(UserId, Moderation), String> {
+    fn model_to_moderation(model: moderation::Model) -> Result<(UserId, Moderation), String> {
         Ok((
             UserId(model.user_id),
             Moderation {
@@ -75,38 +67,49 @@ impl ModerationRepositoryImpl {
     }
 }
 
-#[async_trait::async_trait]
-impl ModerationRepository for ModerationRepositoryImpl {
-    async fn get_moderation(&self, user_id: UserId) -> Result<Moderation, RepoRetrieveError> {
-        let model = moderation::Entity::find_by_id(user_id.0)
-            .one(&self.db)
-            .await
-            .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?
-            .ok_or(RepoRetrieveError::NotFound)?;
-        let (_, moderation) = self
-            .model_to_moderation(model)
-            .map_err(|e| RepoRetrieveError::StorageError(e.to_string()))?;
-        Ok(moderation)
+impl ModerationRepository<TransactionContext> for ModerationRepositoryImpl {
+    fn get_moderation(
+        &self,
+        user_id: UserId,
+    ) -> TransactionItem<TransactionContext, Result<Option<Moderation>, TransactionError>> {
+        TransactionItem::simple(Box::new(move |ctx| {
+            Box::pin(async move {
+                let Some(model) = moderation::Entity::find_by_id(user_id.0)
+                    .one(ctx)
+                    .await
+                    .map_err(|e| TransactionError(e.to_string()))?
+                else {
+                    return Ok(None);
+                };
+                let (_, moderation) = Self::model_to_moderation(model)
+                    .map_err(|e| TransactionError(e.to_string()))?;
+                Ok(Some(moderation))
+            })
+        }))
     }
-    async fn set_moderation(
+    fn set_moderation(
         &self,
         user_id: UserId,
         moderation: Moderation,
-    ) -> Result<(), RepoError> {
-        let active_model = self.moderation_to_active_model(user_id, &moderation);
-        moderation::Entity::insert(active_model)
-            .on_conflict(
-                OnConflict::columns([moderation::Column::UserId])
-                    .update_columns(
-                        moderation::Column::iter()
-                            .filter(|c| !matches!(c, moderation::Column::UserId))
-                            .collect::<Vec<_>>(),
+    ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
+        TransactionItem::simple(Box::new(move |ctx| {
+            Box::pin(async move {
+                let active_model = Self::moderation_to_active_model(user_id, &moderation);
+                moderation::Entity::insert(active_model)
+                    .on_conflict(
+                        OnConflict::columns([moderation::Column::UserId])
+                            .update_columns(
+                                moderation::Column::iter()
+                                    .filter(|c| !matches!(c, moderation::Column::UserId))
+                                    .collect::<Vec<_>>(),
+                            )
+                            .to_owned(),
                     )
-                    .to_owned(),
-            )
-            .exec(&self.db)
-            .await
-            .map_err(|e| RepoError::StorageError(e.to_string()))?;
-        Ok(())
+                    .exec(ctx)
+                    .await
+                    .map_err(|e| TransactionError(e.to_string()))?;
+                Ok(())
+            })
+        }))
     }
 }
