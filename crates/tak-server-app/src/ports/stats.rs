@@ -4,34 +4,41 @@ use tak_domain::{
     stats::{PlayerStats, RatingHistoryEntry, RatingHistoryRange},
 };
 
-use crate::ports::transaction::{TransactionError, TransactionItem};
+use crate::ports::transaction::RepoError;
 
+#[async_trait::async_trait]
 pub trait StatsRepository<TrCtx> {
-    fn get_player_stats(
+    async fn get_player_stats(
         &self,
+        ctx: &TrCtx,
         user_id: UserId,
-    ) -> TransactionItem<TrCtx, Result<Option<PlayerStats>, TransactionError>>;
-    fn set_player_stats(
+    ) -> Result<Option<PlayerStats>, RepoError>;
+    async fn set_player_stats(
         &self,
+        ctx: &TrCtx,
         user_id: UserId,
         stats: PlayerStats,
-    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
-    fn remove_player_stats(
+    ) -> Result<(), RepoError>;
+    async fn remove_player_stats(
         &self,
+        ctx: &TrCtx,
         user_id: UserId,
-    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
+    ) -> Result<(), RepoError>;
 }
 
+#[async_trait::async_trait]
 pub trait RatingHistoryRepository<TrCtx> {
-    fn get_rating_history(
+    async fn get_rating_history(
         &self,
+        ctx: &TrCtx,
         user_id: UserId,
         from: Option<DateTime<Utc>>,
         to: Option<DateTime<Utc>>,
-    ) -> TransactionItem<TrCtx, Result<RatingHistoryRange, TransactionError>>;
-    fn add_rating_history_entry(
+    ) -> Result<RatingHistoryRange, RepoError>;
+    async fn add_rating_history_entry(
         &self,
+        ctx: &TrCtx,
         user_id: UserId,
         rating: RatingHistoryEntry,
-    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
+    ) -> Result<(), RepoError>;
 }

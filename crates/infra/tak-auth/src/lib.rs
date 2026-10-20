@@ -12,21 +12,21 @@ use sha2::Digest;
 use tak_domain::UserId;
 use tak_server_app::ports::{
     authentication::{AccountInfo, AccountPort, RefreshToken},
-    transaction::TransactionError,
+    transaction::RepoError,
 };
 
 mod guest;
 
 #[async_trait::async_trait]
 pub trait AccountRepository {
-    async fn create_account(&self, account: Account) -> Result<(), TransactionError>;
-    async fn get_account(&self, user_id: UserId) -> Result<Option<Account>, TransactionError>;
-    async fn update_account(&self, account: Account) -> Result<(), TransactionError>;
+    async fn create_account(&self, account: Account) -> Result<(), RepoError>;
+    async fn get_account(&self, user_id: UserId) -> Result<Option<Account>, RepoError>;
+    async fn update_account(&self, account: Account) -> Result<(), RepoError>;
     async fn get_account_by_username(
         &self,
         username: &str,
-    ) -> Result<Option<Account>, TransactionError>;
-    async fn get_account_by_email(&self, email: &str) -> Result<Option<Account>, TransactionError>;
+    ) -> Result<Option<Account>, RepoError>;
+    async fn get_account_by_email(&self, email: &str) -> Result<Option<Account>, RepoError>;
 }
 
 pub struct Account {
@@ -116,7 +116,7 @@ where
 
         match self.account_repo.create_account(account).await {
             Ok(()) => Ok(user_id),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Failed to create account: {}", e);
                 Err("Failed to create account".into())
             }
@@ -136,7 +136,7 @@ where
         } {
             Ok(Some(account)) => account,
             Ok(None) => return Ok(None),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Failed to retrieve account {}: {}", identifier, e);
                 return Err("Failed to retrieve account".into());
             }
@@ -161,7 +161,7 @@ where
         } {
             Ok(Some(account)) => Ok(Some(account.user_id)),
             Ok(None) => Ok(None),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Failed to retrieve account {}: {}", identifier, e);
                 Err("Failed to retrieve account".into())
             }
@@ -180,7 +180,7 @@ where
         };
         match self.account_repo.create_account(account).await {
             Ok(()) => Ok(user_id),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Failed to create guest account: {}", e);
                 Err("Failed to create guest account".into())
             }
@@ -225,7 +225,7 @@ where
         let mut account = match self.account_repo.get_account(user_id).await {
             Ok(Some(account)) => account,
             Ok(None) => return Ok(None),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Failed to retrieve account {}: {}", user_id, e);
                 return Err("Failed to retrieve account".into());
             }
@@ -249,7 +249,7 @@ where
                 email: account.email,
             })),
             Ok(None) => Ok(None),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Failed to retrieve account {}: {}", user_id, e);
                 Err(())
             }

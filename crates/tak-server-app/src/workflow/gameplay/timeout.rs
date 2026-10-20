@@ -43,7 +43,7 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
         match self.game_service.check_timeout(game_id, now) {
             CheckTimeoutResult::TimedOut(game) => {
                 tracing::info!("Game {:?} timed out, finalizing game", game_id);
-                self.finalize_game_workflow.finalize_game(game).await;
+                let _ = self.finalize_game_workflow.finalize_game(game).await;
                 ObserveOutcome::Finished
             }
             CheckTimeoutResult::NoTimeout(time_info) => ObserveOutcome::Continue(
@@ -85,7 +85,7 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
                     );
                 }
                 GamePlayerActionResult::Timeout(ended_game) => {
-                    self.finalize_game_workflow.finalize_game(ended_game).await;
+                    let _ = self.finalize_game_workflow.finalize_game(ended_game).await;
                 }
                 GamePlayerActionResult::Result(res) => match res {
                     CheckDisconnectTimeoutResult::TimedOut(ended_game) => {
@@ -95,7 +95,7 @@ impl<G: GameService + Send + Sync + 'static, F: FinalizeGameWorkflow + Send + Sy
                             game.game_id,
                             disconnected_duration
                         );
-                        self.finalize_game_workflow.finalize_game(ended_game).await;
+                        let _ = self.finalize_game_workflow.finalize_game(ended_game).await;
                     }
                     CheckDisconnectTimeoutResult::CantTimeOut => {}
                     CheckDisconnectTimeoutResult::NoTimeout(duration) => {

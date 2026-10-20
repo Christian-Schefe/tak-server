@@ -9,7 +9,7 @@ use crate::{
     PortsCollection,
     ports::{
         tournament::{TournamentPlayerRepository, TournamentRepository},
-        transaction::{TransactionError, TransactionManager},
+        transaction::{RepoError, TransactionManager},
     },
 };
 
@@ -53,19 +53,16 @@ impl<Ports: PortsCollection + Send + Sync + 'static> TournamentPlayerRegistratio
         tournament_id: TournamentId,
         user_id: UserId,
     ) -> Result<(), TournamentRegistrationError> {
+        let ctx = self.ports.transaction_manager().simple();
         let tournament = match self
             .ports
-            .transaction_manager()
-            .execute(
-                self.ports
-                    .tournament_repository()
-                    .get_tournament(tournament_id),
-            )
+            .tournament_repository()
+            .get_tournament(&ctx, tournament_id)
             .await
         {
             Ok(Some(tournament)) => Ok(tournament),
             Ok(None) => Err(TournamentRegistrationError::TournamentNotFound),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!(
                     "Failed to get tournament with id {}: {:?}",
                     tournament_id,
@@ -85,14 +82,10 @@ impl<Ports: PortsCollection + Send + Sync + 'static> TournamentPlayerRegistratio
             );
             return Err(TournamentRegistrationError::TournamentNotUpcoming);
         };
-        if let Err(TransactionError(e)) = self
+        if let Err(RepoError(e)) = self
             .ports
-            .transaction_manager()
-            .execute(
-                self.ports
-                    .tournament_player_repository()
-                    .create_tournament_player(tournament_id, TournamentPlayer::new(user_id)),
-            )
+            .tournament_player_repository()
+            .create_tournament_player(&ctx, tournament_id, TournamentPlayer::new(user_id))
             .await
         {
             tracing::error!(
@@ -113,21 +106,18 @@ impl<Ports: PortsCollection + Send + Sync + 'static> TournamentPlayerRegistratio
         tournament_id: TournamentId,
         user_id: UserId,
     ) -> Result<(), TournamentRegistrationError> {
+        let ctx = self.ports.transaction_manager().simple();
         let tournament = match self
             .ports
-            .transaction_manager()
-            .execute(
-                self.ports
-                    .tournament_repository()
-                    .get_tournament(tournament_id),
-            )
+            .tournament_repository()
+            .get_tournament(&ctx, tournament_id)
             .await
         {
             Ok(Some(tournament)) => Ok(tournament),
             Ok(None) => {
                 return Err(TournamentRegistrationError::TournamentNotFound);
             }
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!(
                     "Failed to get tournament with id {}: {:?}",
                     tournament_id,
@@ -147,14 +137,10 @@ impl<Ports: PortsCollection + Send + Sync + 'static> TournamentPlayerRegistratio
             );
             return Err(TournamentRegistrationError::TournamentNotUpcoming);
         };
-        if let Err(TransactionError(e)) = self
+        if let Err(RepoError(e)) = self
             .ports
-            .transaction_manager()
-            .execute(
-                self.ports
-                    .tournament_player_repository()
-                    .remove_tournament_player(tournament_id, user_id),
-            )
+            .tournament_player_repository()
+            .remove_tournament_player(&ctx, tournament_id, user_id)
             .await
         {
             tracing::error!(

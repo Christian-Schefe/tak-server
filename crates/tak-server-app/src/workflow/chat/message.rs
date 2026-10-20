@@ -4,7 +4,7 @@ use crate::{
         chat::ChatRepository,
         connection::UserConnectionPort,
         notification::{ListenerMessage, ListenerNotificationPort},
-        transaction::{TransactionError, TransactionManager},
+        transaction::{RepoError, TransactionManager},
     },
     workflow::chat::ChatMessageView,
 };
@@ -113,18 +113,15 @@ impl<
             message: filtered_message.clone(),
         };
 
+        let ctx = self.ports.transaction_manager().simple();
         let msg_id = match self
             .ports
-            .transaction_manager()
-            .execute(
-                self.ports
-                    .chat_repository()
-                    .save_message(conversation.clone(), chat_msg.clone()),
-            )
+            .chat_repository()
+            .save_message(&ctx, conversation.clone(), chat_msg.clone())
             .await
         {
             Ok(id) => id,
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Failed to save chat message: {}", e);
                 return Err(ChatSendMessageError::RepositoryError);
             }
@@ -171,21 +168,18 @@ impl<
         before: Option<ChatMessageId>,
         limit: usize,
     ) -> Result<Vec<ChatMessageView>, ()> {
+        let ctx = self.ports.transaction_manager().simple();
         match self
             .ports
-            .transaction_manager()
-            .execute(self.ports.chat_repository().get_messages(
-                conversation.clone(),
-                before,
-                limit,
-            ))
+            .chat_repository()
+            .get_messages(&ctx, conversation.clone(), before, limit)
             .await
         {
             Ok(messages) => Ok(messages
                 .into_iter()
                 .map(|(id, msg)| ChatMessageView::from(id, msg))
                 .collect()),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Failed to retrieve chat messages: {}", e);
                 Err(())
             }

@@ -5,7 +5,7 @@ use crate::{
     ports::{
         matches::MatchRepository,
         notification::{ListenerMatchEventType, ListenerMessage},
-        transaction::{TransactionError, TransactionManager},
+        transaction::{RepoError, TransactionManager},
     },
     workflow::{
         matchmaking::{MatchReadinessStatus, create_game::CreateGameFromMatchWorkflow},
@@ -34,7 +34,7 @@ pub trait MatchReadinessUseCase {
 
 pub struct MatchReadinessUseCaseImpl<
     Ports: PortsCollection,
-    C: CreateGameFromMatchWorkflow,
+    C: CreateGameFromMatchWorkflow<Ports::TrCtx>,
     RS: MatchReadinessService,
     L: NotifyPlayerWorkflow,
 > {
@@ -46,7 +46,7 @@ pub struct MatchReadinessUseCaseImpl<
 
 impl<
     Ports: PortsCollection,
-    C: CreateGameFromMatchWorkflow,
+    C: CreateGameFromMatchWorkflow<Ports::TrCtx>,
     RS: MatchReadinessService,
     L: NotifyPlayerWorkflow,
 > MatchReadinessUseCaseImpl<Ports, C, RS, L>
@@ -66,15 +66,16 @@ impl<
     }
 
     async fn get_match(&self, match_id: MatchId) -> Result<Match, MatchReadinessError> {
+        let ctx = self.ports.transaction_manager().simple();
         match self
             .ports
-            .transaction_manager()
-            .execute(self.ports.match_repository().get_match(match_id))
+            .match_repository()
+            .get_match(&ctx, match_id)
             .await
         {
             Ok(Some(match_entry)) => Ok(match_entry),
             Ok(None) => Err(MatchReadinessError::MatchNotFound),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Database error while retrieving match {}: {}", match_id, e);
                 Err(MatchReadinessError::Internal)
             }
@@ -91,7 +92,7 @@ pub enum MatchReadinessError {
 #[async_trait::async_trait]
 impl<
     Ports: PortsCollection + Send + Sync + 'static,
-    C: CreateGameFromMatchWorkflow + Send + Sync + 'static,
+    C: CreateGameFromMatchWorkflow<Ports::TrCtx> + Send + Sync + 'static,
     RS: MatchReadinessService + Send + Sync + 'static,
     L: NotifyPlayerWorkflow + Send + Sync + 'static,
 > MatchReadinessUseCase for MatchReadinessUseCaseImpl<Ports, C, RS, L>
@@ -128,15 +129,33 @@ impl<
         let should_create_game = self
             .match_readiness_service
             .set_player_ready(match_id, user_id);
+
         if should_create_game {
+            let ctx = self
+                .ports
+                .transaction_manager()
+                .transaction()
+                .await
+                .map_err(|RepoError(e)| {
+                    tracing::error!("Failed to start transaction: {:?}", e);
+                    MatchReadinessError::Internal
+                })?;
             if let Err(e) = self
                 .create_game_workflow
-                .create_game_from_match(match_id)
+                .create_game_from_match(&ctx, match_id)
                 .await
             {
                 tracing::error!("Failed to create game from match {}: {:?}", match_id, e);
                 return Err(MatchReadinessError::Internal);
             }
+            self.ports
+                .transaction_manager()
+                .commit(ctx)
+                .await
+                .map_err(|RepoError(e)| {
+                    tracing::error!("Failed to commit transaction: {:?}", e);
+                    MatchReadinessError::Internal
+                })?;
         } else {
             let msg = ListenerMessage::MatchEvent {
                 match_id,
@@ -152,6 +171,7 @@ impl<
                 )
                 .await;
         }
+
         Ok(())
     }
 

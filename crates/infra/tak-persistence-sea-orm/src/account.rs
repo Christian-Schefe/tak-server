@@ -2,7 +2,7 @@ use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use tak_auth::{Account, AccountRepository};
 use tak_domain::UserId;
 use tak_persistence_sea_orm_entities::account;
-use tak_server_app::ports::transaction::TransactionError;
+use tak_server_app::ports::transaction::RepoError;
 
 use crate::create_db_pool;
 
@@ -38,68 +38,68 @@ impl AccountRepositoryImpl {
 
 #[async_trait::async_trait]
 impl AccountRepository for AccountRepositoryImpl {
-    async fn create_account(&self, account: Account) -> Result<(), TransactionError> {
+    async fn create_account(&self, account: Account) -> Result<(), RepoError> {
         let active_model = self.account_to_active_model(&account);
         account::Entity::insert(active_model)
             .exec(&self.db)
             .await
-            .map_err(|e| TransactionError(e.to_string()))?;
+            .map_err(|e| RepoError(e.to_string()))?;
         Ok(())
     }
 
-    async fn get_account(&self, user_id: UserId) -> Result<Option<Account>, TransactionError> {
+    async fn get_account(&self, user_id: UserId) -> Result<Option<Account>, RepoError> {
         let Some(model) = account::Entity::find_by_id(user_id.0)
             .one(&self.db)
             .await
-            .map_err(|e| TransactionError(e.to_string()))?
+            .map_err(|e| RepoError(e.to_string()))?
         else {
             return Ok(None);
         };
         Ok(Some(
             self.model_to_account(model)
-                .map_err(|e| TransactionError(e.to_string()))?,
+                .map_err(|e| RepoError(e.to_string()))?,
         ))
     }
 
-    async fn update_account(&self, account: Account) -> Result<(), TransactionError> {
+    async fn update_account(&self, account: Account) -> Result<(), RepoError> {
         let active_model = self.account_to_active_model(&account);
         account::Entity::update(active_model)
             .exec(&self.db)
             .await
-            .map_err(|e| TransactionError(e.to_string()))?;
+            .map_err(|e| RepoError(e.to_string()))?;
         Ok(())
     }
 
     async fn get_account_by_username(
         &self,
         username: &str,
-    ) -> Result<Option<Account>, TransactionError> {
+    ) -> Result<Option<Account>, RepoError> {
         let Some(model) = account::Entity::find()
             .filter(account::Column::Username.eq(username))
             .one(&self.db)
             .await
-            .map_err(|e| TransactionError(e.to_string()))?
+            .map_err(|e| RepoError(e.to_string()))?
         else {
             return Ok(None);
         };
         Ok(Some(
             self.model_to_account(model)
-                .map_err(|e| TransactionError(e.to_string()))?,
+                .map_err(|e| RepoError(e.to_string()))?,
         ))
     }
 
-    async fn get_account_by_email(&self, email: &str) -> Result<Option<Account>, TransactionError> {
+    async fn get_account_by_email(&self, email: &str) -> Result<Option<Account>, RepoError> {
         let Some(model) = account::Entity::find()
             .filter(account::Column::Email.eq(email))
             .one(&self.db)
             .await
-            .map_err(|e| TransactionError(e.to_string()))?
+            .map_err(|e| RepoError(e.to_string()))?
         else {
             return Ok(None);
         };
         Ok(Some(
             self.model_to_account(model)
-                .map_err(|e| TransactionError(e.to_string()))?,
+                .map_err(|e| RepoError(e.to_string()))?,
         ))
     }
 }

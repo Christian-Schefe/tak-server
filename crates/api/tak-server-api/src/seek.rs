@@ -85,7 +85,7 @@ async fn accept_seek(
         Err(AcceptSeekError::SeekNotFound) => {
             Err(ServiceError::NotFound("Seek not found".to_string()))
         }
-        Err(AcceptSeekError::FailedToCreateGame) => {
+        Err(AcceptSeekError::Internal) => {
             Err(ServiceError::Internal("Failed to accept seek".to_string()))
         }
     }

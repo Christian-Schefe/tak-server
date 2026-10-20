@@ -3,65 +3,79 @@ use tak_domain::{
     tournament::{Tournament, TournamentPlayer, TournamentRound, TournamentStatus},
 };
 
-use crate::ports::transaction::{TransactionError, TransactionItem};
+use crate::ports::transaction::RepoError;
 
+#[async_trait::async_trait]
 pub trait TournamentRepository<TrCtx> {
-    fn create_tournament(
+    async fn create_tournament(
         &self,
+        ctx: &TrCtx,
         tournament: Tournament,
-    ) -> TransactionItem<TrCtx, Result<TournamentId, TransactionError>>;
-    fn list_tournaments(
+    ) -> Result<TournamentId, RepoError>;
+    async fn list_tournaments(
         &self,
-    ) -> TransactionItem<TrCtx, Result<Vec<(TournamentId, Tournament)>, TransactionError>>;
-    fn get_tournament(
+        ctx: &TrCtx,
+    ) -> Result<Vec<(TournamentId, Tournament)>, RepoError>;
+    async fn get_tournament(
         &self,
+        ctx: &TrCtx,
         tournament_id: TournamentId,
-    ) -> TransactionItem<TrCtx, Result<Option<Tournament>, TransactionError>>;
-    fn set_tournament_status(
+    ) -> Result<Option<Tournament>, RepoError>;
+    async fn set_tournament_status(
         &self,
+        ctx: &TrCtx,
         tournament_id: TournamentId,
         status: TournamentStatus,
-    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
+    ) -> Result<(), RepoError>;
 }
 
+#[async_trait::async_trait]
 pub trait TournamentRoundRepository<TrCtx> {
-    fn get_tournament_rounds(
+    async fn get_tournament_rounds(
         &self,
+        ctx: &TrCtx,
         tournament_id: TournamentId,
-    ) -> TransactionItem<TrCtx, Result<Vec<TournamentRound>, TransactionError>>;
-    fn create_tournament_round(
+    ) -> Result<Vec<TournamentRound>, RepoError>;
+    async fn create_tournament_round(
         &self,
+        ctx: &TrCtx,
         tournament_id: TournamentId,
         round_index: usize,
         tournament_round: TournamentRound,
-    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
+    ) -> Result<(), RepoError>;
 }
 
+#[async_trait::async_trait]
 pub trait TournamentPlayerRepository<TrCtx> {
-    fn get_tournament_players(
+    async fn get_tournament_players(
         &self,
+        ctx: &TrCtx,
         tournament_id: TournamentId,
-    ) -> TransactionItem<TrCtx, Result<Vec<TournamentPlayer>, TransactionError>>;
-    fn create_tournament_player(
+    ) -> Result<Vec<TournamentPlayer>, RepoError>;
+    async fn create_tournament_player(
         &self,
+        ctx: &TrCtx,
         tournament_id: TournamentId,
         player: TournamentPlayer,
-    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
-    fn increase_player_score(
+    ) -> Result<(), RepoError>;
+    async fn increase_player_score(
         &self,
+        ctx: &TrCtx,
         tournament_id: TournamentId,
         user_id: UserId,
         score_increase: u32,
-    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
-    fn remove_tournament_player(
+    ) -> Result<(), RepoError>;
+    async fn remove_tournament_player(
         &self,
+        ctx: &TrCtx,
         tournament_id: TournamentId,
         user_id: UserId,
-    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
-    fn set_player_seeding_score(
+    ) -> Result<(), RepoError>;
+    async fn set_player_seeding_score(
         &self,
+        ctx: &TrCtx,
         tournament_id: TournamentId,
         user_id: UserId,
         seeding_score: i32,
-    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
+    ) -> Result<(), RepoError>;
 }

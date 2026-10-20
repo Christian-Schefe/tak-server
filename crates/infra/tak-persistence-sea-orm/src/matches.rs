@@ -1,5 +1,5 @@
 use crate::JsonGameSettings;
-use crate::transaction::TransactionContext;
+use crate::transaction::RepositoryContext;
 use sea_orm::ActiveValue::Set;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use tak_core::TakPlayer;
@@ -9,7 +9,7 @@ use tak_domain::matches::{
 use tak_domain::{MatchId, TournamentId, UserId};
 use tak_persistence_sea_orm_entities::matches;
 use tak_server_app::ports::matches::MatchRepository;
-use tak_server_app::ports::transaction::{TransactionError, TransactionItem};
+use tak_server_app::ports::transaction::RepoError;
 
 pub struct MatchRepositoryImpl;
 
@@ -155,95 +155,77 @@ impl MatchRepositoryImpl {
     }
 }
 
-impl MatchRepository<TransactionContext> for MatchRepositoryImpl {
-    fn create_match(
+#[async_trait::async_trait]
+impl MatchRepository<RepositoryContext> for MatchRepositoryImpl {
+    async fn create_match(
         &self,
+        ctx: &RepositoryContext,
         new_match: Match,
-    ) -> TransactionItem<TransactionContext, Result<MatchId, TransactionError>> {
-        TransactionItem::simple(Box::new(move |ctx| {
-            Box::pin(async move {
-                let active_model = Self::match_to_model(None, &new_match).map_err(|e| {
-                    TransactionError(format!("Failed to convert match to model: {}", e))
-                })?;
-                match matches::Entity::insert(active_model).exec(ctx).await {
-                    Ok(inserted) => Ok(MatchId(inserted.last_insert_id)),
-                    Err(e) => Err(TransactionError(format!(
-                        "Failed to insert match into database: {}",
-                        e
-                    ))),
-                }
-            })
-        }))
+    ) -> Result<MatchId, RepoError> {
+        let active_model = Self::match_to_model(None, &new_match)
+            .map_err(|e| RepoError(format!("Failed to convert match to model: {}", e)))?;
+        match matches::Entity::insert(active_model).exec(ctx).await {
+            Ok(inserted) => Ok(MatchId(inserted.last_insert_id)),
+            Err(e) => Err(RepoError(format!(
+                "Failed to insert match into database: {}",
+                e
+            ))),
+        }
     }
 
-    fn get_match(
+    async fn get_match(
         &self,
+        ctx: &RepositoryContext,
         match_id: MatchId,
-    ) -> TransactionItem<TransactionContext, Result<Option<Match>, TransactionError>> {
-        TransactionItem::simple(Box::new(move |ctx| {
-            Box::pin(async move {
-                match matches::Entity::find_by_id(match_id.0).one(ctx).await {
-                    Ok(Some(model)) => Self::model_to_match(model)
-                        .map_err(|e| {
-                            TransactionError(format!("Failed to convert model to match: {}", e))
-                        })
-                        .map(|(_, match_entry)| Some(match_entry)),
-                    Ok(None) => Ok(None),
-                    Err(e) => Err(TransactionError(format!(
-                        "Failed to query match from database: {}",
-                        e
-                    ))),
-                }
-            })
-        }))
+    ) -> Result<Option<Match>, RepoError> {
+        match matches::Entity::find_by_id(match_id.0).one(ctx).await {
+            Ok(Some(model)) => Self::model_to_match(model)
+                .map_err(|e| RepoError(format!("Failed to convert model to match: {}", e)))
+                .map(|(_, match_entry)| Some(match_entry)),
+            Ok(None) => Ok(None),
+            Err(e) => Err(RepoError(format!(
+                "Failed to query match from database: {}",
+                e
+            ))),
+        }
     }
 
-    fn update_match(
+    async fn update_match(
         &self,
+        ctx: &RepositoryContext,
         match_id: MatchId,
         updated_match: Match,
-    ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
-        TransactionItem::simple(Box::new(move |ctx| {
-            Box::pin(async move {
-                let active_model =
-                    Self::match_to_model(Some(match_id), &updated_match).map_err(|e| {
-                        TransactionError(format!("Failed to convert match to model: {}", e))
-                    })?;
-                match matches::Entity::update(active_model).exec(ctx).await {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(TransactionError(format!(
-                        "Failed to update match in database: {}",
-                        e
-                    ))),
-                }
-            })
-        }))
+    ) -> Result<(), RepoError> {
+        let active_model = Self::match_to_model(Some(match_id), &updated_match)
+            .map_err(|e| RepoError(format!("Failed to convert match to model: {}", e)))?;
+        match matches::Entity::update(active_model).exec(ctx).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(RepoError(format!(
+                "Failed to update match in database: {}",
+                e
+            ))),
+        }
     }
 
-    fn get_matches_of_tournament(
+    async fn get_matches_of_tournament(
         &self,
+        ctx: &RepositoryContext,
         tournament_id: TournamentId,
-    ) -> TransactionItem<TransactionContext, Result<Vec<(MatchId, Match)>, TransactionError>> {
-        TransactionItem::simple(Box::new(move |ctx| {
-            Box::pin(async move {
-                match matches::Entity::find()
-                    .filter(matches::Column::TournamentId.eq(tournament_id.0))
-                    .all(ctx)
-                    .await
-                {
-                    Ok(models) => models
-                        .into_iter()
-                        .map(Self::model_to_match)
-                        .collect::<Result<Vec<_>, String>>()
-                        .map_err(|e| {
-                            TransactionError(format!("Failed to convert model to match: {}", e))
-                        }),
-                    Err(e) => Err(TransactionError(format!(
-                        "Failed to query matches from database: {}",
-                        e
-                    ))),
-                }
-            })
-        }))
+    ) -> Result<Vec<(MatchId, Match)>, RepoError> {
+        match matches::Entity::find()
+            .filter(matches::Column::TournamentId.eq(tournament_id.0))
+            .all(ctx)
+            .await
+        {
+            Ok(models) => models
+                .into_iter()
+                .map(Self::model_to_match)
+                .collect::<Result<Vec<_>, String>>()
+                .map_err(|e| RepoError(format!("Failed to convert model to match: {}", e))),
+            Err(e) => Err(RepoError(format!(
+                "Failed to query matches from database: {}",
+                e
+            ))),
+        }
     }
 }

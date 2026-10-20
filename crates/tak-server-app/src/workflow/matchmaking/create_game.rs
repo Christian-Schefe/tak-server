@@ -8,7 +8,7 @@ use crate::{
         game_history::GameRepository,
         matches::MatchRepository,
         notification::{ListenerMessage, ListenerNotificationPort},
-        transaction::{TransactionError, TransactionManager},
+        transaction::RepoError,
     },
     processes::game_timeout_runner::GameTimeoutRunner,
     workflow::{account::get_snapshot::GetSnapshotWorkflow, gameplay::OngoingGameView},
@@ -16,9 +16,10 @@ use crate::{
 use tak_domain::{MatchId, game::GameService, game_history::GameRecord};
 
 #[async_trait::async_trait]
-pub trait CreateGameFromMatchWorkflow {
+pub trait CreateGameFromMatchWorkflow<RpCtx> {
     async fn create_game_from_match(
         &self,
+        ctx: &RpCtx,
         match_id: MatchId,
     ) -> Result<(), CreateGameFromMatchError>;
 }
@@ -75,27 +76,24 @@ impl<
     GT: GameTimeoutRunner + Send + Sync,
     L: ListenerNotificationPort + Send + Sync,
     S: GetSnapshotWorkflow + Send + Sync,
-> CreateGameFromMatchWorkflow for CreateGameFromMatchWorkflowImpl<Ports, G, GT, L, S>
+> CreateGameFromMatchWorkflow<Ports::TrCtx>
+    for CreateGameFromMatchWorkflowImpl<Ports, G, GT, L, S>
 {
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip(self, ctx))]
     async fn create_game_from_match(
         &self,
+        ctx: &Ports::TrCtx,
         match_id: MatchId,
     ) -> Result<(), CreateGameFromMatchError> {
         let date = chrono::Utc::now();
 
-        let mut match_entry = match self
-            .ports
-            .transaction_manager()
-            .execute(self.ports.match_repository().get_match(match_id))
-            .await
-        {
+        let mut match_entry = match self.ports.match_repository().get_match(ctx, match_id).await {
             Ok(Some(match_entry)) => match_entry,
             Ok(None) => {
                 tracing::error!("Match {} not found", match_id);
                 return Err(CreateGameFromMatchError::MatchNotFound);
             }
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Error while retrieving match {}: {}", match_id, e);
                 return Err(CreateGameFromMatchError::Internal);
             }
@@ -141,27 +139,21 @@ impl<
 
         let game_id = match self
             .ports
-            .transaction_manager()
-            .execute(
-                self.ports.game_repository().save_ongoing_game(game_record),
-            )
+            .game_repository()
+            .save_ongoing_game(ctx, game_record)
             .await
         {
             Ok(id) => id,
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Failed to save ongoing game for match {}: {}", match_id, e);
                 return Err(CreateGameFromMatchError::Internal);
             }
         };
 
-        if let Err(TransactionError(e)) = self
+        if let Err(RepoError(e)) = self
             .ports
-            .transaction_manager()
-            .execute(
-                self.ports
-                    .match_repository()
-                    .update_match(match_id, match_entry),
-            )
+            .match_repository()
+            .update_match(ctx, match_id, match_entry)
             .await
         {
             tracing::error!(

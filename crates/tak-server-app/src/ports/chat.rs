@@ -3,18 +3,21 @@ use tak_domain::{
     chat::{ChatConversation, ChatMessage},
 };
 
-use crate::ports::transaction::{TransactionError, TransactionItem};
+use crate::ports::transaction::RepoError;
 
-pub trait ChatRepository<TrCtx> {
-    fn save_message(
+#[async_trait::async_trait]
+pub trait ChatRepository<RpCtx> {
+    async fn save_message(
         &self,
+        ctx: &RpCtx,
         conversation: ChatConversation,
         message: ChatMessage,
-    ) -> TransactionItem<TrCtx, Result<ChatMessageId, TransactionError>>;
-    fn get_messages(
+    ) -> Result<ChatMessageId, RepoError>;
+    async fn get_messages(
         &self,
+        ctx: &RpCtx,
         conversation: ChatConversation,
         cursor: Option<ChatMessageId>,
         limit: usize,
-    ) -> TransactionItem<TrCtx, Result<Vec<(ChatMessageId, ChatMessage)>, TransactionError>>;
+    ) -> Result<Vec<(ChatMessageId, ChatMessage)>, RepoError>;
 }

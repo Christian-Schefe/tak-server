@@ -5,7 +5,7 @@ use crate::{
     ports::{
         rating::RatingRepository,
         stats::StatsRepository,
-        transaction::{TransactionError, TransactionManager},
+        transaction::{RepoError, TransactionManager},
     },
     workflow::player::PlayerStatsView,
 };
@@ -35,23 +35,24 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GetPlayerStatsUseCase
     for GetPlayerStatsUseCaseImpl<Ports>
 {
     async fn get_stats(&self, user_id: UserId) -> Result<PlayerStatsView, GetStatsError> {
+        let ctx = self.ports.transaction_manager().simple();
         let rating_info = match self
             .ports
-            .transaction_manager()
-            .execute(self.ports.rating_repository().get_player_ranking(user_id))
+            .rating_repository()
+            .get_player_ranking(&ctx, user_id)
             .await
         {
             Ok(Some(rating_info)) => Some(rating_info),
             Ok(None) => None,
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Failed to retrieve player rating: {}", e);
                 return Err(GetStatsError::Internal);
             }
         };
         let stats = match self
             .ports
-            .transaction_manager()
-            .execute(self.ports.stats_repository().get_player_stats(user_id))
+            .stats_repository()
+            .get_player_stats(&ctx, user_id)
             .await
         {
             Ok(Some(stats)) => stats,
@@ -64,7 +65,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GetPlayerStatsUseCase
                 win_streak: 0,
                 longest_win_streak: 0,
             },
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Failed to retrieve player stats: {}", e);
                 return Err(GetStatsError::Internal);
             }

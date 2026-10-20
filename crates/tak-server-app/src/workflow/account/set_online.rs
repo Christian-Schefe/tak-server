@@ -6,7 +6,7 @@ use crate::{
         connection::UserOnlineStatusPort,
         matches::MatchRepository,
         notification::{ListenerMatchEventType, ListenerMessage, ListenerNotificationPort},
-        transaction::{TransactionError, TransactionItem, TransactionManager},
+        transaction::{RepoError, TransactionManager},
     },
     processes::disconnect_timeout_runner::DisconnectTimeoutRunner,
     workflow::player::notify_player::NotifyPlayerWorkflow,
@@ -112,21 +112,23 @@ impl<
             .match_readiness_service
             .set_player_not_ready_everywhere(user_id);
 
-        let matches = match self
-            .ports
-            .transaction_manager()
-            .execute(TransactionItem::try_parallel(
-                cancelled_match_readiness.into_iter().map(|match_id| {
-                    self.ports
-                        .match_repository()
-                        .get_match(match_id)
-                        .map_value(move |m| (match_id, m))
-                }),
-            ))
-            .await
+        let ctx = self.ports.transaction_manager().simple();
+        let ctx_ref = &ctx;
+        let matches = match futures::future::join_all(cancelled_match_readiness.into_iter().map(
+            |match_id| async move {
+                self.ports
+                    .match_repository()
+                    .get_match(ctx_ref, match_id)
+                    .await
+                    .map(|opt_match| (match_id, opt_match))
+            },
+        ))
+        .await
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()
         {
             Ok(matches) => matches,
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!(
                     "Failed to retrieve match entries when setting account offline: {:?}",
                     e

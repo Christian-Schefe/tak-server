@@ -1,10 +1,10 @@
-use crate::transaction::TransactionContext;
+use crate::transaction::RepositoryContext;
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{EntityTrait, Iterable};
 use tak_domain::{UserId, stats::PlayerStats};
 use tak_persistence_sea_orm_entities::stats;
 use tak_server_app::ports::stats::StatsRepository;
-use tak_server_app::ports::transaction::{TransactionError, TransactionItem};
+use tak_server_app::ports::transaction::RepoError;
 
 pub struct StatsRepositoryImpl;
 
@@ -35,64 +35,56 @@ impl StatsRepositoryImpl {
     }
 }
 
-impl StatsRepository<TransactionContext> for StatsRepositoryImpl {
-    fn get_player_stats(
+#[async_trait::async_trait]
+impl StatsRepository<RepositoryContext> for StatsRepositoryImpl {
+    async fn get_player_stats(
         &self,
+        ctx: &RepositoryContext,
         user_id: UserId,
-    ) -> TransactionItem<TransactionContext, Result<Option<PlayerStats>, TransactionError>> {
-        TransactionItem::simple(Box::new(move |ctx| {
-            Box::pin(async move {
-                let Some(model) = stats::Entity::find_by_id(user_id.0)
-                    .one(ctx)
-                    .await
-                    .map_err(|e| TransactionError(e.to_string()))?
-                else {
-                    return Ok(None);
-                };
+    ) -> Result<Option<PlayerStats>, RepoError> {
+        let Some(model) = stats::Entity::find_by_id(user_id.0)
+            .one(ctx)
+            .await
+            .map_err(|e| RepoError(e.to_string()))?
+        else {
+            return Ok(None);
+        };
 
-                let player_stats = Self::model_to_stats(model);
-                Ok(Some(player_stats))
-            })
-        }))
+        let player_stats = Self::model_to_stats(model);
+        Ok(Some(player_stats))
     }
 
-    fn set_player_stats(
+    async fn set_player_stats(
         &self,
+        ctx: &RepositoryContext,
         user_id: UserId,
         stats: PlayerStats,
-    ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
-        TransactionItem::simple(Box::new(move |ctx| {
-            Box::pin(async move {
-                let active_model = Self::stats_to_model(user_id, &stats);
-                stats::Entity::insert(active_model)
-                    .on_conflict(
-                        OnConflict::column(stats::Column::UserId)
-                            .update_columns(
-                                stats::Column::iter()
-                                    .filter(|c| !matches!(c, stats::Column::UserId))
-                                    .collect::<Vec<_>>(),
-                            )
-                            .to_owned(),
+    ) -> Result<(), RepoError> {
+        let active_model = Self::stats_to_model(user_id, &stats);
+        stats::Entity::insert(active_model)
+            .on_conflict(
+                OnConflict::column(stats::Column::UserId)
+                    .update_columns(
+                        stats::Column::iter()
+                            .filter(|c| !matches!(c, stats::Column::UserId))
+                            .collect::<Vec<_>>(),
                     )
-                    .exec(ctx)
-                    .await
-                    .map_err(|e| TransactionError(e.to_string()))?;
-                Ok(())
-            })
-        }))
+                    .to_owned(),
+            )
+            .exec(ctx)
+            .await
+            .map_err(|e| RepoError(e.to_string()))?;
+        Ok(())
     }
 
-    fn remove_player_stats(
+    async fn remove_player_stats(
         &self,
+        ctx: &RepositoryContext,
         user_id: UserId,
-    ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
-        TransactionItem::simple(Box::new(move |ctx| {
-            Box::pin(async move {
-                match stats::Entity::delete_by_id(user_id.0).exec(ctx).await {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(TransactionError(e.to_string())),
-                }
-            })
-        }))
+    ) -> Result<(), RepoError> {
+        match stats::Entity::delete_by_id(user_id.0).exec(ctx).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(RepoError(e.to_string())),
+        }
     }
 }

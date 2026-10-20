@@ -1,11 +1,13 @@
 use tak_domain::{PuzzleId, puzzle::Puzzle};
 
-use crate::ports::transaction::{TransactionError, TransactionItem};
+use crate::ports::transaction::RepoError;
 
-pub trait PuzzleRepository<TrCtx> {
-    fn get_puzzle(
+#[async_trait::async_trait]
+pub trait PuzzleRepository<RpCtx> {
+    async fn get_puzzle(
         &self,
+        ctx: &RpCtx,
         id: PuzzleId,
-    ) -> TransactionItem<TrCtx, Result<Option<Puzzle>, TransactionError>>;
-    fn select_random_puzzle(&self) -> TransactionItem<TrCtx, Result<PuzzleId, TransactionError>>;
+    ) -> Result<Option<Puzzle>, RepoError>;
+    async fn select_random_puzzle(&self, ctx: &RpCtx) -> Result<PuzzleId, RepoError>;
 }

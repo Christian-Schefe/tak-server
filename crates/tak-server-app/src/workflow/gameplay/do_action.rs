@@ -89,9 +89,7 @@ impl<G: GameService, NP: NotifyPlayerWorkflow, F: FinalizeGameWorkflow>
     }
 
     async fn handle_ended_game(&self, ended_game: FinishedGame) {
-        //self.send_game_time_update_for_finished_game(&ended_game)
-        //    .await;
-        self.finalize_game_workflow.finalize_game(ended_game).await;
+        let _ = self.finalize_game_workflow.finalize_game(ended_game).await;
     }
 
     async fn handle_game_action_result<R>(

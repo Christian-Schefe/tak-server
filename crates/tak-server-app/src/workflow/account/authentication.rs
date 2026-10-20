@@ -6,7 +6,7 @@ use crate::{
         authentication::{AccountPort, RefreshToken},
         email::EmailPort,
         moderation::ModerationRepository,
-        transaction::{TransactionError, TransactionManager},
+        transaction::{RepoError, TransactionManager},
     },
 };
 use tak_domain::{
@@ -152,18 +152,15 @@ impl<
         let mut moderation = Moderation::default();
         moderation.user_type = UserType::Guest;
 
+        let ctx = self.ports.transaction_manager().simple();
         match self
             .ports
-            .transaction_manager()
-            .execute(
-                self.ports
-                    .moderation_repository()
-                    .set_moderation(user_id, moderation),
-            )
+            .moderation_repository()
+            .set_moderation(&ctx, user_id, moderation)
             .await
         {
             Ok(()) => (),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Failed to set moderation for guest account: {:?}", e);
                 return Err(RegisterError::Internal);
             }
@@ -281,18 +278,15 @@ impl<
         let mut moderation = Moderation::default();
         moderation.user_type = UserType::Guest;
 
+        let ctx = self.ports.transaction_manager().simple();
         match self
             .ports
-            .transaction_manager()
-            .execute(
-                self.ports
-                    .moderation_repository()
-                    .set_moderation(user_id, moderation),
-            )
+            .moderation_repository()
+            .set_moderation(&ctx, user_id, moderation)
             .await
         {
             Ok(()) => (),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Failed to set moderation for guest account: {:?}", e);
                 return Err(RegisterError::Internal);
             }

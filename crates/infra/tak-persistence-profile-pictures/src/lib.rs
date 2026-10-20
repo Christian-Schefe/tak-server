@@ -5,7 +5,7 @@ use tak_domain::{
     UserId,
     profile::{ProfilePicture, ProfilePictureFileType},
 };
-use tak_server_app::ports::{profile::ProfilePictureRepository, transaction::TransactionError};
+use tak_server_app::ports::{profile::ProfilePictureRepository, transaction::RepoError};
 
 pub struct ProfilePictureRepositoryImpl {
     file_path: PathBuf,
@@ -43,33 +43,33 @@ impl ProfilePictureRepository for ProfilePictureRepositoryImpl {
         &self,
         user_id: UserId,
         image: DynamicImage,
-    ) -> Result<(), TransactionError> {
+    ) -> Result<(), RepoError> {
         let (shard_path, file_name) = self.get_file_path(user_id);
         let file_path = shard_path.join(file_name);
         let mut bytes: Vec<u8> = Vec::new();
         image
             .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::WebP)
-            .map_err(|e| TransactionError(format!("Failed to encode image: {}", e)))?;
+            .map_err(|e| RepoError(format!("Failed to encode image: {}", e)))?;
         tokio::fs::create_dir_all(shard_path)
             .await
-            .map_err(|e| TransactionError(format!("Failed to create shard directory: {}", e)))?;
+            .map_err(|e| RepoError(format!("Failed to create shard directory: {}", e)))?;
         tokio::fs::write(file_path, bytes)
             .await
-            .map_err(|e| TransactionError(format!("Failed to write image file: {}", e)))?;
+            .map_err(|e| RepoError(format!("Failed to write image file: {}", e)))?;
         Ok(())
     }
 
     async fn get_profile_picture(
         &self,
         user_id: UserId,
-    ) -> Result<Option<ProfilePicture>, TransactionError> {
+    ) -> Result<Option<ProfilePicture>, RepoError> {
         let (shard_path, file_name) = self.get_file_path(user_id);
         let file_path = shard_path.join(file_name);
         let file = match tokio::fs::File::open(&file_path).await {
             Ok(file) => file,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => {
-                return Err(TransactionError(format!(
+                return Err(RepoError(format!(
                     "Failed to open profile picture file: {}",
                     e
                 )));

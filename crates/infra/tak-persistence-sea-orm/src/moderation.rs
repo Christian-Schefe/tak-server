@@ -5,12 +5,9 @@ use tak_domain::{
     moderation::{Moderation, ModerationFlag, ModerationFlags, UserRole, UserType},
 };
 use tak_persistence_sea_orm_entities::moderation;
-use tak_server_app::ports::{
-    moderation::ModerationRepository,
-    transaction::{TransactionError, TransactionItem},
-};
+use tak_server_app::ports::{moderation::ModerationRepository, transaction::RepoError};
 
-use crate::transaction::TransactionContext;
+use crate::transaction::RepositoryContext;
 
 pub struct ModerationRepositoryImpl;
 
@@ -67,49 +64,44 @@ impl ModerationRepositoryImpl {
     }
 }
 
-impl ModerationRepository<TransactionContext> for ModerationRepositoryImpl {
-    fn get_moderation(
+#[async_trait::async_trait]
+impl ModerationRepository<RepositoryContext> for ModerationRepositoryImpl {
+    async fn get_moderation(
         &self,
+        ctx: &RepositoryContext,
         user_id: UserId,
-    ) -> TransactionItem<TransactionContext, Result<Option<Moderation>, TransactionError>> {
-        TransactionItem::simple(Box::new(move |ctx| {
-            Box::pin(async move {
-                let Some(model) = moderation::Entity::find_by_id(user_id.0)
-                    .one(ctx)
-                    .await
-                    .map_err(|e| TransactionError(e.to_string()))?
-                else {
-                    return Ok(None);
-                };
-                let (_, moderation) = Self::model_to_moderation(model)
-                    .map_err(|e| TransactionError(e.to_string()))?;
-                Ok(Some(moderation))
-            })
-        }))
+    ) -> Result<Option<Moderation>, RepoError> {
+        let Some(model) = moderation::Entity::find_by_id(user_id.0)
+            .one(ctx)
+            .await
+            .map_err(|e| RepoError(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        let (_, moderation) =
+            Self::model_to_moderation(model).map_err(|e| RepoError(e.to_string()))?;
+        Ok(Some(moderation))
     }
-    fn set_moderation(
+    async fn set_moderation(
         &self,
+        ctx: &RepositoryContext,
         user_id: UserId,
         moderation: Moderation,
-    ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
-        TransactionItem::simple(Box::new(move |ctx| {
-            Box::pin(async move {
-                let active_model = Self::moderation_to_active_model(user_id, &moderation);
-                moderation::Entity::insert(active_model)
-                    .on_conflict(
-                        OnConflict::columns([moderation::Column::UserId])
-                            .update_columns(
-                                moderation::Column::iter()
-                                    .filter(|c| !matches!(c, moderation::Column::UserId))
-                                    .collect::<Vec<_>>(),
-                            )
-                            .to_owned(),
+    ) -> Result<(), RepoError> {
+        let active_model = Self::moderation_to_active_model(user_id, &moderation);
+        moderation::Entity::insert(active_model)
+            .on_conflict(
+                OnConflict::columns([moderation::Column::UserId])
+                    .update_columns(
+                        moderation::Column::iter()
+                            .filter(|c| !matches!(c, moderation::Column::UserId))
+                            .collect::<Vec<_>>(),
                     )
-                    .exec(ctx)
-                    .await
-                    .map_err(|e| TransactionError(e.to_string()))?;
-                Ok(())
-            })
-        }))
+                    .to_owned(),
+            )
+            .exec(ctx)
+            .await
+            .map_err(|e| RepoError(e.to_string()))?;
+        Ok(())
     }
 }

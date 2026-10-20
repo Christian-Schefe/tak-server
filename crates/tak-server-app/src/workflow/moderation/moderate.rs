@@ -6,7 +6,7 @@ use crate::{
         authentication::AccountPort,
         email::EmailPort,
         moderation::ModerationRepository,
-        transaction::{TransactionError, TransactionManager},
+        transaction::{RepoError, TransactionManager},
     },
 };
 use tak_domain::{
@@ -103,29 +103,34 @@ impl<
         policy: Arc<dyn PermissionPolicy + Send + Sync + 'static>,
         task: impl FnOnce(&mut Moderation),
     ) -> Result<(), ModerationError> {
-        let executing_account = match self
+        let ctx = self
             .ports
             .transaction_manager()
-            .execute(self.ports.moderation_repository().get_moderation(user_id))
+            .transaction()
+            .await
+            .map_err(|RepoError(e)| {
+                tracing::error!("Failed to start transaction: {:?}", e);
+                ModerationError::Internal
+            })?;
+        let executing_account = match self
+            .ports
+            .moderation_repository()
+            .get_moderation(&ctx, user_id)
             .await
         {
             Ok(Some(account)) => account,
             Ok(None) => {
                 return Err(ModerationError::UserNotFound);
             }
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Failed to retrieve account for user {}: {}", user_id, e);
                 return Err(ModerationError::Internal);
             }
         };
         let mut target_account = match self
             .ports
-            .transaction_manager()
-            .execute(
-                self.ports
-                    .moderation_repository()
-                    .get_moderation(target_user_id),
-            )
+            .moderation_repository()
+            .get_moderation(&ctx, target_user_id)
             .await
         {
             Ok(Some(account)) => account,
@@ -133,7 +138,7 @@ impl<
                 tracing::error!("Target user {} not found", target_user_id);
                 return Err(ModerationError::UserNotFound);
             }
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!(
                     "Failed to retrieve account for user {}: {}",
                     target_user_id,
@@ -149,22 +154,28 @@ impl<
 
         task(&mut target_account);
 
-        match self
-            .ports
-            .transaction_manager()
-            .execute(
-                self.ports
-                    .moderation_repository()
-                    .set_moderation(target_user_id, target_account),
-            )
+        self.ports
+            .moderation_repository()
+            .set_moderation(&ctx, target_user_id, target_account)
             .await
-        {
-            Ok(()) => Ok(()),
-            Err(TransactionError(e)) => {
-                tracing::error!("Failed to set moderation: {}", e);
-                Err(ModerationError::Internal)
-            }
-        }
+            .map_err(|RepoError(e)| {
+                tracing::error!(
+                    "Failed to update moderation for account {}: {}",
+                    target_user_id,
+                    e
+                );
+                ModerationError::Internal
+            })?;
+
+        self.ports
+            .transaction_manager()
+            .commit(ctx)
+            .await
+            .map_err(|RepoError(e)| {
+                tracing::error!("Failed to commit transaction: {:?}", e);
+                ModerationError::Internal
+            })?;
+        Ok(())
     }
 
     async fn set_player_banned(
@@ -228,15 +239,16 @@ impl<
 > ModeratePlayerUseCase for ModeratePlayerUseCaseImpl<Ports, E, A>
 {
     async fn get_moderation(&self, user_id: UserId) -> Result<Moderation, ModerationError> {
+        let ctx = self.ports.transaction_manager().simple();
         match self
             .ports
-            .transaction_manager()
-            .execute(self.ports.moderation_repository().get_moderation(user_id))
+            .moderation_repository()
+            .get_moderation(&ctx, user_id)
             .await
         {
             Ok(Some(moderation)) => Ok(moderation),
             Ok(None) => Err(ModerationError::UserNotFound),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!(
                     "Failed to retrieve moderation for user_id: {}: {:?}",
                     user_id,

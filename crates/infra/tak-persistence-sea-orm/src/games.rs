@@ -21,12 +21,12 @@ use tak_server_app::ports::{
     game_history::{
         DateSelector, GameIdSelector, GamePlayerFilter, GameQuery, GameRepository, GameSortBy,
     },
-    transaction::{TransactionError, TransactionItem},
+    transaction::RepoError,
 };
 
 use crate::{
     JsonTimeSettings, tak_opening_from_string, tak_opening_to_string,
-    transaction::TransactionContext,
+    transaction::RepositoryContext,
 };
 
 pub struct GameRepositoryImpl;
@@ -300,301 +300,266 @@ impl GameRepositoryImpl {
     }
 }
 
-impl GameRepository<TransactionContext> for GameRepositoryImpl {
-    fn save_ongoing_game(
+#[async_trait::async_trait]
+impl GameRepository<RepositoryContext> for GameRepositoryImpl {
+    async fn save_ongoing_game(
         &self,
+        ctx: &RepositoryContext,
         game: GameRecord,
-    ) -> TransactionItem<TransactionContext, Result<GameId, TransactionError>> {
-        TransactionItem::simple(Box::new(move |ctx| {
-            Box::pin(async move {
-                let time_settings =
-                    JsonTimeSettings::from_time_settings(&game.metadata.settings.time_settings);
+    ) -> Result<GameId, RepoError> {
+        let time_settings =
+            JsonTimeSettings::from_time_settings(&game.metadata.settings.time_settings);
 
-                let base_settings = &game.metadata.settings.base;
-                let new_game = game::ActiveModel {
-                    id: Default::default(), // Auto-increment
-                    date: Set(game.metadata.date.clone()),
-                    size: Set(base_settings.board_size as i32),
-                    player_white_id: Set(game.metadata.white_id.0),
-                    player_black_id: Set(game.metadata.black_id.0),
-                    player_white_username: Set(game.white.username),
-                    player_black_username: Set(game.black.username),
-                    player_white_rating: Set(game.white.rating),
-                    player_black_rating: Set(game.black.rating),
-                    events: Set(serde_json::json!([])),
-                    result: Set(None),
-                    is_rated: Set(game.metadata.is_rated),
-                    half_komi: Set(base_settings.half_komi as i32),
-                    pieces: Set(base_settings.reserve.pieces as i32),
-                    capstones: Set(base_settings.reserve.capstones as i32),
-                    opening: Set(tak_opening_to_string(&base_settings.opening)),
-                    rating_change_white: Set(None),
-                    rating_change_black: Set(None),
-                    game_settings: Set(serde_json::to_value(&time_settings).map_err(|e| {
-                        TransactionError(format!("Failed to serialize game settings: {}", e))
-                    })?),
-                    match_id: Set(game.metadata.match_id.map(|id| id.0)),
-                };
+        let base_settings = &game.metadata.settings.base;
+        let new_game = game::ActiveModel {
+            id: Default::default(), // Auto-increment
+            date: Set(game.metadata.date.clone()),
+            size: Set(base_settings.board_size as i32),
+            player_white_id: Set(game.metadata.white_id.0),
+            player_black_id: Set(game.metadata.black_id.0),
+            player_white_username: Set(game.white.username),
+            player_black_username: Set(game.black.username),
+            player_white_rating: Set(game.white.rating),
+            player_black_rating: Set(game.black.rating),
+            events: Set(serde_json::json!([])),
+            result: Set(None),
+            is_rated: Set(game.metadata.is_rated),
+            half_komi: Set(base_settings.half_komi as i32),
+            pieces: Set(base_settings.reserve.pieces as i32),
+            capstones: Set(base_settings.reserve.capstones as i32),
+            opening: Set(tak_opening_to_string(&base_settings.opening)),
+            rating_change_white: Set(None),
+            rating_change_black: Set(None),
+            game_settings: Set(serde_json::to_value(&time_settings)
+                .map_err(|e| RepoError(format!("Failed to serialize game settings: {}", e)))?),
+            match_id: Set(game.metadata.match_id.map(|id| id.0)),
+        };
 
-                let result = new_game
-                    .insert(ctx)
-                    .await
-                    .map_err(|e| TransactionError(e.to_string()))?;
+        let result = new_game
+            .insert(ctx)
+            .await
+            .map_err(|e| RepoError(e.to_string()))?;
 
-                Ok(GameId(result.id))
-            })
-        }))
+        Ok(GameId(result.id))
     }
 
-    fn update_finished_game(
+    async fn update_finished_game(
         &self,
+        ctx: &RepositoryContext,
         game_id: GameId,
         result: TakGameResult,
         events: Vec<GameEvent>,
         rating_info: Option<GameRatingInfo>,
-    ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
-        TransactionItem::simple(Box::new(move |ctx| {
-            Box::pin(async move {
-                let events = events
-                    .iter()
-                    .map(|event| JsonEventRecord {
-                        timestamp: event.date,
-                        event: JsonEventRecordType::from_game_event(event.event_type.clone()),
-                        time_info: JsonTimeInfo::from_time_info(&event.time_info),
-                    })
-                    .collect::<Vec<_>>();
-                let events = serde_json::to_value(&events).map_err(|e| {
-                    TransactionError(format!("Failed to serialize game events: {}", e))
-                })?;
-
-                let result_val = game_result_to_string(&result);
-
-                let model = game::ActiveModel {
-                    id: Set(game_id.0),
-                    events: Set(events),
-                    result: Set(Some(result_val)),
-                    rating_change_white: Set(rating_info
-                        .as_ref()
-                        .map(|info| info.rating_change_white)),
-                    rating_change_black: Set(rating_info
-                        .as_ref()
-                        .map(|info| info.rating_change_black)),
-
-                    ..Default::default()
-                };
-
-                model
-                    .update(ctx)
-                    .await
-                    .map_err(|e| TransactionError(e.to_string()))?;
-                Ok(())
+    ) -> Result<(), RepoError> {
+        let events = events
+            .iter()
+            .map(|event| JsonEventRecord {
+                timestamp: event.date,
+                event: JsonEventRecordType::from_game_event(event.event_type.clone()),
+                time_info: JsonTimeInfo::from_time_info(&event.time_info),
             })
-        }))
+            .collect::<Vec<_>>();
+        let events = serde_json::to_value(&events)
+            .map_err(|e| RepoError(format!("Failed to serialize game events: {}", e)))?;
+
+        let result_val = game_result_to_string(&result);
+
+        let model = game::ActiveModel {
+            id: Set(game_id.0),
+            events: Set(events),
+            result: Set(Some(result_val)),
+            rating_change_white: Set(rating_info.as_ref().map(|info| info.rating_change_white)),
+            rating_change_black: Set(rating_info.as_ref().map(|info| info.rating_change_black)),
+
+            ..Default::default()
+        };
+
+        model
+            .update(ctx)
+            .await
+            .map_err(|e| RepoError(e.to_string()))?;
+        Ok(())
     }
 
-    fn get_game_record(
+    async fn get_game_record(
         &self,
+        ctx: &RepositoryContext,
         id: GameId,
-    ) -> TransactionItem<TransactionContext, Result<Option<GameRecord>, TransactionError>> {
-        TransactionItem::simple(Box::new(move |ctx| {
-            Box::pin(async move {
-                let Some(model) = game::Entity::find_by_id(id.0)
-                    .one(ctx)
-                    .await
-                    .map_err(|e| TransactionError(e.to_string()))?
-                else {
-                    return Ok(None);
-                };
-                Ok(Some(
-                    Self::model_to_game(model).map_err(|e| TransactionError(e.to_string()))?,
-                ))
-            })
-        }))
+    ) -> Result<Option<GameRecord>, RepoError> {
+        let Some(model) = game::Entity::find_by_id(id.0)
+            .one(ctx)
+            .await
+            .map_err(|e| RepoError(e.to_string()))?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(
+            Self::model_to_game(model).map_err(|e| RepoError(e.to_string()))?,
+        ))
     }
 
-    fn query_games(
+    async fn query_games(
         &self,
+        ctx: &RepositoryContext,
         filter: GameQuery,
-    ) -> TransactionItem<
-        TransactionContext,
-        Result<PaginatedResponse<(GameId, GameRecord)>, TransactionError>,
-    > {
-        TransactionItem::simple(Box::new(move |ctx| {
-            Box::pin(async move {
-                let mut query = game::Entity::find();
-                if let Some(game_id_selector) = filter.id_selector {
-                    query = match game_id_selector {
-                        GameIdSelector::Range(start_id, end_id) => {
-                            query.filter(game::Column::Id.between(start_id.0, end_id.0))
-                        }
-                        GameIdSelector::AndBefore(end_id) => {
-                            query.filter(game::Column::Id.lte(end_id.0))
-                        }
-                        GameIdSelector::AndAfter(start_id) => {
-                            query.filter(game::Column::Id.gte(start_id.0))
-                        }
-                        GameIdSelector::List(id_list) => {
-                            query.filter(game::Column::Id.is_in(id_list.iter().map(|id| id.0)))
+    ) -> Result<PaginatedResponse<(GameId, GameRecord)>, RepoError> {
+        let mut query = game::Entity::find();
+        if let Some(game_id_selector) = filter.id_selector {
+            query = match game_id_selector {
+                GameIdSelector::Range(start_id, end_id) => {
+                    query.filter(game::Column::Id.between(start_id.0, end_id.0))
+                }
+                GameIdSelector::AndBefore(end_id) => query.filter(game::Column::Id.lte(end_id.0)),
+                GameIdSelector::AndAfter(start_id) => {
+                    query.filter(game::Column::Id.gte(start_id.0))
+                }
+                GameIdSelector::List(id_list) => {
+                    query.filter(game::Column::Id.is_in(id_list.iter().map(|id| id.0)))
+                }
+            }
+        }
+        if let Some(date_selector) = filter.date_selector {
+            query = match date_selector {
+                DateSelector::Range(start_date, end_date) => query.filter(
+                    game::Column::Date.between(start_date.timestamp(), end_date.timestamp()),
+                ),
+                DateSelector::Before(end_date) => {
+                    query.filter(game::Column::Date.lte(end_date.timestamp()))
+                }
+                DateSelector::After(start_date) => {
+                    query.filter(game::Column::Date.gte(start_date.timestamp()))
+                }
+            }
+        }
+        for (filter, color) in filter.player_filters {
+            let condition =
+                match filter {
+                    GamePlayerFilter::Contains(name_part) => {
+                        let condition = sea_orm::Condition::any();
+                        match color {
+                            Some(TakPlayer::White) => condition
+                                .add(game::Column::PlayerWhiteUsername.contains(&name_part)),
+                            Some(TakPlayer::Black) => condition
+                                .add(game::Column::PlayerBlackUsername.contains(&name_part)),
+                            None => condition
+                                .add(game::Column::PlayerWhiteUsername.contains(&name_part))
+                                .add(game::Column::PlayerBlackUsername.contains(&name_part)),
                         }
                     }
-                }
-                if let Some(date_selector) = filter.date_selector {
-                    query = match date_selector {
-                        DateSelector::Range(start_date, end_date) => query.filter(
-                            game::Column::Date
-                                .between(start_date.timestamp(), end_date.timestamp()),
-                        ),
-                        DateSelector::Before(end_date) => {
-                            query.filter(game::Column::Date.lte(end_date.timestamp()))
-                        }
-                        DateSelector::After(start_date) => {
-                            query.filter(game::Column::Date.gte(start_date.timestamp()))
+                    GamePlayerFilter::Equals(name) => {
+                        let condition = sea_orm::Condition::any();
+                        match color {
+                            Some(TakPlayer::White) => {
+                                condition.add(game::Column::PlayerWhiteUsername.eq(&name))
+                            }
+                            Some(TakPlayer::Black) => {
+                                condition.add(game::Column::PlayerBlackUsername.eq(&name))
+                            }
+                            None => condition
+                                .add(game::Column::PlayerWhiteUsername.eq(&name))
+                                .add(game::Column::PlayerBlackUsername.eq(&name)),
                         }
                     }
-                }
-                for (filter, color) in filter.player_filters {
-                    let condition = match filter {
-                        GamePlayerFilter::Contains(name_part) => {
-                            let condition = sea_orm::Condition::any();
-                            match color {
-                                Some(TakPlayer::White) => condition
-                                    .add(game::Column::PlayerWhiteUsername.contains(&name_part)),
-                                Some(TakPlayer::Black) => condition
-                                    .add(game::Column::PlayerBlackUsername.contains(&name_part)),
-                                None => condition
-                                    .add(game::Column::PlayerWhiteUsername.contains(&name_part))
-                                    .add(game::Column::PlayerBlackUsername.contains(&name_part)),
+                    GamePlayerFilter::UserId(user_id) => {
+                        let condition = sea_orm::Condition::any();
+                        match color {
+                            Some(TakPlayer::White) => {
+                                condition.add(game::Column::PlayerWhiteId.eq(user_id.0))
                             }
-                        }
-                        GamePlayerFilter::Equals(name) => {
-                            let condition = sea_orm::Condition::any();
-                            match color {
-                                Some(TakPlayer::White) => {
-                                    condition.add(game::Column::PlayerWhiteUsername.eq(&name))
-                                }
-                                Some(TakPlayer::Black) => {
-                                    condition.add(game::Column::PlayerBlackUsername.eq(&name))
-                                }
-                                None => condition
-                                    .add(game::Column::PlayerWhiteUsername.eq(&name))
-                                    .add(game::Column::PlayerBlackUsername.eq(&name)),
+                            Some(TakPlayer::Black) => {
+                                condition.add(game::Column::PlayerBlackId.eq(user_id.0))
                             }
-                        }
-                        GamePlayerFilter::UserId(user_id) => {
-                            let condition = sea_orm::Condition::any();
-                            match color {
-                                Some(TakPlayer::White) => {
-                                    condition.add(game::Column::PlayerWhiteId.eq(user_id.0))
-                                }
-                                Some(TakPlayer::Black) => {
-                                    condition.add(game::Column::PlayerBlackId.eq(user_id.0))
-                                }
-                                None => condition
-                                    .add(game::Column::PlayerWhiteId.eq(user_id.0))
-                                    .add(game::Column::PlayerBlackId.eq(user_id.0)),
-                            }
-                        }
-                    };
-                    query = query.filter(condition);
-                }
-
-                if let Some(is_rated) = filter.is_rated {
-                    query = query.filter(game::Column::IsRated.eq(is_rated));
-                }
-
-                if let Some(game_results) = filter.game_results {
-                    let result_strings: Vec<String> = game_results
-                        .iter()
-                        .map(|result| game_result_to_string(result))
-                        .collect();
-                    query = query.filter(game::Column::Result.is_in(result_strings));
-                } else {
-                    query = query.filter(game::Column::Result.is_not_null());
-                }
-
-                if let Some(half_komi) = filter.half_komi {
-                    query = query.filter(game::Column::HalfKomi.eq(half_komi as i32));
-                }
-                if let Some(board_size) = filter.board_size {
-                    query = query.filter(game::Column::Size.eq(board_size as i32));
-                }
-
-                let total_count: u64 = query
-                    .clone()
-                    .count(ctx)
-                    .await
-                    .map_err(|e| TransactionError(e.to_string()))?;
-
-                if let Some((sort_order, sort_by)) = filter.sort {
-                    query = match (sort_by, sort_order) {
-                        (GameSortBy::Date, SortOrder::Ascending) => {
-                            query.order_by_asc(game::Column::Date)
-                        }
-                        (GameSortBy::Date, SortOrder::Descending) => {
-                            query.order_by_desc(game::Column::Date)
-                        }
-                        (GameSortBy::GameId, SortOrder::Ascending) => {
-                            query.order_by_asc(game::Column::Id)
-                        }
-                        (GameSortBy::GameId, SortOrder::Descending) => {
-                            query.order_by_desc(game::Column::Id)
+                            None => condition
+                                .add(game::Column::PlayerWhiteId.eq(user_id.0))
+                                .add(game::Column::PlayerBlackId.eq(user_id.0)),
                         }
                     }
-                }
+                };
+            query = query.filter(condition);
+        }
 
-                if let Some(offset) = filter.pagination.offset {
-                    query = query.offset(offset as u64);
-                }
-                if let Some(limit) = filter.pagination.limit {
-                    query = query.limit(limit as u64);
-                }
+        if let Some(is_rated) = filter.is_rated {
+            query = query.filter(game::Column::IsRated.eq(is_rated));
+        }
 
-                let models = query
-                    .all(ctx)
-                    .await
-                    .map_err(|e| TransactionError(e.to_string()))?;
+        if let Some(game_results) = filter.game_results {
+            let result_strings: Vec<String> = game_results
+                .iter()
+                .map(|result| game_result_to_string(result))
+                .collect();
+            query = query.filter(game::Column::Result.is_in(result_strings));
+        } else {
+            query = query.filter(game::Column::Result.is_not_null());
+        }
 
-                let mut results = Vec::new();
-                for model in models {
-                    let game_id = GameId(model.id);
-                    let game_record = Self::model_to_game(model).map_err(|e| {
-                        TransactionError(format!("Failed to convert game model to record: {}", e))
-                    })?;
-                    results.push((game_id, game_record));
+        if let Some(half_komi) = filter.half_komi {
+            query = query.filter(game::Column::HalfKomi.eq(half_komi as i32));
+        }
+        if let Some(board_size) = filter.board_size {
+            query = query.filter(game::Column::Size.eq(board_size as i32));
+        }
+
+        let total_count: u64 = query
+            .clone()
+            .count(ctx)
+            .await
+            .map_err(|e| RepoError(e.to_string()))?;
+
+        if let Some((sort_order, sort_by)) = filter.sort {
+            query = match (sort_by, sort_order) {
+                (GameSortBy::Date, SortOrder::Ascending) => query.order_by_asc(game::Column::Date),
+                (GameSortBy::Date, SortOrder::Descending) => {
+                    query.order_by_desc(game::Column::Date)
                 }
+                (GameSortBy::GameId, SortOrder::Ascending) => query.order_by_asc(game::Column::Id),
+                (GameSortBy::GameId, SortOrder::Descending) => {
+                    query.order_by_desc(game::Column::Id)
+                }
+            }
+        }
 
-                Ok(PaginatedResponse {
-                    total_count: total_count as usize,
-                    items: results,
-                })
-            })
-        }))
+        if let Some(offset) = filter.pagination.offset {
+            query = query.offset(offset as u64);
+        }
+        if let Some(limit) = filter.pagination.limit {
+            query = query.limit(limit as u64);
+        }
+
+        let models = query.all(ctx).await.map_err(|e| RepoError(e.to_string()))?;
+
+        let mut results = Vec::new();
+        for model in models {
+            let game_id = GameId(model.id);
+            let game_record = Self::model_to_game(model)
+                .map_err(|e| RepoError(format!("Failed to convert game model to record: {}", e)))?;
+            results.push((game_id, game_record));
+        }
+
+        Ok(PaginatedResponse {
+            total_count: total_count as usize,
+            items: results,
+        })
     }
 
-    fn get_games_of_match(
+    async fn get_games_of_match(
         &self,
+        ctx: &RepositoryContext,
         match_id: MatchId,
-    ) -> TransactionItem<TransactionContext, Result<Vec<(GameId, GameRecord)>, TransactionError>>
-    {
-        TransactionItem::simple(Box::new(move |ctx| {
-            Box::pin(async move {
-                let models = game::Entity::find()
-                    .filter(game::Column::MatchId.eq(match_id.0))
-                    .all(ctx)
-                    .await
-                    .map_err(|e| TransactionError(e.to_string()))?;
+    ) -> Result<Vec<(GameId, GameRecord)>, RepoError> {
+        let models = game::Entity::find()
+            .filter(game::Column::MatchId.eq(match_id.0))
+            .all(ctx)
+            .await
+            .map_err(|e| RepoError(e.to_string()))?;
 
-                let mut results = Vec::new();
-                for model in models {
-                    let game_id = GameId(model.id);
-                    let game_record = Self::model_to_game(model).map_err(|e| {
-                        TransactionError(format!("Failed to convert game model to record: {}", e))
-                    })?;
-                    results.push((game_id, game_record));
-                }
+        let mut results = Vec::new();
+        for model in models {
+            let game_id = GameId(model.id);
+            let game_record = Self::model_to_game(model)
+                .map_err(|e| RepoError(format!("Failed to convert game model to record: {}", e)))?;
+            results.push((game_id, game_record));
+        }
 
-                Ok(results)
-            })
-        }))
+        Ok(results)
     }
 }

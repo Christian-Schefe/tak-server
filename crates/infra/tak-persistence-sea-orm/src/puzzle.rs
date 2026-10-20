@@ -10,12 +10,9 @@ use tak_domain::{
     puzzle::{Puzzle, PuzzleResponseEntry},
 };
 use tak_persistence_sea_orm_entities::puzzle;
-use tak_server_app::ports::{
-    puzzle::PuzzleRepository,
-    transaction::{TransactionError, TransactionItem},
-};
+use tak_server_app::ports::{puzzle::PuzzleRepository, transaction::RepoError};
 
-use crate::{tak_opening_from_string, transaction::TransactionContext};
+use crate::{tak_opening_from_string, transaction::RepositoryContext};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -106,62 +103,51 @@ impl PuzzleRepositoryImpl {
     }
 }
 
-impl PuzzleRepository<TransactionContext> for PuzzleRepositoryImpl {
-    fn get_puzzle(
+#[async_trait::async_trait]
+impl PuzzleRepository<RepositoryContext> for PuzzleRepositoryImpl {
+    async fn get_puzzle(
         &self,
+        ctx: &RepositoryContext,
         id: PuzzleId,
-    ) -> TransactionItem<TransactionContext, Result<Option<Puzzle>, TransactionError>> {
-        TransactionItem::simple(Box::new(move |ctx| {
-            Box::pin(async move {
-                let puzzle_entity = puzzle::Entity::find_by_id(id.0)
-                    .one(ctx)
-                    .await
-                    .map_err(|e| TransactionError(e.to_string()))?;
-                if let Some(puzzle_entity) = puzzle_entity {
-                    let puzzle = Self::puzzle_from_entity(puzzle_entity).map_err(|e| {
-                        TransactionError(format!("Failed to convert puzzle entity: {:?}", e))
-                    })?;
-                    Ok(Some(puzzle))
-                } else {
-                    Ok(None)
-                }
-            })
-        }))
+    ) -> Result<Option<Puzzle>, RepoError> {
+        let puzzle_entity = puzzle::Entity::find_by_id(id.0)
+            .one(ctx)
+            .await
+            .map_err(|e| RepoError(e.to_string()))?;
+        if let Some(puzzle_entity) = puzzle_entity {
+            let puzzle = Self::puzzle_from_entity(puzzle_entity)
+                .map_err(|e| RepoError(format!("Failed to convert puzzle entity: {:?}", e)))?;
+            Ok(Some(puzzle))
+        } else {
+            Ok(None)
+        }
     }
 
-    fn select_random_puzzle(
-        &self,
-    ) -> TransactionItem<TransactionContext, Result<PuzzleId, TransactionError>> {
+    async fn select_random_puzzle(&self, ctx: &RepositoryContext) -> Result<PuzzleId, RepoError> {
         const SAMPLE_SIZE: u64 = 20;
 
-        TransactionItem::simple(Box::new(move |ctx| {
-            Box::pin(async move {
-                let random_seed: f64 = rand::random_range(0.0..1.0);
-                let puzzle_entity = puzzle::Entity::find()
-                    .filter(puzzle::Column::RandomSeed.gt(random_seed))
-                    .limit(SAMPLE_SIZE)
-                    .order_by_asc(puzzle::Column::RandomSeed)
-                    .all(ctx)
-                    .await
-                    .map_err(|e| TransactionError(e.to_string()))?;
-                if !puzzle_entity.is_empty() {
-                    let index = rand::random_range(0..puzzle_entity.len());
-                    return Ok(PuzzleId(puzzle_entity[index].id));
-                }
-                let puzzle_entity = puzzle::Entity::find()
-                    .limit(SAMPLE_SIZE)
-                    .order_by_asc(puzzle::Column::RandomSeed)
-                    .all(ctx)
-                    .await
-                    .map_err(|e| TransactionError(e.to_string()))?;
-                if !puzzle_entity.is_empty() {
-                    let index = rand::random_range(0..puzzle_entity.len());
-                    return Ok(PuzzleId(puzzle_entity[index].id));
-                }
-                Err(TransactionError(
-                    "Failed to select a random puzzle id".to_string(),
-                ))
-            })
-        }))
+        let random_seed: f64 = rand::random_range(0.0..1.0);
+        let puzzle_entity = puzzle::Entity::find()
+            .filter(puzzle::Column::RandomSeed.gt(random_seed))
+            .limit(SAMPLE_SIZE)
+            .order_by_asc(puzzle::Column::RandomSeed)
+            .all(ctx)
+            .await
+            .map_err(|e| RepoError(e.to_string()))?;
+        if !puzzle_entity.is_empty() {
+            let index = rand::random_range(0..puzzle_entity.len());
+            return Ok(PuzzleId(puzzle_entity[index].id));
+        }
+        let puzzle_entity = puzzle::Entity::find()
+            .limit(SAMPLE_SIZE)
+            .order_by_asc(puzzle::Column::RandomSeed)
+            .all(ctx)
+            .await
+            .map_err(|e| RepoError(e.to_string()))?;
+        if !puzzle_entity.is_empty() {
+            let index = rand::random_range(0..puzzle_entity.len());
+            return Ok(PuzzleId(puzzle_entity[index].id));
+        }
+        Err(RepoError("Failed to select a random puzzle id".to_string()))
     }
 }

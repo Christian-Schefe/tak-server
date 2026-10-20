@@ -1,28 +1,30 @@
 use tak_domain::{UserId, rating::PlayerRating};
 
-use crate::ports::{
-    PaginatedResponse, Pagination, SortOrder,
-    transaction::{TransactionError, TransactionItem},
-};
+use crate::ports::{PaginatedResponse, Pagination, SortOrder, transaction::RepoError};
 
-pub trait RatingRepository<TrCtx> {
-    fn get_player_rating(
+#[async_trait::async_trait]
+pub trait RatingRepository<RpCtx> {
+    async fn get_player_rating(
         &self,
+        ctx: &RpCtx,
         user_id: UserId,
-    ) -> TransactionItem<TrCtx, Result<Option<PlayerRating>, TransactionError>>;
-    fn get_player_ranking(
+    ) -> Result<Option<PlayerRating>, RepoError>;
+    async fn get_player_ranking(
         &self,
+        ctx: &RpCtx,
         user_id: UserId,
-    ) -> TransactionItem<TrCtx, Result<Option<(u32, PlayerRating)>, TransactionError>>;
-    fn query_player_ratings(
+    ) -> Result<Option<(u32, PlayerRating)>, RepoError>;
+    async fn query_player_ratings(
         &self,
+        ctx: &RpCtx,
         query: RatingQuery,
-    ) -> TransactionItem<TrCtx, Result<PaginatedResponse<PlayerRating>, TransactionError>>;
-    fn set_player_rating(
+    ) -> Result<PaginatedResponse<PlayerRating>, RepoError>;
+    async fn set_player_rating(
         &self,
+        ctx: &RpCtx,
         user_id: UserId,
         rating: PlayerRating,
-    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
+    ) -> Result<(), RepoError>;
 }
 
 #[derive(Debug, Clone)]

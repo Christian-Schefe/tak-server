@@ -3,7 +3,7 @@ use crate::{
     ports::{
         authentication::AccountPort,
         rating::RatingRepository,
-        transaction::{TransactionError, TransactionManager},
+        transaction::{RepoError, TransactionManager},
     },
 };
 use std::sync::Arc;
@@ -64,15 +64,16 @@ impl<
                 return Err(GetSnapshotError::Internal);
             }
         };
+        let ctx = self.ports.transaction_manager().simple();
         let current_rating = match self
             .ports
-            .transaction_manager()
-            .execute(self.ports.rating_repository().get_player_rating(user_id))
+            .rating_repository()
+            .get_player_rating(&ctx, user_id)
             .await
         {
             Ok(Some(rating)) => Some(self.rating_service.get_current_rating(&rating, date)),
             Ok(None) => None,
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!(
                     "Failed to retrieve rating for player {}: {}",
                     user_id.to_string(),

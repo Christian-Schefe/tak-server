@@ -4,7 +4,7 @@ use crate::{
     PortsCollection,
     ports::{
         puzzle::PuzzleRepository,
-        transaction::{TransactionError, TransactionManager},
+        transaction::{RepoError, TransactionManager},
     },
     workflow::puzzle::PuzzleView,
 };
@@ -36,15 +36,11 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GetPuzzleUseCase
     for GetPuzzleUseCaseImpl<Ports>
 {
     async fn get_puzzle(&self, id: PuzzleId) -> Result<PuzzleView, GetPuzzleError> {
-        match self
-            .ports
-            .transaction_manager()
-            .execute(self.ports.puzzle_repository().get_puzzle(id))
-            .await
-        {
+        let ctx = self.ports.transaction_manager().simple();
+        match self.ports.puzzle_repository().get_puzzle(&ctx, id).await {
             Ok(Some(puzzle)) => Ok(PuzzleView::from(&puzzle)),
             Ok(None) => Err(GetPuzzleError::NotFound),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Error retrieving puzzle {}: {}", id.0, e);
                 Err(GetPuzzleError::InternalError)
             }
@@ -52,14 +48,15 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GetPuzzleUseCase
     }
 
     async fn select_random_puzzle(&self) -> Result<PuzzleId, ()> {
+        let ctx = self.ports.transaction_manager().simple();
         match self
             .ports
-            .transaction_manager()
-            .execute(self.ports.puzzle_repository().select_random_puzzle())
+            .puzzle_repository()
+            .select_random_puzzle(&ctx)
             .await
         {
             Ok(id) => Ok(id),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Error selecting random puzzle: {}", e);
                 Err(())
             }

@@ -13,7 +13,7 @@ use crate::{
     ports::{
         moderation::ModerationRepository,
         profile::{AccountProfileRepository, ProfilePictureRepository},
-        transaction::{TransactionError, TransactionManager},
+        transaction::{RepoError, TransactionManager},
     },
 };
 
@@ -57,10 +57,11 @@ impl<Ports: PortsCollection + Send + Sync + 'static> UpdateProfileUseCase
         display_name: Option<String>,
         country: Option<CountryCode>,
     ) -> Result<(), UpdateProfileError> {
+        let ctx = self.ports.transaction_manager().simple();
         match self
             .ports
-            .transaction_manager()
-            .execute(self.ports.moderation_repository().get_moderation(user_id))
+            .moderation_repository()
+            .get_moderation(&ctx, user_id)
             .await
         {
             Ok(Some(acc)) => {
@@ -71,7 +72,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> UpdateProfileUseCase
             Ok(None) => {
                 return Err(UpdateProfileError::AccountNotFound);
             }
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!(
                     "Failed to retrieve moderation for account {}: {}",
                     user_id,
@@ -83,17 +84,13 @@ impl<Ports: PortsCollection + Send + Sync + 'static> UpdateProfileUseCase
 
         let mut profile_data = match self
             .ports
-            .transaction_manager()
-            .execute(
-                self.ports
-                    .profile_repository()
-                    .get_profile_information(user_id),
-            )
+            .profile_repository()
+            .get_profile_information(&ctx, user_id)
             .await
         {
             Ok(Some(data)) => data,
             Ok(None) => AccountProfile::new(),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!(
                     "Failed to retrieve profile information for account {}: {}",
                     user_id,
@@ -106,16 +103,12 @@ impl<Ports: PortsCollection + Send + Sync + 'static> UpdateProfileUseCase
         profile_data.display_name = display_name;
         match self
             .ports
-            .transaction_manager()
-            .execute(
-                self.ports
-                    .profile_repository()
-                    .insert_profile_information(user_id, profile_data),
-            )
+            .profile_repository()
+            .insert_profile_information(&ctx, user_id, profile_data)
             .await
         {
             Ok(()) => Ok(()),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!(
                     "Failed to update profile information for account {}: {}",
                     user_id,
@@ -131,10 +124,11 @@ impl<Ports: PortsCollection + Send + Sync + 'static> UpdateProfileUseCase
         user_id: UserId,
         picture_data: DynamicImage,
     ) -> Result<ProfilePictureVersion, UpdateProfileError> {
+        let ctx = self.ports.transaction_manager().simple();
         match self
             .ports
-            .transaction_manager()
-            .execute(self.ports.moderation_repository().get_moderation(user_id))
+            .moderation_repository()
+            .get_moderation(&ctx, user_id)
             .await
         {
             Ok(Some(acc)) => {
@@ -145,7 +139,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> UpdateProfileUseCase
             Ok(None) => {
                 return Err(UpdateProfileError::AccountNotFound);
             }
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!(
                     "Failed to retrieve moderation for account {}: {}",
                     user_id,
@@ -156,17 +150,13 @@ impl<Ports: PortsCollection + Send + Sync + 'static> UpdateProfileUseCase
         };
         let profile_data = match self
             .ports
-            .transaction_manager()
-            .execute(
-                self.ports
-                    .profile_repository()
-                    .get_profile_information(user_id),
-            )
+            .profile_repository()
+            .get_profile_information(&ctx, user_id)
             .await
         {
             Ok(Some(data)) => data,
             Ok(None) => AccountProfile::new(),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!(
                     "Failed to retrieve profile information for account {}: {}",
                     user_id,
@@ -191,16 +181,12 @@ impl<Ports: PortsCollection + Send + Sync + 'static> UpdateProfileUseCase
         };
         match self
             .ports
-            .transaction_manager()
-            .execute(
-                self.ports
-                    .profile_repository()
-                    .insert_profile_information(user_id, new_profile_data),
-            )
+            .profile_repository()
+            .insert_profile_information(&ctx, user_id, new_profile_data)
             .await
         {
             Ok(()) => (),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!(
                     "Failed to update profile information for account {}: {}",
                     user_id,
@@ -222,7 +208,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> UpdateProfileUseCase
             .await
         {
             Ok(()) => Ok(new_version),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!(
                     "Failed to set profile picture for account {}: {}",
                     user_id,

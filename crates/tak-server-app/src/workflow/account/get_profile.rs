@@ -2,7 +2,7 @@ use crate::{
     PortsCollection,
     ports::{
         profile::{AccountProfileRepository, ProfilePictureRepository},
-        transaction::{TransactionError, TransactionManager},
+        transaction::{RepoError, TransactionManager},
     },
     workflow::account::AccountProfileView,
 };
@@ -37,14 +37,11 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GetProfileUseCase
     for GetProfileUseCaseImpl<Ports>
 {
     async fn get_profile(&self, user_id: UserId) -> Result<AccountProfileView, GetProfileError> {
+        let ctx = self.ports.transaction_manager().simple();
         match self
             .ports
-            .transaction_manager()
-            .execute(
-                self.ports
-                    .profile_repository()
-                    .get_profile_information(user_id),
-            )
+            .profile_repository()
+            .get_profile_information(&ctx, user_id)
             .await
         {
             Ok(Some(profile_information)) => Ok(profile_information.into()),
@@ -53,7 +50,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GetProfileUseCase
                 country: None,
                 profile_picture_version: None,
             }),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!(
                     "Failed to retrieve profile information for account {}: {}",
                     user_id,
@@ -75,7 +72,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GetProfileUseCase
             .await
         {
             Ok(profile_picture) => Ok(profile_picture),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Failed to retrieve profile picture: {}", e);
                 Err(GetProfileError::RepositoryError)
             }

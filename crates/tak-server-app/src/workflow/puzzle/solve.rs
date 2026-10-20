@@ -8,7 +8,7 @@ use crate::{
     PortsCollection,
     ports::{
         puzzle::PuzzleRepository,
-        transaction::{TransactionError, TransactionManager},
+        transaction::{RepoError, TransactionManager},
     },
 };
 
@@ -46,17 +46,13 @@ impl<Ports: PortsCollection + Send + Sync + 'static> SolvePuzzleUseCase
         id: PuzzleId,
         actions: Vec<TakAction>,
     ) -> Result<PuzzleResponse, SolvePuzzleError> {
-        match self
-            .ports
-            .transaction_manager()
-            .execute(self.ports.puzzle_repository().get_puzzle(id))
-            .await
-        {
+        let ctx = self.ports.transaction_manager().simple();
+        match self.ports.puzzle_repository().get_puzzle(&ctx, id).await {
             Ok(Some(puzzle)) => Ok(puzzle.do_response(&actions).ok_or_else(|| {
                 SolvePuzzleError::InvalidInput("Invalid action sequence".to_string())
             })?),
             Ok(None) => Err(SolvePuzzleError::NotFound),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Error retrieving puzzle {}: {}", id.0, e);
                 Err(SolvePuzzleError::InternalError)
             }

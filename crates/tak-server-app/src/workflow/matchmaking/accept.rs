@@ -5,7 +5,7 @@ use crate::{
     ports::{
         matches::MatchRepository,
         notification::{ListenerMessage, ListenerNotificationPort},
-        transaction::{TransactionError, TransactionManager},
+        transaction::{RepoError, TransactionManager},
     },
     workflow::matchmaking::create_game::{CreateGameFromMatchError, CreateGameFromMatchWorkflow},
 };
@@ -25,7 +25,7 @@ pub struct AcceptSeekUseCaseImpl<
     Ports: PortsCollection,
     S: SeekService,
     L: ListenerNotificationPort,
-    C: CreateGameFromMatchWorkflow,
+    C: CreateGameFromMatchWorkflow<Ports::TrCtx>,
 > {
     ports: Arc<Ports>,
     seek_service: Arc<S>,
@@ -37,7 +37,7 @@ impl<
     Ports: PortsCollection,
     S: SeekService,
     L: ListenerNotificationPort,
-    C: CreateGameFromMatchWorkflow,
+    C: CreateGameFromMatchWorkflow<Ports::TrCtx>,
 > AcceptSeekUseCaseImpl<Ports, S, L, C>
 {
     pub fn new(
@@ -57,7 +57,7 @@ impl<
 
 pub enum AcceptSeekError {
     SeekNotFound,
-    FailedToCreateGame,
+    Internal,
 }
 
 #[async_trait::async_trait]
@@ -65,7 +65,7 @@ impl<
     Ports: PortsCollection + Send + Sync + 'static,
     S: SeekService + Send + Sync + 'static,
     L: ListenerNotificationPort + Send + Sync + 'static,
-    C: CreateGameFromMatchWorkflow + Send + Sync + 'static,
+    C: CreateGameFromMatchWorkflow<Ports::TrCtx> + Send + Sync + 'static,
 > AcceptSeekUseCase for AcceptSeekUseCaseImpl<Ports, S, L, C>
 {
     #[tracing::instrument(skip(self))]
@@ -127,26 +127,39 @@ impl<
             initial_color,
         );
 
-        let match_id = match self
+        let ctx = self
             .ports
             .transaction_manager()
-            .execute(self.ports.match_repository().create_match(match_data))
+            .transaction()
+            .await
+            .map_err(|RepoError(e)| {
+                tracing::error!(
+                    "Failed to start transaction for accepting seek {}: {}",
+                    seek_id,
+                    e
+                );
+                AcceptSeekError::Internal
+            })?;
+        let match_id = match self
+            .ports
+            .match_repository()
+            .create_match(&ctx, match_data)
             .await
         {
             Ok(id) => id,
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!(
                     "Failed to create match from accepted seek {}: {}",
                     seek_id,
                     e
                 );
-                return Err(AcceptSeekError::FailedToCreateGame);
+                return Err(AcceptSeekError::Internal);
             }
         };
 
         match self
             .create_game_workflow
-            .create_game_from_match(match_id)
+            .create_game_from_match(&ctx, match_id)
             .await
         {
             Ok(_) => Ok(()),
@@ -155,22 +168,36 @@ impl<
                     "Failed to create game from match {}: already in progress",
                     match_id
                 );
-                Err(AcceptSeekError::FailedToCreateGame)
+                Err(AcceptSeekError::Internal)
             }
             Err(CreateGameFromMatchError::Internal) => {
                 tracing::error!(
                     "Failed to create game from match {}: internal error",
                     match_id
                 );
-                Err(AcceptSeekError::FailedToCreateGame)
+                Err(AcceptSeekError::Internal)
             }
             Err(CreateGameFromMatchError::MatchNotFound) => {
                 tracing::error!(
                     "Failed to create game from match {}: match not found",
                     match_id
                 );
-                Err(AcceptSeekError::FailedToCreateGame)
+                Err(AcceptSeekError::Internal)
             }
-        }
+        }?;
+
+        self.ports
+            .transaction_manager()
+            .commit(ctx)
+            .await
+            .map_err(|RepoError(e)| {
+                tracing::error!(
+                    "Failed to commit transaction for accepting seek {}: {}",
+                    seek_id,
+                    e
+                );
+                AcceptSeekError::Internal
+            })?;
+        Ok(())
     }
 }

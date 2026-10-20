@@ -8,7 +8,7 @@ use crate::{
         PaginatedResponse,
         rating::{RatingQuery, RatingRepository},
         stats::RatingHistoryRepository,
-        transaction::{TransactionError, TransactionManager},
+        transaction::{RepoError, TransactionManager},
     },
     workflow::player::{RatingHistoryEntryView, RatingHistoryRangeView},
 };
@@ -52,16 +52,13 @@ impl<Ports: PortsCollection + Send + Sync + 'static> PlayerGetRatingUseCase
         from: Option<DateTime<Utc>>,
         to: Option<DateTime<Utc>>,
     ) -> Result<RatingHistoryRangeView, GetRatingError> {
+        let ctx = self.ports.transaction_manager().simple();
         let rating_history_range = self
             .ports
-            .transaction_manager()
-            .execute(
-                self.ports
-                    .rating_history_repository()
-                    .get_rating_history(user_id, from, to),
-            )
+            .rating_history_repository()
+            .get_rating_history(&ctx, user_id, from, to)
             .await
-            .map_err(|TransactionError(e)| {
+            .map_err(|RepoError(e)| {
                 tracing::error!(
                     "Error retrieving rating history for player {}: {}",
                     user_id,
@@ -91,12 +88,13 @@ impl<Ports: PortsCollection + Send + Sync + 'static> PlayerGetRatingUseCase
         &self,
         query: RatingQuery,
     ) -> Result<PaginatedResponse<(UserId, f64)>, GetRatingError> {
+        let ctx = self.ports.transaction_manager().simple();
         let paginated_ratings = self
             .ports
-            .transaction_manager()
-            .execute(self.ports.rating_repository().query_player_ratings(query))
+            .rating_repository()
+            .query_player_ratings(&ctx, query)
             .await
-            .map_err(|TransactionError(e)| {
+            .map_err(|RepoError(e)| {
                 tracing::error!("Error querying player ratings: {}", e);
                 GetRatingError::Internal
             })?;

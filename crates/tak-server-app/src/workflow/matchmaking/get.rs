@@ -4,7 +4,7 @@ use crate::{
     PortsCollection,
     ports::{
         matches::MatchRepository,
-        transaction::{TransactionError, TransactionManager},
+        transaction::{RepoError, TransactionManager},
     },
     workflow::matchmaking::SeekView,
 };
@@ -55,15 +55,16 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GetMatchUseCase
     for GetMatchUseCaseImpl<Ports>
 {
     async fn get_match(&self, match_id: MatchId) -> Result<Match, GetMatchError> {
+        let ctx = self.ports.transaction_manager().simple();
         match self
             .ports
-            .transaction_manager()
-            .execute(self.ports.match_repository().get_match(match_id))
+            .match_repository()
+            .get_match(&ctx, match_id)
             .await
         {
             Ok(Some(m)) => Ok(m),
             Ok(None) => Err(GetMatchError::NotFound),
-            Err(TransactionError(e)) => {
+            Err(RepoError(e)) => {
                 tracing::error!("Failed to retrieve match {}: {:?}", match_id, e);
                 Err(GetMatchError::InternalError)
             }
