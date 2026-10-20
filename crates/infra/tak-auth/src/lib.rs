@@ -284,6 +284,11 @@ where
         }
         generate_refresh_token(&mut registry, user_id, duration).map(Some)
     }
+    fn invalidate_refresh_token(&self, user_id: UserId) -> Result<(), String> {
+        let mut registry = self.refresh_token_registry.lock().unwrap();
+        registry.remove(&user_id);
+        Ok(())
+    }
 }
 
 fn generate_refresh_token(

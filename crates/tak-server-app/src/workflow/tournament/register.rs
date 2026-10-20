@@ -8,7 +8,6 @@ use tak_domain::{
 use crate::{
     PortsCollection,
     ports::{
-        RepoRetrieveError,
         tournament::{TournamentPlayerRepository, TournamentRepository},
         transaction::{TransactionError, TransactionManager},
     },
@@ -56,15 +55,17 @@ impl<Ports: PortsCollection + Send + Sync + 'static> TournamentPlayerRegistratio
     ) -> Result<(), TournamentRegistrationError> {
         let tournament = match self
             .ports
-            .tournament_repository()
-            .get_tournament(tournament_id)
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .tournament_repository()
+                    .get_tournament(tournament_id),
+            )
             .await
         {
-            Ok(tournament) => Ok(tournament),
-            Err(RepoRetrieveError::NotFound) => {
-                Err(TournamentRegistrationError::TournamentNotFound)
-            }
-            Err(RepoRetrieveError::StorageError(e)) => {
+            Ok(Some(tournament)) => Ok(tournament),
+            Ok(None) => Err(TournamentRegistrationError::TournamentNotFound),
+            Err(TransactionError(e)) => {
                 tracing::error!(
                     "Failed to get tournament with id {}: {:?}",
                     tournament_id,
@@ -114,15 +115,19 @@ impl<Ports: PortsCollection + Send + Sync + 'static> TournamentPlayerRegistratio
     ) -> Result<(), TournamentRegistrationError> {
         let tournament = match self
             .ports
-            .tournament_repository()
-            .get_tournament(tournament_id)
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .tournament_repository()
+                    .get_tournament(tournament_id),
+            )
             .await
         {
-            Ok(tournament) => Ok(tournament),
-            Err(RepoRetrieveError::NotFound) => {
+            Ok(Some(tournament)) => Ok(tournament),
+            Ok(None) => {
                 return Err(TournamentRegistrationError::TournamentNotFound);
             }
-            Err(RepoRetrieveError::StorageError(e)) => {
+            Err(TransactionError(e)) => {
                 tracing::error!(
                     "Failed to get tournament with id {}: {:?}",
                     tournament_id,

@@ -11,12 +11,11 @@ use tak_domain::{
 use crate::{
     PortsCollection,
     ports::{
-        RepoError,
         matches::MatchRepository,
         moderation::ModerationRepository,
         rating::RatingRepository,
         tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
-        transaction::{TransactionError, TransactionManager},
+        transaction::{TransactionError, TransactionItem, TransactionManager},
     },
 };
 
@@ -109,12 +108,16 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
         };
         match self
             .ports
-            .tournament_repository()
-            .create_tournament(tournament)
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .tournament_repository()
+                    .create_tournament(tournament),
+            )
             .await
         {
             Ok(tournament_id) => Ok(tournament_id),
-            Err(e) => {
+            Err(TransactionError(e)) => {
                 tracing::error!("Failed to create tournament: {:?}", e);
                 Err(())
             }
@@ -130,120 +133,84 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
         if !self.is_admin(user_id).await? {
             return Err(());
         }
-        let tournament = match self
-            .ports
-            .tournament_repository()
-            .get_tournament(tournament_id)
-            .await
-        {
-            Ok(tournament) => tournament,
-            Err(e) => {
-                tracing::error!(
-                    "Failed to begin tournament with id {}: {:?}",
-                    tournament_id,
-                    e
-                );
-                return Err(());
-            }
-        };
-        let TournamentStatus::Upcoming { .. } = tournament.status else {
-            tracing::warn!(
-                "Attempted to begin tournament {} which is not in Upcoming status",
-                tournament_id
-            );
-            return Err(());
-        };
 
-        let tournament_players = match self
+        let rating_repo = self.ports.rating_repository();
+        let tournament_player_repo = self.ports.tournament_player_repository();
+        let tournament_repo = self.ports.tournament_repository();
+
+        match self
             .ports
             .transaction_manager()
             .execute(
                 self.ports
-                    .tournament_player_repository()
-                    .get_tournament_players(tournament_id),
+                    .tournament_repository()
+                    .get_tournament(tournament_id)
+                    .flat_map_value(move |tournament| {
+                        let Some(tournament) = tournament else {
+                            tracing::warn!(
+                                "Attempted to begin tournament {} which does not exist",
+                                tournament_id
+                            );
+                            return Ok(Err(()));
+                        };
+                        let TournamentStatus::Upcoming { .. } = tournament.status else {
+                            tracing::warn!(
+                                "Attempted to begin tournament {} which is not in Upcoming status",
+                                tournament_id
+                            );
+                            return Ok(Err(()));
+                        };
+                        Ok(Ok(()))
+                    })
+                    .try_then(move |res| {
+                        if let Err(e) = res {
+                            return TransactionItem::constant(Ok(Err(e)));
+                        }
+                        let tournament_player_repo2 = tournament_player_repo.clone();
+                        let rating_repo = rating_repo.clone();
+                        tournament_player_repo
+                            .get_tournament_players(tournament_id)
+                            .try_simultaneous(
+                                tournament_repo.set_tournament_status(
+                                    tournament_id,
+                                    TournamentStatus::Ongoing,
+                                ),
+                            )
+                            .try_then(move |(tournament_players, _)| {
+                                let mut items = Vec::new();
+                                for player in tournament_players {
+                                    let tournament_player_repo = tournament_player_repo2.clone();
+                                    items.push(
+                                        rating_repo
+                                            .get_player_rating(player.user_id)
+                                            .map_value(|rating| match rating {
+                                                Some(rating) => rating.rating as i32,
+                                                // Player is a guest or not rated yet, use default rating of 1000
+                                                None => 1000,
+                                            })
+                                            .try_then(move |seeding_score| {
+                                                tournament_player_repo.set_player_seeding_score(
+                                                    tournament_id,
+                                                    player.user_id,
+                                                    seeding_score,
+                                                )
+                                            }),
+                                    )
+                                }
+                                TransactionItem::try_parallel(items)
+                            })
+                            .map_value(|_| Ok(()))
+                    }),
             )
             .await
         {
-            Ok(players) => players,
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(())) => Err(()),
             Err(TransactionError(e)) => {
-                tracing::error!(
-                    "Failed to retrieve player registrations for tournament {}: {:?}",
-                    tournament_id,
-                    e
-                );
-                return Err(());
+                tracing::error!("Failed to begin tournament {}: {:?}", tournament_id, e);
+                Err(())
             }
-        };
-
-        let set_seeding_futures = tournament_players.into_iter().map(|player| async move {
-            let seeding_score = match self
-                .ports
-                .transaction_manager()
-                .execute(
-                    self.ports
-                        .rating_repository()
-                        .get_player_rating(player.user_id),
-                )
-                .await
-            {
-                Ok(Some(rating)) => rating.rating as i32,
-                // Player is a guest or not rated yet, use default rating of 1000
-                Ok(None) => 1000,
-                Err(TransactionError(e)) => {
-                    tracing::error!(
-                        "Failed to retrieve rating for player {}: {}",
-                        player.user_id,
-                        e
-                    );
-                    return Err(());
-                }
-            };
-            if let Err(TransactionError(e)) = self
-                .ports
-                .transaction_manager()
-                .execute(
-                    self.ports
-                        .tournament_player_repository()
-                        .set_player_seeding_score(tournament_id, player.user_id, seeding_score),
-                )
-                .await
-            {
-                tracing::error!(
-                    %tournament_id,
-                    %player.user_id,
-                    "Failed to set tournament player seeding score: {:?}",
-                    e
-                );
-                return Err(());
-            }
-            Ok(())
-        });
-
-        if let Err(_) = futures::future::join_all(set_seeding_futures)
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>()
-        {
-            tracing::error!(
-                "Failed to set seeding scores for players in tournament {}",
-                tournament_id
-            );
-            return Err(());
-        }
-
-        if let Err(e) = self
-            .ports
-            .tournament_repository()
-            .set_tournament_status(tournament_id, TournamentStatus::Ongoing)
-            .await
-        {
-            tracing::error!(
-                "Failed to set tournament {} status to Ongoing: {:?}",
-                tournament_id,
-                e
-            );
-            return Err(());
-        }
+        }?;
 
         if let Err(()) = self.start_next_round(user_id, tournament_id).await {
             tracing::error!(
@@ -266,12 +233,23 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
         }
         let tournament = match self
             .ports
-            .tournament_repository()
-            .get_tournament(tournament_id)
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .tournament_repository()
+                    .get_tournament(tournament_id),
+            )
             .await
         {
-            Ok(tournament) => tournament,
-            Err(e) => {
+            Ok(Some(tournament)) => tournament,
+            Ok(None) => {
+                tracing::warn!(
+                    "Attempted to start next round of tournament {} which does not exist",
+                    tournament_id
+                );
+                return Err(());
+            }
+            Err(TransactionError(e)) => {
                 tracing::error!(
                     "Failed to get tournament with id {}: {:?}",
                     tournament_id,
@@ -334,12 +312,16 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
 
         let rounds = match self
             .ports
-            .tournament_round_repository()
-            .get_tournament_rounds(tournament_id)
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .tournament_round_repository()
+                    .get_tournament_rounds(tournament_id),
+            )
             .await
         {
             Ok(res) => res,
-            Err(RepoError::StorageError(e)) => {
+            Err(TransactionError(e)) => {
                 tracing::error!(
                     "Failed to retrieve matches for tournament {}: {:?}",
                     tournament_id,
@@ -406,9 +388,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
                     let match_id = match self
                         .ports
                         .transaction_manager()
-                        .execute(
-                            self.ports.match_repository().create_match(match_data),
-                        )
+                        .execute(self.ports.match_repository().create_match(match_data))
                         .await
                     {
                         Ok(id) => id,
@@ -459,10 +439,14 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
             }
         };
         let round = TournamentRound::new(pairing_match_ids, byes);
-        if let Err(e) = self
+        if let Err(TransactionError(e)) = self
             .ports
-            .tournament_round_repository()
-            .create_tournament_round(tournament_id, next_round_index, round)
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .tournament_round_repository()
+                    .create_tournament_round(tournament_id, next_round_index, round),
+            )
             .await
         {
             tracing::error!(
@@ -487,12 +471,23 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
         }
         let tournament = match self
             .ports
-            .tournament_repository()
-            .get_tournament(tournament_id)
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .tournament_repository()
+                    .get_tournament(tournament_id),
+            )
             .await
         {
-            Ok(tournament) => tournament,
-            Err(e) => {
+            Ok(Some(tournament)) => tournament,
+            Ok(None) => {
+                tracing::warn!(
+                    "Attempted to finish tournament {} which does not exist",
+                    tournament_id
+                );
+                return Err(());
+            }
+            Err(TransactionError(e)) => {
                 tracing::error!(
                     "Failed to get tournament with id {}: {:?}",
                     tournament_id,
@@ -536,10 +531,14 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
             return Err(());
         }
 
-        if let Err(e) = self
+        if let Err(TransactionError(e)) = self
             .ports
-            .tournament_repository()
-            .set_tournament_status(tournament_id, TournamentStatus::Completed)
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .tournament_repository()
+                    .set_tournament_status(tournament_id, TournamentStatus::Completed),
+            )
             .await
         {
             tracing::error!(
@@ -563,12 +562,23 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
         }
         let tournament = match self
             .ports
-            .tournament_repository()
-            .get_tournament(tournament_id)
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .tournament_repository()
+                    .get_tournament(tournament_id),
+            )
             .await
         {
-            Ok(tournament) => tournament,
-            Err(e) => {
+            Ok(Some(tournament)) => tournament,
+            Ok(None) => {
+                tracing::warn!(
+                    "Attempted to set registration open for tournament {} which does not exist",
+                    tournament_id
+                );
+                return Err(());
+            }
+            Err(TransactionError(e)) => {
                 tracing::error!(
                     "Failed to get tournament with id {}: {:?}",
                     tournament_id,
@@ -587,15 +597,15 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
         if registration_open == open {
             return Ok(());
         }
-        if let Err(e) = self
+        if let Err(TransactionError(e)) = self
             .ports
-            .tournament_repository()
-            .set_tournament_status(
+            .transaction_manager()
+            .execute(self.ports.tournament_repository().set_tournament_status(
                 tournament_id,
                 TournamentStatus::Upcoming {
                     registration_open: open,
                 },
-            )
+            ))
             .await
         {
             tracing::error!(

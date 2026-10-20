@@ -1,6 +1,6 @@
 use crate::matches::JsonMatchSettings;
-use crate::{create_db_pool, transaction::TransactionContext};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, ExprTrait, QueryFilter};
+use crate::transaction::TransactionContext;
+use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter};
 use tak_domain::{
     MatchId, TournamentId, UserId,
     tournament::{
@@ -9,15 +9,12 @@ use tak_domain::{
     },
 };
 use tak_persistence_sea_orm_entities::{tournament, tournament_players, tournament_round};
-use tak_server_app::ports::transaction::{TransactionError, TransactionItem};
-use tak_server_app::ports::{
-    RepoError, RepoRetrieveError,
-    tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
+use tak_server_app::ports::tournament::{
+    TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository,
 };
+use tak_server_app::ports::transaction::{TransactionError, TransactionItem};
 
-pub struct TournamentRepositoryImpl {
-    db: DatabaseConnection,
-}
+pub struct TournamentRepositoryImpl;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(
@@ -61,11 +58,6 @@ impl JsonTournamentFormat {
 }
 
 impl TournamentRepositoryImpl {
-    pub async fn new() -> Self {
-        let db = create_db_pool().await;
-        Self { db }
-    }
-
     fn status_from_str(status: &str, registration_open: bool) -> Result<TournamentStatus, String> {
         match status {
             "upcoming" => Ok(TournamentStatus::Upcoming { registration_open }),
@@ -138,88 +130,112 @@ impl TournamentRepositoryImpl {
     }
 }
 
-#[async_trait::async_trait]
-impl TournamentRepository for TournamentRepositoryImpl {
-    async fn create_tournament(&self, tournament: Tournament) -> Result<TournamentId, RepoError> {
-        let model = Self::tournament_to_model(&tournament).map_err(|e| {
-            RepoError::StorageError(format!("Failed to convert tournament to model: {}", e))
-        })?;
-        match tournament::Entity::insert(model).exec(&self.db).await {
-            Ok(res) => Ok(TournamentId(res.last_insert_id)),
-            Err(e) => Err(RepoError::StorageError(format!(
-                "Failed to create tournament: {}",
-                e
-            ))),
-        }
+impl TournamentRepository<TransactionContext> for TournamentRepositoryImpl {
+    fn create_tournament(
+        &self,
+        tournament: Tournament,
+    ) -> TransactionItem<TransactionContext, Result<TournamentId, TransactionError>> {
+        TransactionItem::simple(Box::new(move |ctx| {
+            Box::pin(async move {
+                let model = Self::tournament_to_model(&tournament).map_err(|e| {
+                    TransactionError(format!("Failed to convert tournament to model: {}", e))
+                })?;
+                match tournament::Entity::insert(model).exec(ctx).await {
+                    Ok(res) => Ok(TournamentId(res.last_insert_id)),
+                    Err(e) => Err(TransactionError(format!(
+                        "Failed to create tournament: {}",
+                        e
+                    ))),
+                }
+            })
+        }))
     }
 
-    async fn list_tournaments(&self) -> Result<Vec<(TournamentId, Tournament)>, RepoError> {
-        let models = tournament::Entity::find()
-            .all(&self.db)
-            .await
-            .map_err(|e| RepoError::StorageError(format!("Failed to list tournaments: {}", e)))?;
+    fn list_tournaments(
+        &self,
+    ) -> TransactionItem<
+        TransactionContext,
+        Result<Vec<(TournamentId, Tournament)>, TransactionError>,
+    > {
+        TransactionItem::simple(Box::new(move |ctx| {
+            Box::pin(async move {
+                let models = tournament::Entity::find()
+                    .all(ctx)
+                    .await
+                    .map_err(|e| TransactionError(format!("Failed to list tournaments: {}", e)))?;
 
-        let mut tournaments = Vec::new();
-        for model in models {
-            let tournament_id = TournamentId(model.tournament_id);
-            let tournament = Self::tournament_from_model(model).map_err(|e| {
-                RepoError::StorageError(format!(
+                let mut tournaments = Vec::new();
+                for model in models {
+                    let tournament_id = TournamentId(model.tournament_id);
+                    let tournament = Self::tournament_from_model(model).map_err(|e| {
+                TransactionError(format!(
                     "Failed to convert tournament model to domain object for tournament {}: {}",
                     tournament_id.0, e
-                ))
-            })?;
-            tournaments.push((tournament_id, tournament));
-        }
-        Ok(tournaments)
+                ))})?;
+                    tournaments.push((tournament_id, tournament));
+                }
+                Ok(tournaments)
+            })
+        }))
     }
 
-    async fn get_tournament(
+    fn get_tournament(
         &self,
         tournament_id: TournamentId,
-    ) -> Result<Tournament, RepoRetrieveError> {
-        let model = tournament::Entity::find_by_id(tournament_id.0)
-            .one(&self.db)
-            .await
-            .map_err(|e| {
-                RepoRetrieveError::StorageError(format!(
-                    "Failed to retrieve tournament {}: {}",
-                    tournament_id.0, e
-                ))
-            })?
-            .ok_or(RepoRetrieveError::NotFound)?;
+    ) -> TransactionItem<TransactionContext, Result<Option<Tournament>, TransactionError>> {
+        TransactionItem::simple(Box::new(move |ctx| {
+            Box::pin(async move {
+                let Some(model) = tournament::Entity::find_by_id(tournament_id.0)
+                    .one(ctx)
+                    .await
+                    .map_err(|e| {
+                        TransactionError(format!(
+                            "Failed to retrieve tournament {}: {}",
+                            tournament_id.0, e
+                        ))
+                    })?
+                else {
+                    return Ok(None);
+                };
 
-        let tournament = Self::tournament_from_model(model).map_err(|e| {
-            RepoRetrieveError::StorageError(format!(
-                "Failed to convert tournament model to domain object for tournament {}: {}",
-                tournament_id.0, e
-            ))
-        })?;
+                let tournament = Self::tournament_from_model(model).map_err(|e| {
+                    TransactionError(format!(
+                        "Failed to convert tournament model to domain object for tournament {}: {}",
+                        tournament_id.0, e
+                    ))
+                })?;
 
-        Ok(tournament)
+                Ok(Some(tournament))
+            })
+        }))
     }
 
-    async fn set_tournament_status(
+    fn set_tournament_status(
         &self,
         tournament_id: TournamentId,
         status: TournamentStatus,
-    ) -> Result<(), RepoError> {
-        let (str_status, registration_open) = Self::status_to_str(&status);
-        let model = tournament::ActiveModel {
-            tournament_id: sea_orm::Set(tournament_id.0),
-            status: sea_orm::Set(str_status),
-            registration_open: sea_orm::Set(registration_open),
-            ..Default::default()
-        };
-        tournament::Entity::update(model)
-            .exec(&self.db)
-            .await
-            .map_err(|e| {
-                RepoError::StorageError(format!(
-                    "Failed to update tournament status for tournament {}: {}",
-                    tournament_id.0, e
-                ))
-            })?;
-        Ok(())
+    ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
+        TransactionItem::simple(Box::new(move |ctx| {
+            Box::pin(async move {
+                let (str_status, registration_open) = Self::status_to_str(&status);
+                let model = tournament::ActiveModel {
+                    tournament_id: sea_orm::Set(tournament_id.0),
+                    status: sea_orm::Set(str_status),
+                    registration_open: sea_orm::Set(registration_open),
+                    ..Default::default()
+                };
+                tournament::Entity::update(model)
+                    .exec(ctx)
+                    .await
+                    .map_err(|e| {
+                        TransactionError(format!(
+                            "Failed to update tournament status for tournament {}: {}",
+                            tournament_id.0, e
+                        ))
+                    })?;
+                Ok(())
+            })
+        }))
     }
 }
 
@@ -366,16 +382,9 @@ impl TournamentPlayerRepository<TransactionContext> for TournamentPlayerRegistra
     }
 }
 
-pub struct TournamentRoundRepositoryImpl {
-    db: DatabaseConnection,
-}
+pub struct TournamentRoundRepositoryImpl;
 
 impl TournamentRoundRepositoryImpl {
-    pub async fn new() -> Self {
-        let db = create_db_pool().await;
-        Self { db }
-    }
-
     fn round_to_model(
         tournament_id: TournamentId,
         round_index: usize,
@@ -447,53 +456,60 @@ struct JsonTournamentRound {
     matches: Vec<String>,
 }
 
-#[async_trait::async_trait]
-impl TournamentRoundRepository for TournamentRoundRepositoryImpl {
-    async fn get_tournament_rounds(
+impl TournamentRoundRepository<TransactionContext> for TournamentRoundRepositoryImpl {
+    fn get_tournament_rounds(
         &self,
         tournament_id: TournamentId,
-    ) -> Result<Vec<TournamentRound>, RepoError> {
-        let round_models = tournament_round::Entity::find()
-            .filter(tournament_round::Column::TournamentId.eq(tournament_id.0))
-            .all(&self.db)
-            .await
-            .map_err(|e| {
-                RepoError::StorageError(format!(
-                    "Failed to retrieve tournament rounds for tournament {}: {}",
-                    tournament_id.0, e
-                ))
-            })?;
-        round_models
-            .into_iter()
-            .map(|model| {
-                Self::round_from_model(model).map_err(|e| {
-                    RepoError::StorageError(format!(
-                        "Failed to convert tournament round model to domain object: {}",
-                        e
-                    ))
-                })
+    ) -> TransactionItem<TransactionContext, Result<Vec<TournamentRound>, TransactionError>> {
+        TransactionItem::simple(Box::new(move |ctx| {
+            Box::pin(async move {
+                let round_models = tournament_round::Entity::find()
+                    .filter(tournament_round::Column::TournamentId.eq(tournament_id.0))
+                    .all(ctx)
+                    .await
+                    .map_err(|e| {
+                        TransactionError(format!(
+                            "Failed to retrieve tournament rounds for tournament {}: {}",
+                            tournament_id.0, e
+                        ))
+                    })?;
+                round_models
+                    .into_iter()
+                    .map(|model| {
+                        Self::round_from_model(model).map_err(|e| {
+                            TransactionError(format!(
+                                "Failed to convert tournament round model to domain object: {}",
+                                e
+                            ))
+                        })
+                    })
+                    .collect()
             })
-            .collect()
+        }))
     }
-    async fn create_tournament_round(
+    fn create_tournament_round(
         &self,
         tournament_id: TournamentId,
         round_index: usize,
         tournament_round: TournamentRound,
-    ) -> Result<(), RepoError> {
-        let model =
-            Self::round_to_model(tournament_id, round_index, &tournament_round).map_err(|e| {
-                RepoError::StorageError(format!(
-                    "Failed to convert tournament round to model: {}",
-                    e
-                ))
-            })?;
-        match tournament_round::Entity::insert(model).exec(&self.db).await {
-            Ok(_) => Ok(()),
-            Err(e) => Err(RepoError::StorageError(format!(
-                "Failed to create tournament round: {}",
-                e
-            ))),
-        }
+    ) -> TransactionItem<TransactionContext, Result<(), TransactionError>> {
+        TransactionItem::simple(Box::new(move |ctx| {
+            Box::pin(async move {
+                let model = Self::round_to_model(tournament_id, round_index, &tournament_round)
+                    .map_err(|e| {
+                        TransactionError(format!(
+                            "Failed to convert tournament round to model: {}",
+                            e
+                        ))
+                    })?;
+                match tournament_round::Entity::insert(model).exec(ctx).await {
+                    Ok(_) => Ok(()),
+                    Err(e) => Err(TransactionError(format!(
+                        "Failed to create tournament round: {}",
+                        e
+                    ))),
+                }
+            })
+        }))
     }
 }

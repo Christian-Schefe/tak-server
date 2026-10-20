@@ -36,6 +36,7 @@ pub trait AccountPort {
         refresh_token: &str,
         duration: Duration,
     ) -> Result<Option<RefreshToken>, String>;
+    fn invalidate_refresh_token(&self, user_id: UserId) -> Result<(), String>;
     async fn get_account_info(&self, user_id: UserId) -> Result<Option<AccountInfo>, ()>;
 }
 

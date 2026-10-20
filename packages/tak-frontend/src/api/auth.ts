@@ -83,3 +83,10 @@ export function useRefresh() {
     return await fetchTyped(authenticatedUserResponseSchema, '/api/auth/refresh', 'POST', request);
   };
 }
+
+export function useLogout() {
+  const { fetch } = useFetch();
+  return async () => {
+    return await fetch('/api/auth/logout', 'POST');
+  };
+}

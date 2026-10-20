@@ -144,28 +144,15 @@ impl<T: Send + Sync + 'static, Out: Send + Sync + 'static, Err: Send + Sync + 's
             self.needs_transaction,
         )
     }
-}
-
-impl<
-    T: Send + Sync + 'static,
-    LeftOut: Send + Sync + 'static,
-    RightOut: Send + Sync + 'static,
-    Err: Send + Sync + 'static,
-> TransactionItem<T, Result<(LeftOut, RightOut), Err>>
-{
-    pub fn try_pair(
-        left: TransactionItem<T, Result<LeftOut, Err>>,
-        right: TransactionItem<T, Result<RightOut, Err>>,
-    ) -> TransactionItem<T, Result<(LeftOut, RightOut), Err>> {
+    pub fn try_simultaneous<NewOut: Send + Sync + 'static>(
+        self,
+        item: TransactionItem<T, Result<NewOut, Err>>,
+    ) -> TransactionItem<T, Result<(Out, NewOut), Err>> {
         TransactionItem::new(
             Box::new(move |ctx| {
-                let left_item = (left.item)(ctx);
-                let right_item = (right.item)(ctx);
-                Box::pin(async move {
-                    let (left_result, right_result) =
-                        futures::future::join(left_item, right_item).await;
-                    Ok((left_result?, right_result?))
-                })
+                let first_item = (self.item)(ctx);
+                let second_item = (item.item)(ctx);
+                Box::pin(async move { Ok((first_item.await?, second_item.await?)) })
             }),
             true,
         )

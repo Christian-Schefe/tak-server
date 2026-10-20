@@ -14,7 +14,7 @@ use axum_extra::{
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use tak_domain::UserId;
 use tak_server_app::workflow::account::authentication::{
-    LoginError, RecoverError, RefreshError, RegisterError, ResetError,
+    LoginError, LogoutError, RecoverError, RefreshError, RegisterError, ResetError,
 };
 
 use crate::{AppState, ServiceError};
@@ -57,6 +57,7 @@ pub fn register_routes() -> axum::Router<AppState> {
         .route("/recover", post(recover))
         .route("/reset", post(reset))
         .route("/refresh", post(refresh))
+        .route("/logout", post(logout))
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -253,6 +254,13 @@ async fn reset(
         Err(ResetError::AccountNotFound) => Err(ServiceError::NotFound(
             "Invalid token or password".to_string(),
         )),
+    }
+}
+
+async fn logout(State(app): State<AppState>, auth: Auth) -> Result<(), ServiceError> {
+    match app.app.authentication_use_case.logout(auth.user_id).await {
+        Ok(()) => Ok(()),
+        Err(LogoutError::Internal) => Err(ServiceError::Internal("Failed to logout".to_string())),
     }
 }
 

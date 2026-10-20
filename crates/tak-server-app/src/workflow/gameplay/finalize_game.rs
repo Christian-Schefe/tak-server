@@ -149,47 +149,47 @@ impl<
         let rating_repo = self.ports.rating_repository();
         let rating_history_repo = self.ports.rating_history_repository();
         let date = ended_game.metadata.date;
-        TransactionItem::try_pair(
-            rating_repo.get_player_rating(white_id),
-            rating_repo.get_player_rating(black_id),
-        )
-        .try_then(move |(w_rating, b_rating)| {
-            let prev_white_rating = w_rating.as_ref().map(|r| r.rating);
-            let prev_black_rating = b_rating.as_ref().map(|r| r.rating);
 
-            let mut w_rating = w_rating.unwrap_or(PlayerRating::new(white_id));
-            let mut b_rating = b_rating.unwrap_or(PlayerRating::new(black_id));
-            let res = rating_service.calculate_ratings(&ended_game, &mut w_rating, &mut b_rating);
-            let white_rating_if_changed =
-                Some(w_rating.rating).filter(|&r| Some(r) != prev_white_rating);
-            let black_rating_if_changed =
-                Some(b_rating.rating).filter(|&r| Some(r) != prev_black_rating);
-            let info = res.map(|info| info);
+        rating_repo
+            .get_player_rating(white_id)
+            .try_simultaneous(rating_repo.get_player_rating(black_id))
+            .try_then(move |(w_rating, b_rating)| {
+                let prev_white_rating = w_rating.as_ref().map(|r| r.rating);
+                let prev_black_rating = b_rating.as_ref().map(|r| r.rating);
 
-            TransactionItem::try_pair(
-                rating_repo.set_player_rating(white_id, w_rating.clone()),
-                rating_repo.set_player_rating(black_id, b_rating.clone()),
+                let mut w_rating = w_rating.unwrap_or(PlayerRating::new(white_id));
+                let mut b_rating = b_rating.unwrap_or(PlayerRating::new(black_id));
+                let res =
+                    rating_service.calculate_ratings(&ended_game, &mut w_rating, &mut b_rating);
+                let white_rating_if_changed =
+                    Some(w_rating.rating).filter(|&r| Some(r) != prev_white_rating);
+                let black_rating_if_changed =
+                    Some(b_rating.rating).filter(|&r| Some(r) != prev_black_rating);
+                let info = res.map(|info| info);
+
+                rating_repo
+                    .set_player_rating(white_id, w_rating.clone())
+                    .try_simultaneous(rating_repo.set_player_rating(black_id, b_rating.clone()))
+                    .map_value(move |_| (white_rating_if_changed, black_rating_if_changed, info))
+            })
+            .try_then(
+                move |(white_rating_if_changed, black_rating_if_changed, info)| {
+                    let mut items = Vec::new();
+                    if let Some(new_white_rating) = &white_rating_if_changed {
+                        items.push(rating_history_repo.add_rating_history_entry(
+                            white_id,
+                            RatingHistoryEntry::new(date, *new_white_rating),
+                        ))
+                    }
+                    if let Some(new_black_rating) = &black_rating_if_changed {
+                        items.push(rating_history_repo.add_rating_history_entry(
+                            black_id,
+                            RatingHistoryEntry::new(date, *new_black_rating),
+                        ))
+                    }
+                    TransactionItem::try_parallel(items).map_value(move |_| info)
+                },
             )
-            .map_value(move |_| (white_rating_if_changed, black_rating_if_changed, info))
-        })
-        .try_then(
-            move |(white_rating_if_changed, black_rating_if_changed, info)| {
-                let mut items = Vec::new();
-                if let Some(new_white_rating) = &white_rating_if_changed {
-                    items.push(rating_history_repo.add_rating_history_entry(
-                        white_id,
-                        RatingHistoryEntry::new(date, *new_white_rating),
-                    ))
-                }
-                if let Some(new_black_rating) = &black_rating_if_changed {
-                    items.push(rating_history_repo.add_rating_history_entry(
-                        black_id,
-                        RatingHistoryEntry::new(date, *new_black_rating),
-                    ))
-                }
-                TransactionItem::try_parallel(items).map_value(move |_| info)
-            },
-        )
     }
 
     fn update_stats(

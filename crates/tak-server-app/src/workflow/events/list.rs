@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tak_domain::event::Event;
 
-use crate::ports::{RepoError, event::EventRepository};
+use crate::ports::event::EventRepository;
 
 #[async_trait::async_trait]
 pub trait ListEventsUseCase {
@@ -28,7 +28,7 @@ impl<R: EventRepository + Send + Sync + 'static> ListEventsUseCase for ListEvent
     async fn list_events(&self) -> Result<Vec<Event>, ListEventsError> {
         match self.event_repository.get_events().await {
             Ok(events) => Ok(events),
-            Err(RepoError::StorageError(e)) => {
+            Err(e) => {
                 tracing::error!("Error retrieving events: {}", e);
                 Err(ListEventsError::RepositoryError)
             }

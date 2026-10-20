@@ -3,7 +3,6 @@ use std::sync::Arc;
 use crate::{
     PortsCollection,
     ports::{
-        RepoError, RepoRetrieveError,
         tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
         transaction::{TransactionError, TransactionManager},
     },
@@ -35,12 +34,17 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GetTournamentUseCase
     for GetTournamentUseCaseImpl<Ports>
 {
     async fn get_tournaments(&self) -> Result<Vec<TournamentView>, ()> {
-        match self.ports.tournament_repository().list_tournaments().await {
+        match self
+            .ports
+            .transaction_manager()
+            .execute(self.ports.tournament_repository().list_tournaments())
+            .await
+        {
             Ok(tournaments) => Ok(tournaments
                 .into_iter()
                 .map(|(id, t)| TournamentView::from_tournament(id, t))
                 .collect()),
-            Err(RepoError::StorageError(e)) => {
+            Err(TransactionError(e)) => {
                 tracing::error!("Failed to list tournaments: {:?}", e);
                 Err(())
             }
@@ -51,18 +55,30 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GetTournamentUseCase
         &self,
         tournament_id: TournamentId,
     ) -> Result<Option<TournamentDetailView>, ()> {
-        let tournament_repo = self.ports.tournament_repository();
-        let transaction_manager = self.ports.transaction_manager();
-        let tournament_player_repo = self.ports.tournament_player_repository();
-        let tournament_round_repo = self.ports.tournament_round_repository();
-        match futures::join!(
-            tournament_repo.get_tournament(tournament_id),
-            transaction_manager.execute(
-                tournament_player_repo.get_tournament_players(tournament_id)
-            ),
-            tournament_round_repo.get_tournament_rounds(tournament_id)
-        ) {
-            (Ok(tournament), Ok(tournament_players), Ok(rounds)) => {
+        match self
+            .ports
+            .transaction_manager()
+            .execute(
+                self.ports
+                    .tournament_repository()
+                    .get_tournament(tournament_id)
+                    .try_simultaneous(
+                        self.ports
+                            .tournament_player_repository()
+                            .get_tournament_players(tournament_id),
+                    )
+                    .try_simultaneous(
+                        self.ports
+                            .tournament_round_repository()
+                            .get_tournament_rounds(tournament_id),
+                    ),
+            )
+            .await
+        {
+            Ok(((tournament, tournament_players), rounds)) => {
+                let Some(tournament) = tournament else {
+                    return Ok(None);
+                };
                 Ok(Some(TournamentDetailView::from_tournament(
                     tournament_id,
                     tournament,
@@ -70,15 +86,8 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GetTournamentUseCase
                     rounds,
                 )))
             }
-            (Err(RepoRetrieveError::NotFound), _, _) => Ok(None),
-            (Err(RepoRetrieveError::StorageError(e)), _, _)
-            | (_, Err(TransactionError(e)), _)
-            | (_, _, Err(RepoError::StorageError(e))) => {
-                tracing::error!(
-                    "Failed to get tournament with id {}: {:?}",
-                    tournament_id,
-                    e
-                );
+            Err(TransactionError(e)) => {
+                tracing::error!("Failed to get tournament: {:?}", e);
                 Err(())
             }
         }

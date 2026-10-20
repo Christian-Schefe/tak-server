@@ -14,34 +14,6 @@ pub mod stats;
 pub mod tournament;
 pub mod transaction;
 
-#[derive(Debug)]
-pub enum RepoError {
-    StorageError(String),
-}
-
-impl std::fmt::Display for RepoError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RepoError::StorageError(e) => write!(f, "Storage error: {}", e),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum RepoRetrieveError {
-    NotFound,
-    StorageError(String),
-}
-
-impl std::fmt::Display for RepoRetrieveError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RepoRetrieveError::NotFound => write!(f, "Resource not found"),
-            RepoRetrieveError::StorageError(e) => write!(f, "Storage error: {}", e),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum SortOrder {
     Ascending,

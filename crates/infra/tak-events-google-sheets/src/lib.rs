@@ -6,7 +6,7 @@ use google_sheets4::{
     oauth2::{ServiceAccountAuthenticator, read_service_account_key},
 };
 use tak_domain::event::Event;
-use tak_server_app::ports::{RepoError, event::EventRepository};
+use tak_server_app::ports::event::EventRepository;
 
 pub struct GoogleSheetsEventRepository {
     hub: Sheets<HttpsConnector<HttpConnector>>,
@@ -71,7 +71,7 @@ fn validate_link(s: &str) -> Option<String> {
 
 #[async_trait::async_trait]
 impl EventRepository for GoogleSheetsEventRepository {
-    async fn get_events(&self) -> Result<Vec<Event>, RepoError> {
+    async fn get_events(&self) -> Result<Vec<Event>, String> {
         let resp = self
             .hub
             .spreadsheets()
@@ -79,7 +79,7 @@ impl EventRepository for GoogleSheetsEventRepository {
             .add_scope(Scope::SpreadsheetReadonly)
             .doit()
             .await
-            .map_err(|e| RepoError::StorageError(e.to_string()))?;
+            .map_err(|e| e.to_string())?;
 
         let rows = resp.1.values.unwrap_or_default();
 
@@ -113,7 +113,7 @@ pub struct NoopEventRepository;
 
 #[async_trait::async_trait]
 impl EventRepository for NoopEventRepository {
-    async fn get_events(&self) -> Result<Vec<Event>, RepoError> {
+    async fn get_events(&self) -> Result<Vec<Event>, String> {
         Ok(Vec::new())
     }
 }

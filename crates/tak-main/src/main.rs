@@ -96,10 +96,10 @@ async fn main() {
     let puzzle_repo = Arc::new(PuzzleRepositoryImpl);
     let chat_repo = Arc::new(ChatRepositoryImpl);
     let rating_history_repo = Arc::new(RatingHistoryRepositoryImpl);
-    let tournament_repo = Arc::new(TournamentRepositoryImpl::new().await);
+    let tournament_repo = Arc::new(TournamentRepositoryImpl);
     let tournament_player_registration_repo = Arc::new(TournamentPlayerRegistrationRepositoryImpl);
     let match_repo = Arc::new(MatchRepositoryImpl);
-    let tournament_round_repo = Arc::new(TournamentRoundRepositoryImpl::new().await);
+    let tournament_round_repo = Arc::new(TournamentRoundRepositoryImpl);
     let moderation_repo = Arc::new(ModerationRepositoryImpl);
 
     let transaction_manager = Arc::new(TransactionManagerImpl::new().await);

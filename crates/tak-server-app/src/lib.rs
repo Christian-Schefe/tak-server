@@ -152,10 +152,10 @@ pub struct PortsCollectionImpl<
     PZR: PuzzleRepository<TrCtx>,
     CR: ChatRepository<TrCtx>,
     RH: RatingHistoryRepository<TrCtx>,
-    TO: TournamentRepository,
+    TO: TournamentRepository<TrCtx>,
     TPR: TournamentPlayerRepository<TrCtx>,
     MR: MatchRepository<TrCtx>,
-    TRR: TournamentRoundRepository,
+    TRR: TournamentRoundRepository<TrCtx>,
     MO: ModerationRepository<TrCtx>,
     TR: TransactionManager<TrCtx>,
     TrCtx,
@@ -188,10 +188,10 @@ impl<
     PZR: PuzzleRepository<TrCtx>,
     CR: ChatRepository<TrCtx>,
     RH: RatingHistoryRepository<TrCtx>,
-    TO: TournamentRepository,
+    TO: TournamentRepository<TrCtx>,
     TPR: TournamentPlayerRepository<TrCtx>,
     MR: MatchRepository<TrCtx>,
-    TRR: TournamentRoundRepository,
+    TRR: TournamentRoundRepository<TrCtx>,
     MO: ModerationRepository<TrCtx>,
     TR: TransactionManager<TrCtx>,
     TrCtx,
@@ -245,10 +245,10 @@ pub trait PortsCollection {
     type PuzzleRepo: PuzzleRepository<Self::TrCtx> + Send + Sync + 'static;
     type ChatRepo: ChatRepository<Self::TrCtx> + Send + Sync + 'static;
     type RatingHistoryRepo: RatingHistoryRepository<Self::TrCtx> + Send + Sync + 'static;
-    type TournamentRepo: TournamentRepository + Send + Sync + 'static;
+    type TournamentRepo: TournamentRepository<Self::TrCtx> + Send + Sync + 'static;
     type TournamentPlayerRepo: TournamentPlayerRepository<Self::TrCtx> + Send + Sync + 'static;
     type MatchRepo: MatchRepository<Self::TrCtx> + Send + Sync + 'static;
-    type TournamentRoundRepo: TournamentRoundRepository + Send + Sync + 'static;
+    type TournamentRoundRepo: TournamentRoundRepository<Self::TrCtx> + Send + Sync + 'static;
     type ModerationRepo: ModerationRepository<Self::TrCtx> + Send + Sync + 'static;
     type TransactionManagerType: TransactionManager<Self::TrCtx> + Send + Sync + 'static;
     type TrCtx: Send + Sync + 'static;
@@ -279,10 +279,10 @@ impl<
     PZR: PuzzleRepository<TrCtx> + Send + Sync + 'static,
     CR: ChatRepository<TrCtx> + Send + Sync + 'static,
     RH: RatingHistoryRepository<TrCtx> + Send + Sync + 'static,
-    TO: TournamentRepository + Send + Sync + 'static,
+    TO: TournamentRepository<TrCtx> + Send + Sync + 'static,
     TPR: TournamentPlayerRepository<TrCtx> + Send + Sync + 'static,
     MR: MatchRepository<TrCtx> + Send + Sync + 'static,
-    TRR: TournamentRoundRepository + Send + Sync + 'static,
+    TRR: TournamentRoundRepository<TrCtx> + Send + Sync + 'static,
     MO: ModerationRepository<TrCtx> + Send + Sync + 'static,
     TR: TransactionManager<TrCtx> + Send + Sync + 'static,
     TrCtx: Send + Sync + 'static,

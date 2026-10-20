@@ -41,6 +41,10 @@ pub enum RefreshError {
     Internal,
 }
 
+pub enum LogoutError {
+    Internal,
+}
+
 #[derive(Clone, Debug)]
 pub struct AuthenticatedUser {
     pub user_id: UserId,
@@ -73,6 +77,7 @@ pub trait AuthenticationUseCase {
         user_id: UserId,
         refresh_token: String,
     ) -> Result<AuthenticatedUser, RefreshError>;
+    async fn logout(&self, user_id: UserId) -> Result<(), LogoutError>;
 }
 
 pub struct AuthenticationUseCaseImpl<Ports: PortsCollection, A: AccountPort, E: EmailPort> {
@@ -325,6 +330,16 @@ impl<
             Err(e) => {
                 tracing::error!("Error rotating refresh token: {:?}", e);
                 Err(RefreshError::Internal)
+            }
+        }
+    }
+
+    async fn logout(&self, user_id: UserId) -> Result<(), LogoutError> {
+        match self.account_service.invalidate_refresh_token(user_id) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                tracing::error!("Error invalidating refresh token: {:?}", e);
+                Err(LogoutError::Internal)
             }
         }
     }

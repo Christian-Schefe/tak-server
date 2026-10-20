@@ -3,38 +3,38 @@ use tak_domain::{
     tournament::{Tournament, TournamentPlayer, TournamentRound, TournamentStatus},
 };
 
-use crate::ports::{
-    RepoError, RepoRetrieveError,
-    transaction::{TransactionError, TransactionItem},
-};
+use crate::ports::transaction::{TransactionError, TransactionItem};
 
-#[async_trait::async_trait]
-pub trait TournamentRepository {
-    async fn create_tournament(&self, tournament: Tournament) -> Result<TournamentId, RepoError>;
-    async fn list_tournaments(&self) -> Result<Vec<(TournamentId, Tournament)>, RepoError>;
-    async fn get_tournament(
+pub trait TournamentRepository<TrCtx> {
+    fn create_tournament(
+        &self,
+        tournament: Tournament,
+    ) -> TransactionItem<TrCtx, Result<TournamentId, TransactionError>>;
+    fn list_tournaments(
+        &self,
+    ) -> TransactionItem<TrCtx, Result<Vec<(TournamentId, Tournament)>, TransactionError>>;
+    fn get_tournament(
         &self,
         tournament_id: TournamentId,
-    ) -> Result<Tournament, RepoRetrieveError>;
-    async fn set_tournament_status(
+    ) -> TransactionItem<TrCtx, Result<Option<Tournament>, TransactionError>>;
+    fn set_tournament_status(
         &self,
         tournament_id: TournamentId,
         status: TournamentStatus,
-    ) -> Result<(), RepoError>;
+    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
 }
 
-#[async_trait::async_trait]
-pub trait TournamentRoundRepository {
-    async fn get_tournament_rounds(
+pub trait TournamentRoundRepository<TrCtx> {
+    fn get_tournament_rounds(
         &self,
         tournament_id: TournamentId,
-    ) -> Result<Vec<TournamentRound>, RepoError>;
-    async fn create_tournament_round(
+    ) -> TransactionItem<TrCtx, Result<Vec<TournamentRound>, TransactionError>>;
+    fn create_tournament_round(
         &self,
         tournament_id: TournamentId,
         round_index: usize,
         tournament_round: TournamentRound,
-    ) -> Result<(), RepoError>;
+    ) -> TransactionItem<TrCtx, Result<(), TransactionError>>;
 }
 
 pub trait TournamentPlayerRepository<TrCtx> {

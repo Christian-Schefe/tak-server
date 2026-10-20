@@ -11,7 +11,6 @@ use tak_domain::{
 };
 use tak_persistence_sea_orm_entities::puzzle;
 use tak_server_app::ports::{
-    RepoRetrieveError,
     puzzle::PuzzleRepository,
     transaction::{TransactionError, TransactionItem},
 };
@@ -79,35 +78,24 @@ impl JsonResponse {
 pub struct PuzzleRepositoryImpl;
 
 impl PuzzleRepositoryImpl {
-    fn puzzle_from_entity(model: puzzle::Model) -> Result<Puzzle, RepoRetrieveError> {
+    fn puzzle_from_entity(model: puzzle::Model) -> Result<Puzzle, String> {
         let base_settings = TakBaseGameSettings {
             board_size: model.size as u32,
             half_komi: model.half_komi as u32,
             reserve: TakReserve::new(model.pieces as u32, model.capstones as u32),
-            opening: tak_opening_from_string(&model.opening).ok_or_else(|| {
-                RepoRetrieveError::StorageError(format!(
-                    "Invalid opening in puzzle: {}",
-                    model.opening
-                ))
-            })?,
+            opening: tak_opening_from_string(&model.opening)
+                .ok_or_else(|| format!("Invalid opening in puzzle: {}", model.opening))?,
         };
         let position = serde_json::from_value::<Vec<String>>(model.position)
-            .map_err(|e| {
-                RepoRetrieveError::StorageError(format!("Invalid Position: {}", e.to_string()))
-            })?
+            .map_err(|e| format!("Invalid Position: {}", e.to_string()))?
             .into_iter()
-            .map(|s| {
-                action_from_ptn(&s).ok_or_else(|| {
-                    RepoRetrieveError::StorageError(format!("Invalid Position: {}", s))
-                })
-            })
-            .collect::<Result<Vec<_>, RepoRetrieveError>>()?;
-        let response = serde_json::from_value::<JsonResponse>(model.responses).map_err(|e| {
-            RepoRetrieveError::StorageError(format!("Invalid Responses: {}", e.to_string()))
-        })?;
+            .map(|s| action_from_ptn(&s).ok_or_else(|| format!("Invalid Position: {}", s)))
+            .collect::<Result<Vec<_>, String>>()?;
+        let response = serde_json::from_value::<JsonResponse>(model.responses)
+            .map_err(|e| format!("Invalid Responses: {}", e.to_string()))?;
         let response = response
             .to_puzzle_response_entry()
-            .map_err(|e| RepoRetrieveError::StorageError(format!("Invalid Responses: {}", e)))?;
+            .map_err(|e| format!("Invalid Responses: {}", e))?;
 
         Ok(Puzzle {
             id: PuzzleId(model.id),
