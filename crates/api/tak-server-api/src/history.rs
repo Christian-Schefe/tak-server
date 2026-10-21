@@ -4,16 +4,16 @@ use axum::{
     routing::get,
 };
 use tak_domain::UserId;
-use tak_server_api_contract::game::JsonEndedGameInfo;
+use tak_server_api_contract::game::JsonGame;
 use tak_server_app::{
     ports::{
         Pagination, SortOrder,
-        game_history::{GamePlayerFilter, GameQuery, GameSortBy},
+        game::{GamePlayerFilter, GameQuery, GameSortBy},
     },
-    workflow::history::query::GameQueryError,
+    workflow::gameplay::query::GameQueryError,
 };
 
-use crate::{AppState, PaginatedResponse, PaginationQuery, ServiceError, game::from_game_record};
+use crate::{AppState, PaginatedResponse, PaginationQuery, ServiceError, game::from_game};
 
 pub fn register_routes() -> axum::Router<AppState> {
     axum::Router::new()
@@ -24,7 +24,7 @@ pub fn register_routes() -> axum::Router<AppState> {
 async fn query_game_history(
     State(app): State<AppState>,
     Query(pagination): Query<PaginationQuery>,
-) -> Result<Json<PaginatedResponse<JsonEndedGameInfo>>, ServiceError> {
+) -> Result<Json<PaginatedResponse<JsonGame>>, ServiceError> {
     let filter = GameQuery {
         pagination: Pagination::new(pagination.page.saturating_sub(1), pagination.page_size),
         sort: Some((SortOrder::Descending, GameSortBy::Date)),
@@ -32,7 +32,7 @@ async fn query_game_history(
     };
     let history = app
         .app
-        .game_history_query_use_case
+        .game_query_use_case
         .query_games(filter)
         .await
         .map_err(|GameQueryError::RepositoryError| {
@@ -40,7 +40,11 @@ async fn query_game_history(
         })?;
 
     Ok(Json(PaginatedResponse {
-        items: history.items.iter().map(from_game_record).collect(),
+        items: history
+            .items
+            .into_iter()
+            .map(|(id, game)| from_game(id, &game))
+            .collect(),
         total_count: history.total_count as u32,
     }))
 }
@@ -49,7 +53,7 @@ async fn query_player_game_history(
     State(app): State<AppState>,
     Path(user_id): Path<String>,
     Query(pagination): Query<PaginationQuery>,
-) -> Result<Json<PaginatedResponse<JsonEndedGameInfo>>, ServiceError> {
+) -> Result<Json<PaginatedResponse<JsonGame>>, ServiceError> {
     let user_id = UserId::try_from(user_id)
         .map_err(|_| ServiceError::BadRequest("Invalid user ID".to_string()))?;
     let filter = GameQuery {
@@ -60,7 +64,7 @@ async fn query_player_game_history(
     };
     let history = app
         .app
-        .game_history_query_use_case
+        .game_query_use_case
         .query_games(filter)
         .await
         .map_err(|GameQueryError::RepositoryError| {
@@ -68,7 +72,11 @@ async fn query_player_game_history(
         })?;
 
     Ok(Json(PaginatedResponse {
-        items: history.items.iter().map(from_game_record).collect(),
+        items: history
+            .items
+            .into_iter()
+            .map(|(id, game)| from_game(id, &game))
+            .collect(),
         total_count: history.total_count as u32,
     }))
 }

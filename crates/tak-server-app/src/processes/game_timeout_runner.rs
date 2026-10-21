@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tak_domain::GameId;
 
-use crate::workflow::gameplay::timeout::{ObserveGameTimeoutUseCase, ObserveOutcome};
+use crate::workflow::gameplay::timeout::{ObserveError, ObserveGameTimeoutUseCase, ObserveOutcome};
 
 pub trait GameTimeoutRunner {
     fn schedule_game_timeout_check(this: Arc<Self>, game_id: GameId);
@@ -30,17 +30,31 @@ impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> GameTimeoutRunnerImpl
     async fn run(this: Arc<Self>, game_id: GameId) {
         loop {
             match this.observer.check_game_timeout(game_id).await {
-                ObserveOutcome::Finished => {
+                Ok(ObserveOutcome::Finished) => {
                     tracing::info!("Game {:?} timeout processing finished", game_id);
                     return;
                 }
-                ObserveOutcome::Continue(delay) => {
+                Ok(ObserveOutcome::Continue(delay)) => {
                     tracing::info!(
                         "Scheduling next timeout check for game {:?} in {:?}",
                         game_id,
                         delay
                     );
                     tokio::time::sleep(delay).await;
+                }
+                Err(ObserveError::GameNotFound) => {
+                    tracing::error!(
+                        "Error checking game timeout for game {:?}: Game not found",
+                        game_id
+                    );
+                    return;
+                }
+                Err(ObserveError::Internal) => {
+                    tracing::error!(
+                        "Error checking game timeout for game {:?}: Internal error",
+                        game_id
+                    );
+                    return;
                 }
             }
         }

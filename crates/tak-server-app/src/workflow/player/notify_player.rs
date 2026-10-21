@@ -4,11 +4,7 @@ use crate::ports::{
     connection::UserConnectionPort,
     notification::{ListenerMessage, ListenerNotificationPort},
 };
-use tak_domain::{
-    GameId, UserId,
-    game::{GameMetadata, GameService},
-    spectator::SpectatorService,
-};
+use tak_domain::{GameId, UserId, game::GameMetadata, spectator::SpectatorService};
 
 #[async_trait::async_trait]
 pub trait NotifyPlayerWorkflow {
@@ -18,35 +14,30 @@ pub trait NotifyPlayerWorkflow {
         metadata: &GameMetadata,
         message: &ListenerMessage,
     );
-    async fn notify_players_and_observers(&self, game_id: GameId, message: &ListenerMessage);
     async fn notify_players(&self, players: &[UserId], message: &ListenerMessage);
 }
 
 pub struct NotifyPlayerWorkflowImpl<
     L: ListenerNotificationPort,
     P: UserConnectionPort,
-    G: GameService,
     S: SpectatorService,
 > {
     listener_notification_port: Arc<L>,
     player_connection_port: Arc<P>,
-    game_service: Arc<G>,
     spectator_service: Arc<S>,
 }
 
-impl<L: ListenerNotificationPort, P: UserConnectionPort, G: GameService, S: SpectatorService>
-    NotifyPlayerWorkflowImpl<L, P, G, S>
+impl<L: ListenerNotificationPort, P: UserConnectionPort, S: SpectatorService>
+    NotifyPlayerWorkflowImpl<L, P, S>
 {
     pub fn new(
         listener_notification_port: Arc<L>,
         player_connection_port: Arc<P>,
-        game_service: Arc<G>,
         spectator_service: Arc<S>,
     ) -> Self {
         Self {
             listener_notification_port,
             player_connection_port,
-            game_service,
             spectator_service,
         }
     }
@@ -56,9 +47,8 @@ impl<L: ListenerNotificationPort, P: UserConnectionPort, G: GameService, S: Spec
 impl<
     L: ListenerNotificationPort + Send + Sync,
     P: UserConnectionPort + Send + Sync,
-    G: GameService + Send + Sync,
     S: SpectatorService + Send + Sync,
-> NotifyPlayerWorkflow for NotifyPlayerWorkflowImpl<L, P, G, S>
+> NotifyPlayerWorkflow for NotifyPlayerWorkflowImpl<L, P, S>
 {
     async fn notify_players_and_observers_of_game(
         &self,
@@ -66,19 +56,11 @@ impl<
         metadata: &GameMetadata,
         message: &ListenerMessage,
     ) {
-        self.notify_players(&[metadata.white_id, metadata.black_id], message)
+        self.notify_players(&[metadata.white.user_id, metadata.black.user_id], message)
             .await;
         let observers = self.spectator_service.get_spectators_for_game(game_id);
         self.listener_notification_port
             .notify_listeners(&observers, message);
-    }
-
-    async fn notify_players_and_observers(&self, game_id: GameId, message: &ListenerMessage) {
-        let Some(game) = self.game_service.get_game_by_id(game_id) else {
-            return;
-        };
-        self.notify_players_and_observers_of_game(game_id, &game.metadata, message)
-            .await;
     }
 
     async fn notify_players(&self, players: &[UserId], message: &ListenerMessage) {

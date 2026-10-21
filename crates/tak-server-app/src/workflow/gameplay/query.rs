@@ -2,54 +2,55 @@ use crate::{
     PortsCollection,
     ports::{
         PaginatedResponse,
-        game_history::{GameQuery, GameRepository},
+        game::{GameQuery, GameRepository},
         transaction::{RepoError, TransactionManager},
     },
-    workflow::history::GameRecordView,
 };
 use std::sync::Arc;
-use tak_domain::{GameId, MatchId};
+use tak_domain::{
+    GameId, MatchId,
+    game::{Game, OngoingGame},
+};
 
 #[async_trait::async_trait]
-pub trait GameHistoryQueryUseCase {
-    async fn get_game(&self, game_id: GameId) -> Result<Option<GameRecordView>, GameQueryError>;
+pub trait GameQueryUseCase {
+    async fn get_game(&self, game_id: GameId) -> Result<Option<Game>, GameQueryError>;
     async fn query_games(
         &self,
         filter: GameQuery,
-    ) -> Result<PaginatedResponse<GameRecordView>, GameQueryError>;
+    ) -> Result<PaginatedResponse<(GameId, Game)>, GameQueryError>;
     async fn get_games_of_match(
         &self,
         match_id: MatchId,
-    ) -> Result<Vec<GameRecordView>, GameQueryError>;
+    ) -> Result<Vec<(GameId, Game)>, GameQueryError>;
+    async fn get_ongoing_games(&self) -> Result<Vec<(GameId, OngoingGame)>, GameQueryError>;
 }
 
 pub enum GameQueryError {
     RepositoryError,
 }
 
-pub struct GameHistoryQueryUseCaseImpl<Ports: PortsCollection> {
+pub struct GameQueryUseCaseImpl<Ports: PortsCollection> {
     ports: Arc<Ports>,
 }
 
-impl<Ports: PortsCollection> GameHistoryQueryUseCaseImpl<Ports> {
+impl<Ports: PortsCollection> GameQueryUseCaseImpl<Ports> {
     pub fn new(ports: Arc<Ports>) -> Self {
         Self { ports }
     }
 }
 
 #[async_trait::async_trait]
-impl<Ports: PortsCollection + Send + Sync + 'static> GameHistoryQueryUseCase
-    for GameHistoryQueryUseCaseImpl<Ports>
+impl<Ports: PortsCollection + Send + Sync + 'static> GameQueryUseCase
+    for GameQueryUseCaseImpl<Ports>
 {
     async fn query_games(
         &self,
         filter: GameQuery,
-    ) -> Result<PaginatedResponse<GameRecordView>, GameQueryError> {
+    ) -> Result<PaginatedResponse<(GameId, Game)>, GameQueryError> {
         let ctx = self.ports.transaction_manager().simple();
         match self.ports.game_repository().query_games(&ctx, filter).await {
-            Ok(result) => {
-                Ok(result.map(|(id, record)| GameRecordView::from_game_record(id, record)))
-            }
+            Ok(result) => Ok(result.map(|(id, record)| (id, record))),
             Err(RepoError(e)) => {
                 tracing::error!("Error querying games: {}", e);
                 Err(GameQueryError::RepositoryError)
@@ -57,16 +58,10 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameHistoryQueryUseCase
         }
     }
 
-    async fn get_game(&self, game_id: GameId) -> Result<Option<GameRecordView>, GameQueryError> {
+    async fn get_game(&self, game_id: GameId) -> Result<Option<Game>, GameQueryError> {
         let ctx = self.ports.transaction_manager().simple();
-        match self
-            .ports
-            .game_repository()
-            .get_game_record(&ctx, game_id)
-            .await
-        {
-            Ok(Some(result)) => Ok(Some(GameRecordView::from_game_record(game_id, result))),
-            Ok(None) => Ok(None),
+        match self.ports.game_repository().get_game(&ctx, game_id).await {
+            Ok(result) => Ok(result),
             Err(RepoError(e)) => {
                 tracing::error!("Error getting game record: {}", e);
                 Err(GameQueryError::RepositoryError)
@@ -77,7 +72,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameHistoryQueryUseCase
     async fn get_games_of_match(
         &self,
         match_id: MatchId,
-    ) -> Result<Vec<GameRecordView>, GameQueryError> {
+    ) -> Result<Vec<(GameId, Game)>, GameQueryError> {
         let ctx = self.ports.transaction_manager().simple();
         match self
             .ports
@@ -85,12 +80,20 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameHistoryQueryUseCase
             .get_games_of_match(&ctx, match_id)
             .await
         {
-            Ok(game_records) => Ok(game_records
-                .into_iter()
-                .map(|(id, record)| GameRecordView::from_game_record(id, record))
-                .collect()),
+            Ok(game_records) => Ok(game_records),
             Err(RepoError(e)) => {
                 tracing::error!("Error getting games of match {}: {}", match_id, e);
+                Err(GameQueryError::RepositoryError)
+            }
+        }
+    }
+
+    async fn get_ongoing_games(&self) -> Result<Vec<(GameId, OngoingGame)>, GameQueryError> {
+        let ctx = self.ports.transaction_manager().simple();
+        match self.ports.game_repository().get_ongoing_games(&ctx).await {
+            Ok(ongoing_games) => Ok(ongoing_games),
+            Err(RepoError(e)) => {
+                tracing::error!("Error getting ongoing games: {}", e);
                 Err(GameQueryError::RepositoryError)
             }
         }

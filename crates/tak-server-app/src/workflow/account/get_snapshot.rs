@@ -7,7 +7,7 @@ use crate::{
     },
 };
 use std::sync::Arc;
-use tak_domain::{UserId, game_history::PlayerSnapshot, rating::RatingService};
+use tak_domain::{UserId, game::PlayerSnapshot, rating::RatingService};
 
 pub enum GetSnapshotError {
     NotFound,
@@ -83,6 +83,6 @@ impl<
             }
         };
 
-        Ok(PlayerSnapshot::new(username, current_rating))
+        Ok(PlayerSnapshot::new(user_id, username, current_rating))
     }
 }

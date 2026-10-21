@@ -11,7 +11,8 @@ dashmap              = "6.1.0"
 futures              = "0.3.31"
 image                = "0.25.9"
 more-concurrent-maps = { path = "../more-concurrent-maps" }
+nonempty             = "0.12.0"
 rustrict             = "0.7.36"
 tak-core             = { path = "../tak-core" }
 unordered-pair       = "0.2.5"
-uuid                 = { version = "1.18.1", features = ["v4"] }
+uuid                 = { version = "1.18.1", features = [ "v4" ] }

@@ -3,7 +3,7 @@ pub mod chat;
 pub mod connection;
 pub mod email;
 pub mod event;
-pub mod game_history;
+pub mod game;
 pub mod matches;
 pub mod moderation;
 pub mod notification;

@@ -5,7 +5,7 @@ use tak_domain::UserId;
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 
-use crate::workflow::gameplay::timeout::{ObserveGameTimeoutUseCase, ObserveOutcome};
+use crate::workflow::gameplay::timeout::{ObserveError, ObserveGameTimeoutUseCase, ObserveOutcome};
 
 pub trait DisconnectTimeoutRunner {
     fn start_disconnect_timeout(this: Arc<Self>, user_id: UserId);
@@ -41,14 +41,14 @@ impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> DisconnectTimeoutRunn
                 .check_player_timeout(user_id, disconnected_at)
                 .await;
             match res {
-                ObserveOutcome::Finished => {
+                Ok(ObserveOutcome::Finished) => {
                     tracing::info!(
                         "Player {:?} disconnect timeout processing finished",
                         user_id
                     );
                     return;
                 }
-                ObserveOutcome::Continue(delay) => {
+                Ok(ObserveOutcome::Continue(delay)) => {
                     tracing::info!(
                         "Scheduling next timeout check for player {:?} in {:?}",
                         user_id,
@@ -61,6 +61,20 @@ impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> DisconnectTimeoutRunn
                         }
                         _ = tokio::time::sleep(delay) => {}
                     }
+                }
+                Err(ObserveError::GameNotFound) => {
+                    tracing::error!(
+                        "Error checking disconnect timeout for player {:?}: Game not found",
+                        user_id
+                    );
+                    return;
+                }
+                Err(ObserveError::Internal) => {
+                    tracing::error!(
+                        "Error checking disconnect timeout for player {:?}: Internal error",
+                        user_id
+                    );
+                    return;
                 }
             }
         }

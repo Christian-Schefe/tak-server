@@ -1,9 +1,18 @@
 use std::sync::Arc;
 
-use tak_domain::{GameId, ListenerId, game::GameService, spectator::SpectatorService};
+use tak_domain::{GameId, ListenerId, game::Game, spectator::SpectatorService};
 
+use crate::{
+    PortsCollection,
+    ports::{
+        game::GameRepository,
+        transaction::{RepoError, TransactionManager},
+    },
+};
+
+#[async_trait::async_trait]
 pub trait ObserveGameUseCase {
-    fn observe_game(
+    async fn observe_game(
         &self,
         game_id: GameId,
         listener_id: ListenerId,
@@ -13,30 +22,41 @@ pub trait ObserveGameUseCase {
 
 pub enum ObserveGameError {
     GameNotFound,
+    Internal,
 }
 
-pub struct ObserveGameUseCaseImpl<G: GameService, S: SpectatorService> {
-    game_service: Arc<G>,
+pub struct ObserveGameUseCaseImpl<Ports: PortsCollection, S: SpectatorService> {
+    ports: Arc<Ports>,
     spectator_service: Arc<S>,
 }
 
-impl<G: GameService, S: SpectatorService> ObserveGameUseCaseImpl<G, S> {
-    pub fn new(game_service: Arc<G>, spectator_service: Arc<S>) -> Self {
+impl<Ports: PortsCollection, S: SpectatorService> ObserveGameUseCaseImpl<Ports, S> {
+    pub fn new(ports: Arc<Ports>, spectator_service: Arc<S>) -> Self {
         Self {
-            game_service,
+            ports,
             spectator_service,
         }
     }
 }
 
-impl<G: GameService, S: SpectatorService> ObserveGameUseCase for ObserveGameUseCaseImpl<G, S> {
-    fn observe_game(
+#[async_trait::async_trait]
+impl<Ports: PortsCollection + Send + Sync + 'static, S: SpectatorService + Send + Sync + 'static>
+    ObserveGameUseCase for ObserveGameUseCaseImpl<Ports, S>
+{
+    async fn observe_game(
         &self,
         game_id: GameId,
         listener_id: ListenerId,
     ) -> Result<(), ObserveGameError> {
-        if self.game_service.get_game_by_id(game_id).is_none() {
-            return Err(ObserveGameError::GameNotFound);
+        let ctx = self.ports.transaction_manager().simple();
+        match self.ports.game_repository().get_game(&ctx, game_id).await {
+            Ok(None) => return Err(ObserveGameError::GameNotFound),
+            Ok(Some(Game::Ongoing(_))) => (),
+            Ok(Some(Game::Finished(_))) => return Err(ObserveGameError::GameNotFound),
+            Err(RepoError(e)) => {
+                tracing::error!("Failed to retrieve game {} from repository: {}", game_id, e);
+                return Err(ObserveGameError::Internal);
+            }
         }
         self.spectator_service.observe_game(game_id, listener_id);
         Ok(())

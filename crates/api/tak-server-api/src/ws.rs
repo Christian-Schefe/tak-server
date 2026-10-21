@@ -38,7 +38,7 @@ use unordered_pair::UnorderedPair;
 use uuid::Uuid;
 
 use crate::{
-    AppState, ServiceError, auth::validate_jwt, game::from_metadata_view, seek::from_seek_view,
+    AppState, ServiceError, auth::validate_jwt, game::from_metadata, seek::from_seek_view,
 };
 
 pub async fn ws_handler(ws: WebSocketUpgrade, State(app): State<AppState>) -> Response {
@@ -252,6 +252,9 @@ async fn handle_authenticated_client_message(
                     PlayerActionError::NotAPlayerInGame => {
                         Err(ServiceError::BadRequest("Not a player in game".to_string()))
                     }
+                    PlayerActionError::Internal => Err(ServiceError::Internal(
+                        "Failed to process game action".to_string(),
+                    )),
                 },
             }
         }
@@ -306,9 +309,13 @@ async fn handle_authenticated_client_message(
                 app.app
                     .game_observe_use_case
                     .observe_game(game_id, connection_id.0)
+                    .await
                     .map_err(|e| match e {
                         ObserveGameError::GameNotFound => {
                             ServiceError::NotFound("Game not found".to_string())
+                        }
+                        ObserveGameError::Internal => {
+                            ServiceError::Internal("Failed to observe game".to_string())
                         }
                     })?;
             } else {
@@ -424,11 +431,11 @@ fn from_listener_message(message: ListenerMessage) -> Option<ServerMessage> {
                 black: time_info.black_remaining.as_millis() as u64,
             },
         }),
-        ListenerMessage::GameStarted { game } => Some(ServerMessage::GameStarted {
-            game: from_metadata_view(game.id, &game.metadata),
+        ListenerMessage::GameStarted { game_id, game } => Some(ServerMessage::GameStarted {
+            game: from_metadata(game_id, &game.metadata),
         }),
-        ListenerMessage::GameEnded { game } => Some(ServerMessage::GameEnded {
-            game_id: game.id.to_string(),
+        ListenerMessage::GameEnded { game_id, .. } => Some(ServerMessage::GameEnded {
+            game_id: game_id.to_string(),
         }),
 
         ListenerMessage::ChatMessage {

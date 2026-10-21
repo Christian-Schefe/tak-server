@@ -7,15 +7,15 @@ use tak_domain::{
     matches::{Match, MatchMode, MatchSettings, MatchStatus},
 };
 use tak_server_api_contract::{
-    game::{JsonEndedGameInfo, JsonGameSettings},
+    game::{JsonGame, JsonGameSettings},
     matches::MatchReadinessStatus,
 };
 use tak_server_app::workflow::{
-    history::query::GameQueryError,
+    gameplay::query::GameQueryError,
     matchmaking::{get::GetMatchError, readiness::MatchReadinessError},
 };
 
-use crate::{AppState, ServiceError, auth::Auth, game::from_game_record};
+use crate::{AppState, ServiceError, auth::Auth, game::from_game};
 
 pub fn register_routes() -> axum::Router<AppState> {
     axum::Router::new()
@@ -244,7 +244,7 @@ async fn get_match_readiness_status(
 async fn get_match_games(
     State(app): State<AppState>,
     Path(match_id): Path<String>,
-) -> Result<Json<Vec<JsonEndedGameInfo>>, ServiceError> {
+) -> Result<Json<Vec<JsonGame>>, ServiceError> {
     let match_id = MatchId(
         match_id
             .parse::<i64>()
@@ -252,11 +252,16 @@ async fn get_match_games(
     );
     match app
         .app
-        .game_history_query_use_case
+        .game_query_use_case
         .get_games_of_match(match_id)
         .await
     {
-        Ok(games) => Ok(Json(games.iter().map(|x| from_game_record(x)).collect())),
+        Ok(games) => Ok(Json(
+            games
+                .into_iter()
+                .map(|(game_id, game)| from_game(game_id, &game))
+                .collect(),
+        )),
         Err(GameQueryError::RepositoryError) => Err(ServiceError::Internal(format!(
             "Failed to retrieve games of match {}",
             match_id

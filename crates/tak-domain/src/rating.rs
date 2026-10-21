@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, TimeDelta, Utc};
-use tak_core::{TakGameResult, TakGameSettings, TakPlayer, TakTimeSettings};
+use tak_core::{TakFinishedGame, TakGameResult, TakGameSettings, TakPlayer, TakTimeSettings};
 
-use crate::{UserId, game::FinishedGame, game_history::GameRatingInfo};
+use crate::{
+    UserId,
+    game::{GameMetadata, GameRatingInfo},
+};
 
 #[derive(Clone, Debug)]
 pub struct PlayerRating {
@@ -34,7 +37,8 @@ pub trait RatingService {
     fn get_current_rating(&self, player_rating: &PlayerRating, date: DateTime<Utc>) -> f64;
     fn calculate_ratings(
         &self,
-        game: &FinishedGame,
+        metadata: &GameMetadata,
+        game: &TakFinishedGame,
         white_rating: &mut PlayerRating,
         black_rating: &mut PlayerRating,
     ) -> Option<GameRatingInfo>;
@@ -219,19 +223,19 @@ impl RatingService for RatingServiceImpl {
 
     fn calculate_ratings(
         &self,
-        game: &FinishedGame,
+        metadata: &GameMetadata,
+        game: &TakFinishedGame,
         white_rating: &mut PlayerRating,
         black_rating: &mut PlayerRating,
     ) -> Option<GameRatingInfo> {
-        let metadata = &game.metadata;
         if !metadata.is_rated {
             return None;
         }
-        let white_id = metadata.white_id;
-        let black_id = metadata.black_id;
-        let result = game.game.game_result();
+        let white_id = metadata.white.user_id;
+        let black_id = metadata.black.user_id;
+        let result = game.game_result();
 
-        if !self.is_game_eligible_for_rating(&metadata.settings, game.game.action_history().len()) {
+        if !self.is_game_eligible_for_rating(&metadata.settings, game.action_history().len()) {
             return None;
         }
 

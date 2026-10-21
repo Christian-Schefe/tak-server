@@ -7,15 +7,40 @@ use tak_core::{
 };
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum JsonGame {
+    Ongoing {
+        #[serde(flatten)]
+        game: JsonOngoingGame,
+    },
+    Finished {
+        #[serde(flatten)]
+        game: JsonFinishedGame,
+    },
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonGameStatus {
-    pub id: String,
-    pub match_id: Option<String>,
-    pub user_ids: ForPlayer<String>,
-    pub is_rated: bool,
-    pub game_settings: JsonGameSettings,
+pub struct JsonOngoingGame {
+    #[serde(flatten)]
+    pub metadata: JsonGameMetadata,
     pub actions: Vec<String>,
-    pub status: GameStatusType,
+    pub remaining_ms: ForPlayer<u64>,
+    pub white_requests: JsonGameRequests,
+    pub black_requests: JsonGameRequests,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonFinishedGame {
+    #[serde(flatten)]
+    pub metadata: JsonGameMetadata,
+    pub result: String,
+    pub rating_info: Option<JsonGameRatingInfo>,
     pub remaining_ms: ForPlayer<u64>,
 }
 
@@ -52,22 +77,6 @@ pub enum JsonGameRequestType {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[serde(
-    rename_all = "camelCase",
-    tag = "type",
-    rename_all_fields = "camelCase"
-)]
-pub enum GameStatusType {
-    Ongoing {
-        white_requests: JsonGameRequests,
-        black_requests: JsonGameRequests,
-    },
-    Ended {
-        result: String,
-    },
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ForPlayer<R> {
     pub white: R,
@@ -80,22 +89,13 @@ pub struct JsonGameMetadata {
     pub id: String,
     #[serde(with = "chrono::serde::ts_milliseconds")]
     pub date: DateTime<Utc>,
-    pub user_ids: ForPlayer<String>,
+    pub white: JsonPlayerSnapshot,
+    pub black: JsonPlayerSnapshot,
     pub is_rated: bool,
     pub game_settings: JsonGameSettings,
 }
 
-#[derive(serde::Serialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct JsonEndedGameInfo {
-    pub players: ForPlayer<JsonPlayerSnapshot>,
-    pub rating_info: Option<JsonGameRatingInfo>,
-    pub result: Option<String>,
-    #[serde(flatten)]
-    pub metadata: JsonGameMetadata,
-}
-
-#[derive(serde::Serialize, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonGameRatingInfo {
     pub rating_change: ForPlayer<f64>,
@@ -104,6 +104,7 @@ pub struct JsonGameRatingInfo {
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct JsonPlayerSnapshot {
+    pub user_id: String,
     pub username: String,
     pub rating: Option<f64>,
 }

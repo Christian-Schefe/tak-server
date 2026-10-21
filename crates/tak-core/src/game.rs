@@ -120,17 +120,17 @@ impl TakAsyncClockUpdatePolicy {
 }
 
 impl TakOngoingGame {
-    pub fn new(settings: TakGameSettings) -> Self {
+    pub fn new(settings: TakGameSettings, now: Instant) -> Self {
         let base_game = TakOngoingBaseGame::new(settings.base);
         let clock = match &settings.time_settings {
             TakTimeSettings::Realtime(settings) => TakClock {
                 remaining_time: (settings.contingent, settings.contingent),
-                last_update_timestamp: Instant::now(),
+                last_update_timestamp: now,
                 is_ticking: false,
             },
             TakTimeSettings::Async(settings) => TakClock {
                 remaining_time: (settings.contingent, settings.contingent),
-                last_update_timestamp: Instant::now(),
+                last_update_timestamp: now,
                 is_ticking: false,
             },
         };
@@ -283,23 +283,18 @@ impl TakOngoingGame {
         ))
     }
 
-    pub fn abort(
+    pub fn try_abort(
         &mut self,
         now: Instant,
-        player: TakPlayer,
     ) -> MaybeTimeout<Option<TakFinishedGame>, TakFinishedGame> {
         if let MaybeTimeout::Timeout(finished_game) = self.check_timeout(now) {
             return MaybeTimeout::Timeout(finished_game);
         };
-        let max_ply_index = match player {
-            TakPlayer::White => 0,
-            TakPlayer::Black => 1,
-        };
-        if self.base.action_history.len() <= max_ply_index {
-            // if the player hasn't made a move yet, they can abort without penalty
-            return MaybeTimeout::Result(None);
+        if self.base.action_history.len() <= 1 {
+            // if one player hasn't made a move yet, both players can abort without penalty
+            return MaybeTimeout::Result(Some(self.set_game_over(now, TakGameResult::Aborted)));
         }
-        MaybeTimeout::Result(Some(self.set_game_over(now, TakGameResult::Aborted)))
+        MaybeTimeout::Result(None)
     }
 
     pub fn abort_forced(&mut self, now: Instant) -> MaybeTimeout<TakFinishedGame, TakFinishedGame> {
@@ -381,19 +376,22 @@ mod tests {
     #[test]
     fn test_reserve_constraints() {
         let now = Instant::now();
-        let mut game = TakOngoingGame::new(TakGameSettings {
-            base: TakBaseGameSettings {
-                board_size: 5,
-                half_komi: 0,
-                reserve: TakReserve::new(3, 1),
-                opening: TakOpening::Swap,
+        let mut game = TakOngoingGame::new(
+            TakGameSettings {
+                base: TakBaseGameSettings {
+                    board_size: 5,
+                    half_komi: 0,
+                    reserve: TakReserve::new(3, 1),
+                    opening: TakOpening::Swap,
+                },
+                time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
+                    contingent: Duration::from_secs(300),
+                    increment: Duration::from_secs(5),
+                    extra: Some((2, Duration::from_secs(60))),
+                }),
             },
-            time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
-                contingent: Duration::from_secs(300),
-                increment: Duration::from_secs(5),
-                extra: Some((2, Duration::from_secs(60))),
-            }),
-        });
+            now,
+        );
 
         do_move(
             &mut game,
@@ -527,19 +525,22 @@ mod tests {
                 },
             ),
         ] {
-            let mut game = TakOngoingGame::new(TakGameSettings {
-                base: TakBaseGameSettings {
-                    board_size: 5,
-                    half_komi,
-                    reserve: TakReserve::new(2, 0),
-                    opening: TakOpening::Swap,
+            let mut game = TakOngoingGame::new(
+                TakGameSettings {
+                    base: TakBaseGameSettings {
+                        board_size: 5,
+                        half_komi,
+                        reserve: TakReserve::new(2, 0),
+                        opening: TakOpening::Swap,
+                    },
+                    time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
+                        contingent: Duration::from_secs(300),
+                        increment: Duration::from_secs(5),
+                        extra: Some((2, Duration::from_secs(60))),
+                    }),
                 },
-                time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
-                    contingent: Duration::from_secs(300),
-                    increment: Duration::from_secs(5),
-                    extra: Some((2, Duration::from_secs(60))),
-                }),
-            });
+                now,
+            );
             do_move(
                 &mut game,
                 TakAction::Place {
@@ -566,19 +567,22 @@ mod tests {
                 result,
             );
 
-            let mut game2 = TakOngoingGame::new(TakGameSettings {
-                base: TakBaseGameSettings {
-                    board_size: 5,
-                    half_komi,
-                    reserve: TakReserve::new(1, 1),
-                    opening: TakOpening::Swap,
+            let mut game2 = TakOngoingGame::new(
+                TakGameSettings {
+                    base: TakBaseGameSettings {
+                        board_size: 5,
+                        half_komi,
+                        reserve: TakReserve::new(1, 1),
+                        opening: TakOpening::Swap,
+                    },
+                    time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
+                        contingent: Duration::from_secs(300),
+                        increment: Duration::from_secs(5),
+                        extra: Some((2, Duration::from_secs(60))),
+                    }),
                 },
-                time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
-                    contingent: Duration::from_secs(300),
-                    increment: Duration::from_secs(5),
-                    extra: Some((2, Duration::from_secs(60))),
-                }),
-            });
+                now,
+            );
             do_move(
                 &mut game,
                 TakAction::Place {
@@ -610,19 +614,22 @@ mod tests {
     #[test]
     fn test_first_move_must_be_flat() {
         let now = Instant::now();
-        let mut game = TakOngoingGame::new(TakGameSettings {
-            base: TakBaseGameSettings {
-                board_size: 5,
-                half_komi: 0,
-                reserve: TakReserve::new(21, 1),
-                opening: TakOpening::Swap,
+        let mut game = TakOngoingGame::new(
+            TakGameSettings {
+                base: TakBaseGameSettings {
+                    board_size: 5,
+                    half_komi: 0,
+                    reserve: TakReserve::new(21, 1),
+                    opening: TakOpening::Swap,
+                },
+                time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
+                    contingent: Duration::from_secs(300),
+                    increment: Duration::from_secs(5),
+                    extra: Some((2, Duration::from_secs(60))),
+                }),
             },
-            time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
-                contingent: Duration::from_secs(300),
-                increment: Duration::from_secs(5),
-                extra: Some((2, Duration::from_secs(60))),
-            }),
-        });
+            now,
+        );
 
         // first move must be flat stone
         assert!(

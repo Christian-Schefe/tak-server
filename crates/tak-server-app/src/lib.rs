@@ -7,7 +7,7 @@ use crate::{
         connection::{UserConnectionPort, UserOnlineStatusPort},
         email::EmailPort,
         event::EventRepository,
-        game_history::GameRepository,
+        game::GameRepository,
         matches::MatchRepository,
         moderation::ModerationRepository,
         notification::ListenerNotificationPort,
@@ -39,12 +39,10 @@ use crate::{
         gameplay::{
             do_action::{DoActionUseCase, DoActionUseCaseImpl},
             finalize_game::FinalizeGameWorkflowImpl,
-            get::{GetOngoingGameUseCase, GetOngoingGameUseCaseImpl},
-            list::{ListOngoingGameUseCase, ListOngoingGameUseCaseImpl},
             observe::{ObserveGameUseCase, ObserveGameUseCaseImpl},
+            query::{GameQueryUseCase, GameQueryUseCaseImpl},
             timeout::ObserveGameTimeoutUseCaseImpl,
         },
-        history::query::{GameHistoryQueryUseCase, GameHistoryQueryUseCaseImpl},
         listener::disconnect::{ListenerDisconnectUseCase, ListenerDisconnectUseCaseImpl},
         matchmaking::{
             accept::{AcceptSeekUseCase, AcceptSeekUseCaseImpl},
@@ -80,7 +78,6 @@ use crate::{
 };
 use tak_domain::{
     chat::{ChatRoomServiceImpl, RustrictContentPolicy},
-    game::GameServiceImpl,
     matches::MatchReadinessServiceImpl,
     moderation::{AdminUserPolicy, HigherRoleUserPolicy, ModeratorUserPolicy},
     rating::RatingServiceImpl,
@@ -108,11 +105,9 @@ pub struct Application {
     pub player_get_rating_use_case: Arc<dyn PlayerGetRatingUseCase + Send + Sync + 'static>,
 
     pub game_do_action_use_case: Arc<dyn DoActionUseCase + Send + Sync + 'static>,
-    pub game_get_ongoing_use_case: Arc<dyn GetOngoingGameUseCase + Send + Sync + 'static>,
-    pub game_list_ongoing_use_case: Arc<dyn ListOngoingGameUseCase + Send + Sync + 'static>,
     pub game_observe_use_case: Arc<dyn ObserveGameUseCase + Send + Sync + 'static>,
 
-    pub game_history_query_use_case: Arc<dyn GameHistoryQueryUseCase + Send + Sync + 'static>,
+    pub game_query_use_case: Arc<dyn GameQueryUseCase + Send + Sync + 'static>,
 
     pub chat_message_use_case: Arc<dyn ChatMessageUseCase + Send + Sync + 'static>,
     pub chat_room_use_case: Arc<dyn ChatRoomUseCase + Send + Sync + 'static>,
@@ -370,7 +365,6 @@ pub async fn build_application<
     ports: Arc<Ports>,
 ) -> Application {
     let seek_service = Arc::new(SeekServiceImpl::new());
-    let game_service = Arc::new(GameServiceImpl::new());
     let spectator_service = Arc::new(SpectatorServiceImpl::new());
     let chat_room_service = Arc::new(ChatRoomServiceImpl::new());
     let rating_service = Arc::new(RatingServiceImpl::new());
@@ -394,7 +388,6 @@ pub async fn build_application<
     let notify_player_workflow = Arc::new(NotifyPlayerWorkflowImpl::new(
         listener_notification_port.clone(),
         player_connection_port.clone(),
-        game_service.clone(),
         spectator_service.clone(),
     ));
 
@@ -409,7 +402,7 @@ pub async fn build_application<
         tournament_match_workflow.clone(),
     ));
     let observe_game_timeout_use_case = Arc::new(ObserveGameTimeoutUseCaseImpl::new(
-        game_service.clone(),
+        ports.clone(),
         finalize_game_workflow.clone(),
     ));
     let game_timeout_scheduler = Arc::new(GameTimeoutRunnerImpl::new(
@@ -421,16 +414,12 @@ pub async fn build_application<
 
     let create_game_from_match_workflow = Arc::new(CreateGameFromMatchWorkflowImpl::new(
         ports.clone(),
-        game_service.clone(),
         game_timeout_scheduler.clone(),
         listener_notification_port.clone(),
         get_snapshot_workflow.clone(),
     ));
 
-    let shutdown_workflow = Arc::new(ShutdownWorkflowImpl::new(
-        finalize_game_workflow.clone(),
-        game_service.clone(),
-    ));
+    let shutdown_workflow = Arc::new(ShutdownWorkflowImpl::new());
 
     let application = Application {
         seek_accept_use_case: Arc::new(AcceptSeekUseCaseImpl::new(
@@ -478,18 +467,16 @@ pub async fn build_application<
         player_get_rating_use_case: Arc::new(PlayerGetRatingUseCaseImpl::new(ports.clone())),
 
         game_do_action_use_case: Arc::new(DoActionUseCaseImpl::new(
-            game_service.clone(),
+            ports.clone(),
             notify_player_workflow.clone(),
             finalize_game_workflow.clone(),
         )),
-        game_get_ongoing_use_case: Arc::new(GetOngoingGameUseCaseImpl::new(game_service.clone())),
-        game_list_ongoing_use_case: Arc::new(ListOngoingGameUseCaseImpl::new(game_service.clone())),
         game_observe_use_case: Arc::new(ObserveGameUseCaseImpl::new(
-            game_service.clone(),
+            ports.clone(),
             spectator_service.clone(),
         )),
 
-        game_history_query_use_case: Arc::new(GameHistoryQueryUseCaseImpl::new(ports.clone())),
+        game_query_use_case: Arc::new(GameQueryUseCaseImpl::new(ports.clone())),
 
         chat_message_use_case: Arc::new(ChatMessageUseCaseImpl::new(
             ports.clone(),

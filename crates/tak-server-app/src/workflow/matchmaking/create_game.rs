@@ -5,15 +5,18 @@ use tak_core::TakPlayer;
 use crate::{
     PortsCollection,
     ports::{
-        game_history::GameRepository,
+        game::GameRepository,
         matches::MatchRepository,
         notification::{ListenerMessage, ListenerNotificationPort},
         transaction::RepoError,
     },
     processes::game_timeout_runner::GameTimeoutRunner,
-    workflow::{account::get_snapshot::GetSnapshotWorkflow, gameplay::OngoingGameView},
+    workflow::account::get_snapshot::GetSnapshotWorkflow,
 };
-use tak_domain::{MatchId, game::GameService, game_history::GameRecord};
+use tak_domain::{
+    MatchId,
+    game::{Game, GameMetadata, OngoingGame},
+};
 
 #[async_trait::async_trait]
 pub trait CreateGameFromMatchWorkflow<RpCtx> {
@@ -33,35 +36,31 @@ pub enum CreateGameFromMatchError {
 
 pub struct CreateGameFromMatchWorkflowImpl<
     Ports: PortsCollection,
-    G: GameService,
     GT: GameTimeoutRunner,
     L: ListenerNotificationPort,
     S: GetSnapshotWorkflow,
 > {
     ports: Arc<Ports>,
-    game_service: Arc<G>,
     game_timeout_runner: Arc<GT>,
     listener_notification_port: Arc<L>,
     get_snapshot_workflow: Arc<S>,
 }
+
 impl<
     Ports: PortsCollection,
-    G: GameService,
     GT: GameTimeoutRunner,
     L: ListenerNotificationPort,
     S: GetSnapshotWorkflow,
-> CreateGameFromMatchWorkflowImpl<Ports, G, GT, L, S>
+> CreateGameFromMatchWorkflowImpl<Ports, GT, L, S>
 {
     pub fn new(
         ports: Arc<Ports>,
-        game_service: Arc<G>,
         game_timeout_runner: Arc<GT>,
         listener_notification_port: Arc<L>,
         get_snapshot_workflow: Arc<S>,
     ) -> Self {
         Self {
             ports,
-            game_service,
             game_timeout_runner,
             listener_notification_port,
             get_snapshot_workflow,
@@ -72,12 +71,10 @@ impl<
 #[async_trait::async_trait]
 impl<
     Ports: PortsCollection + Send + Sync + 'static,
-    G: GameService + Send + Sync,
     GT: GameTimeoutRunner + Send + Sync,
     L: ListenerNotificationPort + Send + Sync,
     S: GetSnapshotWorkflow + Send + Sync,
-> CreateGameFromMatchWorkflow<Ports::TrCtx>
-    for CreateGameFromMatchWorkflowImpl<Ports, G, GT, L, S>
+> CreateGameFromMatchWorkflow<Ports::TrCtx> for CreateGameFromMatchWorkflowImpl<Ports, GT, L, S>
 {
     #[tracing::instrument(skip(self, ctx))]
     async fn create_game_from_match(
@@ -125,22 +122,21 @@ impl<
             Err(_) => return Err(CreateGameFromMatchError::Internal),
         };
 
-        let metadata = self.game_service.create_game_metadata(
+        let metadata = GameMetadata::new(
             date,
-            white_id,
-            black_id,
+            snapshot_white,
+            snapshot_black,
             match_entry.settings.is_rated,
             match_entry.settings.game_settings.clone(),
             Some(match_id),
         );
 
-        let game_record =
-            GameRecord::for_ongoing_game(metadata.clone(), snapshot_white, snapshot_black);
+        let game = OngoingGame::new(metadata);
 
         let game_id = match self
             .ports
             .game_repository()
-            .save_ongoing_game(ctx, game_record)
+            .create_game(ctx, Game::Ongoing(game.clone()))
             .await
         {
             Ok(id) => id,
@@ -164,11 +160,8 @@ impl<
             );
             return Err(CreateGameFromMatchError::MatchNotFound);
         }
-        let game = self.game_service.create_game(game_id, metadata);
         GameTimeoutRunner::schedule_game_timeout_check(self.game_timeout_runner.clone(), game_id);
-        let msg = ListenerMessage::GameStarted {
-            game: OngoingGameView::from(&game),
-        };
+        let msg = ListenerMessage::GameStarted { game_id, game };
         self.listener_notification_port.notify_all(&msg);
 
         Ok(())

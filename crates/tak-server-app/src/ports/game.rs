@@ -2,42 +2,34 @@ use chrono::{DateTime, Utc};
 use tak_core::{TakGameResult, TakPlayer};
 use tak_domain::{
     GameId, MatchId, UserId,
-    game::GameEvent,
-    game_history::{GameRatingInfo, GameRecord},
+    game::{Game, OngoingGame},
 };
 
 use crate::ports::{PaginatedResponse, Pagination, SortOrder, transaction::RepoError};
 
 #[async_trait::async_trait]
 pub trait GameRepository<RpCtx> {
-    async fn save_ongoing_game(
+    async fn get_game(&self, ctx: &RpCtx, game_id: GameId) -> Result<Option<Game>, RepoError>;
+    async fn create_game(&self, ctx: &RpCtx, game: Game) -> Result<GameId, RepoError>;
+    async fn update_game(&self, ctx: &RpCtx, game_id: GameId, game: Game) -> Result<(), RepoError>;
+    async fn get_games_by_player(
         &self,
         ctx: &RpCtx,
-        game: GameRecord,
-    ) -> Result<GameId, RepoError>;
-    async fn update_finished_game(
-        &self,
-        ctx: &RpCtx,
-        game_id: GameId,
-        result: TakGameResult,
-        events: Vec<GameEvent>,
-        rating_info: Option<GameRatingInfo>,
-    ) -> Result<(), RepoError>;
-    async fn get_game_record(
-        &self,
-        ctx: &RpCtx,
-        game_id: GameId,
-    ) -> Result<Option<GameRecord>, RepoError>;
+        user_id: UserId,
+    ) -> Result<Vec<(GameId, Game)>, RepoError>;
+    async fn get_ongoing_games(&self, ctx: &RpCtx)
+    -> Result<Vec<(GameId, OngoingGame)>, RepoError>;
+
     async fn query_games(
         &self,
         ctx: &RpCtx,
         query: GameQuery,
-    ) -> Result<PaginatedResponse<(GameId, GameRecord)>, RepoError>;
+    ) -> Result<PaginatedResponse<(GameId, Game)>, RepoError>;
     async fn get_games_of_match(
         &self,
         ctx: &RpCtx,
         match_id: MatchId,
-    ) -> Result<Vec<(GameId, GameRecord)>, RepoError>;
+    ) -> Result<Vec<(GameId, Game)>, RepoError>;
 }
 
 #[derive(Debug, Clone, Default)]
@@ -45,7 +37,7 @@ pub struct GameQuery {
     pub id_selector: Option<GameIdSelector>,
     pub date_selector: Option<DateSelector>,
     pub player_filters: Vec<(GamePlayerFilter, Option<TakPlayer>)>,
-    pub game_results: Option<Vec<TakGameResult>>,
+    pub game_results: Vec<Option<TakGameResult>>,
     pub half_komi: Option<usize>,
     pub board_size: Option<usize>,
     pub is_rated: Option<bool>,

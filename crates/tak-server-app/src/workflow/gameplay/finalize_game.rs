@@ -3,24 +3,23 @@ use std::sync::Arc;
 use crate::{
     PortsCollection,
     ports::{
-        game_history::GameRepository,
+        game::GameRepository,
         matches::MatchRepository,
         moderation::ModerationRepository,
         notification::{ListenerGameMessageType, ListenerMessage, ListenerNotificationPort},
         rating::RatingRepository,
         stats::{RatingHistoryRepository, StatsRepository},
-        transaction::{RepoError, TransactionManager},
+        transaction::RepoError,
     },
     workflow::{
-        gameplay::FinishedGameView, player::notify_player::NotifyPlayerWorkflow,
+        player::notify_player::NotifyPlayerWorkflow,
         tournament::tournament_match::TournamentMatchWorkflow,
     },
 };
-use tak_core::{TakGameResult, TakPlayer};
+use tak_core::{TakFinishedGame, TakGameResult, TakPlayer};
 use tak_domain::{
-    MatchId,
-    game::FinishedGame,
-    game_history::GameRatingInfo,
+    GameId, MatchId,
+    game::{FinishedGame, Game, GameMetadata, GameRatingInfo, OngoingGame},
     matches::MatchStatus,
     rating::{PlayerRating, RatingService},
     spectator::SpectatorService,
@@ -28,8 +27,14 @@ use tak_domain::{
 };
 
 #[async_trait::async_trait]
-pub trait FinalizeGameWorkflow {
-    async fn finalize_game(&self, ended_game: FinishedGame) -> Result<(), ()>;
+pub trait FinalizeGameWorkflow<RpCtx> {
+    async fn finalize_game(
+        &self,
+        ctx: &RpCtx,
+        game_id: GameId,
+        game: OngoingGame,
+        ended_game: TakFinishedGame,
+    ) -> Result<(), ()>;
 }
 
 pub struct FinalizeGameWorkflowImpl<
@@ -87,8 +92,9 @@ impl<
     async fn handle_match(
         &self,
         ctx: &Ports::TrCtx,
+        game_id: GameId,
         match_id: MatchId,
-        game: FinishedGame,
+        game: &FinishedGame,
     ) -> Result<(), String> {
         let match_repo = self.ports.match_repository();
         let tournament_match_workflow = self.tournament_match_workflow.clone();
@@ -105,12 +111,12 @@ impl<
             }
         };
 
-        match game.game.game_result() {
+        match game.result {
             TakGameResult::Draw => match_data.end_game_in_match(None),
             TakGameResult::Win { winner, .. } => {
                 let winner_id = match winner {
-                    TakPlayer::White => game.metadata.white_id,
-                    TakPlayer::Black => game.metadata.black_id,
+                    TakPlayer::White => game.metadata.white.user_id,
+                    TakPlayer::Black => game.metadata.black.user_id,
                 };
                 let is_player_one = if winner_id == match_data.player1.user_id {
                     true
@@ -127,7 +133,7 @@ impl<
             }
             TakGameResult::Aborted => match_data.abort_game_in_match(),
         };
-        tracing::info!("Finalizing game {} in match {}", game.game_id, match_id);
+        tracing::info!("Finalizing game {} in match {}", game_id, match_id);
         match match_repo
             .update_match(ctx, match_id, match_data.clone())
             .await
@@ -153,11 +159,12 @@ impl<
     async fn update_ratings(
         &self,
         ctx: &Ports::TrCtx,
-        ended_game: FinishedGame,
+        metadata: &GameMetadata,
+        ended_game: &TakFinishedGame,
     ) -> Result<Option<GameRatingInfo>, RepoError> {
-        let white_id = ended_game.metadata.white_id;
-        let black_id = ended_game.metadata.black_id;
-        let date = ended_game.metadata.date;
+        let white_id = metadata.white.user_id;
+        let black_id = metadata.black.user_id;
+        let date = metadata.date;
 
         let rating_repo = self.ports.rating_repository();
         let (w_rating, b_rating) = futures::try_join!(
@@ -170,9 +177,12 @@ impl<
 
         let mut w_rating = w_rating.unwrap_or(PlayerRating::new(white_id));
         let mut b_rating = b_rating.unwrap_or(PlayerRating::new(black_id));
-        let res = self
-            .rating_service
-            .calculate_ratings(&ended_game, &mut w_rating, &mut b_rating);
+        let res = self.rating_service.calculate_ratings(
+            metadata,
+            ended_game,
+            &mut w_rating,
+            &mut b_rating,
+        );
         let white_rating_if_changed =
             Some(w_rating.rating).filter(|&r| Some(r) != prev_white_rating);
         let black_rating_if_changed =
@@ -224,7 +234,7 @@ impl<
         update_white: bool,
         update_black: bool,
     ) -> Result<(), RepoError> {
-        let (white_outcome, black_outcome) = match ended_game.game.game_result() {
+        let (white_outcome, black_outcome) = match ended_game.result {
             TakGameResult::Draw => (GameOutcome::Draw, GameOutcome::Draw),
             TakGameResult::Win {
                 winner: TakPlayer::White,
@@ -238,8 +248,8 @@ impl<
         };
 
         let is_rated = ended_game.metadata.is_rated;
-        let white_id = ended_game.metadata.white_id;
-        let black_id = ended_game.metadata.black_id;
+        let white_id = ended_game.metadata.white.user_id;
+        let black_id = ended_game.metadata.black.user_id;
         futures::try_join!(
             async move {
                 if update_white {
@@ -322,23 +332,28 @@ impl<
     SPS: SpectatorService + Send + Sync + 'static,
     L: ListenerNotificationPort + Send + Sync + 'static,
     TM: TournamentMatchWorkflow<Ports::TrCtx> + Send + Sync + 'static,
-> FinalizeGameWorkflow for FinalizeGameWorkflowImpl<Ports, R, NP, SPS, L, TM>
+> FinalizeGameWorkflow<Ports::TrCtx> for FinalizeGameWorkflowImpl<Ports, R, NP, SPS, L, TM>
 {
-    #[tracing::instrument(skip(self, ended_game), fields(game_id = %ended_game.game_id))]
-    async fn finalize_game(&self, ended_game: FinishedGame) -> Result<(), ()> {
-        tracing::info!("Finalizing game {}", ended_game.game_id);
-        let game_id = ended_game.game_id;
+    #[tracing::instrument(skip(self, ctx, game, ended_game))]
+    async fn finalize_game(
+        &self,
+        ctx: &Ports::TrCtx,
+        game_id: GameId,
+        game: OngoingGame,
+        ended_game: TakFinishedGame,
+    ) -> Result<(), ()> {
+        tracing::info!("Finalizing game {}", game_id);
         let over_msg = ListenerMessage::GameEvent {
             game_id,
             event_type: ListenerGameMessageType::GameOver {
-                game_result: ended_game.game.game_result().clone(),
+                game_result: ended_game.game_result().clone(),
             },
-            time_info: ended_game.game.get_time_info(),
+            time_info: ended_game.get_time_info(),
         };
 
         self.notify_player_workflow
             .notify_players(
-                &[ended_game.metadata.white_id, ended_game.metadata.black_id],
+                &[game.metadata.white.user_id, game.metadata.black.user_id],
                 &over_msg,
             )
             .await;
@@ -347,27 +362,14 @@ impl<
         self.listener_notification_port
             .notify_listeners(&observers, &over_msg);
 
-        let ended_msg = ListenerMessage::GameEnded {
-            game: FinishedGameView::from(&ended_game),
-        };
-        self.listener_notification_port.notify_all(&ended_msg);
-
         tracing::debug!(
             "Notified players and spectators about game {} ending, updating ratings and stats",
             game_id
         );
-        let ctx = self
-            .ports
-            .transaction_manager()
-            .transaction()
-            .await
-            .map_err(|RepoError(e)| {
-                tracing::error!("Failed to start transaction for game {}: {}", game_id, e);
-            })?;
         let moderation_repo = self.ports.moderation_repository();
         let (white_account, black_account) = futures::try_join!(
-            moderation_repo.get_moderation(&ctx, ended_game.metadata.white_id),
-            moderation_repo.get_moderation(&ctx, ended_game.metadata.black_id)
+            moderation_repo.get_moderation(&ctx, game.metadata.white.user_id),
+            moderation_repo.get_moderation(&ctx, game.metadata.black.user_id)
         )
         .map_err(|RepoError(e)| {
             tracing::error!(
@@ -382,20 +384,23 @@ impl<
         let game_rating_info = if !(is_white_not_guest && is_black_not_guest) {
             None
         } else {
-            self.update_ratings(&ctx, ended_game.clone())
+            self.update_ratings(&ctx, &game.metadata, &ended_game)
                 .await
                 .map_err(|RepoError(e)| {
                     tracing::error!("Failed to update ratings for game {}: {}", game_id, e);
                 })?
         };
 
+        let finished_game =
+            FinishedGame::new(game.metadata, ended_game, game_rating_info, game.events);
+
         tracing::debug!(
             "Ratings updated for game {}, updating match and game history",
             game_id
         );
 
-        if let Some(match_id) = ended_game.metadata.match_id {
-            self.handle_match(&ctx, match_id, ended_game.clone())
+        if let Some(match_id) = finished_game.metadata.match_id {
+            self.handle_match(&ctx, game_id, match_id, &finished_game)
                 .await
                 .map_err(|e| {
                     tracing::error!(
@@ -409,7 +414,7 @@ impl<
             tracing::info!("Game {} is not part of a match", game_id);
         }
 
-        self.update_stats(&ctx, &ended_game, is_white_not_guest, is_black_not_guest)
+        self.update_stats(&ctx, &finished_game, is_white_not_guest, is_black_not_guest)
             .await
             .map_err(|RepoError(e)| {
                 tracing::error!("Failed to update stats for game {}: {}", game_id, e);
@@ -419,13 +424,7 @@ impl<
 
         self.ports
             .game_repository()
-            .update_finished_game(
-                &ctx,
-                game_id,
-                ended_game.game.game_result().clone(),
-                ended_game.events.clone(),
-                game_rating_info,
-            )
+            .update_game(&ctx, game_id, Game::Finished(finished_game.clone()))
             .await
             .map_err(|RepoError(e)| {
                 tracing::error!(
@@ -435,13 +434,11 @@ impl<
                 );
             })?;
 
-        self.ports
-            .transaction_manager()
-            .commit(ctx)
-            .await
-            .map_err(|RepoError(e)| {
-                tracing::error!("Failed to commit transaction for game {}: {}", game_id, e);
-            })?;
+        let ended_msg = ListenerMessage::GameEnded {
+            game_id,
+            game: finished_game,
+        };
+        self.listener_notification_port.notify_all(&ended_msg);
 
         tracing::debug!("Finished finalizing game {}", game_id);
         Ok(())

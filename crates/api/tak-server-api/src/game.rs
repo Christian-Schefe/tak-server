@@ -8,19 +8,18 @@ use axum::{
 use tak_core::ptn::{action_to_ptn, game_result_to_string};
 use tak_domain::{
     GameId,
-    game::request::{GameRequest, GameRequestType},
+    game::{
+        Game, GameMetadata,
+        request::{GameRequest, GameRequestType},
+    },
 };
 use tak_server_api_contract::game::{
-    ForPlayer, GameStatusType, JsonEndedGameInfo, JsonGameMetadata, JsonGameRatingInfo,
-    JsonGameRequest, JsonGameRequestType, JsonGameRequests, JsonGameSettings, JsonGameStatus,
-    JsonPlayerSnapshot,
+    ForPlayer, JsonFinishedGame, JsonGame, JsonGameMetadata, JsonGameRatingInfo, JsonGameRequest,
+    JsonGameRequestType, JsonGameRequests, JsonGameSettings, JsonOngoingGame, JsonPlayerSnapshot,
 };
-use tak_server_app::workflow::{
-    gameplay::{
-        GameMetadataView,
-        do_action::{ActionResult, HandleRequestError, PlayerActionError},
-    },
-    history::{GameRecordView, query::GameQueryError},
+use tak_server_app::workflow::gameplay::{
+    do_action::{ActionResult, HandleRequestError, PlayerActionError},
+    query::GameQueryError,
 };
 
 use crate::{AppState, ServiceError, auth::Auth};
@@ -28,112 +27,37 @@ use crate::{AppState, ServiceError, auth::Auth};
 pub fn register_routes() -> axum::Router<AppState> {
     axum::Router::new()
         .route("/", get(get_games))
-        .route("/{game_id}", get(get_game_status))
+        .route("/{game_id}", get(get_game))
         .route("/{game_id}/resign", post(resign_game))
         .route("/{game_id}/request", post(set_request))
         .route("/{game_id}/request/accept", post(accept_request))
 }
 
-async fn get_games(State(app): State<AppState>) -> Json<Vec<JsonGameMetadata>> {
-    let games = app.app.game_list_ongoing_use_case.list_games();
-    Json(
+async fn get_games(
+    State(app): State<AppState>,
+) -> Result<Json<Vec<JsonGameMetadata>>, ServiceError> {
+    let games = match app.app.game_query_use_case.get_ongoing_games().await {
+        Ok(games) => games,
+        Err(GameQueryError::RepositoryError) => {
+            return Err(ServiceError::Internal("Failed to get ongoing games".into()));
+        }
+    };
+    Ok(Json(
         games
             .into_iter()
-            .map(|game| from_metadata_view(game.id, &game.metadata))
+            .map(|(game_id, game)| from_metadata(game_id, &game.metadata))
             .collect(),
-    )
+    ))
 }
 
-async fn get_game_status(
+async fn get_game(
     State(app): State<AppState>,
     Path(game_id): Path<i64>,
-) -> Result<Json<JsonGameStatus>, ServiceError> {
+) -> Result<Json<JsonGame>, ServiceError> {
     let game_id = GameId(game_id);
-    let game = app.app.game_get_ongoing_use_case.get_game(game_id);
 
-    if let Some(ongoing_game) = game {
-        let white_requests = JsonGameRequests {
-            draw_offered: ongoing_game.white_requests.draw_offered,
-            undo_requested: ongoing_game.white_requests.undo_requested,
-            more_time_offered: ongoing_game
-                .white_requests
-                .more_time_offered
-                .map(|d| d.as_millis() as u64),
-        };
-        let black_requests = JsonGameRequests {
-            draw_offered: ongoing_game.black_requests.draw_offered,
-            undo_requested: ongoing_game.black_requests.undo_requested,
-            more_time_offered: ongoing_game
-                .black_requests
-                .more_time_offered
-                .map(|d| d.as_millis() as u64),
-        };
-
-        let time_info = ongoing_game.game.get_time_info(Instant::now());
-        return Ok(Json(JsonGameStatus {
-            id: ongoing_game.id.to_string(),
-            match_id: ongoing_game.metadata.match_id.map(|id| id.to_string()),
-            user_ids: ForPlayer {
-                white: ongoing_game.metadata.white_id.to_string(),
-                black: ongoing_game.metadata.black_id.to_string(),
-            },
-            is_rated: ongoing_game.metadata.is_rated,
-            game_settings: JsonGameSettings::from_game_settings(&ongoing_game.metadata.settings),
-            actions: ongoing_game
-                .game
-                .action_history()
-                .iter()
-                .map(|a| action_to_ptn(&a))
-                .collect(),
-            status: GameStatusType::Ongoing {
-                white_requests,
-                black_requests,
-            },
-            remaining_ms: ForPlayer {
-                white: time_info.white_remaining.as_millis() as u64,
-                black: time_info.black_remaining.as_millis() as u64,
-            },
-        }));
-    }
-    match app.app.game_history_query_use_case.get_game(game_id).await {
-        Ok(Some(ended_game)) => {
-            let status = if let Some(result) = &ended_game.result {
-                GameStatusType::Ended {
-                    result: game_result_to_string(&result),
-                }
-            } else {
-                tracing::warn!(
-                    "Game with id {} has no result even though it's ended.",
-                    game_id
-                );
-                return Err(ServiceError::NotFound(format!(
-                    "Game with id {} not found",
-                    game_id
-                )));
-            };
-
-            let time_info = ended_game.reconstruct_time_info();
-            Ok(Json(JsonGameStatus {
-                id: game_id.to_string(),
-                match_id: ended_game.metadata.match_id.map(|id| id.to_string()),
-                user_ids: ForPlayer {
-                    white: ended_game.metadata.white_id.to_string(),
-                    black: ended_game.metadata.black_id.to_string(),
-                },
-                is_rated: ended_game.metadata.is_rated,
-                game_settings: JsonGameSettings::from_game_settings(&ended_game.metadata.settings),
-                actions: ended_game
-                    .reconstruct_action_history()
-                    .iter()
-                    .map(|a| action_to_ptn(&a))
-                    .collect(),
-                status,
-                remaining_ms: ForPlayer {
-                    white: time_info.white_remaining.as_millis() as u64,
-                    black: time_info.black_remaining.as_millis() as u64,
-                },
-            }))
-        }
+    match app.app.game_query_use_case.get_game(game_id).await {
+        Ok(Some(game)) => Ok(Json(from_game(game_id, &game))),
         Ok(None) => Err(ServiceError::NotFound(format!(
             "Game with id {} not found",
             game_id
@@ -160,6 +84,9 @@ async fn resign_game(
             }
             PlayerActionError::NotAPlayerInGame => {
                 ServiceError::Forbidden("You are not a player in this game".to_string())
+            }
+            PlayerActionError::Internal => {
+                ServiceError::Internal("Failed to resign from game".to_string())
             }
         })
 }
@@ -192,6 +119,9 @@ async fn set_request(
             ))),
             PlayerActionError::NotAPlayerInGame => Err(ServiceError::Forbidden(
                 "You are not a player in this game".to_string(),
+            )),
+            PlayerActionError::Internal => Err(ServiceError::Internal(
+                "Failed to set request for game".to_string(),
             )),
         },
     }
@@ -231,6 +161,9 @@ async fn accept_request(
             PlayerActionError::NotAPlayerInGame => Err(ServiceError::Forbidden(
                 "You are not a player in this game".to_string(),
             )),
+            PlayerActionError::Internal => Err(ServiceError::Internal(
+                "Failed to accept request for game".to_string(),
+            )),
         },
         ActionResult::ActionError(HandleRequestError::RequestNotFound) => Err(
             ServiceError::NotFound("No such request to accept".to_string()),
@@ -238,38 +171,89 @@ async fn accept_request(
     }
 }
 
-pub fn from_metadata_view(game_id: GameId, view: &GameMetadataView) -> JsonGameMetadata {
+pub fn from_metadata(game_id: GameId, metadata: &GameMetadata) -> JsonGameMetadata {
     JsonGameMetadata {
         id: game_id.to_string(),
-        date: view.date,
-        user_ids: ForPlayer {
-            white: view.white_id.to_string(),
-            black: view.black_id.to_string(),
+        date: metadata.date,
+        white: JsonPlayerSnapshot {
+            user_id: metadata.white.user_id.to_string(),
+            username: metadata.white.username.clone(),
+            rating: metadata.white.rating,
         },
-        is_rated: view.is_rated,
-        game_settings: JsonGameSettings::from_game_settings(&view.settings),
+        black: JsonPlayerSnapshot {
+            user_id: metadata.black.user_id.to_string(),
+            username: metadata.black.username.clone(),
+            rating: metadata.black.rating,
+        },
+        is_rated: metadata.is_rated,
+        game_settings: JsonGameSettings::from_game_settings(&metadata.settings),
     }
 }
 
-pub fn from_game_record(record: &GameRecordView) -> JsonEndedGameInfo {
-    JsonEndedGameInfo {
-        metadata: from_metadata_view(record.game_id, &record.metadata),
-        players: ForPlayer {
-            white: JsonPlayerSnapshot {
-                username: record.white.username.clone(),
-                rating: record.white.rating,
-            },
-            black: JsonPlayerSnapshot {
-                username: record.black.username.clone(),
-                rating: record.black.rating,
-            },
-        },
-        rating_info: record.rating_info.as_ref().map(|info| JsonGameRatingInfo {
-            rating_change: ForPlayer {
-                white: info.rating_change_white,
-                black: info.rating_change_black,
-            },
-        }),
-        result: record.result.as_ref().map(|r| game_result_to_string(r)),
+pub fn from_game(game_id: GameId, game: &Game) -> JsonGame {
+    let metadata = match game {
+        Game::Ongoing(ongoing_game) => &ongoing_game.metadata,
+        Game::Finished(finished_game) => &finished_game.metadata,
+    };
+    let metadata_json = from_metadata(game_id, metadata);
+    match game {
+        Game::Ongoing(ongoing_game) => {
+            let time_info = ongoing_game.game.get_time_info(Instant::now());
+            let actions = ongoing_game
+                .game
+                .action_history()
+                .iter()
+                .map(|action| action_to_ptn(action))
+                .collect();
+            JsonGame::Ongoing {
+                game: JsonOngoingGame {
+                    metadata: metadata_json,
+                    actions,
+                    remaining_ms: ForPlayer {
+                        white: time_info.white_remaining.as_millis() as u64,
+                        black: time_info.black_remaining.as_millis() as u64,
+                    },
+                    white_requests: JsonGameRequests {
+                        draw_offered: ongoing_game.requests.white_requests.draw_offered,
+                        undo_requested: ongoing_game.requests.white_requests.undo_requested,
+                        more_time_offered: ongoing_game
+                            .requests
+                            .white_requests
+                            .more_time_offered
+                            .map(|d| d.as_millis() as u64),
+                    },
+                    black_requests: JsonGameRequests {
+                        draw_offered: ongoing_game.requests.black_requests.draw_offered,
+                        undo_requested: ongoing_game.requests.black_requests.undo_requested,
+                        more_time_offered: ongoing_game
+                            .requests
+                            .black_requests
+                            .more_time_offered
+                            .map(|d| d.as_millis() as u64),
+                    },
+                },
+            }
+        }
+        Game::Finished(finished_game) => {
+            let time_info = &finished_game.events.last().time_info;
+            JsonGame::Finished {
+                game: JsonFinishedGame {
+                    metadata: metadata_json,
+                    rating_info: finished_game.rating_info.as_ref().map(|info| {
+                        JsonGameRatingInfo {
+                            rating_change: ForPlayer {
+                                white: info.rating_change_white,
+                                black: info.rating_change_black,
+                            },
+                        }
+                    }),
+                    result: game_result_to_string(&finished_game.result),
+                    remaining_ms: ForPlayer {
+                        white: time_info.white_remaining.as_millis() as u64,
+                        black: time_info.black_remaining.as_millis() as u64,
+                    },
+                },
+            }
+        }
     }
 }

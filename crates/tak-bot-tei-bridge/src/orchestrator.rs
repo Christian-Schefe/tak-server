@@ -4,7 +4,7 @@ use tak_core::{TakPlayer, TakReserve};
 
 use tak_server_api_contract::{
     game::{
-        JsonBaseGameSettings, JsonGameMetadata, JsonGameSettings, JsonGameStatus, JsonTakOpening,
+        JsonBaseGameSettings, JsonGame, JsonGameMetadata, JsonGameSettings, JsonTakOpening,
         JsonTimeSettings,
     },
     seek::{CreateSeekPayload, JsonSeek},
@@ -19,7 +19,7 @@ use crate::{engine::EngineService, game::GameService, seek::SeekService};
 pub trait ServerApi {
     async fn send_message(&self, message: ClientMessage) -> Result<(), String>;
     async fn load_games(&self) -> Result<Vec<JsonGameMetadata>, String>;
-    async fn load_game(&self, id: String) -> Result<JsonGameStatus, String>;
+    async fn load_game(&self, id: String) -> Result<JsonGame, String>;
     async fn create_seek(&self, seek: CreateSeekPayload) -> Result<JsonSeek, String>;
 }
 
@@ -82,9 +82,9 @@ impl Orchestrator {
     }
 
     fn get_player_color(&self, game: &JsonGameMetadata) -> Option<TakPlayer> {
-        if game.user_ids.white == self.user_id {
+        if game.white.user_id == self.user_id {
             Some(TakPlayer::White)
-        } else if game.user_ids.black == self.user_id {
+        } else if game.black.user_id == self.user_id {
             Some(TakPlayer::Black)
         } else {
             None
@@ -98,6 +98,9 @@ impl Orchestrator {
                 continue;
             };
             let status = this.server_api.load_game(game.id.clone()).await.unwrap();
+            let JsonGame::Ongoing { game: status } = status else {
+                continue;
+            };
             if let Some((player, game_state)) =
                 this.game_service
                     .load_game(game.id.clone(), player, &status)
