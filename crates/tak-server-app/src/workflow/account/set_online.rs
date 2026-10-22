@@ -143,12 +143,10 @@ impl<
                         match_id: match_id,
                         event_type: ListenerMatchEventType::MatchReadinessChanged { user_id: None },
                     };
-                    self.notify_player_workflow
-                        .notify_players(
-                            &[match_entry.player1.user_id, match_entry.player2.user_id],
-                            &message,
-                        )
-                        .await;
+                    self.notify_player_workflow.notify_players(
+                        &[match_entry.player1.user_id, match_entry.player2.user_id],
+                        &message,
+                    );
                 }
                 None => {
                     tracing::error!("Match {match_id} not found when setting account offline",);

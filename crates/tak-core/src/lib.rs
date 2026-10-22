@@ -5,9 +5,9 @@ pub mod ptn;
 
 use std::time::Duration;
 
-pub use base::TakFinishedBaseGame;
 pub use base::TakOngoingBaseGame;
 pub use board::TakBoard;
+pub use game::TakClock;
 pub use game::TakFinishedGame;
 pub use game::TakOngoingGame;
 
@@ -65,6 +65,12 @@ pub enum TakAction {
         dir: TakDir,
         drops: Vec<u32>,
     },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TakActionRecord {
+    pub action: TakAction,
+    pub time_info: TakTimeInfo,
 }
 
 #[derive(Clone, Debug, PartialEq)]

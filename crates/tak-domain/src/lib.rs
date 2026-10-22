@@ -1,6 +1,7 @@
 pub mod chat;
 pub mod event;
 pub mod game;
+pub mod game_record;
 pub mod matches;
 pub mod moderation;
 pub mod player;

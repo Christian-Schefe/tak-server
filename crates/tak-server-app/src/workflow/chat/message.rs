@@ -134,15 +134,9 @@ impl<
 
         match conversation {
             ChatConversation::Private { user_ids } => {
-                let member_listener_futures =
-                    [&user_ids.0, &user_ids.1]
-                        .into_iter()
-                        .map(|to_user_id| async move {
-                            self.player_connection_port
-                                .get_connection_id(*to_user_id)
-                                .await
-                        });
-                let member_connections = futures::future::join_all(member_listener_futures).await;
+                let member_connections = [&user_ids.0, &user_ids.1]
+                    .into_iter()
+                    .map(|to_user_id| self.player_connection_port.get_connection_id(*to_user_id));
                 for member in member_connections {
                     if let Some(connection_id) = member {
                         self.listener_notification_port

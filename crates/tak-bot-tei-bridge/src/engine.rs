@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use tak_core::{TakBaseGameSettings, TakOngoingBaseGame, ptn::action_to_ptn};
+use tak_core::{TakAction, TakBaseGameSettings, ptn::action_to_ptn};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt},
     select,
@@ -42,12 +42,12 @@ impl EngineService {
     pub async fn search_move(
         &self,
         game_id: String,
-        game: &TakOngoingBaseGame,
+        actions: impl Iterator<Item = &TakAction>,
         time_limit_ms: u64,
     ) -> Option<String> {
         let res = { self.engine_connections.lock().unwrap().remove(&game_id) };
         if let Some(mut connection) = res {
-            let result = connection.search_move(game, time_limit_ms).await;
+            let result = connection.search_move(actions, time_limit_ms).await;
             self.engine_connections
                 .lock()
                 .unwrap()
@@ -185,12 +185,10 @@ impl EngineConnection {
 
     async fn search_move(
         &mut self,
-        game: &TakOngoingBaseGame,
+        actions: impl Iterator<Item = &TakAction>,
         time_limit_ms: u64,
     ) -> Option<String> {
-        let moves = game
-            .action_history
-            .iter()
+        let moves = actions
             .map(|a| action_to_ptn(a))
             .collect::<Vec<_>>()
             .join(" ");

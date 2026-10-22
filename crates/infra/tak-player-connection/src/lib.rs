@@ -155,9 +155,8 @@ impl PlayerConnectionDriver {
     }
 }
 
-#[async_trait::async_trait]
 impl UserConnectionPort for PlayerConnectionService {
-    async fn get_connection_id(&self, user_id: UserId) -> Option<ListenerId> {
+    fn get_connection_id(&self, user_id: UserId) -> Option<ListenerId> {
         let registry = self.registry.read();
 
         registry.listener_map.get_by_left(&user_id).cloned()

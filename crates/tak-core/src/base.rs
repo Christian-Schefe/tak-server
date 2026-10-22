@@ -6,47 +6,32 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
-pub struct TakFinishedBaseGame {
-    pub game_result: TakGameResult,
-    pub action_history: Vec<TakAction>,
-}
-
-impl TakFinishedBaseGame {
-    pub fn new(ended_game: &TakOngoingBaseGame, game_result: TakGameResult) -> Self {
-        TakFinishedBaseGame {
-            game_result,
-            action_history: ended_game.action_history.clone(),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
 pub struct TakOngoingBaseGame {
     pub settings: TakBaseGameSettings,
     pub board: TakBoard,
     pub current_player: TakPlayer,
     pub reserves: (TakReserve, TakReserve),
     pub board_hash_history: HashMap<String, u32>,
-    pub action_history: Vec<TakAction>,
+    pub ply_index: usize,
 }
 
 impl TakOngoingBaseGame {
-    pub fn new(settings: TakBaseGameSettings) -> Self {
+    pub fn new(settings: &TakBaseGameSettings) -> Self {
         let board = TakBoard::new(settings.board_size);
         let reserves = (settings.reserve.clone(), settings.reserve.clone());
         TakOngoingBaseGame {
-            settings,
+            settings: settings.clone(),
             board,
             current_player: TakPlayer::White,
             reserves,
             board_hash_history: HashMap::new(),
-            action_history: Vec::new(),
+            ply_index: 0,
         }
     }
 
     pub fn can_do_action(&self, action: &TakAction) -> Result<(), InvalidActionReason> {
-        let is_opening_action = self.action_history.len() < 2;
-        let is_first_move = self.action_history.is_empty();
+        let is_opening_action = self.ply_index < 2;
+        let is_first_move = self.ply_index == 0;
         if is_opening_action {
             match action {
                 TakAction::Place { pos, variant } => {
@@ -100,13 +85,14 @@ impl TakOngoingBaseGame {
     pub fn do_action(
         &mut self,
         action: TakAction,
-    ) -> Result<Option<TakFinishedBaseGame>, InvalidActionReason> {
+    ) -> Result<Option<TakGameResult>, InvalidActionReason> {
         if let Err(e) = self.can_do_action(&action) {
             return Err(e);
         }
-        let is_opening_action = self.action_history.len() < 2;
+        self.ply_index += 1;
+        let is_opening_action = self.ply_index < 2;
         let moved_player = self.current_player;
-        let is_first_move = self.action_history.is_empty();
+        let is_first_move = self.ply_index == 0;
         match &action {
             TakAction::Place { pos, variant } => {
                 let (reserve, opponent_reserve) = match self.current_player {
@@ -150,7 +136,7 @@ impl TakOngoingBaseGame {
                     .expect("can_do_action should have prevented invalid move due to board state");
             }
         }
-        self.action_history.push(action);
+        self.ply_index += 1;
         self.current_player = self.current_player.opponent();
 
         let board_hash = self.board.compute_hash_string();
@@ -162,39 +148,11 @@ impl TakOngoingBaseGame {
         Ok(self.check_game_over(board_hash, moved_player))
     }
 
-    pub fn undo_action(&mut self) -> bool {
-        if self.action_history.pop().is_none() {
-            return false;
-        };
-        let mut game_clone = TakOngoingBaseGame::new(self.settings.clone());
-        for record in &self.action_history {
-            match game_clone.do_action(record.clone()) {
-                Ok(None) => {}
-                Ok(Some(_)) => {
-                    //This should never happen, and the module is closed to preserve invariants, so we panic here
-                    panic!(
-                        "Finished game encountered when replaying action during undo: {:?}",
-                        record
-                    );
-                }
-                Err(e) => {
-                    //This should never happen, and the module is closed to preserve invariants, so we panic here
-                    panic!(
-                        "Failed to replay action during undo: {:?}, error: {:?}",
-                        record, e
-                    );
-                }
-            }
-        }
-        *self = game_clone;
-        true
-    }
-
     fn check_game_over(
         &self,
         board_hash: String,
         moved_player: TakPlayer,
-    ) -> Option<TakFinishedBaseGame> {
+    ) -> Option<TakGameResult> {
         let white_reserve_empty = self.reserves.0.pieces == 0 && self.reserves.0.capstones == 0;
         let black_reserve_empty = self.reserves.1.pieces == 0 && self.reserves.1.capstones == 0;
 
@@ -230,6 +188,6 @@ impl TakOngoingBaseGame {
         } else {
             None
         }?;
-        Some(TakFinishedBaseGame::new(self, game_result))
+        Some(game_result)
     }
 }

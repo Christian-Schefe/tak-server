@@ -1,8 +1,7 @@
 use tak_domain::{ListenerId, UserId};
 
-#[async_trait::async_trait]
 pub trait UserConnectionPort {
-    async fn get_connection_id(&self, user_id: UserId) -> Option<ListenerId>;
+    fn get_connection_id(&self, user_id: UserId) -> Option<ListenerId>;
 }
 
 pub trait UserOnlineStatusPort {

@@ -1,20 +1,18 @@
 use std::time::Duration;
 
-use nonempty::NonEmpty;
 use sea_orm::{
     ColumnTrait, EntityTrait, ExprTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use serde::Deserialize;
 use tak_core::{
-    TakAction, TakBaseGameSettings, TakGameSettings, TakPlayer, TakReserve, TakTimeInfo,
+    TakAction, TakActionRecord, TakBaseGameSettings, TakClock, TakFinishedGame, TakGameSettings,
+    TakOngoingGame, TakPlayer, TakReserve, TakTimeInfo,
     ptn::{action_from_ptn, action_to_ptn, game_result_from_string, game_result_to_string},
 };
 use tak_domain::{
     GameId, MatchId, UserId,
-    game::{
-        FinishedGame, Game, GameEvent, GameEventType, GameMetadata, GameOverEventType,
-        GameRatingInfo, OngoingGame, PlayerSnapshot, request::GameRequest,
-    },
+    game::{Game, GameMetadata, PlayerSnapshot, request::GameRequests},
+    game_record::GameRatingInfo,
 };
 use tak_persistence_sea_orm_entities::game;
 use tak_server_app::ports::{
@@ -32,40 +30,9 @@ pub struct GameRepositoryImpl;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct JsonEventRecord {
-    #[serde(with = "chrono::serde::ts_milliseconds")]
-    timestamp: chrono::DateTime<chrono::Utc>,
-    event: JsonEventRecordType,
+struct JsonActionRecord {
+    action: String,
     time_info: JsonTimeInfo,
-}
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(
-    tag = "type",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-enum JsonEventRecordType {
-    Start,
-    Action {
-        #[serde(
-            serialize_with = "serialize_action",
-            deserialize_with = "deserialize_action"
-        )]
-        action: TakAction,
-    },
-    RequestSet {
-        request_type: JsonRequest,
-        request_player: JsonTakPlayer,
-    },
-    ActionUndone,
-    TimeGiven {
-        player: JsonTakPlayer,
-        amount_ms: u64,
-    },
-    GameOver {
-        game_over_type: JsonEventGameOverType,
-    },
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -97,77 +64,6 @@ impl JsonTimeInfo {
         TakTimeInfo {
             white_remaining: Duration::from_millis(self.white_remaining_ms),
             black_remaining: Duration::from_millis(self.black_remaining_ms),
-        }
-    }
-}
-
-impl JsonEventRecordType {
-    fn from_game_event(event: GameEventType) -> Self {
-        match event {
-            GameEventType::Start => JsonEventRecordType::Start,
-            GameEventType::Action { action } => JsonEventRecordType::Action { action },
-            GameEventType::RequestSet { request, player } => JsonEventRecordType::RequestSet {
-                request_type: match request {
-                    GameRequest::Draw(offer) => JsonRequest::Draw { offer },
-                    GameRequest::Undo(request) => JsonRequest::Undo { request },
-                    GameRequest::MoreTime(duration) => JsonRequest::MoreTime {
-                        amount_ms: duration.map(|d| d.as_millis() as u64),
-                    },
-                },
-                request_player: JsonTakPlayer::from_tak_player(player),
-            },
-            GameEventType::ActionUndone => JsonEventRecordType::ActionUndone,
-            GameEventType::GameOver(game_over_type) => JsonEventRecordType::GameOver {
-                game_over_type: match game_over_type {
-                    GameOverEventType::Action => JsonEventGameOverType::Action,
-                    GameOverEventType::DrawAgreement => JsonEventGameOverType::DrawAgreement,
-                    GameOverEventType::Timeout => JsonEventGameOverType::Timeout,
-                    GameOverEventType::Resignation => JsonEventGameOverType::Resignation,
-                    GameOverEventType::Abandonment => JsonEventGameOverType::Abandonment,
-                    GameOverEventType::Aborted => JsonEventGameOverType::Aborted,
-                },
-            },
-            GameEventType::TimeGiven { player, duration } => JsonEventRecordType::TimeGiven {
-                player: JsonTakPlayer::from_tak_player(player),
-                amount_ms: duration.as_millis() as u64,
-            },
-        }
-    }
-
-    fn to_game_event(&self) -> GameEventType {
-        match self {
-            JsonEventRecordType::Start => GameEventType::Start,
-            JsonEventRecordType::Action { action } => GameEventType::Action {
-                action: action.clone(),
-            },
-            JsonEventRecordType::RequestSet {
-                request_type,
-                request_player,
-            } => GameEventType::RequestSet {
-                request: match request_type {
-                    JsonRequest::Draw { offer } => GameRequest::Draw(*offer),
-                    JsonRequest::Undo { request } => GameRequest::Undo(*request),
-                    JsonRequest::MoreTime { amount_ms } => {
-                        GameRequest::MoreTime(amount_ms.as_ref().map(|x| Duration::from_millis(*x)))
-                    }
-                },
-                player: request_player.to_tak_player(),
-            },
-            JsonEventRecordType::ActionUndone => GameEventType::ActionUndone,
-            JsonEventRecordType::TimeGiven { player, amount_ms } => GameEventType::TimeGiven {
-                player: player.to_tak_player(),
-                duration: Duration::from_millis(*amount_ms),
-            },
-            JsonEventRecordType::GameOver { game_over_type } => {
-                GameEventType::GameOver(match game_over_type {
-                    JsonEventGameOverType::Action => GameOverEventType::Action,
-                    JsonEventGameOverType::DrawAgreement => GameOverEventType::DrawAgreement,
-                    JsonEventGameOverType::Timeout => GameOverEventType::Timeout,
-                    JsonEventGameOverType::Resignation => GameOverEventType::Resignation,
-                    JsonEventGameOverType::Abandonment => GameOverEventType::Abandonment,
-                    JsonEventGameOverType::Aborted => GameOverEventType::Aborted,
-                })
-            }
         }
     }
 }
@@ -253,8 +149,8 @@ impl GameRepositoryImpl {
                     ));
                 }
             };
-        let json_events: Vec<JsonEventRecord> =
-            serde_json::from_value(model.events).unwrap_or_default();
+        let json_history: Vec<JsonActionRecord> =
+            serde_json::from_value(model.history).unwrap_or_default();
 
         let white_id = UserId(model.player_white_id);
         let black_id = UserId(model.player_black_id);
@@ -283,28 +179,49 @@ impl GameRepositoryImpl {
             match_id: model.match_id.map(|id| MatchId(id)),
         };
 
-        let Some(events) = NonEmpty::collect(json_events.into_iter().map(|jm| GameEvent {
-            date: jm.timestamp,
-            event_type: jm.event.to_game_event(),
-            time_info: jm.time_info.to_time_info(),
-        })) else {
-            return Err("Game events list is empty".to_string());
-        };
+        let history = json_history
+            .into_iter()
+            .map(|jm| {
+                Ok(TakActionRecord {
+                    action: action_from_ptn(&jm.action).ok_or_else(|| {
+                        format!("Invalid action string in database: {}", jm.action)
+                    })?,
+                    time_info: jm.time_info.to_time_info(),
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?;
 
         let game = if let Some(result) = model.result {
-            Game::Finished(FinishedGame {
-                metadata,
-                rating_info,
-                events,
+            let game = TakFinishedGame {
                 result: game_result_from_string(&result)
                     .ok_or_else(|| format!("Invalid game result string in database: {}", result))?,
+                time_info: TakTimeInfo {
+                    white_remaining: Duration::from_millis(model.white_remaining_ms as u64),
+                    black_remaining: Duration::from_millis(model.black_remaining_ms as u64),
+                },
+                history,
+            };
+            Game::Finished(Game {
+                metadata,
+                rating_info,
+                game,
             })
         } else {
-            Game::Ongoing(OngoingGame {
+            let clock = TakClock {
+                remaining_time: TakTimeInfo {
+                    white_remaining: Duration::from_millis(model.white_remaining_ms as u64),
+                    black_remaining: Duration::from_millis(model.black_remaining_ms as u64),
+                },
+                last_update_timestamp: std::time::SystemTime::now(),
+                is_ticking: false,
+            };
+            let game = TakOngoingGame::from_history(&metadata.settings, clock, history)
+                .map_err(|e| format!("Failed to reconstruct ongoing game from history: {:?}", e))?;
+            Game::Ongoing(Game {
                 metadata,
-                game: todo!(),
-                requests: todo!(),
-                events,
+                game,
+                white_requests: GameRequests::new(),
+                black_requests: GameRequests::new(),
             })
         };
 
@@ -315,7 +232,7 @@ impl GameRepositoryImpl {
             Game::Ongoing(ongoing) => (&ongoing.metadata, None, None),
             Game::Finished(finished) => (
                 &finished.metadata,
-                Some(game_result_to_string(&finished.result)),
+                Some(game_result_to_string(&finished.game.result)),
                 finished.rating_info.as_ref(),
             ),
         };
@@ -323,22 +240,26 @@ impl GameRepositoryImpl {
         let base_settings = &metadata.settings.base;
         let time_settings = JsonTimeSettings::from_time_settings(&metadata.settings.time_settings);
 
-        let events = match game {
-            Game::Ongoing(ongoing) => &ongoing.events,
-            Game::Finished(finished) => &finished.events,
+        let history = match game {
+            Game::Ongoing(ongoing) => &ongoing.game.history,
+            Game::Finished(finished) => &finished.game.history,
         };
 
-        let events: Vec<JsonEventRecord> = events
+        let history: Vec<JsonActionRecord> = history
             .iter()
-            .map(|event| JsonEventRecord {
-                timestamp: event.date,
-                event: JsonEventRecordType::from_game_event(event.event_type.clone()),
-                time_info: JsonTimeInfo::from_time_info(&event.time_info),
+            .map(|action| JsonActionRecord {
+                action: action_to_ptn(&action.action),
+                time_info: JsonTimeInfo::from_time_info(&action.time_info),
             })
             .collect();
 
-        let events_value = serde_json::to_value(&events)
+        let history_value = serde_json::to_value(&history)
             .map_err(|e| format!("Failed to serialize game events: {}", e))?;
+
+        let time_info = match game {
+            Game::Ongoing(ongoing) => ongoing.game.clock.remaining_time,
+            Game::Finished(finished) => finished.game.time_info.clone(),
+        };
 
         Ok(game::ActiveModel {
             id: game_id.map_or(Default::default(), |id| Set(id.0)),
@@ -350,7 +271,7 @@ impl GameRepositoryImpl {
             player_black_username: Set(metadata.black.username.clone()),
             player_white_rating: Set(metadata.white.rating),
             player_black_rating: Set(metadata.black.rating),
-            events: Set(events_value),
+            history: Set(history_value),
             result: Set(result),
             is_rated: Set(metadata.is_rated),
             half_komi: Set(base_settings.half_komi as i32),
@@ -436,7 +357,7 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
     async fn get_ongoing_games(
         &self,
         ctx: &RepositoryContext,
-    ) -> Result<Vec<(GameId, OngoingGame)>, RepoError> {
+    ) -> Result<Vec<(GameId, Game)>, RepoError> {
         let models = game::Entity::find()
             .filter(game::Column::Result.is_null())
             .all(ctx)

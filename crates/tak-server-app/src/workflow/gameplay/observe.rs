@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use tak_domain::{GameId, ListenerId, game::Game, spectator::SpectatorService};
+use tak_domain::{GameId, ListenerId, game_record::GameRecordState, spectator::SpectatorService};
 
 use crate::{
     PortsCollection,
@@ -51,8 +51,10 @@ impl<Ports: PortsCollection + Send + Sync + 'static, S: SpectatorService + Send 
         let ctx = self.ports.transaction_manager().simple();
         match self.ports.game_repository().get_game(&ctx, game_id).await {
             Ok(None) => return Err(ObserveGameError::GameNotFound),
-            Ok(Some(Game::Ongoing(_))) => (),
-            Ok(Some(Game::Finished(_))) => return Err(ObserveGameError::GameNotFound),
+            Ok(Some(game)) => match game.state {
+                GameRecordState::Ongoing => (),
+                GameRecordState::Finished { .. } => return Err(ObserveGameError::GameNotFound),
+            },
             Err(RepoError(e)) => {
                 tracing::error!("Failed to retrieve game {} from repository: {}", game_id, e);
                 return Err(ObserveGameError::Internal);

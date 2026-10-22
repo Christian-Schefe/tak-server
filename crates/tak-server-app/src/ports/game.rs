@@ -1,35 +1,44 @@
 use chrono::{DateTime, Utc};
 use tak_core::{TakGameResult, TakPlayer};
-use tak_domain::{
-    GameId, MatchId, UserId,
-    game::{Game, OngoingGame},
-};
+use tak_domain::{GameId, MatchId, UserId, game::Game, game_record::GameRecord};
 
 use crate::ports::{PaginatedResponse, Pagination, SortOrder, transaction::RepoError};
 
 #[async_trait::async_trait]
-pub trait GameRepository<RpCtx> {
+pub trait OngoingGameRepository<RpCtx> {
     async fn get_game(&self, ctx: &RpCtx, game_id: GameId) -> Result<Option<Game>, RepoError>;
-    async fn create_game(&self, ctx: &RpCtx, game: Game) -> Result<GameId, RepoError>;
-    async fn update_game(&self, ctx: &RpCtx, game_id: GameId, game: Game) -> Result<(), RepoError>;
-    async fn get_games_by_player(
+    async fn set_game(&self, ctx: &RpCtx, game_id: GameId, game: Game) -> Result<(), RepoError>;
+    async fn remove_game(&self, ctx: &RpCtx, game_id: GameId) -> Result<(), RepoError>;
+}
+
+#[async_trait::async_trait]
+pub trait GameRepository<RpCtx> {
+    async fn create_game(&self, ctx: &RpCtx, game: GameRecord) -> Result<GameId, RepoError>;
+    async fn get_game(&self, ctx: &RpCtx, game_id: GameId)
+    -> Result<Option<GameRecord>, RepoError>;
+    async fn update_game(
+        &self,
+        ctx: &RpCtx,
+        game_id: GameId,
+        game: GameRecord,
+    ) -> Result<(), RepoError>;
+    async fn get_ongoing_games_by_player(
         &self,
         ctx: &RpCtx,
         user_id: UserId,
-    ) -> Result<Vec<(GameId, Game)>, RepoError>;
-    async fn get_ongoing_games(&self, ctx: &RpCtx)
-    -> Result<Vec<(GameId, OngoingGame)>, RepoError>;
+    ) -> Result<Vec<(GameId, GameRecord)>, RepoError>;
+    async fn get_ongoing_games(&self, ctx: &RpCtx) -> Result<Vec<(GameId, GameRecord)>, RepoError>;
 
     async fn query_games(
         &self,
         ctx: &RpCtx,
         query: GameQuery,
-    ) -> Result<PaginatedResponse<(GameId, Game)>, RepoError>;
+    ) -> Result<PaginatedResponse<(GameId, GameRecord)>, RepoError>;
     async fn get_games_of_match(
         &self,
         ctx: &RpCtx,
         match_id: MatchId,
-    ) -> Result<Vec<(GameId, Game)>, RepoError>;
+    ) -> Result<Vec<(GameId, GameRecord)>, RepoError>;
 }
 
 #[derive(Debug, Clone, Default)]

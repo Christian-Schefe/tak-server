@@ -6,15 +6,14 @@ use crate::ports::{
 };
 use tak_domain::{GameId, UserId, game::GameMetadata, spectator::SpectatorService};
 
-#[async_trait::async_trait]
 pub trait NotifyPlayerWorkflow {
-    async fn notify_players_and_observers_of_game(
+    fn notify_players_and_observers_of_game(
         &self,
         game_id: GameId,
         metadata: &GameMetadata,
         message: &ListenerMessage,
     );
-    async fn notify_players(&self, players: &[UserId], message: &ListenerMessage);
+    fn notify_players(&self, players: &[UserId], message: &ListenerMessage);
 }
 
 pub struct NotifyPlayerWorkflowImpl<
@@ -50,26 +49,22 @@ impl<
     S: SpectatorService + Send + Sync,
 > NotifyPlayerWorkflow for NotifyPlayerWorkflowImpl<L, P, S>
 {
-    async fn notify_players_and_observers_of_game(
+    fn notify_players_and_observers_of_game(
         &self,
         game_id: GameId,
         metadata: &GameMetadata,
         message: &ListenerMessage,
     ) {
-        self.notify_players(&[metadata.white.user_id, metadata.black.user_id], message)
-            .await;
+        self.notify_players(&[metadata.white.user_id, metadata.black.user_id], message);
         let observers = self.spectator_service.get_spectators_for_game(game_id);
         self.listener_notification_port
             .notify_listeners(&observers, message);
     }
 
-    async fn notify_players(&self, players: &[UserId], message: &ListenerMessage) {
-        let listener_id_futs = players.iter().map(|user_id| async move {
-            self.player_connection_port
-                .get_connection_id(*user_id)
-                .await
-        });
-        let listener_ids = futures::future::join_all(listener_id_futs).await;
+    fn notify_players(&self, players: &[UserId], message: &ListenerMessage) {
+        let listener_ids = players
+            .iter()
+            .map(|user_id| self.player_connection_port.get_connection_id(*user_id));
         for listener_id_opt in listener_ids {
             if let Some(connection_id) = listener_id_opt {
                 self.listener_notification_port

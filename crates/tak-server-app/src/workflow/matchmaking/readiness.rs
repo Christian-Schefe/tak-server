@@ -164,12 +164,10 @@ impl<
                 },
             };
 
-            self.notification_port
-                .notify_players(
-                    &[match_entry.player1.user_id, match_entry.player2.user_id],
-                    &msg,
-                )
-                .await;
+            self.notification_port.notify_players(
+                &[match_entry.player1.user_id, match_entry.player2.user_id],
+                &msg,
+            );
         }
 
         Ok(())
@@ -206,12 +204,10 @@ impl<
                 match_id,
                 event_type: ListenerMatchEventType::MatchReadinessChanged { user_id: None },
             };
-            self.notification_port
-                .notify_players(
-                    &[match_entry.player1.user_id, match_entry.player2.user_id],
-                    &msg,
-                )
-                .await;
+            self.notification_port.notify_players(
+                &[match_entry.player1.user_id, match_entry.player2.user_id],
+                &msg,
+            );
         }
         Ok(())
     }

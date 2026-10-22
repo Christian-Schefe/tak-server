@@ -7,23 +7,20 @@ use crate::{
     },
 };
 use std::sync::Arc;
-use tak_domain::{
-    GameId, MatchId,
-    game::{Game, OngoingGame},
-};
+use tak_domain::{GameId, MatchId, game_record::GameRecord};
 
 #[async_trait::async_trait]
 pub trait GameQueryUseCase {
-    async fn get_game(&self, game_id: GameId) -> Result<Option<Game>, GameQueryError>;
+    async fn get_game(&self, game_id: GameId) -> Result<Option<GameRecord>, GameQueryError>;
     async fn query_games(
         &self,
         filter: GameQuery,
-    ) -> Result<PaginatedResponse<(GameId, Game)>, GameQueryError>;
+    ) -> Result<PaginatedResponse<(GameId, GameRecord)>, GameQueryError>;
     async fn get_games_of_match(
         &self,
         match_id: MatchId,
-    ) -> Result<Vec<(GameId, Game)>, GameQueryError>;
-    async fn get_ongoing_games(&self) -> Result<Vec<(GameId, OngoingGame)>, GameQueryError>;
+    ) -> Result<Vec<(GameId, GameRecord)>, GameQueryError>;
+    async fn get_ongoing_games(&self) -> Result<Vec<(GameId, GameRecord)>, GameQueryError>;
 }
 
 pub enum GameQueryError {
@@ -47,7 +44,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameQueryUseCase
     async fn query_games(
         &self,
         filter: GameQuery,
-    ) -> Result<PaginatedResponse<(GameId, Game)>, GameQueryError> {
+    ) -> Result<PaginatedResponse<(GameId, GameRecord)>, GameQueryError> {
         let ctx = self.ports.transaction_manager().simple();
         match self.ports.game_repository().query_games(&ctx, filter).await {
             Ok(result) => Ok(result.map(|(id, record)| (id, record))),
@@ -58,7 +55,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameQueryUseCase
         }
     }
 
-    async fn get_game(&self, game_id: GameId) -> Result<Option<Game>, GameQueryError> {
+    async fn get_game(&self, game_id: GameId) -> Result<Option<GameRecord>, GameQueryError> {
         let ctx = self.ports.transaction_manager().simple();
         match self.ports.game_repository().get_game(&ctx, game_id).await {
             Ok(result) => Ok(result),
@@ -72,7 +69,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameQueryUseCase
     async fn get_games_of_match(
         &self,
         match_id: MatchId,
-    ) -> Result<Vec<(GameId, Game)>, GameQueryError> {
+    ) -> Result<Vec<(GameId, GameRecord)>, GameQueryError> {
         let ctx = self.ports.transaction_manager().simple();
         match self
             .ports
@@ -88,7 +85,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameQueryUseCase
         }
     }
 
-    async fn get_ongoing_games(&self) -> Result<Vec<(GameId, OngoingGame)>, GameQueryError> {
+    async fn get_ongoing_games(&self) -> Result<Vec<(GameId, GameRecord)>, GameQueryError> {
         let ctx = self.ports.transaction_manager().simple();
         match self.ports.game_repository().get_ongoing_games(&ctx).await {
             Ok(ongoing_games) => Ok(ongoing_games),

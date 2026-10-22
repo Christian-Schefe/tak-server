@@ -1,7 +1,5 @@
 use std::time::Duration;
 
-use tak_core::TakPlayer;
-
 #[derive(Clone, Debug)]
 pub enum GameRequest {
     Draw(bool),
@@ -23,83 +21,56 @@ pub struct GameRequests {
     pub more_time_offered: Option<Duration>,
 }
 
-#[derive(Clone, Debug)]
-pub struct GameRequestSystem {
-    pub white_requests: GameRequests,
-    pub black_requests: GameRequests,
-}
-
-impl GameRequestSystem {
+impl GameRequests {
     pub fn new() -> Self {
-        GameRequestSystem {
-            white_requests: GameRequests {
-                draw_offered: false,
-                undo_requested: false,
-                more_time_offered: None,
-            },
-            black_requests: GameRequests {
-                draw_offered: false,
-                undo_requested: false,
-                more_time_offered: None,
-            },
+        GameRequests {
+            draw_offered: false,
+            undo_requested: false,
+            more_time_offered: None,
         }
     }
 
-    pub fn set_request(&mut self, player: TakPlayer, request: GameRequest) -> Option<GameRequest> {
-        let requests = match player {
-            TakPlayer::White => &mut self.white_requests,
-            TakPlayer::Black => &mut self.black_requests,
-        };
+    pub fn set_request(&mut self, request: GameRequest) -> Option<GameRequest> {
         match request {
             GameRequest::Draw(offer) => {
-                if requests.draw_offered == offer {
+                if self.draw_offered == offer {
                     return None;
                 }
-                requests.draw_offered = offer;
+                self.draw_offered = offer;
             }
             GameRequest::Undo(request) => {
-                if requests.undo_requested == request {
+                if self.undo_requested == request {
                     return None;
                 }
-                requests.undo_requested = request;
+                self.undo_requested = request;
             }
             GameRequest::MoreTime(duration) => {
-                if requests.more_time_offered == duration {
+                if self.more_time_offered == duration {
                     return None;
                 }
-                requests.more_time_offered = duration;
+                self.more_time_offered = duration;
             }
         }
-
         Some(request)
     }
 
-    pub fn consume_request(
-        &mut self,
-        player: TakPlayer,
-        request_type: GameRequestType,
-    ) -> GameRequest {
-        let requests = match player {
-            TakPlayer::White => &mut self.white_requests,
-            TakPlayer::Black => &mut self.black_requests,
-        };
-        let result = match request_type {
+    pub fn consume_request(&mut self, request_type: GameRequestType) -> GameRequest {
+        match request_type {
             GameRequestType::Draw => {
-                let result = GameRequest::Draw(requests.draw_offered);
-                requests.draw_offered = false;
+                let result = GameRequest::Draw(self.draw_offered);
+                self.draw_offered = false;
                 result
             }
             GameRequestType::Undo => {
-                let result = GameRequest::Undo(requests.undo_requested);
-                requests.undo_requested = false;
+                let result = GameRequest::Undo(self.undo_requested);
+                self.undo_requested = false;
                 result
             }
             GameRequestType::MoreTime => {
-                let result = GameRequest::MoreTime(requests.more_time_offered);
-                requests.more_time_offered = None;
+                let result = GameRequest::MoreTime(self.more_time_offered);
+                self.more_time_offered = None;
                 result
             }
-        };
-        result
+        }
     }
 }

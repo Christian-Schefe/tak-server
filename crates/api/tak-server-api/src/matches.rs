@@ -7,7 +7,7 @@ use tak_domain::{
     matches::{Match, MatchMode, MatchSettings, MatchStatus},
 };
 use tak_server_api_contract::{
-    game::{JsonGame, JsonGameSettings},
+    game::{JsonGameRecord, JsonGameSettings},
     matches::MatchReadinessStatus,
 };
 use tak_server_app::workflow::{
@@ -244,7 +244,7 @@ async fn get_match_readiness_status(
 async fn get_match_games(
     State(app): State<AppState>,
     Path(match_id): Path<String>,
-) -> Result<Json<Vec<JsonGame>>, ServiceError> {
+) -> Result<Json<Vec<JsonGameRecord>>, ServiceError> {
     let match_id = MatchId(
         match_id
             .parse::<i64>()

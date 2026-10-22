@@ -19,7 +19,7 @@ pub struct Model {
     pub rating_change_white: Option<f64>,
     pub rating_change_black: Option<f64>,
 
-    pub events: serde_json::Value,
+    pub history: serde_json::Value,
     pub result: Option<String>,
     pub is_rated: bool,
     pub half_komi: i32,

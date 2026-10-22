@@ -5,19 +5,19 @@ use tak_domain::UserId;
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 
-use crate::workflow::gameplay::timeout::{ObserveError, ObserveGameTimeoutUseCase, ObserveOutcome};
+use crate::workflow::gameplay::do_action::{DoActionUseCase, ObserveError, ObserveOutcome};
 
 pub trait DisconnectTimeoutRunner {
     fn start_disconnect_timeout(this: Arc<Self>, user_id: UserId);
     fn cancel_disconnect_timeout(&self, user_id: UserId);
 }
 
-pub struct DisconnectTimeoutRunnerImpl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> {
+pub struct DisconnectTimeoutRunnerImpl<O: DoActionUseCase + Send + Sync + 'static> {
     tasks: Arc<DashMap<UserId, CancellationToken>>,
     observer: Arc<O>,
 }
 
-impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> DisconnectTimeoutRunnerImpl<O> {
+impl<O: DoActionUseCase + Send + Sync + 'static> DisconnectTimeoutRunnerImpl<O> {
     pub fn new(observer: Arc<O>) -> Self {
         Self {
             tasks: Arc::new(DashMap::new()),
@@ -81,7 +81,7 @@ impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> DisconnectTimeoutRunn
     }
 }
 
-impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> DisconnectTimeoutRunner
+impl<O: DoActionUseCase + Send + Sync + 'static> DisconnectTimeoutRunner
     for DisconnectTimeoutRunnerImpl<O>
 {
     fn start_disconnect_timeout(this: Arc<Self>, user_id: UserId) {

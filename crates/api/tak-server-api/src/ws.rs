@@ -394,10 +394,10 @@ fn from_listener_game_event_type(event_type: ListenerGameMessageType) -> ServerG
         ListenerGameMessageType::GameActionUndone { ply_index } => {
             ServerGameEventType::GameActionUndone { ply_index }
         }
-        ListenerGameMessageType::GameRequestChanged { request } => {
+        ListenerGameMessageType::GameRequestChanged { user_id, request } => {
             ServerGameEventType::GameRequestChanged {
-                user_id: request.user_id.0.to_string(),
-                request: match request.request {
+                user_id: user_id.0.to_string(),
+                request: match request {
                     GameRequest::Draw(offer) => JsonGameRequest::Draw { offer },
                     GameRequest::Undo(request) => JsonGameRequest::Undo { request },
                     GameRequest::MoreTime(duration) => JsonGameRequest::MoreTime {

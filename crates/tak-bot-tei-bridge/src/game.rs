@@ -3,11 +3,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use tak_core::{TakBaseGameSettings, TakOngoingBaseGame, TakPlayer};
+use tak_core::{MaybeTimeout, TakGameSettings, TakOngoingGame, TakPlayer};
 use tak_server_api_contract::game::JsonOngoingGame;
 
 pub struct GameService {
-    games: Arc<Mutex<HashMap<String, (TakPlayer, TakOngoingBaseGame)>>>,
+    games: Arc<Mutex<HashMap<String, (TakPlayer, TakOngoingGame<()>)>>>,
 }
 
 impl GameService {
@@ -22,20 +22,22 @@ impl GameService {
         game_id: String,
         player: TakPlayer,
         status: &JsonOngoingGame,
-    ) -> Option<(TakPlayer, TakOngoingBaseGame)> {
-        let mut game =
-            TakOngoingBaseGame::new(status.metadata.game_settings.to_game_settings().base);
+    ) -> Option<(TakPlayer, TakOngoingGame<()>)> {
+        let mut game = TakOngoingGame::new(&status.metadata.game_settings.to_game_settings(), ());
         for action in &status.actions {
             let action = tak_core::ptn::action_from_ptn(action)?;
-            if let Some(_finished_game) = game.do_action(action).ok()? {
-                return None;
+            match game.do_action(action, ()) {
+                Ok(MaybeTimeout::Timeout(_)) => return None,
+                Ok(MaybeTimeout::Result(Some(_))) => return None,
+                Ok(MaybeTimeout::Result(None)) => {}
+                Err(_) => return None,
             }
         }
         self.games
             .lock()
             .unwrap()
             .insert(game_id.to_string(), (player, game.clone()));
-        if game.current_player != player {
+        if game.current_player() != player {
             return None;
         }
         Some((player, game))
@@ -45,14 +47,14 @@ impl GameService {
         &self,
         game_id: String,
         player: TakPlayer,
-        settings: TakBaseGameSettings,
-    ) -> Option<(TakPlayer, TakOngoingBaseGame)> {
-        let game = TakOngoingBaseGame::new(settings);
+        settings: &TakGameSettings,
+    ) -> Option<(TakPlayer, TakOngoingGame<()>)> {
+        let game = TakOngoingGame::new(settings, ());
         self.games
             .lock()
             .unwrap()
             .insert(game_id, (player, game.clone()));
-        if game.current_player != player {
+        if game.current_player() != player {
             return None;
         }
         Some((player, game))
@@ -67,18 +69,18 @@ impl GameService {
         game_id: String,
         ptn_move: &str,
         ply_index: usize,
-    ) -> Option<(TakPlayer, TakOngoingBaseGame)> {
+    ) -> Option<(TakPlayer, TakOngoingGame<()>)> {
         let mut games = self.games.lock().unwrap();
         let game = games.get_mut(&game_id)?;
-        if game.1.action_history.len() + 1 != ply_index {
+        if game.1.ply_index() + 1 != ply_index {
             return None;
         }
         let action = tak_core::ptn::action_from_ptn(ptn_move)?;
-        if let Some(_finished_game) = game.1.do_action(action).ok()? {
+        if let Ok(MaybeTimeout::Result(Some(_finished_game))) = game.1.do_action(action, ()) {
             games.remove(&game_id);
             return None;
         }
-        if game.1.current_player != game.0 {
+        if game.1.current_player() != game.0 {
             return None;
         }
         Some(game.clone())
@@ -88,16 +90,16 @@ impl GameService {
         &self,
         game_id: String,
         ply_index: usize,
-    ) -> Option<(TakPlayer, TakOngoingBaseGame)> {
+    ) -> Option<(TakPlayer, TakOngoingGame<()>)> {
         let mut games = self.games.lock().unwrap();
         let game = games.get_mut(&game_id)?;
-        if game.1.action_history.len() - 1 != ply_index {
+        if game.1.ply_index() - 1 != ply_index {
             return None;
         }
-        if !game.1.undo_action() {
+        if let Ok(MaybeTimeout::Result(false)) = game.1.undo_action(()) {
             return None;
         }
-        if game.1.current_player != game.0 {
+        if game.1.current_player() != game.0 {
             return None;
         }
         Some(game.clone())

@@ -179,13 +179,13 @@ impl Orchestrator {
                         continue;
                     };
                     let game_id = game.id.clone();
-                    let game_settings = game.game_settings.to_game_settings().base;
+                    let game_settings = game.game_settings.to_game_settings();
                     this.engine_service
-                        .new_game(game_id.clone(), game_settings.clone())
+                        .new_game(game_id.clone(), game_settings.base.clone())
                         .await;
                     if let Some((_, game_state)) =
                         this.game_service
-                            .begin_game(game_id.clone(), player, game_settings)
+                            .begin_game(game_id.clone(), player, &game_settings)
                     {
                         let time_remaining = match game.game_settings.time_settings {
                             JsonTimeSettings::Realtime { contingent_ms, .. } => contingent_ms,
@@ -221,13 +221,17 @@ impl Orchestrator {
     fn on_my_turn(
         this: Arc<Self>,
         game_id: String,
-        game_state: tak_core::TakOngoingBaseGame,
+        game_state: tak_core::TakOngoingGame<()>,
         remaining_ms: u64,
     ) {
         tokio::spawn(async move {
             let best_move = this
                 .engine_service
-                .search_move(game_id.clone(), &game_state, 3000.min(remaining_ms / 2))
+                .search_move(
+                    game_id.clone(),
+                    game_state.iter_actions(),
+                    3000.min(remaining_ms / 2),
+                )
                 .await;
             if let Some(best_move) = best_move {
                 if let Err(e) = this

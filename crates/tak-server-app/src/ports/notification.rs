@@ -2,9 +2,8 @@ use tak_core::{TakAction, TakGameResult, TakTimeInfo};
 
 use crate::workflow::{chat::ChatMessageView, matchmaking::SeekView};
 use tak_domain::{
-    GameId, ListenerId, MatchId, UserId,
-    chat::ChatConversation,
-    game::{FinishedGame, OngoingGame, PlayerGameRequest},
+    GameId, ListenerId, MatchId, UserId, chat::ChatConversation, game::request::GameRequest,
+    game_record::GameRecord,
 };
 
 pub trait ListenerNotificationPort {
@@ -30,11 +29,11 @@ pub enum ListenerMessage {
     },
     GameStarted {
         game_id: GameId,
-        game: OngoingGame,
+        game: GameRecord,
     },
     GameEnded {
         game_id: GameId,
-        game: FinishedGame,
+        game: GameRecord,
     },
     UsersOnline {
         users: Vec<UserId>,
@@ -76,7 +75,8 @@ pub enum ListenerGameMessageType {
         ply_index: usize,
     },
     GameRequestChanged {
-        request: PlayerGameRequest,
+        user_id: UserId,
+        request: GameRequest,
     },
 }
 

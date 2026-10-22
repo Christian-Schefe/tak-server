@@ -5,7 +5,7 @@ use tak_core::TakPlayer;
 use crate::{
     PortsCollection,
     ports::{
-        game::GameRepository,
+        game::{GameRepository, OngoingGameRepository},
         matches::MatchRepository,
         notification::{ListenerMessage, ListenerNotificationPort},
         transaction::RepoError,
@@ -15,7 +15,8 @@ use crate::{
 };
 use tak_domain::{
     MatchId,
-    game::{Game, GameMetadata, OngoingGame},
+    game::{Game, GameMetadata},
+    game_record::GameRecord,
 };
 
 #[async_trait::async_trait]
@@ -131,12 +132,14 @@ impl<
             Some(match_id),
         );
 
-        let game = OngoingGame::new(metadata);
+        let now = std::time::SystemTime::now();
+        let game_state = Game::new(&metadata.settings, now);
+        let game_record = GameRecord::new_ongoing(metadata);
 
         let game_id = match self
             .ports
             .game_repository()
-            .create_game(ctx, Game::Ongoing(game.clone()))
+            .create_game(ctx, game_record.clone())
             .await
         {
             Ok(id) => id,
@@ -145,6 +148,23 @@ impl<
                 return Err(CreateGameFromMatchError::Internal);
             }
         };
+
+        match self
+            .ports
+            .ongoing_game_repository()
+            .set_game(&ctx, game_id, game_state)
+            .await
+        {
+            Ok(()) => (),
+            Err(RepoError(e)) => {
+                tracing::error!(
+                    "Failed to save ongoing game state for match {}: {}",
+                    match_id,
+                    e
+                );
+                return Err(CreateGameFromMatchError::Internal);
+            }
+        }
 
         if let Err(RepoError(e)) = self
             .ports
@@ -161,7 +181,10 @@ impl<
             return Err(CreateGameFromMatchError::MatchNotFound);
         }
         GameTimeoutRunner::schedule_game_timeout_check(self.game_timeout_runner.clone(), game_id);
-        let msg = ListenerMessage::GameStarted { game_id, game };
+        let msg = ListenerMessage::GameStarted {
+            game_id,
+            game: game_record,
+        };
         self.listener_notification_port.notify_all(&msg);
 
         Ok(())

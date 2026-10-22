@@ -3,10 +3,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, TimeDelta, Utc};
 use tak_core::{TakFinishedGame, TakGameResult, TakGameSettings, TakPlayer, TakTimeSettings};
 
-use crate::{
-    UserId,
-    game::{GameMetadata, GameRatingInfo},
-};
+use crate::{UserId, game::GameMetadata, game_record::GameRatingInfo};
 
 #[derive(Clone, Debug)]
 pub struct PlayerRating {
@@ -233,13 +230,12 @@ impl RatingService for RatingServiceImpl {
         }
         let white_id = metadata.white.user_id;
         let black_id = metadata.black.user_id;
-        let result = game.game_result();
 
-        if !self.is_game_eligible_for_rating(&metadata.settings, game.action_history().len()) {
+        if !self.is_game_eligible_for_rating(&metadata.settings, game.history.len()) {
             return None;
         }
 
-        let result = match &result {
+        let result = match &game.result {
             TakGameResult::Win { winner, .. } => match winner {
                 TakPlayer::White => 1.0,
                 TakPlayer::Black => 0.0,

@@ -2,19 +2,17 @@ use std::sync::Arc;
 
 use tak_domain::GameId;
 
-use crate::workflow::gameplay::timeout::{ObserveError, ObserveGameTimeoutUseCase, ObserveOutcome};
+use crate::workflow::gameplay::do_action::{DoActionUseCase, ObserveError, ObserveOutcome};
 
 pub trait GameTimeoutRunner {
     fn schedule_game_timeout_check(this: Arc<Self>, game_id: GameId);
 }
 
-pub struct GameTimeoutRunnerImpl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> {
+pub struct GameTimeoutRunnerImpl<O: DoActionUseCase + Send + Sync + 'static> {
     observer: Arc<O>,
 }
 
-impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> GameTimeoutRunner
-    for GameTimeoutRunnerImpl<O>
-{
+impl<O: DoActionUseCase + Send + Sync + 'static> GameTimeoutRunner for GameTimeoutRunnerImpl<O> {
     fn schedule_game_timeout_check(this: Arc<Self>, game_id: GameId) {
         tokio::spawn(async move {
             Self::run(this, game_id).await;
@@ -22,7 +20,7 @@ impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> GameTimeoutRunner
     }
 }
 
-impl<O: ObserveGameTimeoutUseCase + Send + Sync + 'static> GameTimeoutRunnerImpl<O> {
+impl<O: DoActionUseCase + Send + Sync + 'static> GameTimeoutRunnerImpl<O> {
     pub fn new(observer: Arc<O>) -> Self {
         Self { observer }
     }
