@@ -3,11 +3,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use tak_core::{MaybeTimeout, TakGameSettings, TakOngoingGame, TakPlayer};
-use tak_server_api_contract::game::JsonOngoingGame;
+use tak_core::{TakGame, TakGameSettings, TakPlayer};
+use tak_server_api_contract::game::JsonGameDetail;
 
 pub struct GameService {
-    games: Arc<Mutex<HashMap<String, (TakPlayer, TakOngoingGame<()>)>>>,
+    games: Arc<Mutex<HashMap<String, (TakPlayer, TakGame<()>)>>>,
 }
 
 impl GameService {
@@ -21,15 +21,13 @@ impl GameService {
         &self,
         game_id: String,
         player: TakPlayer,
-        status: &JsonOngoingGame,
-    ) -> Option<(TakPlayer, TakOngoingGame<()>)> {
-        let mut game = TakOngoingGame::new(&status.metadata.game_settings.to_game_settings(), ());
-        for action in &status.actions {
+        status: &JsonGameDetail,
+    ) -> Option<(TakPlayer, TakGame<()>)> {
+        let mut game = TakGame::new(&status.record.metadata.game_settings.to_game_settings(), ());
+        for action in &status.record.history {
             let action = tak_core::ptn::action_from_ptn(action)?;
             match game.do_action(action, ()) {
-                Ok(MaybeTimeout::Timeout(_)) => return None,
-                Ok(MaybeTimeout::Result(Some(_))) => return None,
-                Ok(MaybeTimeout::Result(None)) => {}
+                Ok(()) => {}
                 Err(_) => return None,
             }
         }
@@ -48,8 +46,8 @@ impl GameService {
         game_id: String,
         player: TakPlayer,
         settings: &TakGameSettings,
-    ) -> Option<(TakPlayer, TakOngoingGame<()>)> {
-        let game = TakOngoingGame::new(settings, ());
+    ) -> Option<(TakPlayer, TakGame<()>)> {
+        let game = TakGame::new(settings, ());
         self.games
             .lock()
             .unwrap()
@@ -69,14 +67,19 @@ impl GameService {
         game_id: String,
         ptn_move: &str,
         ply_index: usize,
-    ) -> Option<(TakPlayer, TakOngoingGame<()>)> {
+    ) -> Option<(TakPlayer, TakGame<()>)> {
         let mut games = self.games.lock().unwrap();
         let game = games.get_mut(&game_id)?;
         if game.1.ply_index() + 1 != ply_index {
             return None;
         }
         let action = tak_core::ptn::action_from_ptn(ptn_move)?;
-        if let Ok(MaybeTimeout::Result(Some(_finished_game))) = game.1.do_action(action, ()) {
+
+        if let Err(_) = game.1.do_action(action, ()) {
+            games.remove(&game_id);
+            return None;
+        }
+        if !game.1.is_ongoing() {
             games.remove(&game_id);
             return None;
         }
@@ -90,13 +93,13 @@ impl GameService {
         &self,
         game_id: String,
         ply_index: usize,
-    ) -> Option<(TakPlayer, TakOngoingGame<()>)> {
+    ) -> Option<(TakPlayer, TakGame<()>)> {
         let mut games = self.games.lock().unwrap();
         let game = games.get_mut(&game_id)?;
         if game.1.ply_index() - 1 != ply_index {
             return None;
         }
-        if let Ok(MaybeTimeout::Result(false)) = game.1.undo_action(()) {
+        if let Ok(false) = game.1.try_undo_action(()) {
             return None;
         }
         if game.1.current_player() != game.0 {

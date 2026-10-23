@@ -57,13 +57,15 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameQueryUseCase
 
     async fn get_game(&self, game_id: GameId) -> Result<Option<GameRecord>, GameQueryError> {
         let ctx = self.ports.transaction_manager().simple();
-        match self.ports.game_repository().get_game(&ctx, game_id).await {
-            Ok(result) => Ok(result),
+        let game = match self.ports.game_repository().get_game(&ctx, game_id).await {
+            Ok(Some(result)) => result,
+            Ok(None) => return Ok(None),
             Err(RepoError(e)) => {
                 tracing::error!("Error getting game record: {}", e);
-                Err(GameQueryError::RepositoryError)
+                return Err(GameQueryError::RepositoryError);
             }
-        }
+        };
+        Ok(Some(game))
     }
 
     async fn get_games_of_match(

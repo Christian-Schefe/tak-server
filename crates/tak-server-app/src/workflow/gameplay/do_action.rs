@@ -11,14 +11,14 @@ use crate::{
         transaction::{RepoError, TransactionManager},
     },
     workflow::{
-        gameplay::finalize_game::FinalizeGameWorkflow, player::notify_player::NotifyPlayerWorkflow,
+        gameplay::lifecycle::LifecycleGameWorkflow, player::notify_player::NotifyPlayerWorkflow,
     },
 };
 use tak_core::TakAction;
 use tak_domain::{
     GameId, UserId,
     game::{
-        CheckDisconnectTimeoutResult, CheckTimeoutResult, DoActionResult, GamePlayerActionResult,
+        CheckDisconnectTimeoutResult, DoActionResult, GameOverResult,
         request::{GameRequest, GameRequestType},
     },
 };
@@ -39,7 +39,7 @@ pub trait DoActionUseCase {
         game_id: GameId,
         user_id: UserId,
         action: TakAction,
-    ) -> ActionResult<DoActionError>;
+    ) -> Result<(), ActionError<DoActionError>>;
     async fn set_request(
         &self,
         game_id: GameId,
@@ -51,9 +51,9 @@ pub trait DoActionUseCase {
         game_id: GameId,
         user_id: UserId,
         request_type: GameRequestType,
-    ) -> ActionResult<HandleRequestError>;
+    ) -> Result<(), ActionError<HandleRequestError>>;
     async fn resign(&self, game_id: GameId, user_id: UserId) -> Result<(), PlayerActionError>;
-    async fn abort(&self, game_id: GameId, user_id: UserId) -> ActionResult<AbortError>;
+    async fn abort(&self, game_id: GameId, user_id: UserId) -> Result<(), ActionError<AbortError>>;
 
     async fn check_game_timeout(&self, game_id: GameId) -> Result<ObserveOutcome, ObserveError>;
     async fn check_player_timeout(
@@ -71,8 +71,7 @@ pub enum PlayerActionError {
 }
 
 #[derive(Debug)]
-pub enum ActionResult<R> {
-    Success,
+pub enum ActionError<R> {
     NotPossible(PlayerActionError),
     ActionError(R),
 }
@@ -95,14 +94,14 @@ pub enum AbortError {
 pub struct DoActionUseCaseImpl<
     Ports: PortsCollection,
     NP: NotifyPlayerWorkflow,
-    F: FinalizeGameWorkflow<Ports::TrCtx>,
+    F: LifecycleGameWorkflow<Ports::TrCtx>,
 > {
     ports: Arc<Ports>,
     notify_player_workflow: Arc<NP>,
     finalize_game_workflow: Arc<F>,
 }
 
-impl<Ports: PortsCollection, NP: NotifyPlayerWorkflow, F: FinalizeGameWorkflow<Ports::TrCtx>>
+impl<Ports: PortsCollection, NP: NotifyPlayerWorkflow, F: LifecycleGameWorkflow<Ports::TrCtx>>
     DoActionUseCaseImpl<Ports, NP, F>
 {
     pub fn new(
@@ -122,7 +121,7 @@ impl<Ports: PortsCollection, NP: NotifyPlayerWorkflow, F: FinalizeGameWorkflow<P
 impl<
     Ports: PortsCollection + Send + Sync + 'static,
     NP: NotifyPlayerWorkflow + Send + Sync + 'static,
-    F: FinalizeGameWorkflow<Ports::TrCtx> + Send + Sync + 'static,
+    F: LifecycleGameWorkflow<Ports::TrCtx> + Send + Sync + 'static,
 > DoActionUseCase for DoActionUseCaseImpl<Ports, NP, F>
 {
     async fn do_action(
@@ -130,60 +129,65 @@ impl<
         game_id: GameId,
         user_id: UserId,
         action: TakAction,
-    ) -> ActionResult<DoActionError> {
+    ) -> Result<(), ActionError<DoActionError>> {
+        let now = SystemTime::now();
         tracing::debug!(
             "Player {} is performing action {:?} in game {}",
             user_id,
             action,
             game_id
         );
+        let mut message = None;
         match self
             .finalize_game_workflow
             .modify_game(game_id, |game, metadata| {
-                let now = SystemTime::now();
                 let Some(player) = metadata.get_player(user_id) else {
-                    return Err(ActionResult::NotPossible(
+                    return Err(ActionError::NotPossible(
                         PlayerActionError::NotAPlayerInGame,
                     ));
                 };
-                let (maybe_action_record, maybe_ended_game) =
-                    match game.do_action(player, action, now) {
-                        GamePlayerActionResult::Result(DoActionResult::InvalidAction(e)) => {
-                            return Err(ActionResult::ActionError(DoActionError::InvalidAction(e)));
-                        }
-                        GamePlayerActionResult::Result(DoActionResult::NotPlayersTurn) => {
-                            return Err(ActionResult::ActionError(DoActionError::NotPlayersTurn));
-                        }
-                        GamePlayerActionResult::Result(DoActionResult::ActionPerformed(
-                            action_record,
-                        )) => (Some(action_record), None),
-                        GamePlayerActionResult::Result(DoActionResult::GameOver(
-                            ended_game,
-                            action_record,
-                        )) => (Some(action_record), Some(ended_game)),
-                        GamePlayerActionResult::Timeout(ended_game) => (None, Some(ended_game)),
-                    };
-                if let Some(action_record) = maybe_action_record {
-                    let msg = ListenerMessage::GameEvent {
-                        game_id,
-                        event_type: ListenerGameMessageType::GameAction {
-                            user_id,
-                            action: action_record.action,
-                            ply_index: action_record.ply_index,
-                        },
-                        time_info: action_record.time_info,
-                    };
-                    self.notify_player_workflow
-                        .notify_players_and_observers_of_game(game_id, &metadata, &msg);
-                }
-                Ok(maybe_ended_game)
+                match game.do_action(player, action, now) {
+                    DoActionResult::InvalidAction(e) => {
+                        return Err(ActionError::ActionError(DoActionError::InvalidAction(e)));
+                    }
+                    DoActionResult::NotPlayersTurn => {
+                        return Err(ActionError::ActionError(DoActionError::NotPlayersTurn));
+                    }
+                    DoActionResult::ActionPerformed(action_record) => {
+                        message = Some((
+                            ListenerMessage::GameEvent {
+                                game_id,
+                                event_type: ListenerGameMessageType::GameAction {
+                                    user_id,
+                                    action: action_record.action,
+                                    ply_index: action_record.ply_index,
+                                },
+                                time_info: action_record.time_info,
+                            },
+                            metadata.white.user_id,
+                            metadata.black.user_id,
+                        ));
+                    }
+                    DoActionResult::GameOver => {}
+                };
+
+                Ok(())
             })
             .await
         {
-            Ok(Err(e)) => return e,
-            Ok(Ok(())) => ActionResult::Success,
-            Err(()) => return ActionResult::NotPossible(PlayerActionError::Internal),
+            Ok(Err(e)) => return Err(e),
+            Ok(Ok(())) => {}
+            Err(()) => return Err(ActionError::NotPossible(PlayerActionError::Internal)),
         }
+        if let Some((msg, white_user_id, black_user_id)) = message {
+            self.notify_player_workflow
+                .notify_players_and_observers_of_game(
+                    game_id,
+                    &[white_user_id, black_user_id],
+                    &msg,
+                );
+        }
+        Ok(())
     }
 
     async fn set_request(
@@ -193,7 +197,7 @@ impl<
         request: GameRequest,
     ) -> Result<(), PlayerActionError> {
         let now = SystemTime::now();
-
+        let mut message = None;
         match self
             .finalize_game_workflow
             .modify_game(game_id, |game, metadata| {
@@ -201,28 +205,41 @@ impl<
                     return Err(PlayerActionError::NotAPlayerInGame);
                 };
                 match game.set_request(player, request.clone(), now) {
-                    GamePlayerActionResult::Timeout(ended_game) => Ok(Some(ended_game)),
-                    GamePlayerActionResult::Result(None) => Ok(None),
-                    GamePlayerActionResult::Result(Some((request, time_info))) => {
-                        let msg = ListenerMessage::GameEvent {
-                            game_id,
-                            event_type: ListenerGameMessageType::GameRequestChanged {
-                                user_id,
-                                request,
+                    GameOverResult::GameOver => Ok(()),
+                    GameOverResult::Result(false) => Ok(()),
+                    GameOverResult::Result(true) => {
+                        let time_info = game.game.get_time_info(now);
+                        message = Some((
+                            ListenerMessage::GameEvent {
+                                game_id,
+                                event_type: ListenerGameMessageType::GameRequestChanged {
+                                    user_id,
+                                    request,
+                                },
+                                time_info,
                             },
-                            time_info,
-                        };
-                        self.notify_player_workflow
-                            .notify_players_and_observers_of_game(game_id, &metadata, &msg);
-                        Ok(None)
+                            metadata.white.user_id,
+                            metadata.black.user_id,
+                        ));
+                        Ok(())
                     }
                 }
             })
             .await
         {
-            Ok(res) => res,
+            Ok(Err(e)) => return Err(e),
+            Ok(Ok(())) => {}
             Err(()) => return Err(PlayerActionError::Internal),
         }
+        if let Some((msg, white_user_id, black_user_id)) = message {
+            self.notify_player_workflow
+                .notify_players_and_observers_of_game(
+                    game_id,
+                    &[white_user_id, black_user_id],
+                    &msg,
+                );
+        }
+        Ok(())
     }
 
     async fn accept_request(
@@ -230,7 +247,7 @@ impl<
         game_id: GameId,
         user_id: UserId,
         request_type: GameRequestType,
-    ) -> ActionResult<HandleRequestError> {
+    ) -> Result<(), ActionError<HandleRequestError>> {
         tracing::info!(
             "Player {} is accepting request of type {:?} in game {}",
             user_id,
@@ -238,110 +255,119 @@ impl<
             game_id
         );
         let now = SystemTime::now();
+        let mut messages = Vec::new();
         match self
             .finalize_game_workflow
             .modify_game(game_id, |game, metadata| {
                 let Some(player) = metadata.get_player(user_id) else {
-                    return Err(ActionResult::NotPossible(
+                    return Err(ActionError::NotPossible(
                         PlayerActionError::NotAPlayerInGame,
                     ));
                 };
                 let opponent_id = metadata.get_user_id(player.opponent());
                 match request_type {
                     GameRequestType::Draw => match game.accept_draw_request(player, now) {
-                        GamePlayerActionResult::Timeout(ended_game) => Ok(Some(ended_game)),
-                        GamePlayerActionResult::Result(None) => {
-                            return Err(ActionResult::ActionError(
+                        GameOverResult::GameOver => Ok(()),
+                        GameOverResult::Result(false) => {
+                            return Err(ActionError::ActionError(
                                 HandleRequestError::RequestNotFound,
                             ));
                         }
-                        GamePlayerActionResult::Result(Some((request, ended_game))) => {
-                            let request_msg = ListenerMessage::GameEvent {
-                                game_id,
-                                event_type: ListenerGameMessageType::GameRequestChanged {
-                                    user_id: opponent_id,
-                                    request,
-                                },
-                                time_info: ended_game.time_info.clone(),
-                            };
-                            self.notify_player_workflow
-                                .notify_players_and_observers_of_game(
+                        GameOverResult::Result(true) => {
+                            let time_info = game.game.get_time_info(now);
+                            messages.push((
+                                ListenerMessage::GameEvent {
                                     game_id,
-                                    &metadata,
-                                    &request_msg,
-                                );
-                            Ok(Some(ended_game))
+                                    event_type: ListenerGameMessageType::GameRequestChanged {
+                                        user_id: opponent_id,
+                                        request: GameRequest::Draw(false),
+                                    },
+                                    time_info,
+                                },
+                                metadata.white.user_id,
+                                metadata.black.user_id,
+                            ));
+                            Ok(())
                         }
                     },
                     GameRequestType::Undo => match game.accept_undo_request(player, now) {
-                        GamePlayerActionResult::Timeout(ended_game) => Ok(Some(ended_game)),
-                        GamePlayerActionResult::Result(None) => {
-                            return Err(ActionResult::ActionError(
+                        GameOverResult::GameOver => Ok(()),
+                        GameOverResult::Result(None) => {
+                            return Err(ActionError::ActionError(
                                 HandleRequestError::RequestNotFound,
                             ));
                         }
-                        GamePlayerActionResult::Result(Some((request, time_info, undo_record))) => {
-                            let request_msg = ListenerMessage::GameEvent {
-                                game_id,
-                                event_type: ListenerGameMessageType::GameRequestChanged {
-                                    user_id: opponent_id,
-                                    request,
-                                },
-                                time_info: time_info.clone(),
-                            };
-                            self.notify_player_workflow
-                                .notify_players_and_observers_of_game(
+                        GameOverResult::Result(Some(undo_record)) => {
+                            let time_info = game.game.get_time_info(now);
+                            messages.push((
+                                ListenerMessage::GameEvent {
                                     game_id,
-                                    &metadata,
-                                    &request_msg,
-                                );
-                            if let Some(undo_record) = undo_record {
-                                let msg = ListenerMessage::GameEvent {
-                                    game_id,
-                                    event_type: ListenerGameMessageType::GameActionUndone {
-                                        ply_index: undo_record.ply_index,
+                                    event_type: ListenerGameMessageType::GameRequestChanged {
+                                        user_id: opponent_id,
+                                        request: GameRequest::Undo(false),
                                     },
-                                    time_info,
-                                };
-                                self.notify_player_workflow
-                                    .notify_players_and_observers_of_game(game_id, &metadata, &msg);
+                                    time_info: time_info.clone(),
+                                },
+                                metadata.white.user_id,
+                                metadata.black.user_id,
+                            ));
+                            if let Some(undo_record) = undo_record {
+                                messages.push((
+                                    ListenerMessage::GameEvent {
+                                        game_id,
+                                        event_type: ListenerGameMessageType::GameActionUndone {
+                                            ply_index: undo_record.ply_index,
+                                        },
+                                        time_info: time_info.clone(),
+                                    },
+                                    metadata.white.user_id,
+                                    metadata.black.user_id,
+                                ));
                             }
-                            Ok(None)
+                            Ok(())
                         }
                     },
                     GameRequestType::MoreTime => match game.accept_more_time_request(player, now) {
-                        GamePlayerActionResult::Timeout(ended_game) => Ok(Some(ended_game)),
-                        GamePlayerActionResult::Result(None) => {
-                            return Err(ActionResult::ActionError(
+                        GameOverResult::GameOver => Ok(()),
+                        GameOverResult::Result(false) => {
+                            return Err(ActionError::ActionError(
                                 HandleRequestError::RequestNotFound,
                             ));
                         }
-                        GamePlayerActionResult::Result(Some((request, time_info))) => {
-                            let request_msg = ListenerMessage::GameEvent {
-                                game_id,
-                                event_type: ListenerGameMessageType::GameRequestChanged {
-                                    user_id: opponent_id,
-                                    request,
-                                },
-                                time_info,
-                            };
-                            self.notify_player_workflow
-                                .notify_players_and_observers_of_game(
+                        GameOverResult::Result(true) => {
+                            let time_info = game.game.get_time_info(now);
+                            messages.push((
+                                ListenerMessage::GameEvent {
                                     game_id,
-                                    &metadata,
-                                    &request_msg,
-                                );
-                            Ok(None)
+                                    event_type: ListenerGameMessageType::GameRequestChanged {
+                                        user_id: opponent_id,
+                                        request: GameRequest::MoreTime(None),
+                                    },
+                                    time_info,
+                                },
+                                metadata.white.user_id,
+                                metadata.black.user_id,
+                            ));
+                            Ok(())
                         }
                     },
                 }
             })
             .await
         {
-            Ok(Err(e)) => e,
-            Ok(Ok(())) => ActionResult::Success,
-            Err(()) => return ActionResult::NotPossible(PlayerActionError::Internal),
+            Ok(Err(e)) => return Err(e),
+            Ok(Ok(())) => {}
+            Err(()) => return Err(ActionError::NotPossible(PlayerActionError::Internal)),
         }
+        for (msg, white_user_id, black_user_id) in messages {
+            self.notify_player_workflow
+                .notify_players_and_observers_of_game(
+                    game_id,
+                    &[white_user_id, black_user_id],
+                    &msg,
+                );
+        }
+        Ok(())
     }
 
     async fn resign(&self, game_id: GameId, user_id: UserId) -> Result<(), PlayerActionError> {
@@ -352,11 +378,10 @@ impl<
                 let Some(player) = metadata.get_player(user_id) else {
                     return Err(PlayerActionError::NotAPlayerInGame);
                 };
-                let ended_game = match game.resign(player, now) {
-                    GamePlayerActionResult::Timeout(ended_game) => ended_game,
-                    GamePlayerActionResult::Result(finished_game) => finished_game,
-                };
-                Ok(Some(ended_game))
+                match game.resign(player, now) {
+                    GameOverResult::GameOver => Ok(()),
+                    GameOverResult::Result(()) => Ok(()),
+                }
             })
             .await
         {
@@ -365,29 +390,29 @@ impl<
         }
     }
 
-    async fn abort(&self, game_id: GameId, user_id: UserId) -> ActionResult<AbortError> {
+    async fn abort(&self, game_id: GameId, user_id: UserId) -> Result<(), ActionError<AbortError>> {
         let now = SystemTime::now();
         match self
             .finalize_game_workflow
             .modify_game(game_id, |game, metadata| {
                 let Some(_) = metadata.get_player(user_id) else {
-                    return Err(ActionResult::NotPossible(
+                    return Err(ActionError::NotPossible(
                         PlayerActionError::NotAPlayerInGame,
                     ));
                 };
                 match game.try_abort(now) {
-                    GamePlayerActionResult::Timeout(ended_game) => Ok(Some(ended_game)),
-                    GamePlayerActionResult::Result(None) => {
-                        return Err(ActionResult::ActionError(AbortError::GameAlreadyStarted));
+                    GameOverResult::GameOver => Ok(()),
+                    GameOverResult::Result(false) => {
+                        return Err(ActionError::ActionError(AbortError::GameAlreadyStarted));
                     }
-                    GamePlayerActionResult::Result(Some(ended_game)) => Ok(Some(ended_game)),
+                    GameOverResult::Result(true) => Ok(()),
                 }
             })
             .await
         {
-            Ok(Err(e)) => return e,
-            Ok(Ok(())) => ActionResult::Success,
-            Err(()) => return ActionResult::NotPossible(PlayerActionError::Internal),
+            Ok(Err(e)) => return Err(e),
+            Ok(Ok(())) => Ok(()),
+            Err(()) => return Err(ActionError::NotPossible(PlayerActionError::Internal)),
         }
     }
 
@@ -398,16 +423,13 @@ impl<
             .modify_game(game_id, |game, _| {
                 let now = SystemTime::now();
                 match game.check_timeout(now) {
-                    CheckTimeoutResult::TimedOut(finished_game) => {
-                        tracing::info!("Game {:?} timed out, finalizing game", game_id);
-                        Ok(Some(finished_game))
-                    }
-                    CheckTimeoutResult::NoTimeout(time_info) => {
+                    GameOverResult::GameOver => Ok(()),
+                    GameOverResult::Result(time_info) => {
                         result = ObserveOutcome::Continue(
                             time_info.white_remaining.min(time_info.black_remaining)
                                 + std::time::Duration::from_millis(100),
                         );
-                        Ok(None)
+                        Ok(())
                     }
                 }
             })
@@ -453,27 +475,19 @@ impl<
                             user_id,
                             game_id
                         );
-                        return Ok(None);
+                        return Err(());
                     };
                     match game.check_disconnect_timeout(player, disconnected_duration, now) {
-                        GamePlayerActionResult::Timeout(ended_game) => Ok(Some(ended_game)),
-                        GamePlayerActionResult::Result(res) => match res {
-                            CheckDisconnectTimeoutResult::TimedOut(ended_game) => {
-                                tracing::info!(
-                                    "Player {:?} timed out in game {:?} after {:?}",
-                                    user_id,
-                                    game_id,
-                                    disconnected_duration
-                                );
-                                Ok(Some(ended_game))
-                            }
-                            CheckDisconnectTimeoutResult::CantTimeOut => Ok(None),
+                        GameOverResult::GameOver => Ok(()),
+                        GameOverResult::Result(res) => match res {
+                            CheckDisconnectTimeoutResult::TimedOut => Ok(()),
+                            CheckDisconnectTimeoutResult::CantTimeOut => Ok(()),
                             CheckDisconnectTimeoutResult::NoTimeout(duration) => {
                                 wait_duration = match wait_duration {
                                     Some(current) if current < duration => Some(current),
                                     _ => Some(duration),
                                 };
-                                Ok(None)
+                                Ok(())
                             }
                         },
                     }

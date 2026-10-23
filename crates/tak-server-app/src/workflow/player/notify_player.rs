@@ -4,13 +4,13 @@ use crate::ports::{
     connection::UserConnectionPort,
     notification::{ListenerMessage, ListenerNotificationPort},
 };
-use tak_domain::{GameId, UserId, game::GameMetadata, spectator::SpectatorService};
+use tak_domain::{GameId, UserId, spectator::SpectatorService};
 
 pub trait NotifyPlayerWorkflow {
     fn notify_players_and_observers_of_game(
         &self,
         game_id: GameId,
-        metadata: &GameMetadata,
+        players: &[UserId],
         message: &ListenerMessage,
     );
     fn notify_players(&self, players: &[UserId], message: &ListenerMessage);
@@ -52,10 +52,10 @@ impl<
     fn notify_players_and_observers_of_game(
         &self,
         game_id: GameId,
-        metadata: &GameMetadata,
+        players: &[UserId],
         message: &ListenerMessage,
     ) {
-        self.notify_players(&[metadata.white.user_id, metadata.black.user_id], message);
+        self.notify_players(players, message);
         let observers = self.spectator_service.get_spectators_for_game(game_id);
         self.listener_notification_port
             .notify_listeners(&observers, message);

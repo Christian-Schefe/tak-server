@@ -7,7 +7,7 @@ use crate::{
         connection::{UserConnectionPort, UserOnlineStatusPort},
         email::EmailPort,
         event::EventRepository,
-        game::{GameRepository, OngoingGameRepository},
+        game::GameRepository,
         matches::MatchRepository,
         moderation::ModerationRepository,
         notification::ListenerNotificationPort,
@@ -38,7 +38,7 @@ use crate::{
         events::list::{ListEventsUseCase, ListEventsUseCaseImpl},
         gameplay::{
             do_action::{DoActionUseCase, DoActionUseCaseImpl},
-            finalize_game::FinalizeGameWorkflowImpl,
+            lifecycle::LifecycleGameWorkflowImpl,
             observe::{ObserveGameUseCase, ObserveGameUseCaseImpl},
             query::{GameQueryUseCase, GameQueryUseCaseImpl},
         },
@@ -138,7 +138,6 @@ pub struct Application {
 
 pub struct PortsCollectionImpl<
     G: GameRepository<TrCtx>,
-    OG: OngoingGameRepository<TrCtx>,
     R: RatingRepository<TrCtx>,
     E: EventRepository,
     S: StatsRepository<TrCtx>,
@@ -156,7 +155,6 @@ pub struct PortsCollectionImpl<
     TrCtx,
 > {
     pub game_repository: Arc<G>,
-    pub ongoing_game_repository: Arc<OG>,
     pub rating_repository: Arc<R>,
     pub event_repository: Arc<E>,
     pub stats_repository: Arc<S>,
@@ -176,7 +174,6 @@ pub struct PortsCollectionImpl<
 
 impl<
     G: GameRepository<TrCtx>,
-    OG: OngoingGameRepository<TrCtx>,
     R: RatingRepository<TrCtx>,
     E: EventRepository,
     S: StatsRepository<TrCtx>,
@@ -192,11 +189,10 @@ impl<
     MO: ModerationRepository<TrCtx>,
     TR: TransactionManager<TrCtx>,
     TrCtx,
-> PortsCollectionImpl<G, OG, R, E, S, PF, PFP, PZR, CR, RH, TO, TPR, MR, TRR, MO, TR, TrCtx>
+> PortsCollectionImpl<G, R, E, S, PF, PFP, PZR, CR, RH, TO, TPR, MR, TRR, MO, TR, TrCtx>
 {
     pub fn new(
         game_repository: Arc<G>,
-        ongoing_game_repository: Arc<OG>,
         rating_repository: Arc<R>,
         event_repository: Arc<E>,
         stats_repository: Arc<S>,
@@ -214,7 +210,6 @@ impl<
     ) -> Self {
         Self {
             game_repository,
-            ongoing_game_repository,
             rating_repository,
             event_repository,
             stats_repository,
@@ -236,7 +231,6 @@ impl<
 
 pub trait PortsCollection {
     type GameRepo: GameRepository<Self::TrCtx> + Send + Sync + 'static;
-    type OngoingGameRepo: OngoingGameRepository<Self::TrCtx> + Send + Sync + 'static;
     type RatingRepo: RatingRepository<Self::TrCtx> + Send + Sync + 'static;
     type EventRepo: EventRepository + Send + Sync + 'static;
     type StatsRepo: StatsRepository<Self::TrCtx> + Send + Sync + 'static;
@@ -252,7 +246,6 @@ pub trait PortsCollection {
     type ModerationRepo: ModerationRepository<Self::TrCtx> + Send + Sync + 'static;
     type TransactionManagerType: TransactionManager<Self::TrCtx> + Send + Sync + 'static;
     type TrCtx: Send + Sync + 'static;
-    fn ongoing_game_repository(&self) -> Arc<Self::OngoingGameRepo>;
     fn game_repository(&self) -> Arc<Self::GameRepo>;
     fn rating_repository(&self) -> Arc<Self::RatingRepo>;
     fn event_repository(&self) -> Arc<Self::EventRepo>;
@@ -272,7 +265,6 @@ pub trait PortsCollection {
 
 impl<
     G: GameRepository<TrCtx> + Send + Sync + 'static,
-    OG: OngoingGameRepository<TrCtx> + Send + Sync + 'static,
     R: RatingRepository<TrCtx> + Send + Sync + 'static,
     E: EventRepository + Send + Sync + 'static,
     S: StatsRepository<TrCtx> + Send + Sync + 'static,
@@ -289,10 +281,9 @@ impl<
     TR: TransactionManager<TrCtx> + Send + Sync + 'static,
     TrCtx: Send + Sync + 'static,
 > PortsCollection
-    for PortsCollectionImpl<G, OG, R, E, S, PF, PFP, PZR, CR, RH, TO, TPR, MR, TRR, MO, TR, TrCtx>
+    for PortsCollectionImpl<G, R, E, S, PF, PFP, PZR, CR, RH, TO, TPR, MR, TRR, MO, TR, TrCtx>
 {
     type GameRepo = G;
-    type OngoingGameRepo = OG;
     type RatingRepo = R;
     type EventRepo = E;
     type StatsRepo = S;
@@ -308,11 +299,9 @@ impl<
     type ModerationRepo = MO;
     type TransactionManagerType = TR;
     type TrCtx = TrCtx;
+
     fn game_repository(&self) -> Arc<Self::GameRepo> {
         self.game_repository.clone()
-    }
-    fn ongoing_game_repository(&self) -> Arc<Self::OngoingGameRepo> {
-        self.ongoing_game_repository.clone()
     }
     fn rating_repository(&self) -> Arc<Self::RatingRepo> {
         self.rating_repository.clone()
@@ -404,7 +393,7 @@ pub async fn build_application<
 
     let tournament_match_workflow = Arc::new(TournamentMatchWorkflowImpl::new(ports.clone()));
 
-    let finalize_game_workflow = Arc::new(FinalizeGameWorkflowImpl::new(
+    let finalize_game_workflow = Arc::new(LifecycleGameWorkflowImpl::new(
         ports.clone(),
         rating_service.clone(),
         notify_player_workflow.clone(),

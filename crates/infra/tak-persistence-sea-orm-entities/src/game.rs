@@ -28,6 +28,17 @@ pub struct Model {
     pub opening: String,
     pub game_settings: serde_json::Value,
 
+    pub white_remaining_ms: i64,
+    pub black_remaining_ms: i64,
+    pub last_clock_update: chrono::DateTime<chrono::Utc>,
+    pub is_clock_ticking: bool,
+    pub white_draw_offer: bool,
+    pub black_draw_offer: bool,
+    pub white_undo_request: bool,
+    pub black_undo_request: bool,
+    pub white_more_time_request: Option<i64>,
+    pub black_more_time_request: Option<i64>,
+
     #[sea_orm(indexed)]
     pub match_id: Option<i64>,
 }

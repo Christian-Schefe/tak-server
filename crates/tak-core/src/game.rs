@@ -1,30 +1,9 @@
 use std::time::{Duration, Instant, SystemTime};
 
 use crate::{
-    InvalidActionReason, MaybeTimeout, TakAction, TakActionRecord, TakGameResult, TakGameSettings,
-    TakPlayer, TakTimeInfo, TakTimeSettings, TakWinReason, base::TakOngoingBaseGame,
+    InvalidActionReason, TakAction, TakActionRecord, TakGameResult, TakGameSettings, TakPlayer,
+    TakTimeInfo, TakTimeSettings, TakWinReason, base::TakBaseGame,
 };
-
-#[derive(Clone, Debug)]
-pub struct TakFinishedGame {
-    pub result: TakGameResult,
-    pub time_info: TakTimeInfo,
-    pub history: Vec<TakActionRecord>,
-}
-
-impl TakFinishedGame {
-    fn new(
-        game_result: TakGameResult,
-        time_info: TakTimeInfo,
-        history: Vec<TakActionRecord>,
-    ) -> Self {
-        TakFinishedGame {
-            result: game_result,
-            time_info,
-            history,
-        }
-    }
-}
 
 pub trait TakInstant: Copy {
     fn saturating_duration_since(&self, earlier: Self) -> Duration;
@@ -56,12 +35,7 @@ pub struct TakClock<T: TakInstant> {
 }
 
 impl<T: TakInstant> TakClock<T> {
-    fn end_turn(
-        &mut self,
-        settings: &TakTimeSettings,
-        game: &TakOngoingBaseGame,
-        player: TakPlayer,
-    ) {
+    fn end_turn(&mut self, settings: &TakTimeSettings, game: &TakBaseGame, player: TakPlayer) {
         match settings {
             TakTimeSettings::Realtime(settings) => {
                 let remaining = match player {
@@ -91,16 +65,16 @@ impl<T: TakInstant> TakClock<T> {
 }
 
 #[derive(Clone, Debug)]
-pub struct TakOngoingGame<T: TakInstant> {
-    base: TakOngoingBaseGame,
+pub struct TakGame<T: TakInstant> {
+    base: TakBaseGame,
     pub clock: TakClock<T>,
     pub time_settings: TakTimeSettings,
     pub history: Vec<TakActionRecord>,
 }
 
-impl<T: TakInstant> TakOngoingGame<T> {
+impl<T: TakInstant> TakGame<T> {
     pub fn new(settings: &TakGameSettings, now: T) -> Self {
-        let base_game = TakOngoingBaseGame::new(&settings.base);
+        let base_game = TakBaseGame::new(&settings.base);
         let contingent = match &settings.time_settings {
             TakTimeSettings::Realtime(settings) => settings.contingent,
             TakTimeSettings::Async(settings) => settings.contingent,
@@ -125,10 +99,17 @@ impl<T: TakInstant> TakOngoingGame<T> {
         settings: &TakGameSettings,
         clock: TakClock<T>,
         history: Vec<TakActionRecord>,
+        result: Option<TakGameResult>,
     ) -> Result<Self, InvalidActionReason> {
-        let mut base = TakOngoingBaseGame::new(&settings.base);
+        let mut base = TakBaseGame::new(&settings.base);
         for record in &history {
             base.do_action(record.action.clone())?;
+        }
+        if let Some(result) = result {
+            if base.result.as_ref().is_some_and(|r| *r != result) {
+                return Err(InvalidActionReason::GameOver);
+            }
+            base.result = Some(result);
         }
         Ok(Self {
             base,
@@ -136,6 +117,14 @@ impl<T: TakInstant> TakOngoingGame<T> {
             time_settings: settings.time_settings.clone(),
             history,
         })
+    }
+
+    pub fn is_ongoing(&self) -> bool {
+        self.base.result.is_none()
+    }
+
+    pub fn result(&self) -> Option<&TakGameResult> {
+        self.base.result.as_ref()
     }
 
     pub fn iter_actions(&self) -> impl Iterator<Item = &TakAction> {
@@ -150,13 +139,25 @@ impl<T: TakInstant> TakOngoingGame<T> {
         self.base.current_player
     }
 
-    fn set_game_over(&mut self, now: T, game_result: TakGameResult) -> TakFinishedGame {
+    fn set_game_over(&mut self, now: T, game_result: TakGameResult) {
         let player = self.base.current_player;
-        self.stop_clock(now, player);
-        TakFinishedGame::new(game_result, self.get_time_info(now), self.history.clone())
+        self.maybe_apply_elapsed(now, player);
+        self.clock.is_ticking = false;
+        self.base.result = Some(game_result);
     }
 
-    pub fn check_timeout(&mut self, now: T) -> MaybeTimeout<(), TakFinishedGame> {
+    pub fn validate_ongoing(&mut self, now: T) -> Result<(), ()> {
+        self.check_timeout(now);
+        if !self.is_ongoing() {
+            return Err(());
+        }
+        Ok(())
+    }
+
+    fn check_timeout(&mut self, now: T) {
+        if !self.is_ongoing() {
+            return;
+        }
         let player = self.base.current_player;
         let time_remaining = self.get_time_remaining(player, now);
         if time_remaining.is_zero() {
@@ -164,10 +165,7 @@ impl<T: TakInstant> TakOngoingGame<T> {
                 winner: player.opponent(),
                 reason: TakWinReason::Default,
             };
-            let finished_game = self.set_game_over(now, game_result);
-            MaybeTimeout::Timeout(finished_game)
-        } else {
-            MaybeTimeout::Result(())
+            self.set_game_over(now, game_result);
         }
     }
 
@@ -209,19 +207,10 @@ impl<T: TakInstant> TakOngoingGame<T> {
         self.clock.is_ticking = true;
     }
 
-    fn stop_clock(&mut self, now: T, player: TakPlayer) {
-        self.maybe_apply_elapsed(now, player);
-        self.clock.is_ticking = false;
-    }
-
-    pub fn do_action(
-        &mut self,
-        action: TakAction,
-        now: T,
-    ) -> Result<MaybeTimeout<Option<TakFinishedGame>, TakFinishedGame>, InvalidActionReason> {
-        if let MaybeTimeout::Timeout(finished_game) = self.check_timeout(now) {
-            return Ok(MaybeTimeout::Timeout(finished_game));
-        };
+    pub fn do_action(&mut self, action: TakAction, now: T) -> Result<(), InvalidActionReason> {
+        if let Err(()) = self.validate_ongoing(now) {
+            return Err(InvalidActionReason::GameOver);
+        }
 
         let player = self.base.current_player;
         let remaining_before_action = self.get_time_info(now);
@@ -229,82 +218,64 @@ impl<T: TakInstant> TakOngoingGame<T> {
             action: action.clone(),
             time_info: remaining_before_action,
         };
-
-        match self.base.do_action(action)? {
-            None => {
-                self.start_or_update_clock(now, player);
-                self.history.push(record);
-                Ok(MaybeTimeout::Result(None))
-            }
-            Some(result) => {
-                self.stop_clock(now, player);
-                self.history.push(record);
-                let finished_game =
-                    TakFinishedGame::new(result, self.get_time_info(now), self.history.clone());
-                Ok(MaybeTimeout::Result(Some(finished_game)))
-            }
+        self.base.do_action(action)?;
+        self.start_or_update_clock(now, player);
+        if !self.is_ongoing() {
+            self.clock.is_ticking = false;
         }
+
+        self.history.push(record);
+        Ok(())
     }
 
-    pub fn undo_action(
-        &mut self,
-        now: T,
-    ) -> Result<MaybeTimeout<bool, TakFinishedGame>, InvalidActionReason> {
-        if let MaybeTimeout::Timeout(finished_game) = self.check_timeout(now) {
-            return Ok(MaybeTimeout::Timeout(finished_game));
-        };
+    pub fn try_undo_action(&mut self, now: T) -> Result<bool, InvalidActionReason> {
+        if let Err(()) = self.validate_ongoing(now) {
+            return Err(InvalidActionReason::GameOver);
+        }
         let Some(record) = self.history.pop() else {
-            return Ok(MaybeTimeout::Result(false));
+            return Ok(false);
         };
 
-        let mut new_base = TakOngoingBaseGame::new(&self.base.settings);
+        let mut new_base = TakBaseGame::new(&self.base.settings);
         for record in &self.history {
             new_base.do_action(record.action.clone())?;
         }
         self.clock.remaining_time = record.time_info;
-        Ok(MaybeTimeout::Result(true))
+        Ok(true)
     }
 
-    pub fn resign_or_abandon(
-        &mut self,
-        player: TakPlayer,
-        now: T,
-    ) -> MaybeTimeout<TakFinishedGame, TakFinishedGame> {
-        if let MaybeTimeout::Timeout(finished_game) = self.check_timeout(now) {
-            return MaybeTimeout::Timeout(finished_game);
-        };
-        MaybeTimeout::Result(self.set_game_over(
+    pub fn resign_or_abandon(&mut self, player: TakPlayer, now: T) -> Result<(), ()> {
+        self.validate_ongoing(now)?;
+        self.set_game_over(
             now,
             TakGameResult::Win {
                 winner: player.opponent(),
                 reason: TakWinReason::Default,
             },
-        ))
+        );
+        Ok(())
     }
 
-    pub fn try_abort(&mut self, now: T) -> MaybeTimeout<Option<TakFinishedGame>, TakFinishedGame> {
-        if let MaybeTimeout::Timeout(finished_game) = self.check_timeout(now) {
-            return MaybeTimeout::Timeout(finished_game);
-        };
+    pub fn try_abort(&mut self, now: T) -> Result<bool, ()> {
+        self.validate_ongoing(now)?;
         if self.base.ply_index <= 1 {
             // if one player hasn't made a move yet, both players can abort without penalty
-            return MaybeTimeout::Result(Some(self.set_game_over(now, TakGameResult::Aborted)));
+            self.set_game_over(now, TakGameResult::Aborted);
+            return Ok(true);
         }
-        MaybeTimeout::Result(None)
+        Ok(false)
     }
 
-    pub fn abort_forced(&mut self, now: T) -> MaybeTimeout<TakFinishedGame, TakFinishedGame> {
-        if let MaybeTimeout::Timeout(finished_game) = self.check_timeout(now) {
-            return MaybeTimeout::Timeout(finished_game);
-        };
-        MaybeTimeout::Result(self.set_game_over(now, TakGameResult::Aborted))
+    pub fn abort_forced(&mut self, now: T) -> Result<(), ()> {
+        self.validate_ongoing(now)?;
+        self.set_game_over(now, TakGameResult::Aborted);
+        Ok(())
     }
 
-    pub fn agree_draw(&mut self, now: T) -> MaybeTimeout<TakFinishedGame, TakFinishedGame> {
-        if let MaybeTimeout::Timeout(finished_game) = self.check_timeout(now) {
-            return MaybeTimeout::Timeout(finished_game);
-        };
-        MaybeTimeout::Result(self.set_game_over(now, TakGameResult::Draw))
+    pub fn agree_draw(&mut self, now: T) -> Result<(), ()> {
+        self.validate_ongoing(now)?;
+        self.set_game_over(now, TakGameResult::Draw);
+        Ok(())
     }
 
     pub fn give_time_to_player(
@@ -312,10 +283,8 @@ impl<T: TakInstant> TakOngoingGame<T> {
         player: TakPlayer,
         duration: Duration,
         now: T,
-    ) -> MaybeTimeout<(), TakFinishedGame> {
-        if let MaybeTimeout::Timeout(finished_game) = self.check_timeout(now) {
-            return MaybeTimeout::Timeout(finished_game);
-        };
+    ) -> Result<(), ()> {
+        self.validate_ongoing(now)?;
 
         let remaining = match player {
             TakPlayer::White => &mut self.clock.remaining_time.white_remaining,
@@ -323,7 +292,7 @@ impl<T: TakInstant> TakOngoingGame<T> {
         };
         *remaining = remaining.saturating_add(duration);
 
-        MaybeTimeout::Result(())
+        Ok(())
     }
 }
 
@@ -336,34 +305,32 @@ mod tests {
 
     use super::*;
 
-    fn do_move<T: TakInstant>(game: &mut TakOngoingGame<T>, action: TakAction, now: T) {
+    fn do_move<T: TakInstant>(game: &mut TakGame<T>, action: TakAction, now: T) {
         match game.do_action(action, now) {
-            Ok(MaybeTimeout::Timeout(_)) => {
-                panic!("Game finished unexpectedly due to timeout")
-            }
-            Ok(MaybeTimeout::Result(None)) => {}
-            Ok(MaybeTimeout::Result(Some(_))) => {
-                panic!("Game finished unexpectedly")
-            }
+            Ok(()) => {}
             Err(e) => panic!("Failed to do action: {:?}", e),
         }
     }
 
     fn do_finish_move<T: TakInstant>(
-        game: &mut TakOngoingGame<T>,
+        game: &mut TakGame<T>,
         action: TakAction,
         now: T,
         expected_result: TakGameResult,
     ) {
         match game.do_action(action, now) {
-            Ok(MaybeTimeout::Result(None)) => {
-                panic!("Game should have finished, but is ongoing")
-            }
-            Ok(MaybeTimeout::Timeout(_)) => {
-                panic!("Game finished unexpectedly due to timeout")
-            }
-            Ok(MaybeTimeout::Result(Some(g))) => {
-                assert_eq!(g.result, expected_result)
+            Ok(()) => {
+                if game
+                    .base
+                    .result
+                    .as_ref()
+                    .is_none_or(|r| *r != expected_result)
+                {
+                    panic!(
+                        "Game should have finished, but is ongoing or finished with unexpected result: {:?}",
+                        game.base.result
+                    );
+                }
             }
             Err(e) => panic!("Failed to do action: {:?}", e),
         }
@@ -372,7 +339,7 @@ mod tests {
     #[test]
     fn test_reserve_constraints() {
         let now = Instant::now();
-        let mut game = TakOngoingGame::new(
+        let mut game = TakGame::new(
             &TakGameSettings {
                 base: TakBaseGameSettings {
                     board_size: 5,
@@ -521,7 +488,7 @@ mod tests {
                 },
             ),
         ] {
-            let mut game = TakOngoingGame::new(
+            let mut game = TakGame::new(
                 &TakGameSettings {
                     base: TakBaseGameSettings {
                         board_size: 5,
@@ -563,7 +530,7 @@ mod tests {
                 result,
             );
 
-            let mut game2 = TakOngoingGame::new(
+            let mut game2 = TakGame::new(
                 &TakGameSettings {
                     base: TakBaseGameSettings {
                         board_size: 5,
@@ -610,7 +577,7 @@ mod tests {
     #[test]
     fn test_first_move_must_be_flat() {
         let now = Instant::now();
-        let mut game = TakOngoingGame::new(
+        let mut game = TakGame::new(
             &TakGameSettings {
                 base: TakBaseGameSettings {
                     board_size: 5,

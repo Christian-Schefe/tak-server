@@ -5,7 +5,7 @@ use tak_core::TakPlayer;
 use crate::{
     PortsCollection,
     ports::{
-        game::{GameRepository, OngoingGameRepository},
+        game::GameRepository,
         matches::MatchRepository,
         notification::{ListenerMessage, ListenerNotificationPort},
         transaction::RepoError,
@@ -15,8 +15,7 @@ use crate::{
 };
 use tak_domain::{
     MatchId,
-    game::{Game, GameMetadata},
-    game_record::GameRecord,
+    game_record::{GameMetadata, GameRecord},
 };
 
 #[async_trait::async_trait]
@@ -133,8 +132,7 @@ impl<
         );
 
         let now = std::time::SystemTime::now();
-        let game_state = Game::new(&metadata.settings, now);
-        let game_record = GameRecord::new_ongoing(metadata);
+        let game_record = GameRecord::new_ongoing(metadata, now);
 
         let game_id = match self
             .ports
@@ -148,23 +146,6 @@ impl<
                 return Err(CreateGameFromMatchError::Internal);
             }
         };
-
-        match self
-            .ports
-            .ongoing_game_repository()
-            .set_game(&ctx, game_id, game_state)
-            .await
-        {
-            Ok(()) => (),
-            Err(RepoError(e)) => {
-                tracing::error!(
-                    "Failed to save ongoing game state for match {}: {}",
-                    match_id,
-                    e
-                );
-                return Err(CreateGameFromMatchError::Internal);
-            }
-        }
 
         if let Err(RepoError(e)) = self
             .ports

@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, TimeDelta, Utc};
-use tak_core::{TakFinishedGame, TakGameResult, TakGameSettings, TakPlayer, TakTimeSettings};
+use tak_core::{TakActionRecord, TakGameResult, TakGameSettings, TakPlayer, TakTimeSettings};
 
-use crate::{UserId, game::GameMetadata, game_record::GameRatingInfo};
+use crate::{
+    UserId,
+    game_record::{GameMetadata, GameRatingInfo},
+};
 
 #[derive(Clone, Debug)]
 pub struct PlayerRating {
@@ -35,7 +38,8 @@ pub trait RatingService {
     fn calculate_ratings(
         &self,
         metadata: &GameMetadata,
-        game: &TakFinishedGame,
+        result: &TakGameResult,
+        history: &[TakActionRecord],
         white_rating: &mut PlayerRating,
         black_rating: &mut PlayerRating,
     ) -> Option<GameRatingInfo>;
@@ -221,7 +225,8 @@ impl RatingService for RatingServiceImpl {
     fn calculate_ratings(
         &self,
         metadata: &GameMetadata,
-        game: &TakFinishedGame,
+        result: &TakGameResult,
+        history: &[TakActionRecord],
         white_rating: &mut PlayerRating,
         black_rating: &mut PlayerRating,
     ) -> Option<GameRatingInfo> {
@@ -231,11 +236,11 @@ impl RatingService for RatingServiceImpl {
         let white_id = metadata.white.user_id;
         let black_id = metadata.black.user_id;
 
-        if !self.is_game_eligible_for_rating(&metadata.settings, game.history.len()) {
+        if !self.is_game_eligible_for_rating(&metadata.settings, history.len()) {
             return None;
         }
 
-        let result = match &game.result {
+        let result = match result {
             TakGameResult::Win { winner, .. } => match winner {
                 TakPlayer::White => 1.0,
                 TakPlayer::Black => 0.0,

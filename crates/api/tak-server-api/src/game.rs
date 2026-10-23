@@ -5,21 +5,18 @@ use axum::{
     extract::{Path, State},
     routing::{get, post},
 };
-use tak_core::ptn::game_result_to_string;
+use tak_core::ptn::{action_to_ptn, game_result_to_string};
 use tak_domain::{
     GameId,
-    game::{
-        GameMetadata,
-        request::{GameRequest, GameRequestType},
-    },
-    game_record::{GameRecord, GameRecordState},
+    game::request::{GameRequest, GameRequestType},
+    game_record::{GameMetadata, GameRecord},
 };
 use tak_server_api_contract::game::{
-    ForPlayer, JsonGameMetadata, JsonGameRatingInfo, JsonGameRecord, JsonGameRecordState,
-    JsonGameRequest, JsonGameRequestType, JsonGameSettings, JsonPlayerSnapshot,
+    ForPlayer, JsonGameDetail, JsonGameMetadata, JsonGameRatingInfo, JsonGameRecord,
+    JsonGameRequest, JsonGameRequestType, JsonGameRequests, JsonGameSettings, JsonPlayerSnapshot,
 };
 use tak_server_app::workflow::gameplay::{
-    do_action::{ActionResult, HandleRequestError, PlayerActionError},
+    do_action::{ActionError, HandleRequestError, PlayerActionError},
     query::GameQueryError,
 };
 
@@ -54,10 +51,10 @@ async fn get_games(
 async fn get_game(
     State(app): State<AppState>,
     Path(game_id): Path<i64>,
-) -> Result<Json<JsonGameRecord>, ServiceError> {
+) -> Result<Json<JsonGameDetail>, ServiceError> {
     let game_id = GameId(game_id);
     match app.app.game_query_use_case.get_game(game_id).await {
-        Ok(Some(game)) => Ok(Json(from_game(game_id, &game))),
+        Ok(Some(game)) => Ok(Json(detail_from_game(game_id, &game))),
         Ok(None) => Err(ServiceError::NotFound(format!(
             "Game with id {} not found",
             game_id
@@ -152,8 +149,8 @@ async fn accept_request(
         "ACCEPT Player is accepting request in game",
     );
     match res {
-        ActionResult::Success => Ok(()),
-        ActionResult::NotPossible(e) => match e {
+        Ok(()) => Ok(()),
+        Err(ActionError::NotPossible(e)) => match e {
             PlayerActionError::GameNotFound => Err(ServiceError::NotFound(format!(
                 "Game with id {} not found",
                 game_id
@@ -165,7 +162,7 @@ async fn accept_request(
                 "Failed to accept request for game".to_string(),
             )),
         },
-        ActionResult::ActionError(HandleRequestError::RequestNotFound) => Err(
+        Err(ActionError::ActionError(HandleRequestError::RequestNotFound)) => Err(
             ServiceError::NotFound("No such request to accept".to_string()),
         ),
     }
@@ -190,29 +187,77 @@ pub fn from_metadata(game_id: GameId, metadata: &GameMetadata) -> JsonGameMetada
     }
 }
 
-pub fn from_game(game_id: GameId, game: &GameRecord) -> JsonGameRecord {
-    JsonGameRecord {
-        metadata: from_metadata(game_id, &game.metadata),
-        state: match &game.state {
-            GameRecordState::Ongoing => JsonGameRecordState::Ongoing,
-            GameRecordState::Finished {
-                history: _,
-                time_info,
-                rating_info,
-                result,
-            } => JsonGameRecordState::Finished {
-                rating_info: rating_info.as_ref().map(|info| JsonGameRatingInfo {
-                    rating_change: ForPlayer {
-                        white: info.rating_change_white,
-                        black: info.rating_change_black,
-                    },
-                }),
-                result: game_result_to_string(&result),
-                remaining_ms: ForPlayer {
-                    white: time_info.white_remaining.as_millis() as u64,
-                    black: time_info.black_remaining.as_millis() as u64,
-                },
-            },
+pub fn from_game(game_id: GameId, record: &GameRecord) -> JsonGameRecord {
+    let history = record
+        .game
+        .game
+        .history
+        .iter()
+        .map(|action| action_to_ptn(&action.action))
+        .collect();
+
+    let result = record
+        .game
+        .game
+        .result()
+        .map(|res| game_result_to_string(res));
+
+    let rating_info = record.rating_info.as_ref().map(|info| JsonGameRatingInfo {
+        rating_change: ForPlayer {
+            white: info.rating_change_white,
+            black: info.rating_change_black,
         },
+    });
+
+    JsonGameRecord {
+        metadata: from_metadata(game_id, &record.metadata),
+        result,
+        rating_info,
+        history,
+    }
+}
+
+pub fn detail_from_game(game_id: GameId, record: &GameRecord) -> JsonGameDetail {
+    let json_record = from_game(game_id, record);
+    let requests = ForPlayer {
+        white: JsonGameRequests {
+            draw_offered: record.game.white_requests.draw_offered,
+            undo_requested: record.game.white_requests.undo_requested,
+            more_time_offered: record
+                .game
+                .white_requests
+                .more_time_offered
+                .map(|d| d.as_millis() as u64),
+        },
+        black: JsonGameRequests {
+            draw_offered: record.game.black_requests.draw_offered,
+            undo_requested: record.game.black_requests.undo_requested,
+            more_time_offered: record
+                .game
+                .black_requests
+                .more_time_offered
+                .map(|d| d.as_millis() as u64),
+        },
+    };
+    let remaining_ms = ForPlayer {
+        white: record
+            .game
+            .game
+            .clock
+            .remaining_time
+            .white_remaining
+            .as_millis() as u64,
+        black: record
+            .game
+            .game
+            .clock
+            .remaining_time
+            .black_remaining
+            .as_millis() as u64,
+    };
+    JsonGameDetail {
+        record: json_record,
+        requests,
+        remaining_ms,
     }
 }

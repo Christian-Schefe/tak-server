@@ -4,7 +4,7 @@ use tak_core::{TakPlayer, TakReserve};
 
 use tak_server_api_contract::{
     game::{
-        JsonBaseGameSettings, JsonGame, JsonGameMetadata, JsonGameSettings, JsonTakOpening,
+        JsonBaseGameSettings, JsonGameDetail, JsonGameMetadata, JsonGameSettings, JsonTakOpening,
         JsonTimeSettings,
     },
     seek::{CreateSeekPayload, JsonSeek},
@@ -19,7 +19,7 @@ use crate::{engine::EngineService, game::GameService, seek::SeekService};
 pub trait ServerApi {
     async fn send_message(&self, message: ClientMessage) -> Result<(), String>;
     async fn load_games(&self) -> Result<Vec<JsonGameMetadata>, String>;
-    async fn load_game(&self, id: String) -> Result<JsonGame, String>;
+    async fn load_game(&self, id: String) -> Result<JsonGameDetail, String>;
     async fn create_seek(&self, seek: CreateSeekPayload) -> Result<JsonSeek, String>;
 }
 
@@ -98,7 +98,7 @@ impl Orchestrator {
                 continue;
             };
             let status = this.server_api.load_game(game.id.clone()).await.unwrap();
-            let JsonGame::Ongoing { game: status } = status else {
+            let None = status.record.result else {
                 continue;
             };
             if let Some((player, game_state)) =
@@ -221,7 +221,7 @@ impl Orchestrator {
     fn on_my_turn(
         this: Arc<Self>,
         game_id: String,
-        game_state: tak_core::TakOngoingGame<()>,
+        game_state: tak_core::TakGame<()>,
         remaining_ms: u64,
     ) {
         tokio::spawn(async move {

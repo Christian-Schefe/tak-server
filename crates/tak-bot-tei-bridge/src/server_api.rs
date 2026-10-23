@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tak_server_api_contract::{
-    game::{JsonGame, JsonGameMetadata},
+    game::{JsonGameDetail, JsonGameMetadata},
     seek::{CreateSeekPayload, JsonSeek},
     ws::{ClientMessage, ClientMessageWrapper, ServerMessage},
 };
@@ -284,7 +284,7 @@ impl ServerApi for ServerApiImpl {
         self.get_request("/games").await
     }
 
-    async fn load_game(&self, id: String) -> Result<JsonGame, String> {
+    async fn load_game(&self, id: String) -> Result<JsonGameDetail, String> {
         self.get_request(&format!("/games/{}", id)).await
     }
 

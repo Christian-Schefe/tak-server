@@ -6,30 +6,35 @@ use crate::{
 };
 
 #[derive(Clone, Debug)]
-pub struct TakOngoingBaseGame {
+pub struct TakBaseGame {
     pub settings: TakBaseGameSettings,
     pub board: TakBoard,
     pub current_player: TakPlayer,
     pub reserves: (TakReserve, TakReserve),
     pub board_hash_history: HashMap<String, u32>,
     pub ply_index: usize,
+    pub result: Option<TakGameResult>,
 }
 
-impl TakOngoingBaseGame {
+impl TakBaseGame {
     pub fn new(settings: &TakBaseGameSettings) -> Self {
         let board = TakBoard::new(settings.board_size);
         let reserves = (settings.reserve.clone(), settings.reserve.clone());
-        TakOngoingBaseGame {
+        TakBaseGame {
             settings: settings.clone(),
             board,
             current_player: TakPlayer::White,
             reserves,
             board_hash_history: HashMap::new(),
             ply_index: 0,
+            result: None,
         }
     }
 
     pub fn can_do_action(&self, action: &TakAction) -> Result<(), InvalidActionReason> {
+        if self.result.is_some() {
+            return Err(InvalidActionReason::GameOver);
+        }
         let is_opening_action = self.ply_index < 2;
         let is_first_move = self.ply_index == 0;
         if is_opening_action {
@@ -82,10 +87,7 @@ impl TakOngoingBaseGame {
         }
     }
 
-    pub fn do_action(
-        &mut self,
-        action: TakAction,
-    ) -> Result<Option<TakGameResult>, InvalidActionReason> {
+    pub fn do_action(&mut self, action: TakAction) -> Result<(), InvalidActionReason> {
         if let Err(e) = self.can_do_action(&action) {
             return Err(e);
         }
@@ -145,7 +147,10 @@ impl TakOngoingBaseGame {
             .and_modify(|e| *e += 1)
             .or_insert(1);
 
-        Ok(self.check_game_over(board_hash, moved_player))
+        if let Some(result) = self.check_game_over(board_hash, moved_player) {
+            self.result = Some(result);
+        }
+        Ok(())
     }
 
     fn check_game_over(

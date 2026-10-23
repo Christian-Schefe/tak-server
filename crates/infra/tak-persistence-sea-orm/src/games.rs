@@ -1,18 +1,17 @@
-use std::time::Duration;
+use std::time::{Duration, UNIX_EPOCH};
 
 use sea_orm::{
     ColumnTrait, EntityTrait, ExprTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
-use serde::Deserialize;
 use tak_core::{
-    TakAction, TakActionRecord, TakBaseGameSettings, TakClock, TakFinishedGame, TakGameSettings,
-    TakOngoingGame, TakPlayer, TakReserve, TakTimeInfo,
+    TakActionRecord, TakBaseGameSettings, TakClock, TakGame, TakGameSettings, TakPlayer,
+    TakReserve, TakTimeInfo,
     ptn::{action_from_ptn, action_to_ptn, game_result_from_string, game_result_to_string},
 };
 use tak_domain::{
     GameId, MatchId, UserId,
-    game::{Game, GameMetadata, PlayerSnapshot, request::GameRequests},
-    game_record::GameRatingInfo,
+    game::{Game, request::GameRequests},
+    game_record::{GameMetadata, GameRatingInfo, GameRecord, PlayerSnapshot},
 };
 use tak_persistence_sea_orm_entities::game;
 use tak_server_app::ports::{
@@ -30,37 +29,26 @@ pub struct GameRepositoryImpl;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct JsonActionRecord {
-    action: String,
-    time_info: JsonTimeInfo,
+pub struct JsonActionRecord {
+    pub action: String,
+    pub time_info: JsonTimeInfo,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-enum JsonEventGameOverType {
-    DrawAgreement,
-    Action,
-    Timeout,
-    Resignation,
-    Abandonment,
-    Aborted,
-}
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct JsonTimeInfo {
-    white_remaining_ms: u64,
-    black_remaining_ms: u64,
+pub struct JsonTimeInfo {
+    pub white_remaining_ms: u64,
+    pub black_remaining_ms: u64,
 }
 
 impl JsonTimeInfo {
-    fn from_time_info(time_info: &tak_core::TakTimeInfo) -> Self {
+    pub fn from_time_info(time_info: &TakTimeInfo) -> Self {
         Self {
             white_remaining_ms: time_info.white_remaining.as_millis() as u64,
             black_remaining_ms: time_info.black_remaining.as_millis() as u64,
         }
     }
-    fn to_time_info(&self) -> TakTimeInfo {
+    pub fn to_time_info(&self) -> TakTimeInfo {
         TakTimeInfo {
             white_remaining: Duration::from_millis(self.white_remaining_ms),
             black_remaining: Duration::from_millis(self.black_remaining_ms),
@@ -68,58 +56,8 @@ impl JsonTimeInfo {
     }
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(
-    tag = "type",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-enum JsonRequest {
-    Draw { offer: bool },
-    Undo { request: bool },
-    MoreTime { amount_ms: Option<u64> },
-}
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
-pub enum JsonTakPlayer {
-    White,
-    Black,
-}
-impl JsonTakPlayer {
-    fn to_tak_player(&self) -> TakPlayer {
-        match self {
-            JsonTakPlayer::White => TakPlayer::White,
-            JsonTakPlayer::Black => TakPlayer::Black,
-        }
-    }
-
-    fn from_tak_player(player: TakPlayer) -> Self {
-        match player {
-            TakPlayer::White => JsonTakPlayer::White,
-            TakPlayer::Black => JsonTakPlayer::Black,
-        }
-    }
-}
-
-fn serialize_action<S>(action: &TakAction, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    let ptn_string = action_to_ptn(action);
-    serializer.serialize_str(&ptn_string)
-}
-
-fn deserialize_action<'de, D>(deserializer: D) -> Result<TakAction, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let s = String::deserialize(deserializer)?;
-    action_from_ptn(&s).ok_or_else(|| serde::de::Error::custom("Invalid action PTN string"))
-}
-
 impl GameRepositoryImpl {
-    fn model_to_game(model: game::Model) -> Result<(GameId, Game), String> {
+    fn model_to_game(model: game::Model) -> Result<(GameId, GameRecord), String> {
         let rating_info = if let Some(rating_change_white) = model.rating_change_white
             && let Some(rating_change_black) = model.rating_change_black
         {
@@ -149,8 +87,6 @@ impl GameRepositoryImpl {
                     ));
                 }
             };
-        let json_history: Vec<JsonActionRecord> =
-            serde_json::from_value(model.history).unwrap_or_default();
 
         let white_id = UserId(model.player_white_id);
         let black_id = UserId(model.player_black_id);
@@ -179,73 +115,83 @@ impl GameRepositoryImpl {
             match_id: model.match_id.map(|id| MatchId(id)),
         };
 
-        let history = json_history
-            .into_iter()
-            .map(|jm| {
-                Ok(TakActionRecord {
-                    action: action_from_ptn(&jm.action).ok_or_else(|| {
-                        format!("Invalid action string in database: {}", jm.action)
-                    })?,
-                    time_info: jm.time_info.to_time_info(),
+        let history: Vec<TakActionRecord> =
+            serde_json::from_value::<Vec<JsonActionRecord>>(model.history)
+                .map_err(|e| format!("Failed to deserialize game history from JSON: {}", e))?
+                .into_iter()
+                .map(|json_action_record: JsonActionRecord| {
+                    Ok(TakActionRecord {
+                        action: action_from_ptn(&json_action_record.action)
+                            .ok_or_else(|| format!("Failed to parse action from PTN"))?,
+                        time_info: json_action_record.time_info.to_time_info(),
+                    })
                 })
-            })
-            .collect::<Result<Vec<_>, String>>()?;
+                .collect::<Result<Vec<_>, String>>()?;
 
-        let game = if let Some(result) = model.result {
-            let game = TakFinishedGame {
-                result: game_result_from_string(&result)
-                    .ok_or_else(|| format!("Invalid game result string in database: {}", result))?,
-                time_info: TakTimeInfo {
-                    white_remaining: Duration::from_millis(model.white_remaining_ms as u64),
-                    black_remaining: Duration::from_millis(model.black_remaining_ms as u64),
-                },
-                history,
-            };
-            Game::Finished(Game {
+        let clock = TakClock {
+            remaining_time: TakTimeInfo {
+                white_remaining: Duration::from_millis(model.white_remaining_ms as u64),
+                black_remaining: Duration::from_millis(model.black_remaining_ms as u64),
+            },
+            last_update_timestamp: UNIX_EPOCH
+                + Duration::from_millis(model.last_clock_update.timestamp_millis() as u64),
+            is_ticking: model.is_clock_ticking,
+        };
+
+        let result = model
+            .result
+            .as_ref()
+            .map(|res_str| {
+                game_result_from_string(res_str)
+                    .ok_or_else(|| format!("Invalid game result string in database: {}", res_str))
+            })
+            .transpose()?;
+
+        let game = TakGame::from_history(&metadata.settings, clock, history, result)
+            .map_err(|e| format!("Failed to reconstruct game from history: {:?}", e))?;
+
+        let white_requests = GameRequests {
+            draw_offered: model.white_draw_offer,
+            undo_requested: model.white_undo_request,
+            more_time_offered: model
+                .white_more_time_request
+                .map(|ms| Duration::from_millis(ms as u64)),
+        };
+        let black_requests = GameRequests {
+            draw_offered: model.black_draw_offer,
+            undo_requested: model.black_undo_request,
+            more_time_offered: model
+                .black_more_time_request
+                .map(|ms| Duration::from_millis(ms as u64)),
+        };
+
+        Ok((
+            GameId(model.id),
+            GameRecord {
                 metadata,
                 rating_info,
-                game,
-            })
-        } else {
-            let clock = TakClock {
-                remaining_time: TakTimeInfo {
-                    white_remaining: Duration::from_millis(model.white_remaining_ms as u64),
-                    black_remaining: Duration::from_millis(model.black_remaining_ms as u64),
+                game: Game {
+                    game,
+                    white_requests,
+                    black_requests,
                 },
-                last_update_timestamp: std::time::SystemTime::now(),
-                is_ticking: false,
-            };
-            let game = TakOngoingGame::from_history(&metadata.settings, clock, history)
-                .map_err(|e| format!("Failed to reconstruct ongoing game from history: {:?}", e))?;
-            Game::Ongoing(Game {
-                metadata,
-                game,
-                white_requests: GameRequests::new(),
-                black_requests: GameRequests::new(),
-            })
-        };
-
-        Ok((GameId(model.id), game))
+            },
+        ))
     }
-    fn game_to_model(game_id: Option<GameId>, game: &Game) -> Result<game::ActiveModel, String> {
-        let (metadata, result, rating_info) = match game {
-            Game::Ongoing(ongoing) => (&ongoing.metadata, None, None),
-            Game::Finished(finished) => (
-                &finished.metadata,
-                Some(game_result_to_string(&finished.game.result)),
-                finished.rating_info.as_ref(),
-            ),
-        };
+    fn game_to_model(
+        game_id: Option<GameId>,
+        record: &GameRecord,
+    ) -> Result<game::ActiveModel, String> {
+        let result = record.game.game.result().map(|f| game_result_to_string(f));
 
-        let base_settings = &metadata.settings.base;
-        let time_settings = JsonTimeSettings::from_time_settings(&metadata.settings.time_settings);
+        let base_settings = &record.metadata.settings.base;
+        let time_settings =
+            JsonTimeSettings::from_time_settings(&record.metadata.settings.time_settings);
 
-        let history = match game {
-            Game::Ongoing(ongoing) => &ongoing.game.history,
-            Game::Finished(finished) => &finished.game.history,
-        };
+        let game = &record.game.game;
 
-        let history: Vec<JsonActionRecord> = history
+        let history: Vec<JsonActionRecord> = game
+            .history
             .iter()
             .map(|action| JsonActionRecord {
                 action: action_to_ptn(&action.action),
@@ -253,36 +199,63 @@ impl GameRepositoryImpl {
             })
             .collect();
 
-        let history_value = serde_json::to_value(&history)
-            .map_err(|e| format!("Failed to serialize game events: {}", e))?;
-
-        let time_info = match game {
-            Game::Ongoing(ongoing) => ongoing.game.clock.remaining_time,
-            Game::Finished(finished) => finished.game.time_info.clone(),
-        };
+        let json_history = serde_json::to_value(history)
+            .map_err(|e| format!("Failed to serialize game history to JSON: {}", e))?;
 
         Ok(game::ActiveModel {
             id: game_id.map_or(Default::default(), |id| Set(id.0)),
-            date: Set(metadata.date),
+            history: Set(json_history),
+            white_remaining_ms: Set(game.clock.remaining_time.white_remaining.as_millis() as i64),
+            black_remaining_ms: Set(game.clock.remaining_time.black_remaining.as_millis() as i64),
+            last_clock_update: Set(chrono::DateTime::from_timestamp_millis(
+                game.clock
+                    .last_update_timestamp
+                    .duration_since(UNIX_EPOCH)
+                    .map_err(|e| format!("Failed to convert timestamp to chrono::DateTime: {}", e))?
+                    .as_millis() as i64,
+            )
+            .ok_or("Failed to convert timestamp to chrono::DateTime")?),
+            is_clock_ticking: Set(game.clock.is_ticking),
+            white_draw_offer: Set(record.game.white_requests.draw_offered),
+            black_draw_offer: Set(record.game.black_requests.draw_offered),
+            white_undo_request: Set(record.game.white_requests.undo_requested),
+            black_undo_request: Set(record.game.black_requests.undo_requested),
+            white_more_time_request: Set(record
+                .game
+                .white_requests
+                .more_time_offered
+                .map(|d| d.as_millis() as i64)),
+            black_more_time_request: Set(record
+                .game
+                .black_requests
+                .more_time_offered
+                .map(|d| d.as_millis() as i64)),
+
+            date: Set(record.metadata.date),
             size: Set(base_settings.board_size as i32),
-            player_white_id: Set(metadata.white.user_id.0),
-            player_black_id: Set(metadata.black.user_id.0),
-            player_white_username: Set(metadata.white.username.clone()),
-            player_black_username: Set(metadata.black.username.clone()),
-            player_white_rating: Set(metadata.white.rating),
-            player_black_rating: Set(metadata.black.rating),
-            history: Set(history_value),
+            player_white_id: Set(record.metadata.white.user_id.0),
+            player_black_id: Set(record.metadata.black.user_id.0),
+            player_white_username: Set(record.metadata.white.username.clone()),
+            player_black_username: Set(record.metadata.black.username.clone()),
+            player_white_rating: Set(record.metadata.white.rating),
+            player_black_rating: Set(record.metadata.black.rating),
             result: Set(result),
-            is_rated: Set(metadata.is_rated),
+            is_rated: Set(record.metadata.is_rated),
             half_komi: Set(base_settings.half_komi as i32),
             pieces: Set(base_settings.reserve.pieces as i32),
             capstones: Set(base_settings.reserve.capstones as i32),
             opening: Set(tak_opening_to_string(&base_settings.opening)),
-            rating_change_white: Set(rating_info.map(|info| info.rating_change_white)),
-            rating_change_black: Set(rating_info.map(|info| info.rating_change_black)),
+            rating_change_white: Set(record
+                .rating_info
+                .as_ref()
+                .map(|info| info.rating_change_white)),
+            rating_change_black: Set(record
+                .rating_info
+                .as_ref()
+                .map(|info| info.rating_change_black)),
             game_settings: Set(serde_json::to_value(&time_settings)
                 .map_err(|e| format!("Failed to serialize game settings: {}", e))?),
-            match_id: Set(metadata.match_id.map(|id| id.0)),
+            match_id: Set(record.metadata.match_id.map(|id| id.0)),
         })
     }
 }
@@ -293,7 +266,7 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         game_id: GameId,
-    ) -> Result<Option<Game>, RepoError> {
+    ) -> Result<Option<GameRecord>, RepoError> {
         let model = game::Entity::find_by_id(game_id.0)
             .one(ctx)
             .await
@@ -307,7 +280,11 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
             Ok(None)
         }
     }
-    async fn create_game(&self, ctx: &RepositoryContext, game: Game) -> Result<GameId, RepoError> {
+    async fn create_game(
+        &self,
+        ctx: &RepositoryContext,
+        game: GameRecord,
+    ) -> Result<GameId, RepoError> {
         let model = Self::game_to_model(None, &game)
             .map_err(|e| RepoError(format!("Failed to convert game record to model: {}", e)))?;
         let res = game::Entity::insert(model)
@@ -321,7 +298,7 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         game_id: GameId,
-        game: Game,
+        game: GameRecord,
     ) -> Result<(), RepoError> {
         let model = Self::game_to_model(Some(game_id), &game)
             .map_err(|e| RepoError(format!("Failed to convert game record to model: {}", e)))?;
@@ -331,16 +308,36 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
             .map_err(|e| RepoError(e.to_string()))?;
         Ok(())
     }
-    async fn get_games_by_player(
+    async fn get_ongoing_games(
         &self,
         ctx: &RepositoryContext,
-        user_id: UserId,
-    ) -> Result<Vec<(GameId, Game)>, RepoError> {
+    ) -> Result<Vec<(GameId, GameRecord)>, RepoError> {
+        let models = game::Entity::find()
+            .filter(game::Column::Result.is_null())
+            .all(ctx)
+            .await
+            .map_err(|e| RepoError(e.to_string()))?;
+
+        let mut results = Vec::new();
+        for model in models {
+            let (game_id, game) = Self::model_to_game(model)
+                .map_err(|e| RepoError(format!("Failed to convert game model to record: {}", e)))?;
+            results.push((game_id, game));
+        }
+        Ok(results)
+    }
+    async fn get_ongoing_games_by_player(
+        &self,
+        ctx: &RepositoryContext,
+        player_id: UserId,
+    ) -> Result<Vec<(GameId, GameRecord)>, RepoError> {
         let models = game::Entity::find()
             .filter(
-                sea_orm::Condition::any()
-                    .add(game::Column::PlayerWhiteId.eq(user_id.0))
-                    .add(game::Column::PlayerBlackId.eq(user_id.0)),
+                game::Column::Result.is_null().and(
+                    game::Column::PlayerWhiteId
+                        .eq(player_id.0)
+                        .or(game::Column::PlayerBlackId.eq(player_id.0)),
+                ),
             )
             .all(ctx)
             .await
@@ -354,31 +351,11 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
         }
         Ok(results)
     }
-    async fn get_ongoing_games(
-        &self,
-        ctx: &RepositoryContext,
-    ) -> Result<Vec<(GameId, Game)>, RepoError> {
-        let models = game::Entity::find()
-            .filter(game::Column::Result.is_null())
-            .all(ctx)
-            .await
-            .map_err(|e| RepoError(e.to_string()))?;
-
-        let mut results = Vec::new();
-        for model in models {
-            let (game_id, game) = Self::model_to_game(model)
-                .map_err(|e| RepoError(format!("Failed to convert game model to record: {}", e)))?;
-            if let Game::Ongoing(ongoing_game) = game {
-                results.push((game_id, ongoing_game));
-            }
-        }
-        Ok(results)
-    }
     async fn query_games(
         &self,
         ctx: &RepositoryContext,
         filter: GameQuery,
-    ) -> Result<PaginatedResponse<(GameId, Game)>, RepoError> {
+    ) -> Result<PaginatedResponse<(GameId, GameRecord)>, RepoError> {
         let mut query = game::Entity::find();
         if let Some(game_id_selector) = filter.id_selector {
             query = match game_id_selector {
@@ -458,24 +435,14 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
             query = query.filter(game::Column::IsRated.eq(is_rated));
         }
 
+        query = query.filter(game::Column::Result.is_not_null());
         if !filter.game_results.is_empty() {
-            let mut has_empty = false;
             let result_strings: Vec<String> = filter
                 .game_results
                 .iter()
-                .filter_map(|result| match result {
-                    Some(r) => Some(game_result_to_string(r)),
-                    None => {
-                        has_empty = true;
-                        None
-                    }
-                })
+                .map(|result| game_result_to_string(result))
                 .collect();
-            let mut filter = game::Column::Result.is_in(result_strings);
-            if has_empty {
-                filter = filter.or(game::Column::Result.is_null());
-            }
-            query = query.filter(filter);
+            query = query.filter(game::Column::Result.is_in(result_strings));
         }
 
         if let Some(half_komi) = filter.half_komi {
@@ -530,7 +497,7 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         match_id: MatchId,
-    ) -> Result<Vec<(GameId, Game)>, RepoError> {
+    ) -> Result<Vec<(GameId, GameRecord)>, RepoError> {
         let models = game::Entity::find()
             .filter(game::Column::MatchId.eq(match_id.0))
             .all(ctx)

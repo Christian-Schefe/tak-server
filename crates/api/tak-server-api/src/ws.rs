@@ -27,7 +27,7 @@ use tak_server_app::{
     workflow::{
         chat::message::ChatSendMessageError,
         gameplay::{
-            do_action::{ActionResult, DoActionError, PlayerActionError},
+            do_action::{ActionError, DoActionError, PlayerActionError},
             observe::ObserveGameError,
         },
     },
@@ -235,8 +235,8 @@ async fn handle_authenticated_client_message(
                 .do_action(game_id, user_id, action)
                 .await
             {
-                ActionResult::Success => Ok(()),
-                ActionResult::ActionError(e) => match e {
+                Ok(()) => Ok(()),
+                Err(ActionError::ActionError(e)) => match e {
                     DoActionError::InvalidAction(reason) => Err(ServiceError::BadRequest(format!(
                         "Invalid action: {:?}",
                         reason
@@ -245,7 +245,7 @@ async fn handle_authenticated_client_message(
                         Err(ServiceError::BadRequest("Not player's turn".to_string()))
                     }
                 },
-                ActionResult::NotPossible(e) => match e {
+                Err(ActionError::NotPossible(e)) => match e {
                     PlayerActionError::GameNotFound => {
                         Err(ServiceError::BadRequest("Game not found".to_string()))
                     }

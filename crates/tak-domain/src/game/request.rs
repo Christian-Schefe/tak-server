@@ -30,47 +30,51 @@ impl GameRequests {
         }
     }
 
-    pub fn set_request(&mut self, request: GameRequest) -> Option<GameRequest> {
+    pub fn set_request(&mut self, request: &GameRequest) -> bool {
         match request {
             GameRequest::Draw(offer) => {
-                if self.draw_offered == offer {
-                    return None;
+                if self.draw_offered == *offer {
+                    return false;
                 }
-                self.draw_offered = offer;
+                self.draw_offered = *offer;
             }
             GameRequest::Undo(request) => {
-                if self.undo_requested == request {
-                    return None;
+                if self.undo_requested == *request {
+                    return false;
                 }
-                self.undo_requested = request;
+                self.undo_requested = *request;
             }
             GameRequest::MoreTime(duration) => {
-                if self.more_time_offered == duration {
-                    return None;
+                if self.more_time_offered == *duration {
+                    return false;
                 }
-                self.more_time_offered = duration;
+                self.more_time_offered = *duration;
             }
         }
-        Some(request)
+        return true;
     }
 
-    pub fn consume_request(&mut self, request_type: GameRequestType) -> GameRequest {
-        match request_type {
-            GameRequestType::Draw => {
-                let result = GameRequest::Draw(self.draw_offered);
-                self.draw_offered = false;
-                result
-            }
-            GameRequestType::Undo => {
-                let result = GameRequest::Undo(self.undo_requested);
-                self.undo_requested = false;
-                result
-            }
-            GameRequestType::MoreTime => {
-                let result = GameRequest::MoreTime(self.more_time_offered);
-                self.more_time_offered = None;
-                result
-            }
+    pub fn accept_draw_request(&mut self) -> bool {
+        if !self.draw_offered {
+            return false;
         }
+        self.draw_offered = false;
+        true
+    }
+
+    pub fn accept_undo_request(&mut self) -> bool {
+        if !self.undo_requested {
+            return false;
+        }
+        self.undo_requested = false;
+        true
+    }
+
+    pub fn accept_more_time_request(&mut self) -> Option<Duration> {
+        if self.more_time_offered.is_none() {
+            return None;
+        }
+        let duration = self.more_time_offered.take();
+        duration
     }
 }
