@@ -2,7 +2,7 @@ use tak_core::{TakAction, TakGameResult, TakTimeInfo};
 
 use crate::workflow::{chat::ChatMessageView, matchmaking::SeekView};
 use tak_domain::{
-    GameId, ListenerId, MatchId, UserId, chat::ChatConversation, game::request::GameRequest,
+    GameId, ListenerId, MatchId, UserId, chat::ChatConversation, game::GameRequest,
     game_record::GameRecord,
 };
 

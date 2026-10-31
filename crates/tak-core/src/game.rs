@@ -30,8 +30,7 @@ impl TakInstant for () {
 #[derive(Clone, Debug)]
 pub struct TakClock<T: TakInstant> {
     pub remaining_time: TakTimeInfo,
-    pub last_update_timestamp: T,
-    pub is_ticking: bool,
+    pub is_ticking: Option<T>,
 }
 
 impl<T: TakInstant> TakClock<T> {
@@ -73,7 +72,7 @@ pub struct TakGame<T: TakInstant> {
 }
 
 impl<T: TakInstant> TakGame<T> {
-    pub fn new(settings: &TakGameSettings, now: T) -> Self {
+    pub fn new(settings: &TakGameSettings) -> Self {
         let base_game = TakBaseGame::new(&settings.base);
         let contingent = match &settings.time_settings {
             TakTimeSettings::Realtime(settings) => settings.contingent,
@@ -84,8 +83,7 @@ impl<T: TakInstant> TakGame<T> {
                 white_remaining: contingent,
                 black_remaining: contingent,
             },
-            last_update_timestamp: now,
-            is_ticking: false,
+            is_ticking: None,
         };
 
         Self {
@@ -99,17 +97,10 @@ impl<T: TakInstant> TakGame<T> {
         settings: &TakGameSettings,
         clock: TakClock<T>,
         history: Vec<TakActionRecord>,
-        result: Option<TakGameResult>,
     ) -> Result<Self, InvalidActionReason> {
         let mut base = TakBaseGame::new(&settings.base);
         for record in &history {
             base.do_action(record.action.clone())?;
-        }
-        if let Some(result) = result {
-            if base.result.as_ref().is_some_and(|r| *r != result) {
-                return Err(InvalidActionReason::GameOver);
-            }
-            base.result = Some(result);
         }
         Ok(Self {
             base,
@@ -142,7 +133,7 @@ impl<T: TakInstant> TakGame<T> {
     fn set_game_over(&mut self, now: T, game_result: TakGameResult) {
         let player = self.base.current_player;
         self.maybe_apply_elapsed(now, player);
-        self.clock.is_ticking = false;
+        self.clock.is_ticking = None;
         self.base.result = Some(game_result);
     }
 
@@ -174,11 +165,14 @@ impl<T: TakInstant> TakGame<T> {
             TakPlayer::White => self.clock.remaining_time.white_remaining,
             TakPlayer::Black => self.clock.remaining_time.black_remaining,
         };
-        if self.base.current_player != player || !self.clock.is_ticking {
-            return base_remaining;
+        if let Some(last_update_timestamp) = self.clock.is_ticking
+            && self.base.current_player == player
+        {
+            let elapsed = now.saturating_duration_since(last_update_timestamp);
+            base_remaining.saturating_sub(elapsed)
+        } else {
+            base_remaining
         }
-        let elapsed = now.saturating_duration_since(self.clock.last_update_timestamp);
-        base_remaining.saturating_sub(elapsed)
     }
 
     pub fn get_time_info(&self, now: T) -> TakTimeInfo {
@@ -193,18 +187,18 @@ impl<T: TakInstant> TakGame<T> {
             TakPlayer::White => &mut self.clock.remaining_time.white_remaining,
             TakPlayer::Black => &mut self.clock.remaining_time.black_remaining,
         };
-        if self.clock.is_ticking {
-            let elapsed = now.saturating_duration_since(self.clock.last_update_timestamp);
+        if let Some(last_update_timestamp) = self.clock.is_ticking {
+            let elapsed = now.saturating_duration_since(last_update_timestamp);
             *remaining = remaining.saturating_sub(elapsed);
         }
 
-        self.clock.last_update_timestamp = now;
+        self.clock.is_ticking = Some(now);
     }
 
     fn start_or_update_clock(&mut self, now: T, player: TakPlayer) {
         self.maybe_apply_elapsed(now, player);
         self.clock.end_turn(&self.time_settings, &self.base, player);
-        self.clock.is_ticking = true;
+        self.clock.is_ticking = Some(now);
     }
 
     pub fn do_action(&mut self, action: TakAction, now: T) -> Result<(), InvalidActionReason> {
@@ -221,7 +215,7 @@ impl<T: TakInstant> TakGame<T> {
         self.base.do_action(action)?;
         self.start_or_update_clock(now, player);
         if !self.is_ongoing() {
-            self.clock.is_ticking = false;
+            self.clock.is_ticking = None;
         }
 
         self.history.push(record);
@@ -339,22 +333,19 @@ mod tests {
     #[test]
     fn test_reserve_constraints() {
         let now = Instant::now();
-        let mut game = TakGame::new(
-            &TakGameSettings {
-                base: TakBaseGameSettings {
-                    board_size: 5,
-                    half_komi: 0,
-                    reserve: TakReserve::new(3, 1),
-                    opening: TakOpening::Swap,
-                },
-                time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
-                    contingent: Duration::from_secs(300),
-                    increment: Duration::from_secs(5),
-                    extra: Some((2, Duration::from_secs(60))),
-                }),
+        let mut game = TakGame::new(&TakGameSettings {
+            base: TakBaseGameSettings {
+                board_size: 5,
+                half_komi: 0,
+                reserve: TakReserve::new(3, 1),
+                opening: TakOpening::Swap,
             },
-            now,
-        );
+            time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
+                contingent: Duration::from_secs(300),
+                increment: Duration::from_secs(5),
+                extra: Some((2, Duration::from_secs(60))),
+            }),
+        });
 
         do_move(
             &mut game,
@@ -488,22 +479,19 @@ mod tests {
                 },
             ),
         ] {
-            let mut game = TakGame::new(
-                &TakGameSettings {
-                    base: TakBaseGameSettings {
-                        board_size: 5,
-                        half_komi,
-                        reserve: TakReserve::new(2, 0),
-                        opening: TakOpening::Swap,
-                    },
-                    time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
-                        contingent: Duration::from_secs(300),
-                        increment: Duration::from_secs(5),
-                        extra: Some((2, Duration::from_secs(60))),
-                    }),
+            let mut game = TakGame::new(&TakGameSettings {
+                base: TakBaseGameSettings {
+                    board_size: 5,
+                    half_komi,
+                    reserve: TakReserve::new(2, 0),
+                    opening: TakOpening::Swap,
                 },
-                now,
-            );
+                time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
+                    contingent: Duration::from_secs(300),
+                    increment: Duration::from_secs(5),
+                    extra: Some((2, Duration::from_secs(60))),
+                }),
+            });
             do_move(
                 &mut game,
                 TakAction::Place {
@@ -530,22 +518,19 @@ mod tests {
                 result,
             );
 
-            let mut game2 = TakGame::new(
-                &TakGameSettings {
-                    base: TakBaseGameSettings {
-                        board_size: 5,
-                        half_komi,
-                        reserve: TakReserve::new(1, 1),
-                        opening: TakOpening::Swap,
-                    },
-                    time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
-                        contingent: Duration::from_secs(300),
-                        increment: Duration::from_secs(5),
-                        extra: Some((2, Duration::from_secs(60))),
-                    }),
+            let mut game2 = TakGame::new(&TakGameSettings {
+                base: TakBaseGameSettings {
+                    board_size: 5,
+                    half_komi,
+                    reserve: TakReserve::new(1, 1),
+                    opening: TakOpening::Swap,
                 },
-                now,
-            );
+                time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
+                    contingent: Duration::from_secs(300),
+                    increment: Duration::from_secs(5),
+                    extra: Some((2, Duration::from_secs(60))),
+                }),
+            });
             do_move(
                 &mut game,
                 TakAction::Place {
@@ -577,22 +562,19 @@ mod tests {
     #[test]
     fn test_first_move_must_be_flat() {
         let now = Instant::now();
-        let mut game = TakGame::new(
-            &TakGameSettings {
-                base: TakBaseGameSettings {
-                    board_size: 5,
-                    half_komi: 0,
-                    reserve: TakReserve::new(21, 1),
-                    opening: TakOpening::Swap,
-                },
-                time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
-                    contingent: Duration::from_secs(300),
-                    increment: Duration::from_secs(5),
-                    extra: Some((2, Duration::from_secs(60))),
-                }),
+        let mut game = TakGame::new(&TakGameSettings {
+            base: TakBaseGameSettings {
+                board_size: 5,
+                half_komi: 0,
+                reserve: TakReserve::new(21, 1),
+                opening: TakOpening::Swap,
             },
-            now,
-        );
+            time_settings: TakTimeSettings::Realtime(TakRealtimeTimeControl {
+                contingent: Duration::from_secs(300),
+                increment: Duration::from_secs(5),
+                extra: Some((2, Duration::from_secs(60))),
+            }),
+        });
 
         // first move must be flat stone
         assert!(

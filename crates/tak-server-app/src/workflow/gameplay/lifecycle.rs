@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     PortsCollection,
     ports::{
-        game::GameRepository,
+        game::{GameRepository, GameStateRepository},
         matches::MatchRepository,
         moderation::ModerationRepository,
         notification::{ListenerGameMessageType, ListenerMessage, ListenerNotificationPort},
@@ -19,7 +19,7 @@ use crate::{
 use tak_core::{TakActionRecord, TakGameResult, TakPlayer};
 use tak_domain::{
     GameId, MatchId,
-    game::Game,
+    game::{FinishedGameState, Game, GameCreationError, GameState},
     game_record::{GameMetadata, GameRatingInfo, GameRecord},
     matches::MatchStatus,
     rating::{PlayerRating, RatingService},
@@ -331,19 +331,15 @@ impl<
         ctx: &Ports::TrCtx,
         game_id: GameId,
         mut record: GameRecord,
+        state: FinishedGameState,
     ) -> Result<(), ()> {
-        let game = &record.game;
-        let Some(result) = game.game.result() else {
-            tracing::error!("Game {} has no result, cannot finalize", game_id);
-            return Err(());
-        };
         tracing::info!("Finalizing game {}", game_id);
         let over_msg = ListenerMessage::GameEvent {
             game_id,
             event_type: ListenerGameMessageType::GameOver {
-                game_result: result.clone(),
+                game_result: state.result.clone(),
             },
-            time_info: game.game.clock.remaining_time.clone(),
+            time_info: state.time_info.clone(),
         };
 
         self.notify_player_workflow.notify_players(
@@ -374,10 +370,10 @@ impl<
         let is_white_not_guest = white_account.as_ref().map_or(false, |x| !x.is_guest());
         let is_black_not_guest = black_account.as_ref().map_or(false, |x| !x.is_guest());
 
-        record.rating_info = if !(is_white_not_guest && is_black_not_guest) {
+        let rating_info = if !(is_white_not_guest && is_black_not_guest) {
             None
         } else {
-            self.update_ratings(&ctx, &record.metadata, result, &game.game.history)
+            self.update_ratings(&ctx, &record.metadata, &state.result, &state.history)
                 .await
                 .map_err(|RepoError(e)| {
                     tracing::error!("Failed to update ratings for game {}: {}", game_id, e);
@@ -390,7 +386,7 @@ impl<
         );
 
         if let Some(match_id) = record.metadata.match_id {
-            self.handle_match(&ctx, game_id, match_id, &record.metadata, result)
+            self.handle_match(&ctx, game_id, match_id, &record.metadata, &state.result)
                 .await
                 .map_err(|e| {
                     tracing::error!(
@@ -407,7 +403,7 @@ impl<
         self.update_stats(
             &ctx,
             &record.metadata,
-            result,
+            &state.result,
             is_white_not_guest,
             is_black_not_guest,
         )
@@ -418,6 +414,7 @@ impl<
 
         tracing::debug!("Stats updated for game {}", game_id);
 
+        record.update_finished(state.result, rating_info.clone());
         self.ports
             .game_repository()
             .update_game(&ctx, game_id, record.clone())
@@ -463,7 +460,7 @@ impl<
                 return Err(());
             }
         };
-        let mut record = match self.ports.game_repository().get_game(&ctx, game_id).await {
+        let record = match self.ports.game_repository().get_game(&ctx, game_id).await {
             Ok(Some(record)) => record,
             Ok(None) => {
                 tracing::error!("Game {} not found in game repository", game_id);
@@ -478,29 +475,65 @@ impl<
                 return Err(());
             }
         };
-        if let Err(e) = func(&mut record.game, &record.metadata) {
-            return Ok(Err(e));
-        }
-        if !record.game.game.is_ongoing() {
-            if let Err(()) = self.finalize_game(&ctx, game_id, record).await {
-                tracing::error!("Failed to finalize game {}", game_id);
+        let game_state = match self
+            .ports
+            .game_state_repository()
+            .get_state(&ctx, game_id)
+            .await
+        {
+            Ok(Some(GameState::Ongoing(state))) => state,
+            Ok(Some(GameState::Finished(_))) => {
+                tracing::error!("Game {} is already finished", game_id);
                 return Err(());
             }
-        } else {
-            if let Err(RepoError(e)) = self
-                .ports
-                .game_repository()
-                .update_game(&ctx, game_id, record)
-                .await
-            {
+            Ok(None) => {
+                tracing::error!("Game state for {} not found in repository", game_id);
+                return Err(());
+            }
+            Err(RepoError(e)) => {
                 tracing::error!(
-                    "Failed to update ongoing game {} in repository: {}",
+                    "Failed to retrieve game state {} from repository: {}",
                     game_id,
                     e
                 );
                 return Err(());
             }
+        };
+        let mut game = match Game::from_state(&record.metadata.settings, game_state) {
+            Ok(game) => game,
+            Err(GameCreationError::InvalidState) => {
+                tracing::error!("Failed to create game from state");
+                return Err(());
+            }
+        };
+        if let Err(e) = func(&mut game, &record.metadata) {
+            return Ok(Err(e));
         }
+
+        let new_state = game.to_game_state();
+        if let Err(RepoError(e)) = self
+            .ports
+            .game_state_repository()
+            .set_state(&ctx, game_id, new_state.clone())
+            .await
+        {
+            tracing::error!(
+                "Failed to update ongoing game {} in repository: {}",
+                game_id,
+                e
+            );
+            return Err(());
+        }
+        if let GameState::Finished(finished_state) = new_state {
+            if let Err(()) = self
+                .finalize_game(&ctx, game_id, record, finished_state)
+                .await
+            {
+                tracing::error!("Failed to finalize game {}", game_id);
+                return Err(());
+            }
+        }
+
         match self.ports.transaction_manager().commit(ctx).await {
             Ok(_) => Ok(Ok(())),
             Err(RepoError(e)) => {

@@ -2,16 +2,19 @@ use crate::{
     PortsCollection,
     ports::{
         PaginatedResponse,
-        game::{GameQuery, GameRepository},
+        game::{GameQuery, GameRepository, GameStateRepository},
         transaction::{RepoError, TransactionManager},
     },
 };
 use std::sync::Arc;
-use tak_domain::{GameId, MatchId, game_record::GameRecord};
+use tak_domain::{GameId, MatchId, game::GameState, game_record::GameRecord};
 
 #[async_trait::async_trait]
 pub trait GameQueryUseCase {
-    async fn get_game(&self, game_id: GameId) -> Result<Option<GameRecord>, GameQueryError>;
+    async fn get_game(
+        &self,
+        game_id: GameId,
+    ) -> Result<Option<(GameRecord, GameState)>, GameQueryError>;
     async fn query_games(
         &self,
         filter: GameQuery,
@@ -55,7 +58,10 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameQueryUseCase
         }
     }
 
-    async fn get_game(&self, game_id: GameId) -> Result<Option<GameRecord>, GameQueryError> {
+    async fn get_game(
+        &self,
+        game_id: GameId,
+    ) -> Result<Option<(GameRecord, GameState)>, GameQueryError> {
         let ctx = self.ports.transaction_manager().simple();
         let game = match self.ports.game_repository().get_game(&ctx, game_id).await {
             Ok(Some(result)) => result,
@@ -65,7 +71,23 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameQueryUseCase
                 return Err(GameQueryError::RepositoryError);
             }
         };
-        Ok(Some(game))
+        let state = match self
+            .ports
+            .game_state_repository()
+            .get_state(&ctx, game_id)
+            .await
+        {
+            Ok(Some(state)) => state,
+            Ok(None) => {
+                tracing::error!("Game state not found for game id: {}", game_id);
+                return Err(GameQueryError::RepositoryError);
+            }
+            Err(RepoError(e)) => {
+                tracing::error!("Error getting game state: {}", e);
+                return Err(GameQueryError::RepositoryError);
+            }
+        };
+        Ok(Some((game, state)))
     }
 
     async fn get_games_of_match(

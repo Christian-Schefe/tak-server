@@ -7,7 +7,7 @@ use crate::{
         connection::{UserConnectionPort, UserOnlineStatusPort},
         email::EmailPort,
         event::EventRepository,
-        game::GameRepository,
+        game::{GameRepository, GameStateRepository},
         matches::MatchRepository,
         moderation::ModerationRepository,
         notification::ListenerNotificationPort,
@@ -136,77 +136,136 @@ pub struct Application {
     pub authentication_use_case: Arc<dyn AuthenticationUseCase + Send + Sync + 'static>,
 }
 
+pub trait PortsCollection {
+    type GameRepo: GameRepository<Self::TrCtx> + Send + Sync + 'static;
+    type RatingRepo: RatingRepository<Self::TrCtx> + Send + Sync + 'static;
+    type EventRepo: EventRepository + Send + Sync + 'static;
+    type StatsRepo: StatsRepository<Self::TrCtx> + Send + Sync + 'static;
+    type ProfileRepo: AccountProfileRepository<Self::TrCtx> + Send + Sync + 'static;
+    type ProfilePictureRepo: ProfilePictureRepository + Send + Sync + 'static;
+    type PuzzleRepo: PuzzleRepository<Self::TrCtx> + Send + Sync + 'static;
+    type ChatRepo: ChatRepository<Self::TrCtx> + Send + Sync + 'static;
+    type RatingHistoryRepo: RatingHistoryRepository<Self::TrCtx> + Send + Sync + 'static;
+    type TournamentRepo: TournamentRepository<Self::TrCtx> + Send + Sync + 'static;
+    type TournamentPlayerRepo: TournamentPlayerRepository<Self::TrCtx> + Send + Sync + 'static;
+    type MatchRepo: MatchRepository<Self::TrCtx> + Send + Sync + 'static;
+    type TournamentRoundRepo: TournamentRoundRepository<Self::TrCtx> + Send + Sync + 'static;
+    type ModerationRepo: ModerationRepository<Self::TrCtx> + Send + Sync + 'static;
+    type TransactionMgr: TransactionManager<Self::TrCtx> + Send + Sync + 'static;
+    type GameStateRepo: GameStateRepository<Self::TrCtx> + Send + Sync + 'static;
+    type TrCtx: Send + Sync + 'static;
+    fn game_repository(&self) -> Arc<Self::GameRepo>;
+    fn rating_repository(&self) -> Arc<Self::RatingRepo>;
+    fn event_repository(&self) -> Arc<Self::EventRepo>;
+    fn stats_repository(&self) -> Arc<Self::StatsRepo>;
+    fn profile_repository(&self) -> Arc<Self::ProfileRepo>;
+    fn profile_picture_repository(&self) -> Arc<Self::ProfilePictureRepo>;
+    fn puzzle_repository(&self) -> Arc<Self::PuzzleRepo>;
+    fn chat_repository(&self) -> Arc<Self::ChatRepo>;
+    fn rating_history_repository(&self) -> Arc<Self::RatingHistoryRepo>;
+    fn tournament_repository(&self) -> Arc<Self::TournamentRepo>;
+    fn tournament_player_repository(&self) -> Arc<Self::TournamentPlayerRepo>;
+    fn match_repository(&self) -> Arc<Self::MatchRepo>;
+    fn tournament_round_repository(&self) -> Arc<Self::TournamentRoundRepo>;
+    fn moderation_repository(&self) -> Arc<Self::ModerationRepo>;
+    fn transaction_manager(&self) -> Arc<Self::TransactionMgr>;
+    fn game_state_repository(&self) -> Arc<Self::GameStateRepo>;
+}
+
 pub struct PortsCollectionImpl<
-    G: GameRepository<TrCtx>,
-    R: RatingRepository<TrCtx>,
-    E: EventRepository,
-    S: StatsRepository<TrCtx>,
-    PF: AccountProfileRepository<TrCtx>,
-    PFP: ProfilePictureRepository,
-    PZR: PuzzleRepository<TrCtx>,
-    CR: ChatRepository<TrCtx>,
-    RH: RatingHistoryRepository<TrCtx>,
-    TO: TournamentRepository<TrCtx>,
-    TPR: TournamentPlayerRepository<TrCtx>,
-    MR: MatchRepository<TrCtx>,
-    TRR: TournamentRoundRepository<TrCtx>,
-    MO: ModerationRepository<TrCtx>,
-    TR: TransactionManager<TrCtx>,
+    GameRepo: GameRepository<TrCtx>,
+    RatingRepo: RatingRepository<TrCtx>,
+    EventRepo: EventRepository,
+    StatsRepo: StatsRepository<TrCtx>,
+    AccountProfileRepo: AccountProfileRepository<TrCtx>,
+    ProfilePictureRepo: ProfilePictureRepository,
+    PuzzleRepo: PuzzleRepository<TrCtx>,
+    ChatRepo: ChatRepository<TrCtx>,
+    RatingHistoryRepo: RatingHistoryRepository<TrCtx>,
+    TournamentRepo: TournamentRepository<TrCtx>,
+    TournamentPlayerRepo: TournamentPlayerRepository<TrCtx>,
+    MatchRepo: MatchRepository<TrCtx>,
+    TournamentRoundRepo: TournamentRoundRepository<TrCtx>,
+    ModerationRepo: ModerationRepository<TrCtx>,
+    GameStateRepo: GameStateRepository<TrCtx>,
+    TransactionMgr: TransactionManager<TrCtx>,
     TrCtx,
 > {
-    pub game_repository: Arc<G>,
-    pub rating_repository: Arc<R>,
-    pub event_repository: Arc<E>,
-    pub stats_repository: Arc<S>,
-    pub profile_repository: Arc<PF>,
-    pub profile_picture_repository: Arc<PFP>,
-    pub puzzle_repository: Arc<PZR>,
-    pub chat_repository: Arc<CR>,
-    pub rating_history_repository: Arc<RH>,
-    pub tournament_repository: Arc<TO>,
-    pub tournament_player_repository: Arc<TPR>,
-    pub match_repository: Arc<MR>,
-    pub tournament_round_repository: Arc<TRR>,
-    pub moderation_repository: Arc<MO>,
-    pub transaction_manager: Arc<TR>,
+    pub game_repository: Arc<GameRepo>,
+    pub rating_repository: Arc<RatingRepo>,
+    pub event_repository: Arc<EventRepo>,
+    pub stats_repository: Arc<StatsRepo>,
+    pub profile_repository: Arc<AccountProfileRepo>,
+    pub profile_picture_repository: Arc<ProfilePictureRepo>,
+    pub puzzle_repository: Arc<PuzzleRepo>,
+    pub chat_repository: Arc<ChatRepo>,
+    pub rating_history_repository: Arc<RatingHistoryRepo>,
+    pub tournament_repository: Arc<TournamentRepo>,
+    pub tournament_player_repository: Arc<TournamentPlayerRepo>,
+    pub match_repository: Arc<MatchRepo>,
+    pub tournament_round_repository: Arc<TournamentRoundRepo>,
+    pub moderation_repository: Arc<ModerationRepo>,
+    pub game_state_repository: Arc<GameStateRepo>,
+    pub transaction_manager: Arc<TransactionMgr>,
     ctx: std::marker::PhantomData<TrCtx>,
 }
 
 impl<
-    G: GameRepository<TrCtx>,
-    R: RatingRepository<TrCtx>,
-    E: EventRepository,
-    S: StatsRepository<TrCtx>,
-    PF: AccountProfileRepository<TrCtx>,
-    PFP: ProfilePictureRepository,
-    PZR: PuzzleRepository<TrCtx>,
-    CR: ChatRepository<TrCtx>,
-    RH: RatingHistoryRepository<TrCtx>,
-    TO: TournamentRepository<TrCtx>,
-    TPR: TournamentPlayerRepository<TrCtx>,
-    MR: MatchRepository<TrCtx>,
-    TRR: TournamentRoundRepository<TrCtx>,
-    MO: ModerationRepository<TrCtx>,
-    TR: TransactionManager<TrCtx>,
+    GameRepo: GameRepository<TrCtx>,
+    RatingRepo: RatingRepository<TrCtx>,
+    EventRepo: EventRepository,
+    StatsRepo: StatsRepository<TrCtx>,
+    AccountProfileRepo: AccountProfileRepository<TrCtx>,
+    ProfilePictureRepo: ProfilePictureRepository,
+    PuzzleRepo: PuzzleRepository<TrCtx>,
+    ChatRepo: ChatRepository<TrCtx>,
+    RatingHistoryRepo: RatingHistoryRepository<TrCtx>,
+    TournamentRepo: TournamentRepository<TrCtx>,
+    TournamentPlayerRepo: TournamentPlayerRepository<TrCtx>,
+    MatchRepo: MatchRepository<TrCtx>,
+    TournamentRoundRepo: TournamentRoundRepository<TrCtx>,
+    ModerationRepo: ModerationRepository<TrCtx>,
+    GameStateRepo: GameStateRepository<TrCtx>,
+    TransactionMgr: TransactionManager<TrCtx>,
     TrCtx,
-> PortsCollectionImpl<G, R, E, S, PF, PFP, PZR, CR, RH, TO, TPR, MR, TRR, MO, TR, TrCtx>
+>
+    PortsCollectionImpl<
+        GameRepo,
+        RatingRepo,
+        EventRepo,
+        StatsRepo,
+        AccountProfileRepo,
+        ProfilePictureRepo,
+        PuzzleRepo,
+        ChatRepo,
+        RatingHistoryRepo,
+        TournamentRepo,
+        TournamentPlayerRepo,
+        MatchRepo,
+        TournamentRoundRepo,
+        ModerationRepo,
+        GameStateRepo,
+        TransactionMgr,
+        TrCtx,
+    >
 {
     pub fn new(
-        game_repository: Arc<G>,
-        rating_repository: Arc<R>,
-        event_repository: Arc<E>,
-        stats_repository: Arc<S>,
-        profile_repository: Arc<PF>,
-        profile_picture_repository: Arc<PFP>,
-        puzzle_repository: Arc<PZR>,
-        chat_repository: Arc<CR>,
-        rating_history_repository: Arc<RH>,
-        tournament_repository: Arc<TO>,
-        tournament_player_repository: Arc<TPR>,
-        match_repository: Arc<MR>,
-        tournament_round_repository: Arc<TRR>,
-        moderation_repository: Arc<MO>,
-        transaction_manager: Arc<TR>,
+        game_repository: Arc<GameRepo>,
+        rating_repository: Arc<RatingRepo>,
+        event_repository: Arc<EventRepo>,
+        stats_repository: Arc<StatsRepo>,
+        profile_repository: Arc<AccountProfileRepo>,
+        profile_picture_repository: Arc<ProfilePictureRepo>,
+        puzzle_repository: Arc<PuzzleRepo>,
+        chat_repository: Arc<ChatRepo>,
+        rating_history_repository: Arc<RatingHistoryRepo>,
+        tournament_repository: Arc<TournamentRepo>,
+        tournament_player_repository: Arc<TournamentPlayerRepo>,
+        match_repository: Arc<MatchRepo>,
+        tournament_round_repository: Arc<TournamentRoundRepo>,
+        moderation_repository: Arc<ModerationRepo>,
+        game_state_repository: Arc<GameStateRepo>,
+        transaction_manager: Arc<TransactionMgr>,
     ) -> Self {
         Self {
             game_repository,
@@ -223,81 +282,68 @@ impl<
             match_repository,
             tournament_round_repository,
             moderation_repository,
+            game_state_repository,
             transaction_manager,
             ctx: std::marker::PhantomData,
         }
     }
 }
 
-pub trait PortsCollection {
-    type GameRepo: GameRepository<Self::TrCtx> + Send + Sync + 'static;
-    type RatingRepo: RatingRepository<Self::TrCtx> + Send + Sync + 'static;
-    type EventRepo: EventRepository + Send + Sync + 'static;
-    type StatsRepo: StatsRepository<Self::TrCtx> + Send + Sync + 'static;
-    type ProfileRepo: AccountProfileRepository<Self::TrCtx> + Send + Sync + 'static;
-    type ProfilePictureRepo: ProfilePictureRepository + Send + Sync + 'static;
-    type PuzzleRepo: PuzzleRepository<Self::TrCtx> + Send + Sync + 'static;
-    type ChatRepo: ChatRepository<Self::TrCtx> + Send + Sync + 'static;
-    type RatingHistoryRepo: RatingHistoryRepository<Self::TrCtx> + Send + Sync + 'static;
-    type TournamentRepo: TournamentRepository<Self::TrCtx> + Send + Sync + 'static;
-    type TournamentPlayerRepo: TournamentPlayerRepository<Self::TrCtx> + Send + Sync + 'static;
-    type MatchRepo: MatchRepository<Self::TrCtx> + Send + Sync + 'static;
-    type TournamentRoundRepo: TournamentRoundRepository<Self::TrCtx> + Send + Sync + 'static;
-    type ModerationRepo: ModerationRepository<Self::TrCtx> + Send + Sync + 'static;
-    type TransactionManagerType: TransactionManager<Self::TrCtx> + Send + Sync + 'static;
-    type TrCtx: Send + Sync + 'static;
-    fn game_repository(&self) -> Arc<Self::GameRepo>;
-    fn rating_repository(&self) -> Arc<Self::RatingRepo>;
-    fn event_repository(&self) -> Arc<Self::EventRepo>;
-    fn stats_repository(&self) -> Arc<Self::StatsRepo>;
-    fn profile_repository(&self) -> Arc<Self::ProfileRepo>;
-    fn profile_picture_repository(&self) -> Arc<Self::ProfilePictureRepo>;
-    fn puzzle_repository(&self) -> Arc<Self::PuzzleRepo>;
-    fn chat_repository(&self) -> Arc<Self::ChatRepo>;
-    fn rating_history_repository(&self) -> Arc<Self::RatingHistoryRepo>;
-    fn tournament_repository(&self) -> Arc<Self::TournamentRepo>;
-    fn tournament_player_repository(&self) -> Arc<Self::TournamentPlayerRepo>;
-    fn match_repository(&self) -> Arc<Self::MatchRepo>;
-    fn tournament_round_repository(&self) -> Arc<Self::TournamentRoundRepo>;
-    fn moderation_repository(&self) -> Arc<Self::ModerationRepo>;
-    fn transaction_manager(&self) -> Arc<Self::TransactionManagerType>;
-}
-
 impl<
-    G: GameRepository<TrCtx> + Send + Sync + 'static,
-    R: RatingRepository<TrCtx> + Send + Sync + 'static,
-    E: EventRepository + Send + Sync + 'static,
-    S: StatsRepository<TrCtx> + Send + Sync + 'static,
-    PF: AccountProfileRepository<TrCtx> + Send + Sync + 'static,
-    PFP: ProfilePictureRepository + Send + Sync + 'static,
-    PZR: PuzzleRepository<TrCtx> + Send + Sync + 'static,
-    CR: ChatRepository<TrCtx> + Send + Sync + 'static,
-    RH: RatingHistoryRepository<TrCtx> + Send + Sync + 'static,
-    TO: TournamentRepository<TrCtx> + Send + Sync + 'static,
-    TPR: TournamentPlayerRepository<TrCtx> + Send + Sync + 'static,
-    MR: MatchRepository<TrCtx> + Send + Sync + 'static,
-    TRR: TournamentRoundRepository<TrCtx> + Send + Sync + 'static,
-    MO: ModerationRepository<TrCtx> + Send + Sync + 'static,
-    TR: TransactionManager<TrCtx> + Send + Sync + 'static,
+    GameRepo: GameRepository<TrCtx> + Send + Sync + 'static,
+    RatingRepo: RatingRepository<TrCtx> + Send + Sync + 'static,
+    EventRepo: EventRepository + Send + Sync + 'static,
+    StatsRepo: StatsRepository<TrCtx> + Send + Sync + 'static,
+    ProfileRepo: AccountProfileRepository<TrCtx> + Send + Sync + 'static,
+    ProfilePictureRepo: ProfilePictureRepository + Send + Sync + 'static,
+    PuzzleRepo: PuzzleRepository<TrCtx> + Send + Sync + 'static,
+    ChatRepo: ChatRepository<TrCtx> + Send + Sync + 'static,
+    RatingHistoryRepo: RatingHistoryRepository<TrCtx> + Send + Sync + 'static,
+    TournamentRepo: TournamentRepository<TrCtx> + Send + Sync + 'static,
+    TournamentPlayerRepo: TournamentPlayerRepository<TrCtx> + Send + Sync + 'static,
+    MatchRepo: MatchRepository<TrCtx> + Send + Sync + 'static,
+    TournamentRoundRepo: TournamentRoundRepository<TrCtx> + Send + Sync + 'static,
+    ModerationRepo: ModerationRepository<TrCtx> + Send + Sync + 'static,
+    GameStateRepo: GameStateRepository<TrCtx> + Send + Sync + 'static,
+    TransactionMgr: TransactionManager<TrCtx> + Send + Sync + 'static,
     TrCtx: Send + Sync + 'static,
 > PortsCollection
-    for PortsCollectionImpl<G, R, E, S, PF, PFP, PZR, CR, RH, TO, TPR, MR, TRR, MO, TR, TrCtx>
+    for PortsCollectionImpl<
+        GameRepo,
+        RatingRepo,
+        EventRepo,
+        StatsRepo,
+        ProfileRepo,
+        ProfilePictureRepo,
+        PuzzleRepo,
+        ChatRepo,
+        RatingHistoryRepo,
+        TournamentRepo,
+        TournamentPlayerRepo,
+        MatchRepo,
+        TournamentRoundRepo,
+        ModerationRepo,
+        GameStateRepo,
+        TransactionMgr,
+        TrCtx,
+    >
 {
-    type GameRepo = G;
-    type RatingRepo = R;
-    type EventRepo = E;
-    type StatsRepo = S;
-    type ProfileRepo = PF;
-    type ProfilePictureRepo = PFP;
-    type PuzzleRepo = PZR;
-    type ChatRepo = CR;
-    type RatingHistoryRepo = RH;
-    type TournamentRepo = TO;
-    type TournamentPlayerRepo = TPR;
-    type MatchRepo = MR;
-    type TournamentRoundRepo = TRR;
-    type ModerationRepo = MO;
-    type TransactionManagerType = TR;
+    type GameRepo = GameRepo;
+    type RatingRepo = RatingRepo;
+    type EventRepo = EventRepo;
+    type StatsRepo = StatsRepo;
+    type ProfileRepo = ProfileRepo;
+    type ProfilePictureRepo = ProfilePictureRepo;
+    type PuzzleRepo = PuzzleRepo;
+    type ChatRepo = ChatRepo;
+    type RatingHistoryRepo = RatingHistoryRepo;
+    type TournamentRepo = TournamentRepo;
+    type TournamentPlayerRepo = TournamentPlayerRepo;
+    type MatchRepo = MatchRepo;
+    type TournamentRoundRepo = TournamentRoundRepo;
+    type ModerationRepo = ModerationRepo;
+    type GameStateRepo = GameStateRepo;
+    type TransactionMgr = TransactionMgr;
     type TrCtx = TrCtx;
 
     fn game_repository(&self) -> Arc<Self::GameRepo> {
@@ -342,7 +388,10 @@ impl<
     fn moderation_repository(&self) -> Arc<Self::ModerationRepo> {
         self.moderation_repository.clone()
     }
-    fn transaction_manager(&self) -> Arc<Self::TransactionManagerType> {
+    fn game_state_repository(&self) -> Arc<Self::GameStateRepo> {
+        self.game_state_repository.clone()
+    }
+    fn transaction_manager(&self) -> Arc<Self::TransactionMgr> {
         self.transaction_manager.clone()
     }
 }

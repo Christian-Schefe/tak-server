@@ -11,6 +11,7 @@ use tak_persistence_sea_orm_migrations::Migrator;
 
 pub mod account;
 pub mod chat;
+pub mod game_state;
 pub mod games;
 pub mod matches;
 pub mod moderation;

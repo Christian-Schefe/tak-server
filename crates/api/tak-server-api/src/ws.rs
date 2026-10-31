@@ -13,7 +13,7 @@ use futures::{
     stream::{SplitSink, SplitStream},
 };
 use tak_core::ptn::{action_from_ptn, action_to_ptn, game_result_to_string};
-use tak_domain::{GameId, UserId, chat::ChatConversation, game::request::GameRequest};
+use tak_domain::{GameId, UserId, chat::ChatConversation, game::GameRequest};
 use tak_player_connection::{ConnectionId, PlayerSimpleConnectionPort};
 use tak_server_api_contract::{
     game::{ForPlayer, JsonGameRequest},

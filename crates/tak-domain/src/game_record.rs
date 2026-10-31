@@ -1,8 +1,6 @@
-use std::time::SystemTime;
+use tak_core::{TakGameResult, TakGameSettings, TakPlayer};
 
-use tak_core::{TakGameSettings, TakPlayer};
-
-use crate::{MatchId, UserId, game::Game};
+use crate::{MatchId, UserId};
 
 #[derive(Debug, Clone)]
 pub struct PlayerSnapshot {
@@ -85,17 +83,20 @@ pub struct GameRatingInfo {
 #[derive(Debug, Clone)]
 pub struct GameRecord {
     pub metadata: GameMetadata,
+    pub result: Option<TakGameResult>,
     pub rating_info: Option<GameRatingInfo>,
-    pub game: Game,
 }
 
 impl GameRecord {
-    pub fn new_ongoing(metadata: GameMetadata, now: SystemTime) -> Self {
-        let game = Game::new(&metadata.settings, now);
+    pub fn new(metadata: GameMetadata) -> Self {
         Self {
             metadata,
-            game,
+            result: None,
             rating_info: None,
         }
+    }
+    pub fn update_finished(&mut self, result: TakGameResult, rating_info: Option<GameRatingInfo>) {
+        self.result = Some(result);
+        self.rating_info = rating_info;
     }
 }

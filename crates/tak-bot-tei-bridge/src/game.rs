@@ -23,8 +23,8 @@ impl GameService {
         player: TakPlayer,
         status: &JsonGameDetail,
     ) -> Option<(TakPlayer, TakGame<()>)> {
-        let mut game = TakGame::new(&status.record.metadata.game_settings.to_game_settings(), ());
-        for action in &status.record.history {
+        let mut game = TakGame::new(&status.metadata.game_settings.to_game_settings());
+        for action in &status.history {
             let action = tak_core::ptn::action_from_ptn(action)?;
             match game.do_action(action, ()) {
                 Ok(()) => {}
@@ -47,7 +47,7 @@ impl GameService {
         player: TakPlayer,
         settings: &TakGameSettings,
     ) -> Option<(TakPlayer, TakGame<()>)> {
-        let game = TakGame::new(settings, ());
+        let game = TakGame::new(settings);
         self.games
             .lock()
             .unwrap()

@@ -18,8 +18,8 @@ use tak_core::TakAction;
 use tak_domain::{
     GameId, UserId,
     game::{
-        CheckDisconnectTimeoutResult, DoActionResult, GameOverResult,
-        request::{GameRequest, GameRequestType},
+        CheckDisconnectTimeoutResult, DoActionResult, GameOverResult, GameRequest, GameRequestType,
+        UndoActionResult,
     },
 };
 pub enum ObserveOutcome {
@@ -153,16 +153,17 @@ impl<
                     DoActionResult::NotPlayersTurn => {
                         return Err(ActionError::ActionError(DoActionError::NotPlayersTurn));
                     }
-                    DoActionResult::ActionPerformed(action_record) => {
+                    DoActionResult::ActionPerformed { action, ply_index } => {
+                        let time_info = game.game.get_time_info(now);
                         message = Some((
                             ListenerMessage::GameEvent {
                                 game_id,
                                 event_type: ListenerGameMessageType::GameAction {
                                     user_id,
-                                    action: action_record.action,
-                                    ply_index: action_record.ply_index,
+                                    action,
+                                    ply_index,
                                 },
-                                time_info: action_record.time_info,
+                                time_info,
                             },
                             metadata.white.user_id,
                             metadata.black.user_id,
@@ -292,12 +293,12 @@ impl<
                     },
                     GameRequestType::Undo => match game.accept_undo_request(player, now) {
                         GameOverResult::GameOver => Ok(()),
-                        GameOverResult::Result(None) => {
+                        GameOverResult::Result(UndoActionResult::NoUndoAvailable) => {
                             return Err(ActionError::ActionError(
                                 HandleRequestError::RequestNotFound,
                             ));
                         }
-                        GameOverResult::Result(Some(undo_record)) => {
+                        GameOverResult::Result(UndoActionResult::NothingToUndo) => {
                             let time_info = game.game.get_time_info(now);
                             messages.push((
                                 ListenerMessage::GameEvent {
@@ -311,19 +312,33 @@ impl<
                                 metadata.white.user_id,
                                 metadata.black.user_id,
                             ));
-                            if let Some(undo_record) = undo_record {
-                                messages.push((
-                                    ListenerMessage::GameEvent {
-                                        game_id,
-                                        event_type: ListenerGameMessageType::GameActionUndone {
-                                            ply_index: undo_record.ply_index,
-                                        },
-                                        time_info: time_info.clone(),
+                            Ok(())
+                        }
+                        GameOverResult::Result(UndoActionResult::Success { ply_index }) => {
+                            let time_info = game.game.get_time_info(now);
+                            messages.push((
+                                ListenerMessage::GameEvent {
+                                    game_id,
+                                    event_type: ListenerGameMessageType::GameRequestChanged {
+                                        user_id: opponent_id,
+                                        request: GameRequest::Undo(false),
                                     },
-                                    metadata.white.user_id,
-                                    metadata.black.user_id,
-                                ));
-                            }
+                                    time_info: time_info.clone(),
+                                },
+                                metadata.white.user_id,
+                                metadata.black.user_id,
+                            ));
+                            messages.push((
+                                ListenerMessage::GameEvent {
+                                    game_id,
+                                    event_type: ListenerGameMessageType::GameActionUndone {
+                                        ply_index,
+                                    },
+                                    time_info: time_info.clone(),
+                                },
+                                metadata.white.user_id,
+                                metadata.black.user_id,
+                            ));
                             Ok(())
                         }
                     },

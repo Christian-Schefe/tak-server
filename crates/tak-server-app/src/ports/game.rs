@@ -1,8 +1,20 @@
 use chrono::{DateTime, Utc};
 use tak_core::{TakGameResult, TakPlayer};
-use tak_domain::{GameId, MatchId, UserId, game_record::GameRecord};
+use tak_domain::{GameId, MatchId, UserId, game::GameState, game_record::GameRecord};
 
 use crate::ports::{PaginatedResponse, Pagination, SortOrder, transaction::RepoError};
+
+#[async_trait::async_trait]
+pub trait GameStateRepository<RpCtx> {
+    async fn set_state(
+        &self,
+        ctx: &RpCtx,
+        game_id: GameId,
+        game: GameState,
+    ) -> Result<(), RepoError>;
+    async fn get_state(&self, ctx: &RpCtx, game_id: GameId)
+    -> Result<Option<GameState>, RepoError>;
+}
 
 #[async_trait::async_trait]
 pub trait GameRepository<RpCtx> {

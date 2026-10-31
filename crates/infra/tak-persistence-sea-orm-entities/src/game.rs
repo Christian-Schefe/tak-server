@@ -7,7 +7,14 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = true)]
     pub id: i64,
     pub date: chrono::DateTime<Utc>,
+
     pub size: i32,
+    pub is_rated: bool,
+    pub half_komi: i32,
+    pub pieces: i32,
+    pub capstones: i32,
+    pub opening: String,
+    pub game_settings: serde_json::Value,
 
     pub player_white_id: Uuid,
     pub player_black_id: Uuid,
@@ -18,26 +25,7 @@ pub struct Model {
 
     pub rating_change_white: Option<f64>,
     pub rating_change_black: Option<f64>,
-
-    pub history: serde_json::Value,
     pub result: Option<String>,
-    pub is_rated: bool,
-    pub half_komi: i32,
-    pub pieces: i32,
-    pub capstones: i32,
-    pub opening: String,
-    pub game_settings: serde_json::Value,
-
-    pub white_remaining_ms: i64,
-    pub black_remaining_ms: i64,
-    pub last_clock_update: chrono::DateTime<chrono::Utc>,
-    pub is_clock_ticking: bool,
-    pub white_draw_offer: bool,
-    pub black_draw_offer: bool,
-    pub white_undo_request: bool,
-    pub black_undo_request: bool,
-    pub white_more_time_request: Option<i64>,
-    pub black_more_time_request: Option<i64>,
 
     #[sea_orm(indexed)]
     pub match_id: Option<i64>,

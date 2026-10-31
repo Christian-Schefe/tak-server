@@ -52,7 +52,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static, S: SpectatorService + Send 
         match self.ports.game_repository().get_game(&ctx, game_id).await {
             Ok(None) => return Err(ObserveGameError::GameNotFound),
             Ok(Some(record)) => {
-                if !record.game.game.is_ongoing() {
+                if record.result.is_some() {
                     return Err(ObserveGameError::GameNotFound);
                 }
             }

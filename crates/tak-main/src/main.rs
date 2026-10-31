@@ -7,6 +7,7 @@ use tak_persistence_profile_pictures::ProfilePictureRepositoryImpl;
 use tak_persistence_sea_orm::{
     account::AccountRepositoryImpl,
     chat::ChatRepositoryImpl,
+    game_state::GameStateRepositoryImpl,
     games::GameRepositoryImpl,
     matches::MatchRepositoryImpl,
     moderation::ModerationRepositoryImpl,
@@ -101,6 +102,7 @@ async fn main() {
     let match_repo = Arc::new(MatchRepositoryImpl);
     let tournament_round_repo = Arc::new(TournamentRoundRepositoryImpl);
     let moderation_repo = Arc::new(ModerationRepositoryImpl);
+    let game_state_repo = Arc::new(GameStateRepositoryImpl);
 
     let transaction_manager = Arc::new(TransactionManagerImpl::new().await);
 
@@ -119,6 +121,7 @@ async fn main() {
         match_repo.clone(),
         tournament_round_repo.clone(),
         moderation_repo.clone(),
+        game_state_repo.clone(),
         transaction_manager.clone(),
     ));
     let app = Arc::new(

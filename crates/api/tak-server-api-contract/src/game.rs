@@ -10,9 +10,26 @@ use tak_core::{
 #[serde(rename_all = "camelCase")]
 pub struct JsonGameDetail {
     #[serde(flatten)]
-    pub record: JsonGameRecord,
+    pub metadata: JsonGameMetadata,
+    pub history: Vec<String>,
     pub remaining_ms: ForPlayer<u64>,
-    pub requests: ForPlayer<JsonGameRequests>,
+    #[serde(flatten)]
+    pub state: JsonGameDetailState,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum JsonGameDetailState {
+    Ongoing {
+        requests: ForPlayer<JsonGameRequests>,
+    },
+    Finished {
+        result: String,
+    },
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -22,7 +39,6 @@ pub struct JsonGameRecord {
     pub metadata: JsonGameMetadata,
     pub rating_info: Option<JsonGameRatingInfo>,
     pub result: Option<String>,
-    pub history: Vec<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]

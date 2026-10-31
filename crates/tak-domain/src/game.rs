@@ -1,50 +1,49 @@
 use std::time::{Duration, SystemTime};
 
-use crate::game::request::{GameRequest, GameRequests};
-use tak_core::{TakAction, TakGame, TakGameSettings, TakPlayer, TakTimeInfo, TakTimeSettings};
+use tak_core::{
+    TakAction, TakActionRecord, TakClock, TakGame, TakGameResult, TakGameSettings, TakPlayer,
+    TakTimeInfo, TakTimeSettings,
+};
 
-pub mod request;
+#[derive(Debug, Clone)]
+pub enum GameState {
+    Ongoing(OngoingGameState),
+    Finished(FinishedGameState),
+}
 
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
+pub struct OngoingGameState {
+    pub history: Vec<TakActionRecord>,
+    pub clock: TakClock<SystemTime>,
+    pub white_requests: GameRequests,
+    pub black_requests: GameRequests,
+}
+
+#[derive(Debug, Clone)]
+pub struct FinishedGameState {
+    pub history: Vec<TakActionRecord>,
+    pub time_info: TakTimeInfo,
+    pub result: TakGameResult,
+}
+
+#[derive(Debug, Clone)]
 pub struct Game {
     pub game: TakGame<SystemTime>,
     pub white_requests: GameRequests,
     pub black_requests: GameRequests,
 }
 
-#[derive(Clone, Debug)]
-pub struct GameActionRecord {
-    pub action: TakAction,
-    pub ply_index: usize,
-    pub time_info: TakTimeInfo,
-}
-
-impl GameActionRecord {
-    pub fn new(action: TakAction, ply_index: usize, time_info: TakTimeInfo) -> Self {
-        Self {
-            action,
-            ply_index,
-            time_info,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct GameUndoActionRecord {
-    pub ply_index: usize,
-}
-
-impl GameUndoActionRecord {
-    pub fn new(ply_index: usize) -> Self {
-        Self { ply_index }
-    }
-}
-
 pub enum DoActionResult {
     GameOver,
-    ActionPerformed(GameActionRecord),
+    ActionPerformed { action: TakAction, ply_index: usize },
     NotPlayersTurn,
     InvalidAction(tak_core::InvalidActionReason),
+}
+
+pub enum UndoActionResult {
+    Success { ply_index: usize },
+    NoUndoAvailable,
+    NothingToUndo,
 }
 
 pub enum GameOverResult<R> {
@@ -58,12 +57,46 @@ pub enum CheckDisconnectTimeoutResult {
     NoTimeout(Duration),
 }
 
+pub enum GameCreationError {
+    InvalidState,
+}
+
 impl Game {
-    pub fn new(settings: &TakGameSettings, now: SystemTime) -> Self {
+    pub fn new(settings: &TakGameSettings) -> Self {
+        let game = TakGame::new(settings);
         Self {
-            game: TakGame::new(settings, now),
+            game,
             white_requests: GameRequests::new(),
             black_requests: GameRequests::new(),
+        }
+    }
+
+    pub fn from_state(
+        settings: &TakGameSettings,
+        game_state: OngoingGameState,
+    ) -> Result<Self, GameCreationError> {
+        let game = TakGame::from_history(settings, game_state.clock, game_state.history)
+            .map_err(|_| GameCreationError::InvalidState)?;
+        Ok(Self {
+            game,
+            white_requests: game_state.white_requests,
+            black_requests: game_state.black_requests,
+        })
+    }
+
+    pub fn to_game_state(self) -> GameState {
+        match self.game.result() {
+            Some(result) => GameState::Finished(FinishedGameState {
+                result: result.clone(),
+                history: self.game.history,
+                time_info: self.game.clock.remaining_time,
+            }),
+            None => GameState::Ongoing(OngoingGameState {
+                history: self.game.history,
+                clock: self.game.clock,
+                white_requests: self.white_requests,
+                black_requests: self.black_requests,
+            }),
         }
     }
 
@@ -80,9 +113,7 @@ impl Game {
             Err(e) => DoActionResult::InvalidAction(e),
             Ok(()) => {
                 let ply_index = self.game.ply_index();
-                let time_info = self.game.get_time_info(now);
-                let record = GameActionRecord::new(action, ply_index, time_info);
-                DoActionResult::ActionPerformed(record)
+                DoActionResult::ActionPerformed { action, ply_index }
             }
         }
     }
@@ -149,7 +180,7 @@ impl Game {
         &mut self,
         player: TakPlayer,
         now: SystemTime,
-    ) -> GameOverResult<Option<Option<GameUndoActionRecord>>> {
+    ) -> GameOverResult<UndoActionResult> {
         if let Err(()) = self.game.validate_ongoing(now) {
             return GameOverResult::GameOver;
         }
@@ -159,18 +190,17 @@ impl Game {
             TakPlayer::Black => &mut self.black_requests,
         };
         if !requests.accept_undo_request() {
-            return GameOverResult::Result(None);
+            return GameOverResult::Result(UndoActionResult::NoUndoAvailable);
         };
         match self.game.try_undo_action(now) {
             Err(_) => return GameOverResult::GameOver,
-            Ok(false) => return GameOverResult::Result(Some(None)),
+            Ok(false) => return GameOverResult::Result(UndoActionResult::NothingToUndo),
             Ok(true) => {}
         }
 
         let ply_index = self.game.ply_index();
-        let undo_record = GameUndoActionRecord::new(ply_index);
 
-        GameOverResult::Result(Some(Some(undo_record)))
+        GameOverResult::Result(UndoActionResult::Success { ply_index })
     }
     pub fn accept_more_time_request(
         &mut self,
@@ -223,5 +253,84 @@ impl Game {
             return GameOverResult::GameOver;
         }
         GameOverResult::Result(CheckDisconnectTimeoutResult::TimedOut)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum GameRequest {
+    Draw(bool),
+    Undo(bool),
+    MoreTime(Option<Duration>),
+}
+
+#[derive(Clone, Debug)]
+pub enum GameRequestType {
+    Draw,
+    Undo,
+    MoreTime,
+}
+
+#[derive(Clone, Debug)]
+pub struct GameRequests {
+    pub draw_offered: bool,
+    pub undo_requested: bool,
+    pub more_time_offered: Option<Duration>,
+}
+
+impl GameRequests {
+    pub fn new() -> Self {
+        GameRequests {
+            draw_offered: false,
+            undo_requested: false,
+            more_time_offered: None,
+        }
+    }
+
+    pub fn set_request(&mut self, request: &GameRequest) -> bool {
+        match request {
+            GameRequest::Draw(offer) => {
+                if self.draw_offered == *offer {
+                    return false;
+                }
+                self.draw_offered = *offer;
+            }
+            GameRequest::Undo(request) => {
+                if self.undo_requested == *request {
+                    return false;
+                }
+                self.undo_requested = *request;
+            }
+            GameRequest::MoreTime(duration) => {
+                if self.more_time_offered == *duration {
+                    return false;
+                }
+                self.more_time_offered = *duration;
+            }
+        }
+        return true;
+    }
+
+    pub fn accept_draw_request(&mut self) -> bool {
+        if !self.draw_offered {
+            return false;
+        }
+        self.draw_offered = false;
+        true
+    }
+
+    pub fn accept_undo_request(&mut self) -> bool {
+        if !self.undo_requested {
+            return false;
+        }
+        self.undo_requested = false;
+        true
+    }
+
+    pub fn accept_more_time_request(&mut self) -> Option<Duration> {
+        if self.more_time_offered.is_none() {
+            return None;
+        }
+        let duration = self.more_time_offered.take();
+        duration
     }
 }

@@ -1,16 +1,14 @@
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::Duration;
 
 use sea_orm::{
     ColumnTrait, EntityTrait, ExprTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use tak_core::{
-    TakActionRecord, TakBaseGameSettings, TakClock, TakGame, TakGameSettings, TakPlayer,
-    TakReserve, TakTimeInfo,
-    ptn::{action_from_ptn, action_to_ptn, game_result_from_string, game_result_to_string},
+    TakBaseGameSettings, TakGameSettings, TakPlayer, TakReserve, TakTimeInfo,
+    ptn::{game_result_from_string, game_result_to_string},
 };
 use tak_domain::{
     GameId, MatchId, UserId,
-    game::{Game, request::GameRequests},
     game_record::{GameMetadata, GameRatingInfo, GameRecord, PlayerSnapshot},
 };
 use tak_persistence_sea_orm_entities::game;
@@ -115,29 +113,6 @@ impl GameRepositoryImpl {
             match_id: model.match_id.map(|id| MatchId(id)),
         };
 
-        let history: Vec<TakActionRecord> =
-            serde_json::from_value::<Vec<JsonActionRecord>>(model.history)
-                .map_err(|e| format!("Failed to deserialize game history from JSON: {}", e))?
-                .into_iter()
-                .map(|json_action_record: JsonActionRecord| {
-                    Ok(TakActionRecord {
-                        action: action_from_ptn(&json_action_record.action)
-                            .ok_or_else(|| format!("Failed to parse action from PTN"))?,
-                        time_info: json_action_record.time_info.to_time_info(),
-                    })
-                })
-                .collect::<Result<Vec<_>, String>>()?;
-
-        let clock = TakClock {
-            remaining_time: TakTimeInfo {
-                white_remaining: Duration::from_millis(model.white_remaining_ms as u64),
-                black_remaining: Duration::from_millis(model.black_remaining_ms as u64),
-            },
-            last_update_timestamp: UNIX_EPOCH
-                + Duration::from_millis(model.last_clock_update.timestamp_millis() as u64),
-            is_ticking: model.is_clock_ticking,
-        };
-
         let result = model
             .result
             .as_ref()
@@ -147,34 +122,12 @@ impl GameRepositoryImpl {
             })
             .transpose()?;
 
-        let game = TakGame::from_history(&metadata.settings, clock, history, result)
-            .map_err(|e| format!("Failed to reconstruct game from history: {:?}", e))?;
-
-        let white_requests = GameRequests {
-            draw_offered: model.white_draw_offer,
-            undo_requested: model.white_undo_request,
-            more_time_offered: model
-                .white_more_time_request
-                .map(|ms| Duration::from_millis(ms as u64)),
-        };
-        let black_requests = GameRequests {
-            draw_offered: model.black_draw_offer,
-            undo_requested: model.black_undo_request,
-            more_time_offered: model
-                .black_more_time_request
-                .map(|ms| Duration::from_millis(ms as u64)),
-        };
-
         Ok((
             GameId(model.id),
             GameRecord {
                 metadata,
                 rating_info,
-                game: Game {
-                    game,
-                    white_requests,
-                    black_requests,
-                },
+                result,
             },
         ))
     }
@@ -182,54 +135,14 @@ impl GameRepositoryImpl {
         game_id: Option<GameId>,
         record: &GameRecord,
     ) -> Result<game::ActiveModel, String> {
-        let result = record.game.game.result().map(|f| game_result_to_string(f));
+        let result = record.result.as_ref().map(|f| game_result_to_string(f));
 
         let base_settings = &record.metadata.settings.base;
         let time_settings =
             JsonTimeSettings::from_time_settings(&record.metadata.settings.time_settings);
 
-        let game = &record.game.game;
-
-        let history: Vec<JsonActionRecord> = game
-            .history
-            .iter()
-            .map(|action| JsonActionRecord {
-                action: action_to_ptn(&action.action),
-                time_info: JsonTimeInfo::from_time_info(&action.time_info),
-            })
-            .collect();
-
-        let json_history = serde_json::to_value(history)
-            .map_err(|e| format!("Failed to serialize game history to JSON: {}", e))?;
-
         Ok(game::ActiveModel {
             id: game_id.map_or(Default::default(), |id| Set(id.0)),
-            history: Set(json_history),
-            white_remaining_ms: Set(game.clock.remaining_time.white_remaining.as_millis() as i64),
-            black_remaining_ms: Set(game.clock.remaining_time.black_remaining.as_millis() as i64),
-            last_clock_update: Set(chrono::DateTime::from_timestamp_millis(
-                game.clock
-                    .last_update_timestamp
-                    .duration_since(UNIX_EPOCH)
-                    .map_err(|e| format!("Failed to convert timestamp to chrono::DateTime: {}", e))?
-                    .as_millis() as i64,
-            )
-            .ok_or("Failed to convert timestamp to chrono::DateTime")?),
-            is_clock_ticking: Set(game.clock.is_ticking),
-            white_draw_offer: Set(record.game.white_requests.draw_offered),
-            black_draw_offer: Set(record.game.black_requests.draw_offered),
-            white_undo_request: Set(record.game.white_requests.undo_requested),
-            black_undo_request: Set(record.game.black_requests.undo_requested),
-            white_more_time_request: Set(record
-                .game
-                .white_requests
-                .more_time_offered
-                .map(|d| d.as_millis() as i64)),
-            black_more_time_request: Set(record
-                .game
-                .black_requests
-                .more_time_offered
-                .map(|d| d.as_millis() as i64)),
 
             date: Set(record.metadata.date),
             size: Set(base_settings.board_size as i32),

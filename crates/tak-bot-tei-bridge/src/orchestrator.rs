@@ -4,8 +4,8 @@ use tak_core::{TakPlayer, TakReserve};
 
 use tak_server_api_contract::{
     game::{
-        JsonBaseGameSettings, JsonGameDetail, JsonGameMetadata, JsonGameSettings, JsonTakOpening,
-        JsonTimeSettings,
+        JsonBaseGameSettings, JsonGameDetail, JsonGameDetailState, JsonGameMetadata,
+        JsonGameSettings, JsonTakOpening, JsonTimeSettings,
     },
     seek::{CreateSeekPayload, JsonSeek},
     ws::{ClientMessage, ServerGameEventType, ServerMessage},
@@ -98,7 +98,7 @@ impl Orchestrator {
                 continue;
             };
             let status = this.server_api.load_game(game.id.clone()).await.unwrap();
-            let None = status.record.result else {
+            let JsonGameDetailState::Ongoing { .. } = status.state else {
                 continue;
             };
             if let Some((player, game_state)) =
