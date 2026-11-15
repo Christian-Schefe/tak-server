@@ -7,6 +7,7 @@ use std::time::Duration;
 
 pub use base::TakBaseGame;
 pub use board::TakBoard;
+pub use game::MaybeTimeout;
 pub use game::TakClock;
 pub use game::TakGame;
 
@@ -32,7 +33,7 @@ pub enum TakTimeSettings {
     Async(TakAsyncTimeControl),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TakTimeInfo {
     pub white_remaining: Duration,
     pub black_remaining: Duration,
@@ -206,7 +207,7 @@ impl TakDir {
     pub const ALL: [TakDir; 4] = [TakDir::Up, TakDir::Down, TakDir::Left, TakDir::Right];
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum TakGameResult {
     Win {
         winner: TakPlayer,
@@ -216,7 +217,7 @@ pub enum TakGameResult {
     Aborted,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum TakWinReason {
     Road,
     Flats,
@@ -231,22 +232,27 @@ impl TakWinReason {
     ];
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InvalidActionReason {
-    GameOver,
     OpeningViolation,
     InvalidPlace(InvalidPlaceReason),
     InvalidMove(InvalidMoveReason),
 }
 
 #[derive(Clone, Debug)]
+pub enum InvalidUndoReason {
+    NoHistory,
+    FailedToReconstructGame,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InvalidPlaceReason {
     OutOfBounds,
     PositionOccupied,
     NoPiecesRemaining,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InvalidMoveReason {
     OutOfBounds,
     PositionEmpty,

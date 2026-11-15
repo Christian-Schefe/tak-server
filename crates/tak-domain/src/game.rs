@@ -1,18 +1,33 @@
 use std::time::{Duration, SystemTime};
 
 use tak_core::{
-    TakAction, TakActionRecord, TakClock, TakGame, TakGameResult, TakGameSettings, TakPlayer,
-    TakTimeInfo, TakTimeSettings,
+    InvalidUndoReason, MaybeTimeout, TakAction, TakActionRecord, TakClock, TakGame, TakGameResult,
+    TakGameSettings, TakPlayer, TakTimeInfo, TakTimeSettings,
 };
 
 #[derive(Debug, Clone)]
-pub enum GameState {
-    Ongoing(OngoingGameState),
-    Finished(FinishedGameState),
+pub enum GameEventType {
+    ActionPerformed {
+        player: TakPlayer,
+        ply_index: usize,
+        action: TakAction,
+    },
+    ActionUndone {
+        ply_index: usize,
+    },
+    GameOver {
+        result: TakGameResult,
+    },
 }
 
 #[derive(Debug, Clone)]
-pub struct OngoingGameState {
+pub struct GameEvent {
+    pub event_type: GameEventType,
+    pub time_info: TakTimeInfo,
+}
+
+#[derive(Debug, Clone)]
+pub struct GameState {
     pub history: Vec<TakActionRecord>,
     pub clock: TakClock<SystemTime>,
     pub white_requests: GameRequests,
@@ -20,10 +35,10 @@ pub struct OngoingGameState {
 }
 
 #[derive(Debug, Clone)]
-pub struct FinishedGameState {
+pub struct GameFinished {
     pub history: Vec<TakActionRecord>,
-    pub time_info: TakTimeInfo,
     pub result: TakGameResult,
+    pub time_info: TakTimeInfo,
 }
 
 #[derive(Debug, Clone)]
@@ -31,32 +46,58 @@ pub struct Game {
     pub game: TakGame<SystemTime>,
     pub white_requests: GameRequests,
     pub black_requests: GameRequests,
+    pub event_log: Vec<GameEvent>,
 }
 
-pub enum DoActionResult {
-    GameOver,
-    ActionPerformed { action: TakAction, ply_index: usize },
+#[derive(Debug, Clone)]
+pub enum GameDoActionError {
+    Timeout,
     NotPlayersTurn,
     InvalidAction(tak_core::InvalidActionReason),
 }
 
-pub enum UndoActionResult {
-    Success { ply_index: usize },
+pub enum GameResignError {
+    Timeout,
+}
+
+#[derive(Debug, Clone)]
+pub enum GameUndoActionError {
+    Timeout,
     NoUndoAvailable,
-    NothingToUndo,
+    FailedToUndo(InvalidUndoReason),
 }
 
-pub enum GameOverResult<R> {
-    GameOver,
-    Result(R),
+#[derive(Debug, Clone)]
+pub enum GameAbortError {
+    Timeout,
+    CantAbort,
 }
 
+#[derive(Debug, Clone)]
+pub enum GameSetRequestError {
+    Timeout,
+    RequestAlreadySet,
+}
+
+#[derive(Debug, Clone)]
+pub enum GameAcceptRequestError {
+    Timeout,
+    NoRequestToAccept,
+}
+
+#[derive(Debug, Clone)]
+pub enum GameCheckTimeoutError {
+    Timeout,
+}
+
+#[derive(Debug, Clone)]
 pub enum CheckDisconnectTimeoutResult {
     TimedOut,
     CantTimeOut,
     NoTimeout(Duration),
 }
 
+#[derive(Debug, Clone)]
 pub enum GameCreationError {
     InvalidState,
 }
@@ -68,12 +109,13 @@ impl Game {
             game,
             white_requests: GameRequests::new(),
             black_requests: GameRequests::new(),
+            event_log: Vec::new(),
         }
     }
 
     pub fn from_state(
         settings: &TakGameSettings,
-        game_state: OngoingGameState,
+        game_state: GameState,
     ) -> Result<Self, GameCreationError> {
         let game = TakGame::from_history(settings, game_state.clock, game_state.history)
             .map_err(|_| GameCreationError::InvalidState)?;
@@ -81,23 +123,28 @@ impl Game {
             game,
             white_requests: game_state.white_requests,
             black_requests: game_state.black_requests,
+            event_log: Vec::new(),
         })
     }
 
+    pub fn drain_event_log(&mut self) -> Vec<GameEvent> {
+        std::mem::take(&mut self.event_log)
+    }
+
     pub fn to_game_state(self) -> GameState {
-        match self.game.result() {
-            Some(result) => GameState::Finished(FinishedGameState {
-                result: result.clone(),
-                history: self.game.history,
-                time_info: self.game.clock.remaining_time,
-            }),
-            None => GameState::Ongoing(OngoingGameState {
-                history: self.game.history,
-                clock: self.game.clock,
-                white_requests: self.white_requests,
-                black_requests: self.black_requests,
-            }),
+        GameState {
+            history: self.game.history,
+            clock: self.game.clock,
+            white_requests: self.white_requests,
+            black_requests: self.black_requests,
         }
+    }
+
+    fn handle_game_over(&mut self, result: TakGameResult) {
+        self.event_log.push(GameEvent {
+            event_type: GameEventType::GameOver { result },
+            time_info: self.game.clock.remaining_time,
+        });
     }
 
     pub fn do_action(
@@ -105,37 +152,69 @@ impl Game {
         player: TakPlayer,
         action: TakAction,
         now: SystemTime,
-    ) -> DoActionResult {
+    ) -> Result<(), GameDoActionError> {
         if self.game.current_player() != player {
-            return DoActionResult::NotPlayersTurn;
+            return Err(GameDoActionError::NotPlayersTurn);
         }
         match self.game.do_action(action.clone(), now) {
-            Err(e) => DoActionResult::InvalidAction(e),
-            Ok(()) => {
+            MaybeTimeout::Timeout(result) => {
+                self.handle_game_over(result);
+                Err(GameDoActionError::Timeout)
+            }
+            MaybeTimeout::NoTimeout(Err(e)) => Err(GameDoActionError::InvalidAction(e)),
+            MaybeTimeout::NoTimeout(Ok(res)) => {
                 let ply_index = self.game.ply_index();
-                DoActionResult::ActionPerformed { action, ply_index }
+                self.event_log.push(GameEvent {
+                    event_type: GameEventType::ActionPerformed {
+                        action: action.clone(),
+                        player,
+                        ply_index,
+                    },
+                    time_info: self.game.get_time_info(now),
+                });
+                if let Some(result) = res {
+                    self.handle_game_over(result);
+                }
+                Ok(())
             }
         }
     }
 
-    pub fn resign(&mut self, player: TakPlayer, now: SystemTime) -> GameOverResult<()> {
+    pub fn resign(&mut self, player: TakPlayer, now: SystemTime) -> Result<(), GameResignError> {
         match self.game.resign_or_abandon(player, now) {
-            Err(()) => GameOverResult::GameOver,
-            Ok(()) => GameOverResult::Result(()),
+            MaybeTimeout::Timeout(result) => {
+                self.handle_game_over(result);
+                Err(GameResignError::Timeout)
+            }
+            MaybeTimeout::NoTimeout(result) => {
+                self.handle_game_over(result);
+                Ok(())
+            }
         }
     }
 
-    pub fn try_abort(&mut self, now: SystemTime) -> GameOverResult<bool> {
+    pub fn abort(&mut self, now: SystemTime) -> Result<(), GameAbortError> {
         match self.game.try_abort(now) {
-            Err(()) => GameOverResult::GameOver,
-            Ok(did_abort) => GameOverResult::Result(did_abort),
+            MaybeTimeout::Timeout(result) => {
+                self.handle_game_over(result);
+                Err(GameAbortError::Timeout)
+            }
+            MaybeTimeout::NoTimeout(None) => Err(GameAbortError::CantAbort),
+            MaybeTimeout::NoTimeout(Some(result)) => {
+                self.handle_game_over(result);
+                Ok(())
+            }
         }
     }
 
-    pub fn abort_forced(&mut self, now: SystemTime) -> GameOverResult<()> {
+    pub fn abort_forced(&mut self, now: SystemTime) {
         match self.game.abort_forced(now) {
-            Err(()) => GameOverResult::GameOver,
-            Ok(()) => GameOverResult::Result(()),
+            MaybeTimeout::Timeout(result) => {
+                self.handle_game_over(result);
+            }
+            MaybeTimeout::NoTimeout(result) => {
+                self.handle_game_over(result);
+            }
         }
     }
 
@@ -144,45 +223,57 @@ impl Game {
         player: TakPlayer,
         request: GameRequest,
         now: SystemTime,
-    ) -> GameOverResult<bool> {
-        if let Err(()) = self.game.validate_ongoing(now) {
-            return GameOverResult::GameOver;
+    ) -> Result<(), GameSetRequestError> {
+        if let MaybeTimeout::Timeout(result) = self.game.check_timeout(now) {
+            self.handle_game_over(result);
+            return Err(GameSetRequestError::Timeout);
         }
         let requests = match player {
             TakPlayer::White => &mut self.white_requests,
             TakPlayer::Black => &mut self.black_requests,
         };
-        GameOverResult::Result(requests.set_request(&request))
+        if !requests.set_request(&request) {
+            return Err(GameSetRequestError::RequestAlreadySet);
+        }
+        Ok(())
     }
+
     pub fn accept_draw_request(
         &mut self,
         player: TakPlayer,
         now: SystemTime,
-    ) -> GameOverResult<bool> {
-        if let Err(()) = self.game.validate_ongoing(now) {
-            return GameOverResult::GameOver;
+    ) -> Result<(), GameAcceptRequestError> {
+        if let MaybeTimeout::Timeout(result) = self.game.check_timeout(now) {
+            self.handle_game_over(result);
+            return Err(GameAcceptRequestError::Timeout);
         }
         let requests = match player.opponent() {
             TakPlayer::White => &mut self.white_requests,
             TakPlayer::Black => &mut self.black_requests,
         };
-        match requests.accept_draw_request() {
-            true => {
-                if let Err(()) = self.game.agree_draw(now) {
-                    return GameOverResult::GameOver;
-                }
-                GameOverResult::Result(true)
+        if !requests.accept_draw_request() {
+            return Err(GameAcceptRequestError::NoRequestToAccept);
+        };
+        match self.game.agree_draw(now) {
+            MaybeTimeout::Timeout(result) => {
+                self.handle_game_over(result);
+                Err(GameAcceptRequestError::Timeout)
             }
-            false => GameOverResult::Result(false),
+            MaybeTimeout::NoTimeout(result) => {
+                self.handle_game_over(result);
+                Ok(())
+            }
         }
     }
+
     pub fn accept_undo_request(
         &mut self,
         player: TakPlayer,
         now: SystemTime,
-    ) -> GameOverResult<UndoActionResult> {
-        if let Err(()) = self.game.validate_ongoing(now) {
-            return GameOverResult::GameOver;
+    ) -> Result<(), GameUndoActionError> {
+        if let MaybeTimeout::Timeout(result) = self.game.check_timeout(now) {
+            self.handle_game_over(result);
+            return Err(GameUndoActionError::Timeout);
         }
 
         let requests = match player.opponent() {
@@ -190,25 +281,32 @@ impl Game {
             TakPlayer::Black => &mut self.black_requests,
         };
         if !requests.accept_undo_request() {
-            return GameOverResult::Result(UndoActionResult::NoUndoAvailable);
+            return Err(GameUndoActionError::NoUndoAvailable);
         };
         match self.game.try_undo_action(now) {
-            Err(_) => return GameOverResult::GameOver,
-            Ok(false) => return GameOverResult::Result(UndoActionResult::NothingToUndo),
-            Ok(true) => {}
+            MaybeTimeout::Timeout(result) => {
+                self.handle_game_over(result);
+                Err(GameUndoActionError::Timeout)
+            }
+            MaybeTimeout::NoTimeout(Err(e)) => Err(GameUndoActionError::FailedToUndo(e)),
+            MaybeTimeout::NoTimeout(Ok(())) => {
+                let ply_index = self.game.ply_index();
+                self.event_log.push(GameEvent {
+                    event_type: GameEventType::ActionUndone { ply_index },
+                    time_info: self.game.get_time_info(now),
+                });
+                Ok(())
+            }
         }
-
-        let ply_index = self.game.ply_index();
-
-        GameOverResult::Result(UndoActionResult::Success { ply_index })
     }
     pub fn accept_more_time_request(
         &mut self,
         player: TakPlayer,
         now: SystemTime,
-    ) -> GameOverResult<bool> {
-        if let Err(()) = self.game.validate_ongoing(now) {
-            return GameOverResult::GameOver;
+    ) -> Result<(), GameAcceptRequestError> {
+        if let MaybeTimeout::Timeout(result) = self.game.check_timeout(now) {
+            self.handle_game_over(result);
+            return Err(GameAcceptRequestError::Timeout);
         }
 
         let requests = match player.opponent() {
@@ -216,43 +314,54 @@ impl Game {
             TakPlayer::Black => &mut self.black_requests,
         };
         let Some(duration) = requests.accept_more_time_request() else {
-            return GameOverResult::Result(false);
+            return Err(GameAcceptRequestError::NoRequestToAccept);
         };
-        if let Err(()) = self.game.give_time_to_player(player, duration, now) {
-            return GameOverResult::GameOver;
+        match self.game.give_time_to_player(player, duration, now) {
+            MaybeTimeout::Timeout(result) => {
+                self.handle_game_over(result);
+                return Err(GameAcceptRequestError::Timeout);
+            }
+            MaybeTimeout::NoTimeout(()) => Ok(()),
         }
-        GameOverResult::Result(true)
     }
-    pub fn check_timeout(&mut self, now: SystemTime) -> GameOverResult<TakTimeInfo> {
-        if let Err(()) = self.game.validate_ongoing(now) {
-            return GameOverResult::GameOver;
+    pub fn check_timeout(&mut self, now: SystemTime) -> Result<TakTimeInfo, GameCheckTimeoutError> {
+        if let MaybeTimeout::Timeout(result) = self.game.check_timeout(now) {
+            self.handle_game_over(result);
+            return Err(GameCheckTimeoutError::Timeout);
         }
 
         let time_info = self.game.get_time_info(now);
-        GameOverResult::Result(time_info)
+        Ok(time_info)
     }
     pub fn check_disconnect_timeout(
         &mut self,
         player: TakPlayer,
         disconnected_duration: Duration,
         now: SystemTime,
-    ) -> GameOverResult<CheckDisconnectTimeoutResult> {
-        if let Err(()) = self.game.validate_ongoing(now) {
-            return GameOverResult::GameOver;
+    ) -> Result<CheckDisconnectTimeoutResult, GameCheckTimeoutError> {
+        if let MaybeTimeout::Timeout(result) = self.game.check_timeout(now) {
+            self.handle_game_over(result);
+            return Err(GameCheckTimeoutError::Timeout);
         }
         if matches!(self.game.time_settings, TakTimeSettings::Async(_)) {
-            return GameOverResult::Result(CheckDisconnectTimeoutResult::CantTimeOut);
+            return Ok(CheckDisconnectTimeoutResult::CantTimeOut);
         }
         let timeout_duration = Duration::from_secs(60 * 5);
         if disconnected_duration < timeout_duration {
-            return GameOverResult::Result(CheckDisconnectTimeoutResult::NoTimeout(
+            return Ok(CheckDisconnectTimeoutResult::NoTimeout(
                 timeout_duration - disconnected_duration,
             ));
         }
-        if let Err(()) = self.game.resign_or_abandon(player, now) {
-            return GameOverResult::GameOver;
+        match self.game.resign_or_abandon(player, now) {
+            MaybeTimeout::Timeout(result) => {
+                self.handle_game_over(result);
+                Err(GameCheckTimeoutError::Timeout)
+            }
+            MaybeTimeout::NoTimeout(result) => {
+                self.handle_game_over(result);
+                Ok(CheckDisconnectTimeoutResult::TimedOut)
+            }
         }
-        GameOverResult::Result(CheckDisconnectTimeoutResult::TimedOut)
     }
 }
 

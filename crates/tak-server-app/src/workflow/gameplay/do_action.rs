@@ -14,12 +14,13 @@ use crate::{
         gameplay::lifecycle::LifecycleGameWorkflow, player::notify_player::NotifyPlayerWorkflow,
     },
 };
-use tak_core::TakAction;
+use tak_core::{InvalidUndoReason, TakAction};
 use tak_domain::{
     GameId, UserId,
     game::{
-        CheckDisconnectTimeoutResult, DoActionResult, GameOverResult, GameRequest, GameRequestType,
-        UndoActionResult,
+        CheckDisconnectTimeoutResult, GameAbortError, GameAcceptRequestError,
+        GameCheckTimeoutError, GameDoActionError, GameRequest, GameRequestType, GameResignError,
+        GameSetRequestError, GameUndoActionError,
     },
 };
 pub enum ObserveOutcome {
@@ -137,7 +138,6 @@ impl<
             action,
             game_id
         );
-        let mut message = None;
         match self
             .finalize_game_workflow
             .modify_game(game_id, |game, metadata| {
@@ -146,49 +146,26 @@ impl<
                         PlayerActionError::NotAPlayerInGame,
                     ));
                 };
-                match game.do_action(player, action, now) {
-                    DoActionResult::InvalidAction(e) => {
-                        return Err(ActionError::ActionError(DoActionError::InvalidAction(e)));
+                if let Err(e) = game.do_action(player, action, now) {
+                    match e {
+                        GameDoActionError::InvalidAction(e) => {
+                            return Err(ActionError::ActionError(DoActionError::InvalidAction(e)));
+                        }
+                        GameDoActionError::NotPlayersTurn => {
+                            return Err(ActionError::ActionError(DoActionError::NotPlayersTurn));
+                        }
+                        GameDoActionError::Timeout => {}
                     }
-                    DoActionResult::NotPlayersTurn => {
-                        return Err(ActionError::ActionError(DoActionError::NotPlayersTurn));
-                    }
-                    DoActionResult::ActionPerformed { action, ply_index } => {
-                        let time_info = game.game.get_time_info(now);
-                        message = Some((
-                            ListenerMessage::GameEvent {
-                                game_id,
-                                event_type: ListenerGameMessageType::GameAction {
-                                    user_id,
-                                    action,
-                                    ply_index,
-                                },
-                                time_info,
-                            },
-                            metadata.white.user_id,
-                            metadata.black.user_id,
-                        ));
-                    }
-                    DoActionResult::GameOver => {}
                 };
 
                 Ok(())
             })
             .await
         {
-            Ok(Err(e)) => return Err(e),
-            Ok(Ok(())) => {}
-            Err(()) => return Err(ActionError::NotPossible(PlayerActionError::Internal)),
+            Ok(Err(e)) => Err(e),
+            Ok(Ok(())) => Ok(()),
+            Err(()) => Err(ActionError::NotPossible(PlayerActionError::Internal)),
         }
-        if let Some((msg, white_user_id, black_user_id)) = message {
-            self.notify_player_workflow
-                .notify_players_and_observers_of_game(
-                    game_id,
-                    &[white_user_id, black_user_id],
-                    &msg,
-                );
-        }
-        Ok(())
     }
 
     async fn set_request(
@@ -206,9 +183,9 @@ impl<
                     return Err(PlayerActionError::NotAPlayerInGame);
                 };
                 match game.set_request(player, request.clone(), now) {
-                    GameOverResult::GameOver => Ok(()),
-                    GameOverResult::Result(false) => Ok(()),
-                    GameOverResult::Result(true) => {
+                    Err(GameSetRequestError::Timeout) => Ok(()),
+                    Err(GameSetRequestError::RequestAlreadySet) => Ok(()),
+                    Ok(()) => {
                         let time_info = game.game.get_time_info(now);
                         message = Some((
                             ListenerMessage::GameEvent {
@@ -268,13 +245,13 @@ impl<
                 let opponent_id = metadata.get_user_id(player.opponent());
                 match request_type {
                     GameRequestType::Draw => match game.accept_draw_request(player, now) {
-                        GameOverResult::GameOver => Ok(()),
-                        GameOverResult::Result(false) => {
+                        Err(GameAcceptRequestError::Timeout) => Ok(()),
+                        Err(GameAcceptRequestError::NoRequestToAccept) => {
                             return Err(ActionError::ActionError(
                                 HandleRequestError::RequestNotFound,
                             ));
                         }
-                        GameOverResult::Result(true) => {
+                        Ok(()) => {
                             let time_info = game.game.get_time_info(now);
                             messages.push((
                                 ListenerMessage::GameEvent {
@@ -292,29 +269,23 @@ impl<
                         }
                     },
                     GameRequestType::Undo => match game.accept_undo_request(player, now) {
-                        GameOverResult::GameOver => Ok(()),
-                        GameOverResult::Result(UndoActionResult::NoUndoAvailable) => {
+                        Err(GameUndoActionError::Timeout) => Ok(()),
+                        Err(GameUndoActionError::NoUndoAvailable) => {
                             return Err(ActionError::ActionError(
                                 HandleRequestError::RequestNotFound,
                             ));
                         }
-                        GameOverResult::Result(UndoActionResult::NothingToUndo) => {
-                            let time_info = game.game.get_time_info(now);
-                            messages.push((
-                                ListenerMessage::GameEvent {
-                                    game_id,
-                                    event_type: ListenerGameMessageType::GameRequestChanged {
-                                        user_id: opponent_id,
-                                        request: GameRequest::Undo(false),
-                                    },
-                                    time_info: time_info.clone(),
-                                },
-                                metadata.white.user_id,
-                                metadata.black.user_id,
-                            ));
-                            Ok(())
+                        Err(GameUndoActionError::FailedToUndo(
+                            InvalidUndoReason::FailedToReconstructGame,
+                        )) => {
+                            tracing::error!(
+                                "Failed to undo action in game {}: failed to reconstruct game",
+                                game_id
+                            );
+                            return Err(ActionError::NotPossible(PlayerActionError::Internal));
                         }
-                        GameOverResult::Result(UndoActionResult::Success { ply_index }) => {
+                        Ok(())
+                        | Err(GameUndoActionError::FailedToUndo(InvalidUndoReason::NoHistory)) => {
                             let time_info = game.game.get_time_info(now);
                             messages.push((
                                 ListenerMessage::GameEvent {
@@ -322,17 +293,6 @@ impl<
                                     event_type: ListenerGameMessageType::GameRequestChanged {
                                         user_id: opponent_id,
                                         request: GameRequest::Undo(false),
-                                    },
-                                    time_info: time_info.clone(),
-                                },
-                                metadata.white.user_id,
-                                metadata.black.user_id,
-                            ));
-                            messages.push((
-                                ListenerMessage::GameEvent {
-                                    game_id,
-                                    event_type: ListenerGameMessageType::GameActionUndone {
-                                        ply_index,
                                     },
                                     time_info: time_info.clone(),
                                 },
@@ -343,13 +303,13 @@ impl<
                         }
                     },
                     GameRequestType::MoreTime => match game.accept_more_time_request(player, now) {
-                        GameOverResult::GameOver => Ok(()),
-                        GameOverResult::Result(false) => {
+                        Err(GameAcceptRequestError::Timeout) => Ok(()),
+                        Err(GameAcceptRequestError::NoRequestToAccept) => {
                             return Err(ActionError::ActionError(
                                 HandleRequestError::RequestNotFound,
                             ));
                         }
-                        GameOverResult::Result(true) => {
+                        Ok(()) => {
                             let time_info = game.game.get_time_info(now);
                             messages.push((
                                 ListenerMessage::GameEvent {
@@ -394,8 +354,8 @@ impl<
                     return Err(PlayerActionError::NotAPlayerInGame);
                 };
                 match game.resign(player, now) {
-                    GameOverResult::GameOver => Ok(()),
-                    GameOverResult::Result(()) => Ok(()),
+                    Err(GameResignError::Timeout) => Ok(()),
+                    Ok(()) => Ok(()),
                 }
             })
             .await
@@ -415,12 +375,12 @@ impl<
                         PlayerActionError::NotAPlayerInGame,
                     ));
                 };
-                match game.try_abort(now) {
-                    GameOverResult::GameOver => Ok(()),
-                    GameOverResult::Result(false) => {
+                match game.abort(now) {
+                    Err(GameAbortError::Timeout) => Ok(()),
+                    Err(GameAbortError::CantAbort) => {
                         return Err(ActionError::ActionError(AbortError::GameAlreadyStarted));
                     }
-                    GameOverResult::Result(true) => Ok(()),
+                    Ok(()) => Ok(()),
                 }
             })
             .await
@@ -438,8 +398,8 @@ impl<
             .modify_game(game_id, |game, _| {
                 let now = SystemTime::now();
                 match game.check_timeout(now) {
-                    GameOverResult::GameOver => Ok(()),
-                    GameOverResult::Result(time_info) => {
+                    Err(GameCheckTimeoutError::Timeout) => Ok(()),
+                    Ok(time_info) => {
                         result = ObserveOutcome::Continue(
                             time_info.white_remaining.min(time_info.black_remaining)
                                 + std::time::Duration::from_millis(100),
@@ -493,8 +453,8 @@ impl<
                         return Err(());
                     };
                     match game.check_disconnect_timeout(player, disconnected_duration, now) {
-                        GameOverResult::GameOver => Ok(()),
-                        GameOverResult::Result(res) => match res {
+                        Err(GameCheckTimeoutError::Timeout) => Ok(()),
+                        Ok(res) => match res {
                             CheckDisconnectTimeoutResult::TimedOut => Ok(()),
                             CheckDisconnectTimeoutResult::CantTimeOut => Ok(()),
                             CheckDisconnectTimeoutResult::NoTimeout(duration) => {

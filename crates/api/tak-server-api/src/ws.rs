@@ -381,7 +381,7 @@ impl PlayerSimpleConnectionPort for WsService {
 fn from_listener_game_event_type(event_type: ListenerGameMessageType) -> ServerGameEventType {
     match event_type {
         ListenerGameMessageType::GameOver { game_result } => ServerGameEventType::GameEnded {
-            result: game_result_to_string(&game_result),
+            result: game_result_to_string(game_result),
         },
         ListenerGameMessageType::GameAction {
             user_id: _,

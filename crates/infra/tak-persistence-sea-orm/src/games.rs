@@ -135,7 +135,7 @@ impl GameRepositoryImpl {
         game_id: Option<GameId>,
         record: &GameRecord,
     ) -> Result<game::ActiveModel, String> {
-        let result = record.result.as_ref().map(|f| game_result_to_string(f));
+        let result = record.result.map(|f| game_result_to_string(f));
 
         let base_settings = &record.metadata.settings.base;
         let time_settings =
@@ -353,7 +353,7 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
             let result_strings: Vec<String> = filter
                 .game_results
                 .iter()
-                .map(|result| game_result_to_string(result))
+                .map(|result| game_result_to_string(*result))
                 .collect();
             query = query.filter(game::Column::Result.is_in(result_strings));
         }

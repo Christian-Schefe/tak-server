@@ -38,7 +38,7 @@ pub trait RatingService {
     fn calculate_ratings(
         &self,
         metadata: &GameMetadata,
-        result: &TakGameResult,
+        result: TakGameResult,
         history: &[TakActionRecord],
         white_rating: &mut PlayerRating,
         black_rating: &mut PlayerRating,
@@ -225,7 +225,7 @@ impl RatingService for RatingServiceImpl {
     fn calculate_ratings(
         &self,
         metadata: &GameMetadata,
-        result: &TakGameResult,
+        result: TakGameResult,
         history: &[TakActionRecord],
         white_rating: &mut PlayerRating,
         black_rating: &mut PlayerRating,

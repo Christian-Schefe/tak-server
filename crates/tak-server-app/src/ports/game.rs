@@ -14,6 +14,17 @@ pub trait GameStateRepository<RpCtx> {
     ) -> Result<(), RepoError>;
     async fn get_state(&self, ctx: &RpCtx, game_id: GameId)
     -> Result<Option<GameState>, RepoError>;
+    async fn remove_state(&self, ctx: &RpCtx, game_id: GameId) -> Result<(), RepoError>;
+}
+
+#[async_trait::async_trait]
+pub trait GameHistoryRepository<RpCtx> {
+    async fn add_event(
+        &self,
+        ctx: &RpCtx,
+        game_id: GameId,
+        event: TakGameResult,
+    ) -> Result<(), RepoError>;
 }
 
 #[async_trait::async_trait]

@@ -19,7 +19,7 @@ use crate::{
 use tak_core::{TakActionRecord, TakGameResult, TakPlayer};
 use tak_domain::{
     GameId, MatchId,
-    game::{FinishedGameState, Game, GameCreationError, GameState},
+    game::{Game, GameCreationError, GameEventType},
     game_record::{GameMetadata, GameRatingInfo, GameRecord},
     matches::MatchStatus,
     rating::{PlayerRating, RatingService},
@@ -93,7 +93,7 @@ impl<
         game_id: GameId,
         match_id: MatchId,
         metadata: &GameMetadata,
-        result: &TakGameResult,
+        result: TakGameResult,
     ) -> Result<(), String> {
         let match_repo = self.ports.match_repository();
         let tournament_match_workflow = self.tournament_match_workflow.clone();
@@ -159,7 +159,7 @@ impl<
         &self,
         ctx: &Ports::TrCtx,
         metadata: &GameMetadata,
-        result: &TakGameResult,
+        result: TakGameResult,
         history: &[TakActionRecord],
     ) -> Result<Option<GameRatingInfo>, RepoError> {
         let white_id = metadata.white.user_id;
@@ -232,7 +232,7 @@ impl<
         &self,
         ctx: &Ports::TrCtx,
         metadata: &GameMetadata,
-        result: &TakGameResult,
+        result: TakGameResult,
         update_white: bool,
         update_black: bool,
     ) -> Result<(), RepoError> {
@@ -331,30 +331,11 @@ impl<
         ctx: &Ports::TrCtx,
         game_id: GameId,
         mut record: GameRecord,
-        state: FinishedGameState,
+        history: &Vec<TakActionRecord>,
+        result: TakGameResult,
     ) -> Result<(), ()> {
         tracing::info!("Finalizing game {}", game_id);
-        let over_msg = ListenerMessage::GameEvent {
-            game_id,
-            event_type: ListenerGameMessageType::GameOver {
-                game_result: state.result.clone(),
-            },
-            time_info: state.time_info.clone(),
-        };
 
-        self.notify_player_workflow.notify_players(
-            &[record.metadata.white.user_id, record.metadata.black.user_id],
-            &over_msg,
-        );
-
-        let observers = self.spectator_service.remove_game(game_id);
-        self.listener_notification_port
-            .notify_listeners(&observers, &over_msg);
-
-        tracing::debug!(
-            "Notified players and spectators about game {} ending, updating ratings and stats",
-            game_id
-        );
         let moderation_repo = self.ports.moderation_repository();
         let (white_account, black_account) = futures::try_join!(
             moderation_repo.get_moderation(&ctx, record.metadata.white.user_id),
@@ -373,7 +354,7 @@ impl<
         let rating_info = if !(is_white_not_guest && is_black_not_guest) {
             None
         } else {
-            self.update_ratings(&ctx, &record.metadata, &state.result, &state.history)
+            self.update_ratings(&ctx, &record.metadata, result, history)
                 .await
                 .map_err(|RepoError(e)| {
                     tracing::error!("Failed to update ratings for game {}: {}", game_id, e);
@@ -386,7 +367,7 @@ impl<
         );
 
         if let Some(match_id) = record.metadata.match_id {
-            self.handle_match(&ctx, game_id, match_id, &record.metadata, &state.result)
+            self.handle_match(&ctx, game_id, match_id, &record.metadata, result)
                 .await
                 .map_err(|e| {
                     tracing::error!(
@@ -403,7 +384,7 @@ impl<
         self.update_stats(
             &ctx,
             &record.metadata,
-            &state.result,
+            result,
             is_white_not_guest,
             is_black_not_guest,
         )
@@ -414,7 +395,7 @@ impl<
 
         tracing::debug!("Stats updated for game {}", game_id);
 
-        record.update_finished(state.result, rating_info.clone());
+        record.update_finished(result, rating_info.clone());
         self.ports
             .game_repository()
             .update_game(&ctx, game_id, record.clone())
@@ -481,11 +462,7 @@ impl<
             .get_state(&ctx, game_id)
             .await
         {
-            Ok(Some(GameState::Ongoing(state))) => state,
-            Ok(Some(GameState::Finished(_))) => {
-                tracing::error!("Game {} is already finished", game_id);
-                return Err(());
-            }
+            Ok(Some(state)) => state,
             Ok(None) => {
                 tracing::error!("Game state for {} not found in repository", game_id);
                 return Err(());
@@ -509,27 +486,100 @@ impl<
         if let Err(e) = func(&mut game, &record.metadata) {
             return Ok(Err(e));
         }
-
+        let events = game.drain_event_log();
         let new_state = game.to_game_state();
-        if let Err(RepoError(e)) = self
-            .ports
-            .game_state_repository()
-            .set_state(&ctx, game_id, new_state.clone())
-            .await
-        {
-            tracing::error!(
-                "Failed to update ongoing game {} in repository: {}",
-                game_id,
-                e
+
+        let notify_players_and_spectators = |event: &ListenerMessage| {
+            self.notify_player_workflow.notify_players(
+                &[record.metadata.white.user_id, record.metadata.black.user_id],
+                event,
             );
-            return Err(());
+            let spectators = self.spectator_service.get_spectators_for_game(game_id);
+            self.listener_notification_port
+                .notify_listeners(&spectators, event);
+        };
+
+        let mut game_ended = false;
+        for event in events {
+            match event.event_type {
+                GameEventType::ActionPerformed {
+                    player,
+                    ply_index,
+                    action,
+                } => {
+                    let game_action = ListenerGameMessageType::GameAction {
+                        user_id: record.metadata.get_user_id(player),
+                        action,
+                        ply_index,
+                    };
+                    notify_players_and_spectators(&ListenerMessage::GameEvent {
+                        game_id,
+                        event_type: game_action,
+                        time_info: event.time_info,
+                    });
+                }
+                GameEventType::ActionUndone { ply_index } => {
+                    let game_action = ListenerGameMessageType::GameActionUndone { ply_index };
+                    notify_players_and_spectators(&ListenerMessage::GameEvent {
+                        game_id,
+                        event_type: game_action,
+                        time_info: event.time_info,
+                    });
+                }
+                GameEventType::GameOver { result } => {
+                    let over_msg = ListenerMessage::GameEvent {
+                        game_id,
+                        event_type: ListenerGameMessageType::GameOver {
+                            game_result: result.clone(),
+                        },
+                        time_info: event.time_info,
+                    };
+
+                    self.notify_player_workflow.notify_players(
+                        &[record.metadata.white.user_id, record.metadata.black.user_id],
+                        &over_msg,
+                    );
+
+                    let observers = self.spectator_service.remove_game(game_id);
+                    self.listener_notification_port
+                        .notify_listeners(&observers, &over_msg);
+
+                    tracing::debug!(
+                        "Notified players and spectators about game {} ending, updating ratings and stats",
+                        game_id
+                    );
+
+                    if let Err(()) = self
+                        .finalize_game(&ctx, game_id, record, &new_state.history, result)
+                        .await
+                    {
+                        tracing::error!("Failed to finalize game {}", game_id);
+                        return Err(());
+                    }
+                    game_ended = true;
+                    break;
+                }
+            }
         }
-        if let GameState::Finished(finished_state) = new_state {
-            if let Err(()) = self
-                .finalize_game(&ctx, game_id, record, finished_state)
+
+        if game_ended {
+            if let Err(RepoError(e)) = self
+                .ports
+                .game_state_repository()
+                .remove_state(&ctx, game_id)
                 .await
             {
-                tracing::error!("Failed to finalize game {}", game_id);
+                tracing::error!("Failed to remove ongoing game {}: {}", game_id, e);
+                return Err(());
+            }
+        } else {
+            if let Err(RepoError(e)) = self
+                .ports
+                .game_state_repository()
+                .set_state(&ctx, game_id, new_state)
+                .await
+            {
+                tracing::error!("Failed to update ongoing game {}: {}", game_id, e);
                 return Err(());
             }
         }

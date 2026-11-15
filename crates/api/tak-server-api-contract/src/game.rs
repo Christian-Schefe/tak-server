@@ -11,10 +11,28 @@ use tak_core::{
 pub struct JsonGameDetail {
     #[serde(flatten)]
     pub metadata: JsonGameMetadata,
-    pub history: Vec<String>,
-    pub remaining_ms: ForPlayer<u64>,
+    pub events: Vec<JsonGameEvent>,
     #[serde(flatten)]
     pub state: JsonGameDetailState,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonGameEvent {
+    pub event: JsonGameEventType,
+    pub remaining_ms: ForPlayer<u64>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum JsonGameEventType {
+    Action { action: String },
+    Undo,
+    GameOver,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]

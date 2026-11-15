@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use tak_core::{TakGame, TakGameSettings, TakPlayer};
+use tak_core::{MaybeTimeout, TakGame, TakGameSettings, TakPlayer};
 use tak_server_api_contract::game::JsonGameDetail;
 
 pub struct GameService {
@@ -27,8 +27,10 @@ impl GameService {
         for action in &status.history {
             let action = tak_core::ptn::action_from_ptn(action)?;
             match game.do_action(action, ()) {
-                Ok(()) => {}
-                Err(_) => return None,
+                MaybeTimeout::Timeout(_) => return None,
+                MaybeTimeout::NoTimeout(Err(_)) => return None,
+                MaybeTimeout::NoTimeout(Ok(Some(_))) => return None,
+                MaybeTimeout::NoTimeout(Ok(None)) => {}
             }
         }
         self.games
@@ -75,14 +77,10 @@ impl GameService {
         }
         let action = tak_core::ptn::action_from_ptn(ptn_move)?;
 
-        if let Err(_) = game.1.do_action(action, ()) {
+        let MaybeTimeout::NoTimeout(Ok(None)) = game.1.do_action(action, ()) else {
             games.remove(&game_id);
             return None;
-        }
-        if !game.1.is_ongoing() {
-            games.remove(&game_id);
-            return None;
-        }
+        };
         if game.1.current_player() != game.0 {
             return None;
         }
@@ -99,9 +97,7 @@ impl GameService {
         if game.1.ply_index() - 1 != ply_index {
             return None;
         }
-        if let Ok(false) = game.1.try_undo_action(()) {
-            return None;
-        }
+        let _ = game.1.try_undo_action(());
         if game.1.current_player() != game.0 {
             return None;
         }

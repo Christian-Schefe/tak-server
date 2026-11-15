@@ -71,7 +71,7 @@ impl PtnHeader {
                 date.format("%H:%M:%S")
             ),
             PtnHeader::Result(result) => {
-                format!("[Result \"{}\"]", game_result_to_string(result))
+                format!("[Result \"{}\"]", game_result_to_string(*result))
             }
             PtnHeader::Reserve(reserve) => format!(
                 "[Flats \"{}\"]\n[Caps \"{}\"]",
@@ -261,7 +261,7 @@ pub fn action_from_ptn(ptn: &str) -> Option<TakAction> {
     }
 }
 
-pub fn game_result_to_string(game_result: &TakGameResult) -> String {
+pub fn game_result_to_string(game_result: TakGameResult) -> String {
     match game_result {
         TakGameResult::Win { winner, reason } => {
             let letter = match reason {
@@ -603,21 +603,21 @@ mod tests {
             winner: TakPlayer::White,
             reason: TakWinReason::Road,
         };
-        assert_eq!(game_result_to_string(&state), "R-0");
+        assert_eq!(game_result_to_string(state), "R-0");
 
         let state = TakGameResult::Win {
             winner: TakPlayer::Black,
             reason: TakWinReason::Flats,
         };
-        assert_eq!(game_result_to_string(&state), "0-F");
+        assert_eq!(game_result_to_string(state), "0-F");
 
         let state = TakGameResult::Win {
             winner: TakPlayer::White,
             reason: TakWinReason::Default,
         };
-        assert_eq!(game_result_to_string(&state), "1-0");
+        assert_eq!(game_result_to_string(state), "1-0");
 
         let state = TakGameResult::Draw;
-        assert_eq!(game_result_to_string(&state), "1/2-1/2");
+        assert_eq!(game_result_to_string(state), "1/2-1/2");
     }
 }
