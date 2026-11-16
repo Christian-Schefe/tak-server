@@ -8,17 +8,17 @@ use axum::{
 use tak_core::ptn::{action_to_ptn, game_result_to_string};
 use tak_domain::{
     GameId,
-    game::{GameEvent, GameEventType, GameRequest, GameRequestType, GameState},
+    game::{GameEventType, GameRequest, GameRequestType},
     game_record::{GameMetadata, GameRecord},
 };
 use tak_server_api_contract::game::{
-    ForPlayer, JsonGameDetail, JsonGameDetailState, JsonGameEvent, JsonGameEventType,
-    JsonGameMetadata, JsonGameRatingInfo, JsonGameRecord, JsonGameRequest, JsonGameRequestType,
-    JsonGameRequests, JsonGameSettings, JsonPlayerSnapshot,
+    ForPlayerResponse, GameMetadataResponse, GameRatingInfoResponse, GameRecordResponse, GameRequestResponse,
+    GameRequestResponseType, GameRequestsResponse, GameSettingsResponse, GameStatusResponse, GameStatusResponseType,
+    PlayerSnapshotResponse,
 };
 use tak_server_app::workflow::gameplay::{
     do_action::{ActionError, HandleRequestError, PlayerActionError},
-    query::GameQueryError,
+    query::{GameDetailView, GameQueryError},
 };
 
 use crate::{AppState, ServiceError, auth::Auth};
@@ -34,7 +34,7 @@ pub fn register_routes() -> axum::Router<AppState> {
 
 async fn get_games(
     State(app): State<AppState>,
-) -> Result<Json<Vec<JsonGameMetadata>>, ServiceError> {
+) -> Result<Json<Vec<GameMetadataResponse>>, ServiceError> {
     let games = match app.app.game_query_use_case.get_ongoing_games().await {
         Ok(games) => games,
         Err(GameQueryError::RepositoryError) => {
@@ -52,10 +52,10 @@ async fn get_games(
 async fn get_game(
     State(app): State<AppState>,
     Path(game_id): Path<i64>,
-) -> Result<Json<JsonGameDetail>, ServiceError> {
+) -> Result<Json<GameStatusResponse>, ServiceError> {
     let game_id = GameId(game_id);
     match app.app.game_query_use_case.get_game(game_id).await {
-        Ok(Some((game, state))) => Ok(Json(detail_from_game(game_id, &game, &state))),
+        Ok(Some(detail)) => Ok(Json(status_from_game_detail(game_id, detail))),
         Ok(None) => Err(ServiceError::NotFound(format!(
             "Game with id {} not found",
             game_id
@@ -93,13 +93,13 @@ async fn set_request(
     auth: Auth,
     State(app): State<AppState>,
     Path(game_id): Path<i64>,
-    Json(request): Json<JsonGameRequest>,
+    Json(request): Json<GameRequestResponse>,
 ) -> Result<(), ServiceError> {
     let game_id = GameId(game_id);
     let request = match request {
-        JsonGameRequest::Draw { offer } => GameRequest::Draw(offer),
-        JsonGameRequest::Undo { request } => GameRequest::Undo(request),
-        JsonGameRequest::MoreTime { amount_ms } => {
+        GameRequestResponse::Draw { offer } => GameRequest::Draw(offer),
+        GameRequestResponse::Undo { request } => GameRequest::Undo(request),
+        GameRequestResponse::MoreTime { amount_ms } => {
             GameRequest::MoreTime(amount_ms.map(|ms| Duration::from_millis(ms)))
         }
     };
@@ -129,14 +129,14 @@ async fn accept_request(
     auth: Auth,
     State(app): State<AppState>,
     Path(game_id): Path<i64>,
-    Json(request_type): Json<JsonGameRequestType>,
+    Json(request_type): Json<GameRequestResponseType>,
 ) -> Result<(), ServiceError> {
     let game_id = GameId(game_id);
 
     let request_type = match request_type {
-        JsonGameRequestType::Draw => GameRequestType::Draw,
-        JsonGameRequestType::Undo => GameRequestType::Undo,
-        JsonGameRequestType::MoreTime => GameRequestType::MoreTime,
+        GameRequestResponseType::Draw => GameRequestType::Draw,
+        GameRequestResponseType::Undo => GameRequestType::Undo,
+        GameRequestResponseType::MoreTime => GameRequestType::MoreTime,
     };
 
     let res = app
@@ -169,94 +169,117 @@ async fn accept_request(
     }
 }
 
-pub fn from_metadata(game_id: GameId, metadata: &GameMetadata) -> JsonGameMetadata {
-    JsonGameMetadata {
+pub fn from_metadata(game_id: GameId, metadata: &GameMetadata) -> GameMetadataResponse {
+    GameMetadataResponse {
         id: game_id.to_string(),
         date: metadata.date,
-        white: JsonPlayerSnapshot {
+        white: PlayerSnapshotResponse {
             user_id: metadata.white.user_id.to_string(),
             username: metadata.white.username.clone(),
             rating: metadata.white.rating,
         },
-        black: JsonPlayerSnapshot {
+        black: PlayerSnapshotResponse {
             user_id: metadata.black.user_id.to_string(),
             username: metadata.black.username.clone(),
             rating: metadata.black.rating,
         },
         is_rated: metadata.is_rated,
-        game_settings: JsonGameSettings::from_game_settings(&metadata.settings),
+        game_settings: GameSettingsResponse::from_game_settings(&metadata.settings),
+        match_id: metadata.match_id.map(|id| id.to_string()),
     }
 }
 
-pub fn from_game(game_id: GameId, record: &GameRecord) -> JsonGameRecord {
+pub fn from_game(game_id: GameId, record: &GameRecord) -> GameRecordResponse {
     let result = record.result.map(|res| game_result_to_string(res));
 
-    let rating_info = record.rating_info.as_ref().map(|info| JsonGameRatingInfo {
-        rating_change: ForPlayer {
+    let rating_info = record.rating_info.as_ref().map(|info| GameRatingInfoResponse {
+        rating_change: ForPlayerResponse {
             white: info.rating_change_white,
             black: info.rating_change_black,
         },
     });
     let metadata = from_metadata(game_id, &record.metadata);
 
-    JsonGameRecord {
+    GameRecordResponse {
         metadata,
         result,
         rating_info,
     }
 }
 
-fn event_to_json_event(event: GameEvent) -> JsonGameEvent {
-    JsonGameEvent {
-        event: match event.event_type {
-            GameEventType::ActionPerformed { action, .. } => JsonGameEventType::Action {
-                action: action_to_ptn(&action),
-            },
-            GameEventType::ActionUndone { .. } => JsonGameEventType::Undo,
-            GameEventType::GameOver { .. } => JsonGameEventType::GameOver,
-        },
-        remaining_ms: ForPlayer {
-            white: event.time_info.white_remaining.as_millis() as u64,
-            black: event.time_info.black_remaining.as_millis() as u64,
-        },
+pub fn status_from_game_detail(game_id: GameId, detail: GameDetailView) -> GameStatusResponse {
+    let metadata = from_metadata(game_id, &detail.record.metadata);
+    let mut history = vec![];
+    let mut time_info = detail
+        .record
+        .metadata
+        .settings
+        .time_settings
+        .initial_time_info();
+    for event in detail.events {
+        match event.event_type {
+            GameEventType::ActionPerformed { action, .. } => {
+                history.push(action_to_ptn(&action));
+            }
+            GameEventType::ActionUndone { .. } => {
+                history.pop();
+            }
+            GameEventType::GameOver { .. } => {}
+        };
+        time_info = event.time_info;
     }
-}
 
-pub fn detail_from_game(
-    game_id: GameId,
-    record: &GameRecord,
-    state: &GameState,
-    events: Vec<GameEvent>,
-) -> JsonGameDetail {
-    let metadata = from_metadata(game_id, &record.metadata);
-    let json_events = events
-        .into_iter()
-        .map(|event| event_to_json_event(event))
-        .collect::<Vec<_>>();
-
-    let requests = ForPlayer {
-        white: JsonGameRequests {
-            draw_offered: state.white_requests.draw_offered,
-            undo_requested: state.white_requests.undo_requested,
-            more_time_offered: state
-                .white_requests
-                .more_time_offered
-                .map(|d| d.as_millis() as u64),
+    let json_state = match detail.record.result {
+        Some(res) => GameStatusResponseType::Finished {
+            result: game_result_to_string(res),
         },
-        black: JsonGameRequests {
-            draw_offered: state.black_requests.draw_offered,
-            undo_requested: state.black_requests.undo_requested,
-            more_time_offered: state
-                .black_requests
-                .more_time_offered
-                .map(|d| d.as_millis() as u64),
-        },
+        None => {
+            if let Some(state) = detail.state {
+                let requests = ForPlayerResponse {
+                    white: GameRequestsResponse {
+                        draw_offered: state.white_requests.draw_offered,
+                        undo_requested: state.white_requests.undo_requested,
+                        more_time_offered: state
+                            .white_requests
+                            .more_time_offered
+                            .map(|d| d.as_millis() as u64),
+                    },
+                    black: GameRequestsResponse {
+                        draw_offered: state.black_requests.draw_offered,
+                        undo_requested: state.black_requests.undo_requested,
+                        more_time_offered: state
+                            .black_requests
+                            .more_time_offered
+                            .map(|d| d.as_millis() as u64),
+                    },
+                };
+                GameStatusResponseType::Ongoing { requests }
+            } else {
+                GameStatusResponseType::Ongoing {
+                    requests: ForPlayerResponse {
+                        white: GameRequestsResponse {
+                            draw_offered: false,
+                            undo_requested: false,
+                            more_time_offered: None,
+                        },
+                        black: GameRequestsResponse {
+                            draw_offered: false,
+                            undo_requested: false,
+                            more_time_offered: None,
+                        },
+                    },
+                }
+            }
+        }
     };
-    let json_state = JsonGameDetailState::Ongoing { requests };
 
-    JsonGameDetail {
+    GameStatusResponse {
         metadata,
-        events: json_events,
-        state: json_state,
+        actions: history,
+        remaining_ms: ForPlayerResponse {
+            white: time_info.white_remaining.as_millis() as u64,
+            black: time_info.black_remaining.as_millis() as u64,
+        },
+        status: json_state,
     }
 }

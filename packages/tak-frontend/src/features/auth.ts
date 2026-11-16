@@ -30,21 +30,17 @@ export const useAuthStore = defineStore('auth', () => {
   const storedAuthData = useStorage<AuthData | null>('jwt', null, undefined, {
     serializer: StorageSerializers.object,
   });
-  const authData = ref<AuthData | null>(null);
+  const authData = ref<AuthData | null>(loadStoredAuthData());
 
-  watch(
-    storedAuthData,
-    (newValue) => {
-      console.log('Loaded stored auth data:', newValue);
-      const parsed = parseAuthData(newValue);
-      if (parsed && parsed.refreshTokenValidUntil > Date.now()) {
-        setAuthData(parsed);
-      } else {
-        setAuthData(null);
-      }
-    },
-    { immediate: true, once: true },
-  );
+  function loadStoredAuthData() {
+    console.log('Loaded stored auth data:', storedAuthData.value);
+    const parsed = parseAuthData(storedAuthData.value);
+    if (parsed && parsed.refreshTokenValidUntil > Date.now()) {
+      return parsed;
+    } else {
+      return null;
+    }
+  }
 
   function setAuthData(newAuthData: AuthData | null) {
     console.log('Setting auth data:', newAuthData);
@@ -74,15 +70,14 @@ export const useAuthStore = defineStore('auth', () => {
   });
 
   const refresh = useRefresh();
-  const router = useRouter();
-  async function maybeRefreshToken() {
-    if (data.value === null) {
-      return;
+  async function getAuthData(doRefresh = true) {
+    if (!data.value || !doRefresh) {
+      return data.value;
     }
     const currentTime = Math.floor(Date.now() / 1000);
     const isCloseToExpiring = data.value.exp - currentTime <= 5 * 60; // 5 minutes
     if (!isCloseToExpiring) {
-      return;
+      return data.value;
     }
     console.log('Refreshing token for user:', data.value.userId);
     try {
@@ -91,12 +86,23 @@ export const useAuthStore = defineStore('auth', () => {
         refreshToken: data.value.refreshToken,
       });
       setAuthData(newAuthData);
+      return newAuthData;
     } catch (error) {
       console.error('Failed to refresh token:', error);
-      setAuthData(null);
-      void router.push({ name: '/(auth)/login' });
     }
+    return null;
   }
 
-  return { setAuthData, data, maybeRefreshToken };
+  const router = useRouter();
+  watch(
+    () => data.value,
+    (newValue) => {
+      if (newValue === null) {
+        void router.push({ name: '/(auth)/login' });
+      }
+    },
+    { immediate: true },
+  );
+
+  return { setAuthData, data, getAuthData };
 });

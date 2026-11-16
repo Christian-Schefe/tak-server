@@ -7,12 +7,11 @@ use crate::{
         connection::{UserConnectionPort, UserOnlineStatusPort},
         email::EmailPort,
         event::EventRepository,
-        game::{GameRepository, GameStateRepository},
+        game::{GameHistoryRepository, GameRepository, GameStateRepository},
         matches::MatchRepository,
         moderation::ModerationRepository,
         notification::ListenerNotificationPort,
         profile::{AccountProfileRepository, ProfilePictureRepository},
-        puzzle::PuzzleRepository,
         rating::RatingRepository,
         stats::{RatingHistoryRepository, StatsRepository},
         tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
@@ -59,10 +58,6 @@ use crate::{
             get_rating::{PlayerGetRatingUseCase, PlayerGetRatingUseCaseImpl},
             get_stats::{GetPlayerStatsUseCase, GetPlayerStatsUseCaseImpl},
             notify_player::NotifyPlayerWorkflowImpl,
-        },
-        puzzle::{
-            get::{GetPuzzleUseCase, GetPuzzleUseCaseImpl},
-            solve::{SolvePuzzleUseCase, SolvePuzzleUseCaseImpl},
         },
         shutdown::{ShutdownWorkflow, ShutdownWorkflowImpl},
         tournament::{
@@ -121,9 +116,6 @@ pub struct Application {
 
     pub get_stats_use_case: Arc<dyn GetPlayerStatsUseCase + Send + Sync + 'static>,
 
-    pub get_puzzle_use_case: Arc<dyn GetPuzzleUseCase + Send + Sync + 'static>,
-    pub solve_puzzle_use_case: Arc<dyn SolvePuzzleUseCase + Send + Sync + 'static>,
-
     pub get_tournaments_use_case: Arc<dyn GetTournamentUseCase + Send + Sync + 'static>,
     pub tournament_player_registration_use_case:
         Arc<dyn TournamentPlayerRegistrationUseCase + Send + Sync + 'static>,
@@ -143,7 +135,6 @@ pub trait PortsCollection {
     type StatsRepo: StatsRepository<Self::TrCtx> + Send + Sync + 'static;
     type ProfileRepo: AccountProfileRepository<Self::TrCtx> + Send + Sync + 'static;
     type ProfilePictureRepo: ProfilePictureRepository + Send + Sync + 'static;
-    type PuzzleRepo: PuzzleRepository<Self::TrCtx> + Send + Sync + 'static;
     type ChatRepo: ChatRepository<Self::TrCtx> + Send + Sync + 'static;
     type RatingHistoryRepo: RatingHistoryRepository<Self::TrCtx> + Send + Sync + 'static;
     type TournamentRepo: TournamentRepository<Self::TrCtx> + Send + Sync + 'static;
@@ -153,6 +144,7 @@ pub trait PortsCollection {
     type ModerationRepo: ModerationRepository<Self::TrCtx> + Send + Sync + 'static;
     type TransactionMgr: TransactionManager<Self::TrCtx> + Send + Sync + 'static;
     type GameStateRepo: GameStateRepository<Self::TrCtx> + Send + Sync + 'static;
+    type GameHistoryRepo: GameHistoryRepository<Self::TrCtx> + Send + Sync + 'static;
     type TrCtx: Send + Sync + 'static;
     fn game_repository(&self) -> Arc<Self::GameRepo>;
     fn rating_repository(&self) -> Arc<Self::RatingRepo>;
@@ -160,7 +152,6 @@ pub trait PortsCollection {
     fn stats_repository(&self) -> Arc<Self::StatsRepo>;
     fn profile_repository(&self) -> Arc<Self::ProfileRepo>;
     fn profile_picture_repository(&self) -> Arc<Self::ProfilePictureRepo>;
-    fn puzzle_repository(&self) -> Arc<Self::PuzzleRepo>;
     fn chat_repository(&self) -> Arc<Self::ChatRepo>;
     fn rating_history_repository(&self) -> Arc<Self::RatingHistoryRepo>;
     fn tournament_repository(&self) -> Arc<Self::TournamentRepo>;
@@ -170,6 +161,7 @@ pub trait PortsCollection {
     fn moderation_repository(&self) -> Arc<Self::ModerationRepo>;
     fn transaction_manager(&self) -> Arc<Self::TransactionMgr>;
     fn game_state_repository(&self) -> Arc<Self::GameStateRepo>;
+    fn game_history_repository(&self) -> Arc<Self::GameHistoryRepo>;
 }
 
 pub struct PortsCollectionImpl<
@@ -179,7 +171,6 @@ pub struct PortsCollectionImpl<
     StatsRepo: StatsRepository<TrCtx>,
     AccountProfileRepo: AccountProfileRepository<TrCtx>,
     ProfilePictureRepo: ProfilePictureRepository,
-    PuzzleRepo: PuzzleRepository<TrCtx>,
     ChatRepo: ChatRepository<TrCtx>,
     RatingHistoryRepo: RatingHistoryRepository<TrCtx>,
     TournamentRepo: TournamentRepository<TrCtx>,
@@ -188,6 +179,7 @@ pub struct PortsCollectionImpl<
     TournamentRoundRepo: TournamentRoundRepository<TrCtx>,
     ModerationRepo: ModerationRepository<TrCtx>,
     GameStateRepo: GameStateRepository<TrCtx>,
+    GameHistoryRepo: GameHistoryRepository<TrCtx>,
     TransactionMgr: TransactionManager<TrCtx>,
     TrCtx,
 > {
@@ -197,7 +189,6 @@ pub struct PortsCollectionImpl<
     pub stats_repository: Arc<StatsRepo>,
     pub profile_repository: Arc<AccountProfileRepo>,
     pub profile_picture_repository: Arc<ProfilePictureRepo>,
-    pub puzzle_repository: Arc<PuzzleRepo>,
     pub chat_repository: Arc<ChatRepo>,
     pub rating_history_repository: Arc<RatingHistoryRepo>,
     pub tournament_repository: Arc<TournamentRepo>,
@@ -206,6 +197,7 @@ pub struct PortsCollectionImpl<
     pub tournament_round_repository: Arc<TournamentRoundRepo>,
     pub moderation_repository: Arc<ModerationRepo>,
     pub game_state_repository: Arc<GameStateRepo>,
+    pub game_history_repository: Arc<GameHistoryRepo>,
     pub transaction_manager: Arc<TransactionMgr>,
     ctx: std::marker::PhantomData<TrCtx>,
 }
@@ -217,7 +209,6 @@ impl<
     StatsRepo: StatsRepository<TrCtx>,
     AccountProfileRepo: AccountProfileRepository<TrCtx>,
     ProfilePictureRepo: ProfilePictureRepository,
-    PuzzleRepo: PuzzleRepository<TrCtx>,
     ChatRepo: ChatRepository<TrCtx>,
     RatingHistoryRepo: RatingHistoryRepository<TrCtx>,
     TournamentRepo: TournamentRepository<TrCtx>,
@@ -226,6 +217,7 @@ impl<
     TournamentRoundRepo: TournamentRoundRepository<TrCtx>,
     ModerationRepo: ModerationRepository<TrCtx>,
     GameStateRepo: GameStateRepository<TrCtx>,
+    GameHistoryRepo: GameHistoryRepository<TrCtx>,
     TransactionMgr: TransactionManager<TrCtx>,
     TrCtx,
 >
@@ -236,7 +228,6 @@ impl<
         StatsRepo,
         AccountProfileRepo,
         ProfilePictureRepo,
-        PuzzleRepo,
         ChatRepo,
         RatingHistoryRepo,
         TournamentRepo,
@@ -245,6 +236,7 @@ impl<
         TournamentRoundRepo,
         ModerationRepo,
         GameStateRepo,
+        GameHistoryRepo,
         TransactionMgr,
         TrCtx,
     >
@@ -256,7 +248,6 @@ impl<
         stats_repository: Arc<StatsRepo>,
         profile_repository: Arc<AccountProfileRepo>,
         profile_picture_repository: Arc<ProfilePictureRepo>,
-        puzzle_repository: Arc<PuzzleRepo>,
         chat_repository: Arc<ChatRepo>,
         rating_history_repository: Arc<RatingHistoryRepo>,
         tournament_repository: Arc<TournamentRepo>,
@@ -265,6 +256,7 @@ impl<
         tournament_round_repository: Arc<TournamentRoundRepo>,
         moderation_repository: Arc<ModerationRepo>,
         game_state_repository: Arc<GameStateRepo>,
+        game_history_repository: Arc<GameHistoryRepo>,
         transaction_manager: Arc<TransactionMgr>,
     ) -> Self {
         Self {
@@ -274,7 +266,6 @@ impl<
             stats_repository,
             profile_repository,
             profile_picture_repository,
-            puzzle_repository,
             chat_repository,
             rating_history_repository,
             tournament_repository,
@@ -283,6 +274,7 @@ impl<
             tournament_round_repository,
             moderation_repository,
             game_state_repository,
+            game_history_repository,
             transaction_manager,
             ctx: std::marker::PhantomData,
         }
@@ -296,7 +288,6 @@ impl<
     StatsRepo: StatsRepository<TrCtx> + Send + Sync + 'static,
     ProfileRepo: AccountProfileRepository<TrCtx> + Send + Sync + 'static,
     ProfilePictureRepo: ProfilePictureRepository + Send + Sync + 'static,
-    PuzzleRepo: PuzzleRepository<TrCtx> + Send + Sync + 'static,
     ChatRepo: ChatRepository<TrCtx> + Send + Sync + 'static,
     RatingHistoryRepo: RatingHistoryRepository<TrCtx> + Send + Sync + 'static,
     TournamentRepo: TournamentRepository<TrCtx> + Send + Sync + 'static,
@@ -305,6 +296,7 @@ impl<
     TournamentRoundRepo: TournamentRoundRepository<TrCtx> + Send + Sync + 'static,
     ModerationRepo: ModerationRepository<TrCtx> + Send + Sync + 'static,
     GameStateRepo: GameStateRepository<TrCtx> + Send + Sync + 'static,
+    GameHistoryRepo: GameHistoryRepository<TrCtx> + Send + Sync + 'static,
     TransactionMgr: TransactionManager<TrCtx> + Send + Sync + 'static,
     TrCtx: Send + Sync + 'static,
 > PortsCollection
@@ -315,7 +307,6 @@ impl<
         StatsRepo,
         ProfileRepo,
         ProfilePictureRepo,
-        PuzzleRepo,
         ChatRepo,
         RatingHistoryRepo,
         TournamentRepo,
@@ -324,6 +315,7 @@ impl<
         TournamentRoundRepo,
         ModerationRepo,
         GameStateRepo,
+        GameHistoryRepo,
         TransactionMgr,
         TrCtx,
     >
@@ -334,7 +326,6 @@ impl<
     type StatsRepo = StatsRepo;
     type ProfileRepo = ProfileRepo;
     type ProfilePictureRepo = ProfilePictureRepo;
-    type PuzzleRepo = PuzzleRepo;
     type ChatRepo = ChatRepo;
     type RatingHistoryRepo = RatingHistoryRepo;
     type TournamentRepo = TournamentRepo;
@@ -343,6 +334,7 @@ impl<
     type TournamentRoundRepo = TournamentRoundRepo;
     type ModerationRepo = ModerationRepo;
     type GameStateRepo = GameStateRepo;
+    type GameHistoryRepo = GameHistoryRepo;
     type TransactionMgr = TransactionMgr;
     type TrCtx = TrCtx;
 
@@ -363,9 +355,6 @@ impl<
     }
     fn profile_picture_repository(&self) -> Arc<Self::ProfilePictureRepo> {
         self.profile_picture_repository.clone()
-    }
-    fn puzzle_repository(&self) -> Arc<Self::PuzzleRepo> {
-        self.puzzle_repository.clone()
     }
     fn chat_repository(&self) -> Arc<Self::ChatRepo> {
         self.chat_repository.clone()
@@ -390,6 +379,9 @@ impl<
     }
     fn game_state_repository(&self) -> Arc<Self::GameStateRepo> {
         self.game_state_repository.clone()
+    }
+    fn game_history_repository(&self) -> Arc<Self::GameHistoryRepo> {
+        self.game_history_repository.clone()
     }
     fn transaction_manager(&self) -> Arc<Self::TransactionMgr> {
         self.transaction_manager.clone()
@@ -546,9 +538,6 @@ pub async fn build_application<
         update_profile_use_case: Arc::new(UpdateProfileUseCaseImpl::new(ports.clone())),
 
         get_stats_use_case: Arc::new(GetPlayerStatsUseCaseImpl::new(ports.clone())),
-
-        get_puzzle_use_case: Arc::new(GetPuzzleUseCaseImpl::new(ports.clone())),
-        solve_puzzle_use_case: Arc::new(SolvePuzzleUseCaseImpl::new(ports.clone())),
 
         get_tournaments_use_case: Arc::new(GetTournamentUseCaseImpl::new(ports.clone())),
         tournament_player_registration_use_case: Arc::new(

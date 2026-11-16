@@ -6,7 +6,6 @@ pub mod matches;
 pub mod moderation;
 pub mod player;
 pub mod profile;
-pub mod puzzle;
 pub mod rating;
 pub mod seek;
 pub mod spectator;
@@ -85,21 +84,6 @@ impl ChatMessageId {
 }
 
 impl std::fmt::Display for ChatMessageId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct PuzzleId(pub i64);
-
-impl PuzzleId {
-    pub fn new(id: i64) -> Self {
-        PuzzleId(id)
-    }
-}
-
-impl std::fmt::Display for PuzzleId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }

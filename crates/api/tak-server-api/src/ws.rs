@@ -16,9 +16,9 @@ use tak_core::ptn::{action_from_ptn, action_to_ptn, game_result_to_string};
 use tak_domain::{GameId, UserId, chat::ChatConversation, game::GameRequest};
 use tak_player_connection::{ConnectionId, PlayerSimpleConnectionPort};
 use tak_server_api_contract::{
-    game::{ForPlayer, JsonGameRequest},
+    game::{ForPlayerResponse, GameRequestResponse},
     ws::{
-        ClientMessage, ClientMessageWrapper, JsonChatConversation, JsonChatMessage,
+        ClientMessage, ClientMessageWrapper, ChatConversationResponse, ChatMessageResponse,
         ServerGameEventType, ServerMatchEventType, ServerMessage,
     },
 };
@@ -264,9 +264,9 @@ async fn handle_authenticated_client_message(
         } => {
             tracing::info!("Received ChatMessage: {:?} -> {}", conversation, message);
             let message_target = match conversation {
-                JsonChatConversation::Global => ChatConversation::Global,
-                JsonChatConversation::Room { room_name } => ChatConversation::Room { room_name },
-                JsonChatConversation::Private { user_id1, user_id2 } => {
+                ChatConversationResponse::Global => ChatConversation::Global,
+                ChatConversationResponse::Room { room_name } => ChatConversation::Room { room_name },
+                ChatConversationResponse::Private { user_id1, user_id2 } => {
                     let Ok(user_id1) = UserId::try_from(user_id1) else {
                         return Err(ServiceError::BadRequest(
                             "Invalid user ID format in private conversation".to_string(),
@@ -398,9 +398,9 @@ fn from_listener_game_event_type(event_type: ListenerGameMessageType) -> ServerG
             ServerGameEventType::GameRequestChanged {
                 user_id: user_id.0.to_string(),
                 request: match request {
-                    GameRequest::Draw(offer) => JsonGameRequest::Draw { offer },
-                    GameRequest::Undo(request) => JsonGameRequest::Undo { request },
-                    GameRequest::MoreTime(duration) => JsonGameRequest::MoreTime {
+                    GameRequest::Draw(offer) => GameRequestResponse::Draw { offer },
+                    GameRequest::Undo(request) => GameRequestResponse::Undo { request },
+                    GameRequest::MoreTime(duration) => GameRequestResponse::MoreTime {
                         amount_ms: duration.map(|d| d.as_millis() as u64),
                     },
                 },
@@ -426,7 +426,7 @@ fn from_listener_message(message: ListenerMessage) -> Option<ServerMessage> {
         } => Some(ServerMessage::GameEvent {
             game_id: game_id.to_string(),
             event_type: from_listener_game_event_type(event_type),
-            time_info: ForPlayer {
+            time_info: ForPlayerResponse {
                 white: time_info.white_remaining.as_millis() as u64,
                 black: time_info.black_remaining.as_millis() as u64,
             },
@@ -443,15 +443,15 @@ fn from_listener_message(message: ListenerMessage) -> Option<ServerMessage> {
             conversation,
         } => {
             let conversation = match conversation {
-                ChatConversation::Global => JsonChatConversation::Global,
-                ChatConversation::Room { room_name } => JsonChatConversation::Room { room_name },
-                ChatConversation::Private { user_ids: members } => JsonChatConversation::Private {
+                ChatConversation::Global => ChatConversationResponse::Global,
+                ChatConversation::Room { room_name } => ChatConversationResponse::Room { room_name },
+                ChatConversation::Private { user_ids: members } => ChatConversationResponse::Private {
                     user_id1: members.0.to_string(),
                     user_id2: members.1.to_string(),
                 },
             };
             Some(ServerMessage::ChatMessage {
-                message: JsonChatMessage {
+                message: ChatMessageResponse {
                     message_id: message.id.0,
                     sender: message.sender.to_string(),
                     message: message.message,

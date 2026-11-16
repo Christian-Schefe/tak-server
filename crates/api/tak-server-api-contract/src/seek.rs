@@ -1,19 +1,19 @@
-use crate::game::JsonGameSettings;
+use crate::game::GameSettingsResponse;
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct CreateSeekPayload {
+pub struct CreateSeekRequest {
     pub color: String,
     pub is_rated: bool,
-    pub game_settings: JsonGameSettings,
+    pub game_settings: GameSettingsResponse,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonSeek {
+pub struct SeekResponse {
     pub id: String,
     pub creator_id: String,
     pub color: String,
     pub is_rated: bool,
-    pub game_settings: JsonGameSettings,
+    pub game_settings: GameSettingsResponse,
 }

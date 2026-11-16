@@ -33,6 +33,21 @@ pub enum TakTimeSettings {
     Async(TakAsyncTimeControl),
 }
 
+impl TakTimeSettings {
+    pub fn initial_time_info(&self) -> TakTimeInfo {
+        match self {
+            TakTimeSettings::Realtime(rt) => TakTimeInfo {
+                white_remaining: rt.contingent,
+                black_remaining: rt.contingent,
+            },
+            TakTimeSettings::Async(at) => TakTimeInfo {
+                white_remaining: at.contingent,
+                black_remaining: at.contingent,
+            },
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TakTimeInfo {
     pub white_remaining: Duration,

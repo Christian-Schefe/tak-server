@@ -25,7 +25,9 @@ impl AccountProfileRepository<RepositoryContext> for ProfileRepositoryImpl {
             display_name: sea_orm::ActiveValue::Set(profile_information.display_name.clone()),
             country: sea_orm::ActiveValue::Set(profile_information.country.map(|x| x.to_string())),
             profile_picture_version: sea_orm::ActiveValue::Set(
-                profile_information.profile_picture_version.map(|x| x.0),
+                profile_information
+                    .profile_picture_version
+                    .map(|x| x.0 as i64),
             ),
         };
         profile::Entity::insert(active_model)
@@ -61,7 +63,9 @@ impl AccountProfileRepository<RepositoryContext> for ProfileRepositoryImpl {
                     .country
                     .as_deref()
                     .and_then(|c| CountryCode::from_str(c).ok()),
-                profile_picture_version: model.profile_picture_version.map(ProfilePictureVersion),
+                profile_picture_version: model
+                    .profile_picture_version
+                    .map(|x| ProfilePictureVersion(x as u64)),
             };
             Ok(Some(profile_information))
         } else {

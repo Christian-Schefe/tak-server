@@ -12,11 +12,11 @@ sea-orm = { version = "2.0.0-rc", features = [
     "macros",
     "runtime-tokio-native-tls",
     "schema-sync",
-    "sqlx-mysql",
+    "sqlx-postgres",
 ] }
 sea-orm-migration = { version = "2.0.0-rc", features = [
     "runtime-tokio-native-tls",
-    "sqlx-mysql",
+    "sqlx-postgres",
 ] }
 tak-persistence-sea-orm-entities = { path = "../tak-persistence-sea-orm-entities" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }

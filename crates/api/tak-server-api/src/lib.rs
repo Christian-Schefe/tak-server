@@ -14,7 +14,6 @@ mod history;
 mod matches;
 mod player;
 mod profile;
-mod puzzle;
 mod seek;
 mod tournament;
 mod ws;
@@ -45,7 +44,6 @@ pub async fn serve(
         .nest("/seeks", seek::register_routes())
         .nest("/auth", auth::register_routes())
         .nest("/games", game::register_routes())
-        .nest("/puzzles", puzzle::register_routes())
         .nest("/chat", chat::register_routes())
         .nest("/tournaments", tournament::register_routes())
         .nest("/matches", matches::register_routes())

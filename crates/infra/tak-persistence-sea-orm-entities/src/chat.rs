@@ -1,6 +1,7 @@
 use chrono::Utc;
 use sea_orm::entity::prelude::*;
 
+#[sea_orm::model]
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "chat_messages")]
 pub struct Model {
@@ -13,8 +14,5 @@ pub struct Model {
     #[sea_orm(column_type = "Text")]
     pub message: String,
 }
-
-#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}

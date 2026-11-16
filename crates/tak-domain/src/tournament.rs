@@ -10,7 +10,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct TournamentMetadata {
     pub name: String,
-    pub tournament_format: TournamentFormat,
+    pub format: TournamentFormat,
     pub match_settings: MatchSettings,
 }
 

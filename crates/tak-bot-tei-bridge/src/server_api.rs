@@ -4,8 +4,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tak_server_api_contract::{
-    game::{JsonGameDetail, JsonGameMetadata},
-    seek::{CreateSeekPayload, JsonSeek},
+    game::{GameMetadataResponse, GameStatusResponse},
+    seek::{CreateSeekRequest, SeekResponse},
     ws::{ClientMessage, ClientMessageWrapper, ServerMessage},
 };
 use tokio::{
@@ -280,15 +280,15 @@ impl ServerApi for ServerApiImpl {
             .ok_or_else(|| "Failed to receive response".to_string())?
     }
 
-    async fn load_games(&self) -> Result<Vec<JsonGameMetadata>, String> {
+    async fn load_games(&self) -> Result<Vec<GameMetadataResponse>, String> {
         self.get_request("/games").await
     }
 
-    async fn load_game(&self, id: String) -> Result<JsonGameDetail, String> {
+    async fn load_game(&self, id: String) -> Result<GameStatusResponse, String> {
         self.get_request(&format!("/games/{}", id)).await
     }
 
-    async fn create_seek(&self, seek: CreateSeekPayload) -> Result<JsonSeek, String> {
+    async fn create_seek(&self, seek: CreateSeekRequest) -> Result<SeekResponse, String> {
         self.post_request("/seeks", seek).await
     }
 }

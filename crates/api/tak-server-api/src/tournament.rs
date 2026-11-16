@@ -11,7 +11,7 @@ use tak_server_app::workflow::tournament::{
     register::TournamentRegistrationError,
 };
 
-use crate::{AppState, ServiceError, auth::Auth, matches::JsonMatchSettings};
+use crate::{AppState, ServiceError, auth::Auth, matches::MatchSettingsResponse};
 
 pub fn register_routes() -> axum::Router<AppState> {
     axum::Router::new()
@@ -46,12 +46,12 @@ pub fn register_routes() -> axum::Router<AppState> {
 
 async fn get_tournaments(
     State(app): State<AppState>,
-) -> Result<Json<Vec<JsonTournament>>, ServiceError> {
+) -> Result<Json<Vec<TournamentResponse>>, ServiceError> {
     match app.app.get_tournaments_use_case.get_tournaments().await {
         Ok(tournaments) => Ok(Json(
             tournaments
                 .into_iter()
-                .map(|t| JsonTournament::from(&t))
+                .map(|t| TournamentResponse::from(&t))
                 .collect(),
         )),
         Err(_) => Err(ServiceError::Internal(
@@ -63,7 +63,7 @@ async fn get_tournaments(
 async fn get_tournament(
     State(app): State<AppState>,
     Path(tournament_id): Path<String>,
-) -> Result<Json<JsonTournamentDetail>, ServiceError> {
+) -> Result<Json<TournamentDetailResponse>, ServiceError> {
     let tournament_id = TournamentId(
         tournament_id
             .parse()
@@ -83,7 +83,7 @@ async fn get_tournament(
             ));
         }
     };
-    Ok(Json(JsonTournamentDetail::from(&tournament)))
+    Ok(Json(TournamentDetailResponse::from(&tournament)))
 }
 
 async fn register_player_to_tournament(
@@ -152,11 +152,11 @@ async fn create_tournament(
             auth.user_id,
             payload.name,
             match payload.tournament_format {
-                JsonTournamentType::Swiss { rounds } => TournamentFormat::Swiss {
+                TournamentTypeResponse::Swiss { rounds } => TournamentFormat::Swiss {
                     rounds: rounds as usize,
                 },
-                JsonTournamentType::RoundRobin => TournamentFormat::RoundRobin,
-                JsonTournamentType::GroupRoundRobin { group_size } => {
+                TournamentTypeResponse::RoundRobin => TournamentFormat::RoundRobin,
+                TournamentTypeResponse::GroupRoundRobin { group_size } => {
                     TournamentFormat::GroupRoundRobin {
                         group_size: group_size as usize,
                     }
@@ -291,34 +291,34 @@ struct SetRegistrationOpenRequest {
 #[serde(rename_all = "camelCase")]
 struct CreateTournamentRequest {
     name: String,
-    tournament_format: JsonTournamentType,
-    match_settings: JsonMatchSettings,
+    tournament_format: TournamentTypeResponse,
+    match_settings: MatchSettingsResponse,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct JsonTournamentDetail {
+struct TournamentDetailResponse {
     #[serde(flatten)]
-    tournament: JsonTournament,
-    players: Vec<JsonTournamentPlayer>,
-    rounds: Vec<JsonTournamentRound>,
+    tournament: TournamentResponse,
+    players: Vec<TournamentPlayerResponse>,
+    rounds: Vec<TournamentRoundResponse>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct JsonTournamentRound {
+struct TournamentRoundResponse {
     matches: Vec<String>,
     byes: Vec<String>,
 }
 
-impl JsonTournamentDetail {
+impl TournamentDetailResponse {
     fn from(tournament: &TournamentDetailView) -> Self {
         Self {
-            tournament: JsonTournament::from(&tournament.tournament),
+            tournament: TournamentResponse::from(&tournament.tournament),
             players: tournament
                 .player_scores
                 .iter()
-                .map(|(user_id, score)| JsonTournamentPlayer {
+                .map(|(user_id, score)| TournamentPlayerResponse {
                     id: user_id.to_string(),
                     score: *score,
                 })
@@ -326,7 +326,7 @@ impl JsonTournamentDetail {
             rounds: tournament
                 .rounds
                 .iter()
-                .map(|round| JsonTournamentRound {
+                .map(|round| TournamentRoundResponse {
                     matches: round.matches.iter().map(|m| m.0.to_string()).collect(),
                     byes: round.byes.iter().map(|p| p.0.to_string()).collect(),
                 })
@@ -337,25 +337,25 @@ impl JsonTournamentDetail {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct JsonTournamentPlayer {
+struct TournamentPlayerResponse {
     id: String,
     score: u32,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct JsonTournamentMetadata {
+struct TournamentMetadataResponse {
     id: String,
     name: String,
-    match_settings: JsonMatchSettings,
-    tournament_format: JsonTournamentType,
+    match_settings: MatchSettingsResponse,
+    tournament_format: TournamentTypeResponse,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct JsonTournament {
-    metadata: JsonTournamentMetadata,
-    status: JsonTournamentStatus,
+struct TournamentResponse {
+    metadata: TournamentMetadataResponse,
+    status: TournamentStatusResponse,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -364,7 +364,7 @@ struct JsonTournament {
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
-pub enum JsonTournamentStatus {
+pub enum TournamentStatusResponse {
     Upcoming { registration_open: bool },
     Ongoing,
     Completed,
@@ -376,25 +376,25 @@ pub enum JsonTournamentStatus {
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
-pub enum JsonTournamentType {
+pub enum TournamentTypeResponse {
     Swiss { rounds: u32 },
     RoundRobin,
     GroupRoundRobin { group_size: u32 },
 }
 
-impl JsonTournamentMetadata {
+impl TournamentMetadataResponse {
     pub fn from(metadata: &TournamentMetadataView) -> Self {
         Self {
             id: metadata.tournament_id.0.to_string(),
             name: metadata.name.to_string(),
-            match_settings: JsonMatchSettings::from_match_settings(&metadata.match_settings),
+            match_settings: MatchSettingsResponse::from_match_settings(&metadata.match_settings),
             tournament_format: match metadata.tournament_format {
-                TournamentFormat::Swiss { rounds } => JsonTournamentType::Swiss {
+                TournamentFormat::Swiss { rounds } => TournamentTypeResponse::Swiss {
                     rounds: rounds as u32,
                 },
-                TournamentFormat::RoundRobin => JsonTournamentType::RoundRobin,
+                TournamentFormat::RoundRobin => TournamentTypeResponse::RoundRobin,
                 TournamentFormat::GroupRoundRobin { group_size } => {
-                    JsonTournamentType::GroupRoundRobin {
+                    TournamentTypeResponse::GroupRoundRobin {
                         group_size: group_size as u32,
                     }
                 }
@@ -403,23 +403,25 @@ impl JsonTournamentMetadata {
     }
 }
 
-impl JsonTournament {
+impl TournamentResponse {
     pub fn from(tournament: &TournamentView) -> Self {
         Self {
-            metadata: JsonTournamentMetadata::from(&tournament.metadata),
-            status: JsonTournamentStatus::from(&tournament.status),
+            metadata: TournamentMetadataResponse::from(&tournament.metadata),
+            status: TournamentStatusResponse::from(&tournament.status),
         }
     }
 }
 
-impl JsonTournamentStatus {
+impl TournamentStatusResponse {
     pub fn from(status: &TournamentStatus) -> Self {
         match status {
-            TournamentStatus::Upcoming { registration_open } => JsonTournamentStatus::Upcoming {
-                registration_open: *registration_open,
-            },
-            TournamentStatus::Ongoing => JsonTournamentStatus::Ongoing,
-            TournamentStatus::Completed => JsonTournamentStatus::Completed,
+            TournamentStatus::Upcoming { registration_open } => {
+                TournamentStatusResponse::Upcoming {
+                    registration_open: *registration_open,
+                }
+            }
+            TournamentStatus::Ongoing => TournamentStatusResponse::Ongoing,
+            TournamentStatus::Completed => TournamentStatusResponse::Completed,
         }
     }
 }

@@ -1,67 +1,17 @@
-use crate::JsonGameSettings;
 use crate::transaction::RepositoryContext;
-use sea_orm::ActiveValue::Set;
+use crate::{
+    match_settings_from_json, match_settings_to_json, match_status_from_json, match_status_to_json,
+};
+use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use tak_core::TakPlayer;
-use tak_domain::matches::{
-    Match, MatchMode, MatchPlayer, MatchSettings, MatchStatus, MatchTournamentInfo,
-};
+use tak_domain::matches::{Match, MatchPlayer, MatchTournamentInfo};
 use tak_domain::{MatchId, TournamentId, UserId};
 use tak_persistence_sea_orm_entities::matches;
 use tak_server_app::ports::matches::MatchRepository;
 use tak_server_app::ports::transaction::RepoError;
 
 pub struct MatchRepositoryImpl;
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub enum JsonMatchMode {
-    Unlimited,
-    FixedGames(u32),
-    FirstTo(u32),
-}
-
-impl JsonMatchMode {
-    fn from_match_mode(match_mode: &MatchMode) -> Self {
-        match match_mode {
-            MatchMode::Unlimited => JsonMatchMode::Unlimited,
-            MatchMode::FixedGames(games) => JsonMatchMode::FixedGames(*games),
-            MatchMode::FirstTo(games) => JsonMatchMode::FirstTo(*games),
-        }
-    }
-
-    fn to_match_mode(&self) -> MatchMode {
-        match self {
-            JsonMatchMode::Unlimited => MatchMode::Unlimited,
-            JsonMatchMode::FixedGames(games) => MatchMode::FixedGames(*games),
-            JsonMatchMode::FirstTo(games) => MatchMode::FirstTo(*games),
-        }
-    }
-}
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct JsonMatchSettings {
-    game_settings: JsonGameSettings,
-    match_mode: JsonMatchMode,
-    is_rated: bool,
-}
-
-impl JsonMatchSettings {
-    pub fn from_match_settings(settings: &MatchSettings) -> Self {
-        JsonMatchSettings {
-            game_settings: JsonGameSettings::from_game_settings(&settings.game_settings),
-            match_mode: JsonMatchMode::from_match_mode(&settings.match_mode),
-            is_rated: settings.is_rated,
-        }
-    }
-
-    pub fn to_match_settings(&self) -> MatchSettings {
-        MatchSettings {
-            game_settings: self.game_settings.to_game_settings(),
-            match_mode: self.match_mode.to_match_mode(),
-            is_rated: self.is_rated,
-        }
-    }
-}
 
 impl MatchRepositoryImpl {
     fn model_to_match(model: matches::Model) -> Result<(MatchId, Match), String> {
@@ -70,11 +20,11 @@ impl MatchRepositoryImpl {
             Match {
                 player1: MatchPlayer {
                     user_id: UserId(model.player1_id),
-                    score: model.score_player1,
+                    score: model.score_player1 as u32,
                 },
                 player2: MatchPlayer {
                     user_id: UserId(model.player2_id),
-                    score: model.score_player2,
+                    score: model.score_player2 as u32,
                 },
                 initial_color: match model.initial_color.as_str() {
                     "white" => Ok(TakPlayer::White),
@@ -84,21 +34,9 @@ impl MatchRepositoryImpl {
                         model.initial_color
                     )),
                 }?,
-                settings: serde_json::from_value::<JsonMatchSettings>(model.settings)
-                    .map_err(|e| {
-                        format!("Failed to deserialize game settings from database: {}", e)
-                    })?
-                    .to_match_settings(),
-                status: match model.status.as_str() {
-                    "waiting" => Ok(MatchStatus::Waiting),
-                    "ongoing" => Ok(MatchStatus::Ongoing),
-                    "completed" => Ok(MatchStatus::Completed),
-                    _ => Err(format!(
-                        "Invalid match status in database: {}",
-                        model.status
-                    )),
-                }?,
-                games_played: model.games_played,
+                settings: match_settings_from_json(&model.settings),
+                status: match_status_from_json(&model.status),
+                games_played: model.games_played as u32,
                 tournament_info: if let Some(tournament_id) = model.tournament_id
                     && let Some(round) = model.tournament_round
                     && let Some(match_number) = model.tournament_round_match_number
@@ -120,25 +58,18 @@ impl MatchRepositoryImpl {
         match_entry: &Match,
     ) -> Result<matches::ActiveModel, String> {
         Ok(matches::ActiveModel {
-            match_id: match_id.map(|id| Set(id.0)).unwrap_or_default(),
+            match_id: match_id.map(|id| Set(id.0)).unwrap_or(NotSet),
             player1_id: Set(match_entry.player1.user_id.0),
             player2_id: Set(match_entry.player2.user_id.0),
             initial_color: Set(match match_entry.initial_color {
                 TakPlayer::White => "white".to_string(),
                 TakPlayer::Black => "black".to_string(),
             }),
-            settings: Set(serde_json::to_value(JsonMatchSettings::from_match_settings(
-                &match_entry.settings,
-            ))
-            .map_err(|e| format!("Failed to serialize match settings for database: {}", e))?),
-            status: Set(match match_entry.status {
-                MatchStatus::Waiting => "waiting".to_string(),
-                MatchStatus::Ongoing => "ongoing".to_string(),
-                MatchStatus::Completed => "completed".to_string(),
-            }),
-            games_played: Set(match_entry.games_played),
-            score_player1: Set(match_entry.player1.score),
-            score_player2: Set(match_entry.player2.score),
+            settings: Set(match_settings_to_json(&match_entry.settings)),
+            status: Set(match_status_to_json(&match_entry.status)),
+            games_played: Set(match_entry.games_played as i32),
+            score_player1: Set(match_entry.player1.score as i32),
+            score_player2: Set(match_entry.player2.score as i32),
             tournament_id: Set(match_entry
                 .tournament_info
                 .as_ref()

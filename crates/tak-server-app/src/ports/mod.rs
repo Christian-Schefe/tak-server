@@ -8,7 +8,6 @@ pub mod matches;
 pub mod moderation;
 pub mod notification;
 pub mod profile;
-pub mod puzzle;
 pub mod rating;
 pub mod stats;
 pub mod tournament;

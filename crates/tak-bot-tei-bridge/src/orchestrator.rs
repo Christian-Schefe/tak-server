@@ -4,10 +4,10 @@ use tak_core::{TakPlayer, TakReserve};
 
 use tak_server_api_contract::{
     game::{
-        JsonBaseGameSettings, JsonGameDetail, JsonGameDetailState, JsonGameMetadata,
-        JsonGameSettings, JsonTakOpening, JsonTimeSettings,
+        BaseGameSettingsResponse, GameMetadataResponse, GameSettingsResponse, GameStatusResponse,
+        GameStatusResponseType, TakOpeningResponse, TimeSettingsResponse,
     },
-    seek::{CreateSeekPayload, JsonSeek},
+    seek::{CreateSeekRequest, SeekResponse},
     ws::{ClientMessage, ServerGameEventType, ServerMessage},
 };
 use tokio::{select, sync::mpsc::UnboundedReceiver};
@@ -18,9 +18,9 @@ use crate::{engine::EngineService, game::GameService, seek::SeekService};
 #[async_trait::async_trait]
 pub trait ServerApi {
     async fn send_message(&self, message: ClientMessage) -> Result<(), String>;
-    async fn load_games(&self) -> Result<Vec<JsonGameMetadata>, String>;
-    async fn load_game(&self, id: String) -> Result<JsonGameDetail, String>;
-    async fn create_seek(&self, seek: CreateSeekPayload) -> Result<JsonSeek, String>;
+    async fn load_games(&self) -> Result<Vec<GameMetadataResponse>, String>;
+    async fn load_game(&self, id: String) -> Result<GameStatusResponse, String>;
+    async fn create_seek(&self, seek: CreateSeekRequest) -> Result<SeekResponse, String>;
 }
 
 pub struct Orchestrator {
@@ -33,20 +33,20 @@ pub struct Orchestrator {
     cancellation_token: CancellationToken,
 }
 
-fn get_seek_payload() -> CreateSeekPayload {
+fn get_seek_payload() -> CreateSeekRequest {
     let reserve = TakReserve::from_size(6).unwrap();
-    CreateSeekPayload {
+    CreateSeekRequest {
         color: "random".to_string(),
         is_rated: true,
-        game_settings: JsonGameSettings {
-            base: JsonBaseGameSettings {
+        game_settings: GameSettingsResponse {
+            base: BaseGameSettingsResponse {
                 board_size: 6,
                 half_komi: 4,
                 pieces: reserve.pieces,
                 capstones: reserve.capstones,
-                opening: JsonTakOpening::Swap,
+                opening: TakOpeningResponse::Swap,
             },
-            time_settings: JsonTimeSettings::Realtime {
+            time_settings: TimeSettingsResponse::Realtime {
                 increment_ms: 5_000,
                 contingent_ms: 300_000,
                 extra: None,
@@ -81,7 +81,7 @@ impl Orchestrator {
         this
     }
 
-    fn get_player_color(&self, game: &JsonGameMetadata) -> Option<TakPlayer> {
+    fn get_player_color(&self, game: &GameMetadataResponse) -> Option<TakPlayer> {
         if game.white.user_id == self.user_id {
             Some(TakPlayer::White)
         } else if game.black.user_id == self.user_id {
@@ -97,17 +97,17 @@ impl Orchestrator {
             let Some(player) = this.get_player_color(game) else {
                 continue;
             };
-            let status = this.server_api.load_game(game.id.clone()).await.unwrap();
-            let JsonGameDetailState::Ongoing { .. } = status.state else {
+            let detail = this.server_api.load_game(game.id.clone()).await.unwrap();
+            let GameStatusResponseType::Ongoing { .. } = detail.status else {
                 continue;
             };
             if let Some((player, game_state)) =
                 this.game_service
-                    .load_game(game.id.clone(), player, &status)
+                    .load_game(game.id.clone(), player, &detail)
             {
                 let time_remaining = match player {
-                    TakPlayer::White => status.remaining_ms.white,
-                    TakPlayer::Black => status.remaining_ms.black,
+                    TakPlayer::White => detail.remaining_ms.white,
+                    TakPlayer::Black => detail.remaining_ms.black,
                 };
                 Self::on_my_turn(this.clone(), game.id.clone(), game_state, time_remaining);
             }
@@ -188,8 +188,8 @@ impl Orchestrator {
                             .begin_game(game_id.clone(), player, &game_settings)
                     {
                         let time_remaining = match game.game_settings.time_settings {
-                            JsonTimeSettings::Realtime { contingent_ms, .. } => contingent_ms,
-                            JsonTimeSettings::Async { contingent_ms } => contingent_ms,
+                            TimeSettingsResponse::Realtime { contingent_ms, .. } => contingent_ms,
+                            TimeSettingsResponse::Async { contingent_ms } => contingent_ms,
                         };
 
                         Self::on_my_turn(this.clone(), game_id.clone(), game_state, time_remaining);

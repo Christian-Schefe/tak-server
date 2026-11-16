@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     PortsCollection,
     ports::{
-        game::{GameRepository, GameStateRepository},
+        game::{GameHistoryRepository, GameRepository, GameStateRepository},
         matches::MatchRepository,
         moderation::ModerationRepository,
         notification::{ListenerGameMessageType, ListenerMessage, ListenerNotificationPort},
@@ -500,17 +500,17 @@ impl<
         };
 
         let mut game_ended = false;
-        for event in events {
-            match event.event_type {
+        for event in &events {
+            match &event.event_type {
                 GameEventType::ActionPerformed {
                     player,
                     ply_index,
                     action,
                 } => {
                     let game_action = ListenerGameMessageType::GameAction {
-                        user_id: record.metadata.get_user_id(player),
-                        action,
-                        ply_index,
+                        user_id: record.metadata.get_user_id(*player),
+                        action: action.clone(),
+                        ply_index: *ply_index,
                     };
                     notify_players_and_spectators(&ListenerMessage::GameEvent {
                         game_id,
@@ -519,7 +519,9 @@ impl<
                     });
                 }
                 GameEventType::ActionUndone { ply_index } => {
-                    let game_action = ListenerGameMessageType::GameActionUndone { ply_index };
+                    let game_action = ListenerGameMessageType::GameActionUndone {
+                        ply_index: *ply_index,
+                    };
                     notify_players_and_spectators(&ListenerMessage::GameEvent {
                         game_id,
                         event_type: game_action,
@@ -550,7 +552,7 @@ impl<
                     );
 
                     if let Err(()) = self
-                        .finalize_game(&ctx, game_id, record, &new_state.history, result)
+                        .finalize_game(&ctx, game_id, record, &new_state.history, *result)
                         .await
                     {
                         tracing::error!("Failed to finalize game {}", game_id);
@@ -560,6 +562,16 @@ impl<
                     break;
                 }
             }
+        }
+
+        if let Err(RepoError(e)) = self
+            .ports
+            .game_history_repository()
+            .add_events(&ctx, game_id, events)
+            .await
+        {
+            tracing::error!("Failed to add game events for game {}: {}", game_id, e);
+            return Err(());
         }
 
         if game_ended {

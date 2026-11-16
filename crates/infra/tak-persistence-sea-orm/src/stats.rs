@@ -11,26 +11,26 @@ pub struct StatsRepositoryImpl;
 impl StatsRepositoryImpl {
     fn model_to_stats(model: stats::Model) -> PlayerStats {
         PlayerStats {
-            rated_games_played: model.rated_games_played,
-            games_played: model.games_played,
-            games_won: model.games_won,
-            games_lost: model.games_lost,
-            games_drawn: model.games_drawn,
-            win_streak: model.win_streak,
-            longest_win_streak: model.longest_win_streak,
+            rated_games_played: model.rated_games_played as u32,
+            games_played: model.games_played as u32,
+            games_won: model.games_won as u32,
+            games_lost: model.games_lost as u32,
+            games_drawn: model.games_drawn as u32,
+            win_streak: model.win_streak as u32,
+            longest_win_streak: model.longest_win_streak as u32,
         }
     }
 
     fn stats_to_model(user_id: UserId, stats: &PlayerStats) -> stats::ActiveModel {
         stats::ActiveModel {
             user_id: sea_orm::Set(user_id.0),
-            rated_games_played: sea_orm::Set(stats.rated_games_played),
-            games_played: sea_orm::Set(stats.games_played),
-            games_won: sea_orm::Set(stats.games_won),
-            games_lost: sea_orm::Set(stats.games_lost),
-            games_drawn: sea_orm::Set(stats.games_drawn),
-            win_streak: sea_orm::Set(stats.win_streak),
-            longest_win_streak: sea_orm::Set(stats.longest_win_streak),
+            rated_games_played: sea_orm::Set(stats.rated_games_played as i32),
+            games_played: sea_orm::Set(stats.games_played as i32),
+            games_won: sea_orm::Set(stats.games_won as i32),
+            games_lost: sea_orm::Set(stats.games_lost as i32),
+            games_drawn: sea_orm::Set(stats.games_drawn as i32),
+            win_streak: sea_orm::Set(stats.win_streak as i32),
+            longest_win_streak: sea_orm::Set(stats.longest_win_streak as i32),
         }
     }
 }

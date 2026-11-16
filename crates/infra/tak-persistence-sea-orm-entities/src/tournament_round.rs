@@ -1,5 +1,6 @@
 use sea_orm::entity::prelude::*;
 
+#[sea_orm::model]
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "tournament_rounds")]
 pub struct Model {
@@ -9,8 +10,5 @@ pub struct Model {
     pub round_index: i64,
     pub data: serde_json::Value,
 }
-
-#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}

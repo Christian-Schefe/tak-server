@@ -35,6 +35,24 @@ export const gameSettingsSchema = z.object({
   ]),
 });
 
+export const gameMetadataSchema = z.object({
+  id: z.string(),
+  matchId: z.string().nullable(),
+  date: z.number(),
+  white: z.object({
+    userId: z.string(),
+    username: z.string(),
+    rating: z.number().nullable(),
+  }),
+  black: z.object({
+    userId: z.string(),
+    username: z.string(),
+    rating: z.number().nullable(),
+  }),
+  isRated: z.boolean(),
+  gameSettings: gameSettingsSchema,
+});
+
 export const gameEndedMessageSchema = z.object({
   gameId: z.string(),
   result: z.string(),
@@ -47,14 +65,6 @@ export const gameRequestsSchema = z.object({
 });
 
 export const gameStatusSchema = z.object({
-  id: z.string(),
-  matchId: z.string().nullable(),
-  userIds: z.object({
-    white: z.string(),
-    black: z.string(),
-  }),
-  isRated: z.boolean(),
-  gameSettings: gameSettingsSchema,
   actions: z.array(z.string()),
   remainingMs: z.object({
     white: z.number(),
@@ -67,10 +77,13 @@ export const gameStatusSchema = z.object({
     }),
     z.object({
       type: z.literal('ongoing'),
-      whiteRequests: gameRequestsSchema,
-      blackRequests: gameRequestsSchema,
+      requests: z.object({
+        white: gameRequestsSchema,
+        black: gameRequestsSchema,
+      }),
     }),
   ]),
+  ...gameMetadataSchema.shape,
 });
 
 export const gameRequestSchema = z.union([
@@ -94,17 +107,6 @@ export type GameMetadata = z.infer<typeof gameMetadataSchema>;
 export type GameRequests = z.infer<typeof gameRequestsSchema>;
 export type GameRequest = z.infer<typeof gameRequestSchema>;
 export type GameRequestType = GameRequest['type'];
-
-export const gameMetadataSchema = z.object({
-  id: z.string(),
-  date: z.number(),
-  userIds: z.object({
-    white: z.string(),
-    black: z.string(),
-  }),
-  isRated: z.boolean(),
-  gameSettings: gameSettingsSchema,
-});
 
 export const timeInfo = z.object({ white: z.number(), black: z.number() });
 
@@ -299,28 +301,30 @@ function computeNewGameStatus(oldStatus: GameStatus, event: GameEvent): GameStat
         remainingMs: event.timeInfo,
         status: {
           ...oldStatus.status,
-          whiteRequests:
-            event.userId === oldStatus.userIds.white
-              ? {
-                  ...oldStatus.status.whiteRequests,
-                  ...(event.request.type === 'draw' && { drawOffered: event.request.offer }),
-                  ...(event.request.type === 'undo' && { undoRequested: event.request.request }),
-                  ...(event.request.type === 'moreTime' && {
-                    moreTimeOffered: event.request.amountMs,
-                  }),
-                }
-              : oldStatus.status.whiteRequests,
-          blackRequests:
-            event.userId === oldStatus.userIds.black
-              ? {
-                  ...oldStatus.status.blackRequests,
-                  ...(event.request.type === 'draw' && { drawOffered: event.request.offer }),
-                  ...(event.request.type === 'undo' && { undoRequested: event.request.request }),
-                  ...(event.request.type === 'moreTime' && {
-                    moreTimeOffered: event.request.amountMs,
-                  }),
-                }
-              : oldStatus.status.blackRequests,
+          requests: {
+            white:
+              event.userId === oldStatus.white.userId
+                ? {
+                    ...oldStatus.status.requests.white,
+                    ...(event.request.type === 'draw' && { drawOffered: event.request.offer }),
+                    ...(event.request.type === 'undo' && { undoRequested: event.request.request }),
+                    ...(event.request.type === 'moreTime' && {
+                      moreTimeOffered: event.request.amountMs,
+                    }),
+                  }
+                : oldStatus.status.requests.white,
+            black:
+              event.userId === oldStatus.black.userId
+                ? {
+                    ...oldStatus.status.requests.black,
+                    ...(event.request.type === 'draw' && { drawOffered: event.request.offer }),
+                    ...(event.request.type === 'undo' && { undoRequested: event.request.request }),
+                    ...(event.request.type === 'moreTime' && {
+                      moreTimeOffered: event.request.amountMs,
+                    }),
+                  }
+                : oldStatus.status.requests.black,
+          },
         },
       };
   }
@@ -368,8 +372,7 @@ export function useNavigateOnGamesStartWebSocketSubscription() {
     z.object({ game: gameMetadataSchema }),
     ({ game }) => {
       const isOwnGame =
-        game.userIds.white === account.value?.userId ||
-        game.userIds.black === account.value?.userId;
+        game.white.userId === account.value?.userId || game.black.userId === account.value?.userId;
       if (isOwnGame) {
         void router.push(`/online/${game.id}`);
       }

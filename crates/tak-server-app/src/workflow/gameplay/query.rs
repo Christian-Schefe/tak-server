@@ -2,19 +2,27 @@ use crate::{
     PortsCollection,
     ports::{
         PaginatedResponse,
-        game::{GameQuery, GameRepository, GameStateRepository},
+        game::{GameHistoryRepository, GameQuery, GameRepository, GameStateRepository},
         transaction::{RepoError, TransactionManager},
     },
 };
 use std::sync::Arc;
-use tak_domain::{GameId, MatchId, game::GameState, game_record::GameRecord};
+use tak_domain::{
+    GameId, MatchId,
+    game::{GameEvent, GameState},
+    game_record::GameRecord,
+};
+
+#[derive(Debug, Clone)]
+pub struct GameDetailView {
+    pub record: GameRecord,
+    pub state: Option<GameState>,
+    pub events: Vec<GameEvent>,
+}
 
 #[async_trait::async_trait]
 pub trait GameQueryUseCase {
-    async fn get_game(
-        &self,
-        game_id: GameId,
-    ) -> Result<Option<(GameRecord, GameState)>, GameQueryError>;
+    async fn get_game(&self, game_id: GameId) -> Result<Option<GameDetailView>, GameQueryError>;
     async fn query_games(
         &self,
         filter: GameQuery,
@@ -58,10 +66,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameQueryUseCase
         }
     }
 
-    async fn get_game(
-        &self,
-        game_id: GameId,
-    ) -> Result<Option<(GameRecord, GameState)>, GameQueryError> {
+    async fn get_game(&self, game_id: GameId) -> Result<Option<GameDetailView>, GameQueryError> {
         let ctx = self.ports.transaction_manager().simple();
         let game = match self.ports.game_repository().get_game(&ctx, game_id).await {
             Ok(Some(result)) => result,
@@ -77,17 +82,29 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameQueryUseCase
             .get_state(&ctx, game_id)
             .await
         {
-            Ok(Some(state)) => state,
-            Ok(None) => {
-                tracing::error!("Game state not found for game id: {}", game_id);
-                return Err(GameQueryError::RepositoryError);
-            }
+            Ok(state) => state,
             Err(RepoError(e)) => {
                 tracing::error!("Error getting game state: {}", e);
                 return Err(GameQueryError::RepositoryError);
             }
         };
-        Ok(Some((game, state)))
+        let events = match self
+            .ports
+            .game_history_repository()
+            .get_events(&ctx, game_id)
+            .await
+        {
+            Ok(events) => events,
+            Err(RepoError(e)) => {
+                tracing::error!("Error getting game events: {}", e);
+                return Err(GameQueryError::RepositoryError);
+            }
+        };
+        Ok(Some(GameDetailView {
+            record: game,
+            state,
+            events,
+        }))
     }
 
     async fn get_games_of_match(

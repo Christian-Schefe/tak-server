@@ -6,8 +6,8 @@ use axum::{
 use tak_core::TakPlayer;
 use tak_domain::{SeekId, seek::CreateSeekError};
 use tak_server_api_contract::{
-    game::JsonGameSettings,
-    seek::{CreateSeekPayload, JsonSeek},
+    game::GameSettingsResponse,
+    seek::{CreateSeekRequest, SeekResponse},
 };
 use tak_server_app::workflow::matchmaking::{SeekView, accept::AcceptSeekError};
 
@@ -21,7 +21,7 @@ pub fn register_routes() -> axum::Router<AppState> {
         .route("/{seek_id}/accept", post(accept_seek))
 }
 
-async fn get_seeks(State(app): State<AppState>) -> Json<Vec<JsonSeek>> {
+async fn get_seeks(State(app): State<AppState>) -> Json<Vec<SeekResponse>> {
     let seeks = app.app.seek_list_use_case.list_seeks();
     Json(seeks.into_iter().map(|seek| from_seek_view(seek)).collect())
 }
@@ -29,8 +29,8 @@ async fn get_seeks(State(app): State<AppState>) -> Json<Vec<JsonSeek>> {
 async fn create_seek(
     auth: Auth,
     State(app): State<AppState>,
-    Json(payload): Json<CreateSeekPayload>,
-) -> Result<Json<JsonSeek>, ServiceError> {
+    Json(payload): Json<CreateSeekRequest>,
+) -> Result<Json<SeekResponse>, ServiceError> {
     let color = match payload.color.as_str() {
         "white" => Some(TakPlayer::White),
         "black" => Some(TakPlayer::Black),
@@ -91,8 +91,8 @@ async fn accept_seek(
     }
 }
 
-pub fn from_seek_view(seek: SeekView) -> JsonSeek {
-    JsonSeek {
+pub fn from_seek_view(seek: SeekView) -> SeekResponse {
+    SeekResponse {
         id: seek.id.to_string(),
         creator_id: seek.creator_id.to_string(),
         color: match seek.color {
@@ -100,7 +100,7 @@ pub fn from_seek_view(seek: SeekView) -> JsonSeek {
             Some(TakPlayer::White) => "white".to_string(),
             Some(TakPlayer::Black) => "black".to_string(),
         },
-        game_settings: JsonGameSettings::from_game_settings(&seek.game_settings),
+        game_settings: GameSettingsResponse::from_game_settings(&seek.game_settings),
         is_rated: seek.is_rated,
     }
 }

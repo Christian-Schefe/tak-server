@@ -2,8 +2,8 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::{
-    game::{ForPlayer, JsonGameMetadata, JsonGameRequest},
-    seek::JsonSeek,
+    game::{ForPlayerResponse, GameMetadataResponse, GameRequestResponse},
+    seek::SeekResponse,
 };
 
 #[derive(serde::Deserialize, serde::Serialize, Debug)]
@@ -22,7 +22,7 @@ pub enum ClientMessage {
     },
     ChatMessage {
         message: String,
-        conversation: JsonChatConversation,
+        conversation: ChatConversationResponse,
     },
     SpectateGame {
         game_id: String,
@@ -58,7 +58,7 @@ pub enum ServerMessage {
         response_id: Uuid,
     },
     SeekCreated {
-        seek: JsonSeek,
+        seek: SeekResponse,
     },
     SeekRemoved {
         seek_id: String,
@@ -67,17 +67,17 @@ pub enum ServerMessage {
         game_id: String,
         #[serde(flatten)]
         event_type: ServerGameEventType,
-        time_info: ForPlayer<u64>,
+        time_info: ForPlayerResponse<u64>,
     },
     GameStarted {
-        game: JsonGameMetadata,
+        game: GameMetadataResponse,
     },
     GameEnded {
         game_id: String,
     },
     ChatMessage {
-        message: JsonChatMessage,
-        conversation: JsonChatConversation,
+        message: ChatMessageResponse,
+        conversation: ChatConversationResponse,
     },
     MatchEvent {
         match_id: String,
@@ -101,7 +101,7 @@ pub enum ServerMatchEventType {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonChatMessage {
+pub struct ChatMessageResponse {
     pub message_id: i64,
     pub sender: String,
     pub message: String,
@@ -128,7 +128,7 @@ pub enum ServerGameEventType {
     },
     GameRequestChanged {
         user_id: String,
-        request: JsonGameRequest,
+        request: GameRequestResponse,
     },
 }
 
@@ -138,7 +138,7 @@ pub enum ServerGameEventType {
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
-pub enum JsonChatConversation {
+pub enum ChatConversationResponse {
     Global,
     Room { room_name: String },
     Private { user_id1: String, user_id2: String },

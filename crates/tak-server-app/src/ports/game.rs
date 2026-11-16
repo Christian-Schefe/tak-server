@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use tak_core::{TakGameResult, TakPlayer};
-use tak_domain::{GameId, MatchId, UserId, game::GameState, game_record::GameRecord};
+use tak_domain::{GameId, MatchId, UserId, game::{GameEvent, GameState}, game_record::GameRecord};
 
 use crate::ports::{PaginatedResponse, Pagination, SortOrder, transaction::RepoError};
 
@@ -19,12 +19,17 @@ pub trait GameStateRepository<RpCtx> {
 
 #[async_trait::async_trait]
 pub trait GameHistoryRepository<RpCtx> {
-    async fn add_event(
+    async fn add_events(
         &self,
         ctx: &RpCtx,
         game_id: GameId,
-        event: TakGameResult,
+        events: Vec<GameEvent>,
     ) -> Result<(), RepoError>;
+    async fn get_events(
+        &self,
+        ctx: &RpCtx,
+        game_id: GameId,
+    ) -> Result<Vec<GameEvent>, RepoError>; 
 }
 
 #[async_trait::async_trait]
@@ -63,8 +68,6 @@ pub struct GameQuery {
     pub date_selector: Option<DateSelector>,
     pub player_filters: Vec<(GamePlayerFilter, Option<TakPlayer>)>,
     pub game_results: Vec<TakGameResult>,
-    pub half_komi: Option<usize>,
-    pub board_size: Option<usize>,
     pub is_rated: Option<bool>,
     pub pagination: Pagination,
     pub sort: Option<(SortOrder, GameSortBy)>,

@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use std::sync::Arc;
 
 use tak_auth::AuthService;
@@ -7,12 +9,12 @@ use tak_persistence_profile_pictures::ProfilePictureRepositoryImpl;
 use tak_persistence_sea_orm::{
     account::AccountRepositoryImpl,
     chat::ChatRepositoryImpl,
+    game_history::GameHistoryRepositoryImpl,
     game_state::GameStateRepositoryImpl,
     games::GameRepositoryImpl,
     matches::MatchRepositoryImpl,
     moderation::ModerationRepositoryImpl,
     profile::ProfileRepositoryImpl,
-    puzzle::PuzzleRepositoryImpl,
     rating_history::RatingHistoryRepositoryImpl,
     ratings::RatingRepositoryImpl,
     stats::StatsRepositoryImpl,
@@ -94,7 +96,6 @@ async fn main() {
 
     let account_online_status_adapter = Arc::new(AccountOnlineStatusService::new());
     let profile_picture_repo = Arc::new(ProfilePictureRepositoryImpl::new().await);
-    let puzzle_repo = Arc::new(PuzzleRepositoryImpl);
     let chat_repo = Arc::new(ChatRepositoryImpl);
     let rating_history_repo = Arc::new(RatingHistoryRepositoryImpl);
     let tournament_repo = Arc::new(TournamentRepositoryImpl);
@@ -103,6 +104,7 @@ async fn main() {
     let tournament_round_repo = Arc::new(TournamentRoundRepositoryImpl);
     let moderation_repo = Arc::new(ModerationRepositoryImpl);
     let game_state_repo = Arc::new(GameStateRepositoryImpl);
+    let game_history_repo = Arc::new(GameHistoryRepositoryImpl);
 
     let transaction_manager = Arc::new(TransactionManagerImpl::new().await);
 
@@ -113,7 +115,6 @@ async fn main() {
         stats_repo.clone(),
         profile_repo.clone(),
         profile_picture_repo.clone(),
-        puzzle_repo.clone(),
         chat_repo.clone(),
         rating_history_repo.clone(),
         tournament_repo.clone(),
@@ -122,6 +123,7 @@ async fn main() {
         tournament_round_repo.clone(),
         moderation_repo.clone(),
         game_state_repo.clone(),
+        game_history_repo.clone(),
         transaction_manager.clone(),
     ));
     let app = Arc::new(

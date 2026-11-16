@@ -89,7 +89,6 @@ impl TakBaseGame {
         if let Err(e) = self.can_do_action(&action) {
             return Err(e);
         }
-        self.ply_index += 1;
         let is_opening_action = self.ply_index < 2;
         let moved_player = self.current_player;
         let is_first_move = self.ply_index == 0;

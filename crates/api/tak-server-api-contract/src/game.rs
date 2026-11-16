@@ -7,43 +7,14 @@ use tak_core::{
 };
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct JsonGameDetail {
-    #[serde(flatten)]
-    pub metadata: JsonGameMetadata,
-    pub events: Vec<JsonGameEvent>,
-    #[serde(flatten)]
-    pub state: JsonGameDetailState,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct JsonGameEvent {
-    pub event: JsonGameEventType,
-    pub remaining_ms: ForPlayer<u64>,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(
     tag = "type",
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
-pub enum JsonGameEventType {
-    Action { action: String },
-    Undo,
-    GameOver,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-#[serde(
-    tag = "type",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-pub enum JsonGameDetailState {
+pub enum GameStatusResponseType {
     Ongoing {
-        requests: ForPlayer<JsonGameRequests>,
+        requests: ForPlayerResponse<GameRequestsResponse>,
     },
     Finished {
         result: String,
@@ -52,16 +23,26 @@ pub enum JsonGameDetailState {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonGameRecord {
+pub struct GameStatusResponse {
     #[serde(flatten)]
-    pub metadata: JsonGameMetadata,
-    pub rating_info: Option<JsonGameRatingInfo>,
+    pub metadata: GameMetadataResponse,
+    pub actions: Vec<String>,
+    pub remaining_ms: ForPlayerResponse<u64>,
+    pub status: GameStatusResponseType,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GameRecordResponse {
+    #[serde(flatten)]
+    pub metadata: GameMetadataResponse,
+    pub rating_info: Option<GameRatingInfoResponse>,
     pub result: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonGameRequests {
+pub struct GameRequestsResponse {
     pub draw_offered: bool,
     pub undo_requested: bool,
     pub more_time_offered: Option<u64>,
@@ -73,7 +54,7 @@ pub struct JsonGameRequests {
     tag = "type",
     rename_all_fields = "camelCase"
 )]
-pub enum JsonGameRequest {
+pub enum GameRequestResponse {
     Draw { offer: bool },
     Undo { request: bool },
     MoreTime { amount_ms: Option<u64> },
@@ -85,7 +66,7 @@ pub enum JsonGameRequest {
     tag = "type",
     rename_all_fields = "camelCase"
 )]
-pub enum JsonGameRequestType {
+pub enum GameRequestResponseType {
     Draw,
     Undo,
     MoreTime,
@@ -93,32 +74,33 @@ pub enum JsonGameRequestType {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct ForPlayer<R> {
+pub struct ForPlayerResponse<R> {
     pub white: R,
     pub black: R,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonGameMetadata {
+pub struct GameMetadataResponse {
     pub id: String,
     #[serde(with = "chrono::serde::ts_milliseconds")]
     pub date: DateTime<Utc>,
-    pub white: JsonPlayerSnapshot,
-    pub black: JsonPlayerSnapshot,
+    pub white: PlayerSnapshotResponse,
+    pub black: PlayerSnapshotResponse,
     pub is_rated: bool,
-    pub game_settings: JsonGameSettings,
+    pub game_settings: GameSettingsResponse,
+    pub match_id: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonGameRatingInfo {
-    pub rating_change: ForPlayer<f64>,
+pub struct GameRatingInfoResponse {
+    pub rating_change: ForPlayerResponse<f64>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonPlayerSnapshot {
+pub struct PlayerSnapshotResponse {
     pub user_id: String,
     pub username: String,
     pub rating: Option<f64>,
@@ -126,17 +108,17 @@ pub struct JsonPlayerSnapshot {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonBaseGameSettings {
+pub struct BaseGameSettingsResponse {
     pub board_size: u32,
     pub half_komi: u32,
     pub pieces: u32,
     pub capstones: u32,
-    pub opening: JsonTakOpening,
+    pub opening: TakOpeningResponse,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub enum JsonTakOpening {
+pub enum TakOpeningResponse {
     Swap,
     NoSwap,
     DoubleStack,
@@ -144,10 +126,10 @@ pub enum JsonTakOpening {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonGameSettings {
+pub struct GameSettingsResponse {
     #[serde(flatten)]
-    pub base: JsonBaseGameSettings,
-    pub time_settings: JsonTimeSettings,
+    pub base: BaseGameSettingsResponse,
+    pub time_settings: TimeSettingsResponse,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -156,28 +138,28 @@ pub struct JsonGameSettings {
     tag = "type",
     rename_all_fields = "camelCase"
 )]
-pub enum JsonTimeSettings {
+pub enum TimeSettingsResponse {
     Realtime {
         contingent_ms: u64,
         increment_ms: u64,
-        extra: Option<ExtraTime>,
+        extra: Option<ExtraTimeResponse>,
     },
     Async {
         contingent_ms: u64,
     },
 }
 
-impl JsonBaseGameSettings {
+impl BaseGameSettingsResponse {
     pub fn from_base_settings(settings: &TakBaseGameSettings) -> Self {
-        JsonBaseGameSettings {
+        BaseGameSettingsResponse {
             board_size: settings.board_size,
             half_komi: settings.half_komi,
             pieces: settings.reserve.pieces,
             capstones: settings.reserve.capstones,
             opening: match settings.opening {
-                TakOpening::Swap => JsonTakOpening::Swap,
-                TakOpening::NoSwap => JsonTakOpening::NoSwap,
-                TakOpening::DoubleStack => JsonTakOpening::DoubleStack,
+                TakOpening::Swap => TakOpeningResponse::Swap,
+                TakOpening::NoSwap => TakOpeningResponse::NoSwap,
+                TakOpening::DoubleStack => TakOpeningResponse::DoubleStack,
             },
         }
     }
@@ -191,28 +173,28 @@ impl JsonBaseGameSettings {
                 capstones: self.capstones,
             },
             opening: match self.opening {
-                JsonTakOpening::Swap => TakOpening::Swap,
-                JsonTakOpening::NoSwap => TakOpening::NoSwap,
-                JsonTakOpening::DoubleStack => TakOpening::DoubleStack,
+                TakOpeningResponse::Swap => TakOpening::Swap,
+                TakOpeningResponse::NoSwap => TakOpening::NoSwap,
+                TakOpeningResponse::DoubleStack => TakOpening::DoubleStack,
             },
         }
     }
 }
 
-impl JsonGameSettings {
+impl GameSettingsResponse {
     pub fn from_game_settings(settings: &TakGameSettings) -> Self {
-        JsonGameSettings {
-            base: JsonBaseGameSettings::from_base_settings(&settings.base),
+        GameSettingsResponse {
+            base: BaseGameSettingsResponse::from_base_settings(&settings.base),
             time_settings: match &settings.time_settings {
-                TakTimeSettings::Realtime(tc) => JsonTimeSettings::Realtime {
+                TakTimeSettings::Realtime(tc) => TimeSettingsResponse::Realtime {
                     contingent_ms: tc.contingent.as_millis() as u64,
                     increment_ms: tc.increment.as_millis() as u64,
-                    extra: tc.extra.map(|(on_move, extra_time)| ExtraTime {
+                    extra: tc.extra.map(|(on_move, extra_time)| ExtraTimeResponse {
                         on_move,
                         extra_ms: extra_time.as_millis() as u64,
                     }),
                 },
-                TakTimeSettings::Async(tc) => JsonTimeSettings::Async {
+                TakTimeSettings::Async(tc) => TimeSettingsResponse::Async {
                     contingent_ms: tc.contingent.as_millis() as u64,
                 },
             },
@@ -223,7 +205,7 @@ impl JsonGameSettings {
         TakGameSettings {
             base: self.base.to_base_settings(),
             time_settings: match &self.time_settings {
-                JsonTimeSettings::Realtime {
+                TimeSettingsResponse::Realtime {
                     contingent_ms,
                     increment_ms,
                     extra,
@@ -234,7 +216,7 @@ impl JsonGameSettings {
                         .as_ref()
                         .map(|extra| (extra.on_move, Duration::from_millis(extra.extra_ms))),
                 }),
-                JsonTimeSettings::Async {
+                TimeSettingsResponse::Async {
                     contingent_ms: increment_ms,
                 } => TakTimeSettings::Async(TakAsyncTimeControl {
                     contingent: Duration::from_millis(*increment_ms),
@@ -246,7 +228,7 @@ impl JsonGameSettings {
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct ExtraTime {
+pub struct ExtraTimeResponse {
     pub on_move: u32,
     pub extra_ms: u64,
 }

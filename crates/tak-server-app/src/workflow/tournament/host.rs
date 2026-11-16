@@ -90,7 +90,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
         &self,
         user_id: UserId,
         name: String,
-        tournament_format: TournamentFormat,
+        format: TournamentFormat,
         match_settings: MatchSettings,
     ) -> Result<TournamentId, ()> {
         let ctx = self.ports.transaction_manager().simple();
@@ -100,7 +100,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
         let tournament = Tournament {
             metadata: TournamentMetadata {
                 name,
-                tournament_format,
+                format,
                 match_settings,
             },
             status: TournamentStatus::Upcoming {
@@ -316,7 +316,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
             .map(|(_, match_entry)| match_entry)
             .collect::<Vec<_>>();
 
-        let Some(pairings) = tournament.metadata.tournament_format.generate_pairings(
+        let Some(pairings) = tournament.metadata.format.generate_pairings(
             &all_players,
             &previous_matches,
             next_round_index,

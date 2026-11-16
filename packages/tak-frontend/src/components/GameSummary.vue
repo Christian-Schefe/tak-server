@@ -82,8 +82,8 @@ const openingNames: Record<string, string | undefined> = {
         <span>Game #{{ gameMetadata.id }}</span>
         <Tag class="flex items-center justify-center font-mono" :label="resultStr" />
       </h3>
-      <PlayerLabel :user-id="gameMetadata.userIds.white"></PlayerLabel>
-      <PlayerLabel :user-id="gameMetadata.userIds.black"></PlayerLabel>
+      <PlayerLabel :user-id="gameMetadata.white.userId"></PlayerLabel>
+      <PlayerLabel :user-id="gameMetadata.black.userId"></PlayerLabel>
       <template v-if="hideGameSettings !== true">
         <div class="flex items-center gap-2 justify-start">
           <LuCalendar />

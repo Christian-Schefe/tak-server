@@ -1,5 +1,6 @@
 use sea_orm::entity::prelude::*;
 
+#[sea_orm::model]
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "profile")]
 pub struct Model {
@@ -7,10 +8,7 @@ pub struct Model {
     pub user_id: Uuid,
     pub display_name: Option<String>,
     pub country: Option<String>,
-    pub profile_picture_version: Option<u64>,
+    pub profile_picture_version: Option<i64>,
 }
-
-#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}

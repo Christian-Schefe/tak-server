@@ -1,10 +1,8 @@
-use std::time::Duration;
-
 use sea_orm::{
     ColumnTrait, EntityTrait, ExprTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use tak_core::{
-    TakBaseGameSettings, TakGameSettings, TakPlayer, TakReserve, TakTimeInfo,
+    TakPlayer,
     ptn::{game_result_from_string, game_result_to_string},
 };
 use tak_domain::{
@@ -18,41 +16,9 @@ use tak_server_app::ports::{
     transaction::RepoError,
 };
 
-use crate::{
-    JsonTimeSettings, tak_opening_from_string, tak_opening_to_string,
-    transaction::RepositoryContext,
-};
+use crate::{game_settings_from_json, game_settings_to_json, transaction::RepositoryContext};
 
 pub struct GameRepositoryImpl;
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct JsonActionRecord {
-    pub action: String,
-    pub time_info: JsonTimeInfo,
-}
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct JsonTimeInfo {
-    pub white_remaining_ms: u64,
-    pub black_remaining_ms: u64,
-}
-
-impl JsonTimeInfo {
-    pub fn from_time_info(time_info: &TakTimeInfo) -> Self {
-        Self {
-            white_remaining_ms: time_info.white_remaining.as_millis() as u64,
-            black_remaining_ms: time_info.black_remaining.as_millis() as u64,
-        }
-    }
-    pub fn to_time_info(&self) -> TakTimeInfo {
-        TakTimeInfo {
-            white_remaining: Duration::from_millis(self.white_remaining_ms),
-            black_remaining: Duration::from_millis(self.black_remaining_ms),
-        }
-    }
-}
 
 impl GameRepositoryImpl {
     fn model_to_game(model: game::Model) -> Result<(GameId, GameRecord), String> {
@@ -66,25 +32,6 @@ impl GameRepositoryImpl {
         } else {
             None
         };
-
-        let base_settings = TakBaseGameSettings {
-            board_size: model.size as u32,
-            half_komi: model.half_komi as u32,
-            reserve: TakReserve::new(model.pieces as u32, model.capstones as u32),
-            opening: tak_opening_from_string(&model.opening)
-                .ok_or_else(|| format!("Invalid opening string in database: {}", model.opening))?,
-        };
-
-        let time_settings =
-            match serde_json::from_str::<JsonTimeSettings>(&model.game_settings.to_string()) {
-                Ok(settings) => settings.to_time_settings(),
-                Err(e) => {
-                    return Err(format!(
-                        "Failed to deserialize game settings from database: {}",
-                        e
-                    ));
-                }
-            };
 
         let white_id = UserId(model.player_white_id);
         let black_id = UserId(model.player_black_id);
@@ -106,10 +53,7 @@ impl GameRepositoryImpl {
             white: white_snapshot,
             black: black_snapshot,
             is_rated: model.is_rated,
-            settings: TakGameSettings {
-                base: base_settings.clone(),
-                time_settings: time_settings.clone(),
-            },
+            settings: game_settings_from_json(&model.game_settings),
             match_id: model.match_id.map(|id| MatchId(id)),
         };
 
@@ -137,15 +81,10 @@ impl GameRepositoryImpl {
     ) -> Result<game::ActiveModel, String> {
         let result = record.result.map(|f| game_result_to_string(f));
 
-        let base_settings = &record.metadata.settings.base;
-        let time_settings =
-            JsonTimeSettings::from_time_settings(&record.metadata.settings.time_settings);
-
         Ok(game::ActiveModel {
             id: game_id.map_or(Default::default(), |id| Set(id.0)),
 
             date: Set(record.metadata.date),
-            size: Set(base_settings.board_size as i32),
             player_white_id: Set(record.metadata.white.user_id.0),
             player_black_id: Set(record.metadata.black.user_id.0),
             player_white_username: Set(record.metadata.white.username.clone()),
@@ -154,10 +93,6 @@ impl GameRepositoryImpl {
             player_black_rating: Set(record.metadata.black.rating),
             result: Set(result),
             is_rated: Set(record.metadata.is_rated),
-            half_komi: Set(base_settings.half_komi as i32),
-            pieces: Set(base_settings.reserve.pieces as i32),
-            capstones: Set(base_settings.reserve.capstones as i32),
-            opening: Set(tak_opening_to_string(&base_settings.opening)),
             rating_change_white: Set(record
                 .rating_info
                 .as_ref()
@@ -166,8 +101,7 @@ impl GameRepositoryImpl {
                 .rating_info
                 .as_ref()
                 .map(|info| info.rating_change_black)),
-            game_settings: Set(serde_json::to_value(&time_settings)
-                .map_err(|e| format!("Failed to serialize game settings: {}", e))?),
+            game_settings: Set(game_settings_to_json(&record.metadata.settings)),
             match_id: Set(record.metadata.match_id.map(|id| id.0)),
         })
     }
@@ -356,13 +290,6 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
                 .map(|result| game_result_to_string(*result))
                 .collect();
             query = query.filter(game::Column::Result.is_in(result_strings));
-        }
-
-        if let Some(half_komi) = filter.half_komi {
-            query = query.filter(game::Column::HalfKomi.eq(half_komi as i32));
-        }
-        if let Some(board_size) = filter.board_size {
-            query = query.filter(game::Column::Size.eq(board_size as i32));
         }
 
         let total_count: u64 = query

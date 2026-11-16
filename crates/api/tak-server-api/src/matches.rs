@@ -7,8 +7,8 @@ use tak_domain::{
     matches::{Match, MatchMode, MatchSettings, MatchStatus},
 };
 use tak_server_api_contract::{
-    game::{JsonGameRecord, JsonGameSettings},
-    matches::MatchReadinessStatus,
+    game::{GameRecordResponse, GameSettingsResponse},
+    matches::MatchReadinessStatusResponse,
 };
 use tak_server_app::workflow::{
     gameplay::query::GameQueryError,
@@ -38,14 +38,14 @@ pub fn register_routes() -> axum::Router<AppState> {
 async fn get_match(
     State(app): State<AppState>,
     Path(match_id): Path<String>,
-) -> Result<Json<JsonMatch>, ServiceError> {
+) -> Result<Json<MatchResponse>, ServiceError> {
     let match_id = MatchId(
         match_id
             .parse::<i64>()
             .map_err(|_| ServiceError::BadRequest(format!("Invalid match ID: {}", match_id)))?,
     );
     match app.app.match_get_use_case.get_match(match_id).await {
-        Ok(m) => Ok(Json(JsonMatch::from_match(match_id, m))),
+        Ok(m) => Ok(Json(MatchResponse::from_match(match_id, m))),
         Err(GetMatchError::NotFound) => Err(ServiceError::NotFound(format!(
             "Match not found: {}",
             match_id
@@ -59,27 +59,27 @@ async fn get_match(
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct JsonMatch {
+struct MatchResponse {
     id: String,
-    player1: JsonMatchPlayer,
-    player2: JsonMatchPlayer,
-    settings: JsonMatchSettings,
-    status: JsonMatchStatus,
+    player1: MatchPlayerResponse,
+    player2: MatchPlayerResponse,
+    settings: MatchSettingsResponse,
+    status: MatchStatusResponse,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonMatchSettings {
-    game_settings: JsonGameSettings,
-    match_mode: JsonMatchMode,
+pub struct MatchSettingsResponse {
+    game_settings: GameSettingsResponse,
+    match_mode: MatchModeResponse,
     is_rated: bool,
 }
 
-impl JsonMatchSettings {
+impl MatchSettingsResponse {
     pub fn from_match_settings(settings: &MatchSettings) -> Self {
-        JsonMatchSettings {
-            game_settings: JsonGameSettings::from_game_settings(&settings.game_settings),
-            match_mode: JsonMatchMode::from_match_mode(&settings.match_mode),
+        MatchSettingsResponse {
+            game_settings: GameSettingsResponse::from_game_settings(&settings.game_settings),
+            match_mode: MatchModeResponse::from_match_mode(&settings.match_mode),
             is_rated: settings.is_rated,
         }
     }
@@ -96,69 +96,69 @@ impl JsonMatchSettings {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 #[serde(tag = "type")]
-pub enum JsonMatchMode {
+pub enum MatchModeResponse {
     Unlimited,
     FixedGames { games: u32 },
     FirstTo { score: u32 },
 }
 
-impl JsonMatchMode {
+impl MatchModeResponse {
     pub fn from_match_mode(mode: &MatchMode) -> Self {
         match mode {
-            MatchMode::Unlimited => JsonMatchMode::Unlimited,
-            MatchMode::FixedGames(games) => JsonMatchMode::FixedGames { games: *games },
-            MatchMode::FirstTo(score) => JsonMatchMode::FirstTo { score: *score },
+            MatchMode::Unlimited => MatchModeResponse::Unlimited,
+            MatchMode::FixedGames(games) => MatchModeResponse::FixedGames { games: *games },
+            MatchMode::FirstTo(score) => MatchModeResponse::FirstTo { score: *score },
         }
     }
 
     pub fn to_match_mode(&self) -> MatchMode {
         match self {
-            JsonMatchMode::Unlimited => MatchMode::Unlimited,
-            JsonMatchMode::FixedGames { games } => MatchMode::FixedGames(*games),
-            JsonMatchMode::FirstTo { score } => MatchMode::FirstTo(*score),
+            MatchModeResponse::Unlimited => MatchMode::Unlimited,
+            MatchModeResponse::FixedGames { games } => MatchMode::FixedGames(*games),
+            MatchModeResponse::FirstTo { score } => MatchMode::FirstTo(*score),
         }
     }
 }
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub enum JsonMatchStatus {
+pub enum MatchStatusResponse {
     Waiting,
     Ongoing,
     Completed,
 }
 
-impl JsonMatchStatus {
+impl MatchStatusResponse {
     pub fn from_match_status(status: &MatchStatus) -> Self {
         match status {
-            MatchStatus::Waiting => JsonMatchStatus::Waiting,
-            MatchStatus::Ongoing => JsonMatchStatus::Ongoing,
-            MatchStatus::Completed => JsonMatchStatus::Completed,
+            MatchStatus::Waiting => MatchStatusResponse::Waiting,
+            MatchStatus::Ongoing => MatchStatusResponse::Ongoing,
+            MatchStatus::Completed => MatchStatusResponse::Completed,
         }
     }
 }
 
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonMatchPlayer {
+pub struct MatchPlayerResponse {
     pub user_id: String,
     pub score: u32,
 }
 
-impl JsonMatch {
+impl MatchResponse {
     pub fn from_match(id: MatchId, m: Match) -> Self {
         Self {
             id: id.to_string(),
-            player1: JsonMatchPlayer {
+            player1: MatchPlayerResponse {
                 user_id: m.player1.user_id.to_string(),
                 score: m.player1.score,
             },
-            player2: JsonMatchPlayer {
+            player2: MatchPlayerResponse {
                 user_id: m.player2.user_id.to_string(),
                 score: m.player2.score,
             },
-            settings: JsonMatchSettings::from_match_settings(&m.settings),
-            status: JsonMatchStatus::from_match_status(&m.status),
+            settings: MatchSettingsResponse::from_match_settings(&m.settings),
+            status: MatchStatusResponse::from_match_status(&m.status),
         }
     }
 }
@@ -224,7 +224,7 @@ async fn set_player_not_ready(
 async fn get_match_readiness_status(
     State(app): State<AppState>,
     Path(match_id): Path<String>,
-) -> Result<Json<MatchReadinessStatus>, ServiceError> {
+) -> Result<Json<MatchReadinessStatusResponse>, ServiceError> {
     let match_id = MatchId(
         match_id
             .parse::<i64>()
@@ -234,7 +234,7 @@ async fn get_match_readiness_status(
         .app
         .match_readiness_use_case
         .get_readiness_status(match_id);
-    Ok(Json(MatchReadinessStatus {
+    Ok(Json(MatchReadinessStatusResponse {
         ready_player: match_readiness_status
             .player_ready
             .map(|user_id| user_id.to_string()),
@@ -244,7 +244,7 @@ async fn get_match_readiness_status(
 async fn get_match_games(
     State(app): State<AppState>,
     Path(match_id): Path<String>,
-) -> Result<Json<Vec<JsonGameRecord>>, ServiceError> {
+) -> Result<Json<Vec<GameRecordResponse>>, ServiceError> {
     let match_id = MatchId(
         match_id
             .parse::<i64>()

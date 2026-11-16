@@ -2,8 +2,8 @@ use axum::{
     Json,
     extract::{Path, Query, State},
 };
-use tak_server_api_contract::ws::JsonChatMessage;
-use tak_domain::{UserId, ChatMessageId, chat::ChatConversation};
+use tak_domain::{ChatMessageId, UserId, chat::ChatConversation};
+use tak_server_api_contract::ws::ChatMessageResponse;
 use unordered_pair::UnorderedPair;
 
 use crate::{AppState, ServiceError};
@@ -21,8 +21,8 @@ struct MessagesQuery {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct JsonChatMessagePage {
-    messages: Vec<JsonChatMessage>,
+struct ChatMessagePageResponse {
+    messages: Vec<ChatMessageResponse>,
     next_cursor: Option<i64>,
 }
 
@@ -30,7 +30,7 @@ async fn get_chat_messages(
     State(app): State<AppState>,
     Path(conversation_id): Path<String>,
     Query(messages_query): Query<MessagesQuery>,
-) -> Result<Json<JsonChatMessagePage>, ServiceError> {
+) -> Result<Json<ChatMessagePageResponse>, ServiceError> {
     let parts = conversation_id
         .split(':')
         .filter(|s| !s.is_empty())
@@ -89,10 +89,10 @@ async fn get_chat_messages(
         None
     };
 
-    let page = JsonChatMessagePage {
+    let page = ChatMessagePageResponse {
         messages: messages
             .into_iter()
-            .map(|msg| JsonChatMessage {
+            .map(|msg| ChatMessageResponse {
                 message_id: msg.id.0,
                 sender: msg.sender.to_string(),
                 message: msg.message,

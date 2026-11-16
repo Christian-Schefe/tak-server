@@ -46,7 +46,7 @@ impl TournamentMetadataView {
         Self {
             tournament_id,
             name: metadata.name,
-            tournament_format: metadata.tournament_format,
+            tournament_format: metadata.format,
             match_settings: metadata.match_settings,
         }
     }

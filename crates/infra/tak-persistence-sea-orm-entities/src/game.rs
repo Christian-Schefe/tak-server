@@ -1,6 +1,9 @@
 use chrono::Utc;
 use sea_orm::entity::prelude::*;
 
+use crate::JsonGameSettings;
+
+#[sea_orm::model]
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "games")]
 pub struct Model {
@@ -8,13 +11,8 @@ pub struct Model {
     pub id: i64,
     pub date: chrono::DateTime<Utc>,
 
-    pub size: i32,
     pub is_rated: bool,
-    pub half_komi: i32,
-    pub pieces: i32,
-    pub capstones: i32,
-    pub opening: String,
-    pub game_settings: serde_json::Value,
+    pub game_settings: JsonGameSettings,
 
     pub player_white_id: Uuid,
     pub player_black_id: Uuid,
@@ -30,8 +28,5 @@ pub struct Model {
     #[sea_orm(indexed)]
     pub match_id: Option<i64>,
 }
-
-#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}

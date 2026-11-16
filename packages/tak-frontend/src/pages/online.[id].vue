@@ -70,9 +70,8 @@ const { data: gameStatus } = useGameStatus(() => route.params.id);
 
 const shouldSpectateGameId = computed(() => {
   if (!gameStatus.value || !account.value) return undefined;
-  const userIds = gameStatus.value.userIds;
-  return account.value.userId !== userIds.white &&
-    account.value.userId !== userIds.black &&
+  return account.value.userId !== gameStatus.value.white.userId &&
+    account.value.userId !== gameStatus.value.black.userId &&
     gameStatus.value.status.type === 'ongoing'
     ? route.params.id
     : undefined;
@@ -141,12 +140,12 @@ const gameData = computed<{
     }
   });
   const mode: GameMode =
-    account.value.userId === gameStatus.value.userIds.white
+    account.value.userId === gameStatus.value.white.userId
       ? {
           type: 'online',
           localPlayer: 'white',
         }
-      : account.value.userId === gameStatus.value.userIds.black
+      : account.value.userId === gameStatus.value.black.userId
         ? {
             type: 'online',
             localPlayer: 'black',
@@ -196,8 +195,8 @@ watch(
 );
 
 const userIds = usePlayerInfos(() =>
-  gameData.value?.status.userIds
-    ? [gameData.value.status.userIds.white, gameData.value.status.userIds.black]
+  gameData.value
+    ? [gameData.value.status.white.userId, gameData.value.status.black.userId]
     : undefined,
 );
 
@@ -248,8 +247,8 @@ const chatConversation = computed<ChatMessageConversation | undefined>(() => {
           v-if="gameData.mode.type === 'online' && gameData.status.status.type === 'ongoing'"
         >
           <RequestsBar
-            :white-requests="gameData.status.status.whiteRequests"
-            :black-requests="gameData.status.status.blackRequests"
+            :white-requests="gameData.status.status.requests.white"
+            :black-requests="gameData.status.status.requests.black"
             :player="gameData.mode.localPlayer"
             @set-request="onSetRequest"
             @accept-request="onAcceptRequest"
@@ -283,12 +282,12 @@ const chatConversation = computed<ChatMessageConversation | undefined>(() => {
     <GameClock
       :game="gameData.game"
       player="white"
-      :user-id="gameData.status.userIds.white"
+      :user-id="gameData.status.white.userId"
     ></GameClock>
     <GameClock
       :game="gameData.game"
       player="black"
-      :user-id="gameData.status.userIds.black"
+      :user-id="gameData.status.black.userId"
     ></GameClock>
     <MoveHistory
       :game="gameData.game.base"

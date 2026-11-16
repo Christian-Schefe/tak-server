@@ -6,6 +6,5 @@ pub mod listener;
 pub mod matchmaking;
 pub mod moderation;
 pub mod player;
-pub mod puzzle;
 pub mod shutdown;
 pub mod tournament;

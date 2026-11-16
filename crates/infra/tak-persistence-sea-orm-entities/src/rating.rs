@@ -1,6 +1,7 @@
 use chrono::Utc;
 use sea_orm::entity::prelude::*;
 
+#[sea_orm::model]
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "ratings")]
 pub struct Model {
@@ -14,8 +15,5 @@ pub struct Model {
     pub rating_age: Option<chrono::DateTime<Utc>>,
     pub fatigue: serde_json::Value,
 }
-
-#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}

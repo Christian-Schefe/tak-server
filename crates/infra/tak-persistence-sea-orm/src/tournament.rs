@@ -1,11 +1,16 @@
-use crate::matches::JsonMatchSettings;
-use crate::transaction::RepositoryContext;
-use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, QueryFilter};
+use crate::{
+    match_settings_from_json, match_settings_to_json, tournament_format_from_json,
+    tournament_format_to_json, tournament_status_from_json, tournament_status_to_json,
+    transaction::RepositoryContext,
+};
+use sea_orm::{
+    ActiveValue::{NotSet, Set},
+    ColumnTrait, EntityTrait, ExprTrait, QueryFilter,
+};
 use tak_domain::{
     MatchId, TournamentId, UserId,
     tournament::{
-        Tournament, TournamentFormat, TournamentMetadata, TournamentPlayer, TournamentRound,
-        TournamentStatus,
+        Tournament, TournamentMetadata, TournamentPlayer, TournamentRound, TournamentStatus,
     },
 };
 use tak_persistence_sea_orm_entities::{tournament, tournament_players, tournament_round};
@@ -16,116 +21,25 @@ use tak_server_app::ports::transaction::RepoError;
 
 pub struct TournamentRepositoryImpl;
 
-#[derive(serde::Serialize, serde::Deserialize)]
-#[serde(
-    tag = "type",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase"
-)]
-enum JsonTournamentFormat {
-    Swiss { rounds: u32 },
-    RoundRobin,
-    GroupRoundRobin { group_size: u32 },
-}
-
-impl JsonTournamentFormat {
-    fn to_tournament_type(&self) -> TournamentFormat {
-        match self {
-            JsonTournamentFormat::Swiss { rounds } => TournamentFormat::Swiss {
-                rounds: *rounds as usize,
-            },
-            JsonTournamentFormat::RoundRobin => TournamentFormat::RoundRobin,
-            JsonTournamentFormat::GroupRoundRobin { group_size } => {
-                TournamentFormat::GroupRoundRobin {
-                    group_size: *group_size as usize,
-                }
-            }
-        }
-    }
-    fn from_tournament_type(tournament_type: &TournamentFormat) -> Self {
-        match tournament_type {
-            TournamentFormat::Swiss { rounds } => JsonTournamentFormat::Swiss {
-                rounds: *rounds as u32,
-            },
-            TournamentFormat::GroupRoundRobin { group_size } => {
-                JsonTournamentFormat::GroupRoundRobin {
-                    group_size: *group_size as u32,
-                }
-            }
-            TournamentFormat::RoundRobin => JsonTournamentFormat::RoundRobin,
-        }
-    }
-}
-
 impl TournamentRepositoryImpl {
-    fn status_from_str(status: &str, registration_open: bool) -> Result<TournamentStatus, String> {
-        match status {
-            "upcoming" => Ok(TournamentStatus::Upcoming { registration_open }),
-            "ongoing" => Ok(TournamentStatus::Ongoing),
-            "completed" => Ok(TournamentStatus::Completed),
-            other => Err(format!("Unknown tournament status: {}", other)),
-        }
-    }
-
-    fn status_to_str(status: &TournamentStatus) -> (String, bool) {
-        match status {
-            TournamentStatus::Upcoming { registration_open } => {
-                ("upcoming".to_string(), *registration_open)
-            }
-            TournamentStatus::Ongoing => ("ongoing".to_string(), false),
-            TournamentStatus::Completed => ("completed".to_string(), false),
-        }
-    }
-
     fn tournament_from_model(model: tournament::Model) -> Result<Tournament, String> {
-        let settings =
-            serde_json::from_value::<JsonMatchSettings>(model.match_settings).map_err(|e| {
-                format!(
-                    "Failed to deserialize match settings for tournament {}: {}",
-                    model.tournament_id, e
-                )
-            })?;
-        let tournament_format_settings =
-            serde_json::from_value::<JsonTournamentFormat>(model.tournament_format_settings)
-                .map_err(|e| {
-                    format!(
-                        "Failed to deserialize tournament format settings for tournament {}: {}",
-                        model.tournament_id, e
-                    )
-                })?;
         Ok(Tournament {
             metadata: TournamentMetadata {
                 name: model.name,
-                tournament_format: tournament_format_settings.to_tournament_type(),
-                match_settings: settings.to_match_settings(),
+                format: tournament_format_from_json(&model.format),
+                match_settings: match_settings_from_json(&model.match_settings),
             },
-            status: Self::status_from_str(&model.status, model.registration_open).map_err(|e| {
-                format!(
-                    "Failed to parse tournament status for tournament {}: {}",
-                    model.tournament_id, e
-                )
-            })?,
+            status: tournament_status_from_json(&model.status),
         })
     }
 
     fn tournament_to_model(tournament: &Tournament) -> Result<tournament::ActiveModel, String> {
-        let settings = JsonMatchSettings::from_match_settings(&tournament.metadata.match_settings);
-        let (str_status, registration_open) = Self::status_to_str(&tournament.status);
         Ok(tournament::ActiveModel {
-            name: sea_orm::Set(tournament.metadata.name.clone()),
-            tournament_format_settings: sea_orm::Set(
-                serde_json::to_value(&JsonTournamentFormat::from_tournament_type(
-                    &tournament.metadata.tournament_format,
-                ))
-                .map_err(|e| format!("Failed to serialize tournament format settings: {}", e))?,
-            ),
-            match_settings: sea_orm::Set(
-                serde_json::to_value(&settings)
-                    .map_err(|e| format!("Failed to serialize match settings: {}", e))?,
-            ),
-            status: sea_orm::Set(str_status),
-            registration_open: sea_orm::Set(registration_open),
-            tournament_id: Default::default(),
+            id: NotSet,
+            name: Set(tournament.metadata.name.clone()),
+            format: Set(tournament_format_to_json(&tournament.metadata.format)),
+            match_settings: Set(match_settings_to_json(&tournament.metadata.match_settings)),
+            status: Set(tournament_status_to_json(&tournament.status)),
         })
     }
 }
@@ -156,7 +70,7 @@ impl TournamentRepository<RepositoryContext> for TournamentRepositoryImpl {
 
         let mut tournaments = Vec::new();
         for model in models {
-            let tournament_id = TournamentId(model.tournament_id);
+            let tournament_id = TournamentId(model.id);
             let tournament = Self::tournament_from_model(model).map_err(|e| {
                 RepoError(format!(
                     "Failed to convert tournament model to domain object for tournament {}: {}",
@@ -202,11 +116,9 @@ impl TournamentRepository<RepositoryContext> for TournamentRepositoryImpl {
         tournament_id: TournamentId,
         status: TournamentStatus,
     ) -> Result<(), RepoError> {
-        let (str_status, registration_open) = Self::status_to_str(&status);
         let model = tournament::ActiveModel {
-            tournament_id: sea_orm::Set(tournament_id.0),
-            status: sea_orm::Set(str_status),
-            registration_open: sea_orm::Set(registration_open),
+            id: Set(tournament_id.0),
+            status: Set(tournament_status_to_json(&status)),
             ..Default::default()
         };
         tournament::Entity::update(model)

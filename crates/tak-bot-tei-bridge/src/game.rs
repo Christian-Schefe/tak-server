@@ -4,7 +4,7 @@ use std::{
 };
 
 use tak_core::{MaybeTimeout, TakGame, TakGameSettings, TakPlayer};
-use tak_server_api_contract::game::JsonGameDetail;
+use tak_server_api_contract::game::GameStatusResponse;
 
 pub struct GameService {
     games: Arc<Mutex<HashMap<String, (TakPlayer, TakGame<()>)>>>,
@@ -21,10 +21,10 @@ impl GameService {
         &self,
         game_id: String,
         player: TakPlayer,
-        status: &JsonGameDetail,
+        status: &GameStatusResponse,
     ) -> Option<(TakPlayer, TakGame<()>)> {
         let mut game = TakGame::new(&status.metadata.game_settings.to_game_settings());
-        for action in &status.history {
+        for action in &status.actions {
             let action = tak_core::ptn::action_from_ptn(action)?;
             match game.do_action(action, ()) {
                 MaybeTimeout::Timeout(_) => return None,

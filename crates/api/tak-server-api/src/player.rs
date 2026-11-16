@@ -8,10 +8,10 @@ use tak_domain::{
     UserId,
     moderation::{UserRole, UserType},
 };
-use tak_server_api_contract::player::{JsonUserInfo, JsonUserRole, JsonUserType};
+use tak_server_api_contract::player::{UserInfoResponse, UserRoleResponse, UserTypeResponse};
 use tak_server_app::{
     ports::{Pagination, rating::RatingQuery},
-    workflow::player::PlayerStatsView,
+    workflow::{account::get_snapshot::GetSnapshotError, player::PlayerStatsView},
 };
 use uuid::Uuid;
 
@@ -34,7 +34,7 @@ async fn get_online_users(State(app): State<AppState>) -> Json<Vec<String>> {
 async fn get_user_info(
     State(app): State<AppState>,
     Path(user_id): Path<String>,
-) -> Result<Json<JsonUserInfo>, ServiceError> {
+) -> Result<Json<UserInfoResponse>, ServiceError> {
     let user_id = UserId(
         Uuid::parse_str(&user_id)
             .map_err(|_| ServiceError::BadRequest("Invalid user ID".to_string()))?,
@@ -46,7 +46,12 @@ async fn get_user_info(
         .await
     {
         Ok(snapshot) => snapshot,
-        Err(_) => {
+        Err(GetSnapshotError::NotFound) => {
+            return Err(ServiceError::NotFound(
+                "Player account not found".to_string(),
+            ));
+        }
+        Err(GetSnapshotError::Internal) => {
             return Err(ServiceError::Internal(
                 "Failed to retrieve player account".to_string(),
             ));
@@ -66,19 +71,19 @@ async fn get_user_info(
         }
     };
 
-    Ok(Json(JsonUserInfo {
+    Ok(Json(UserInfoResponse {
         user_id: user_id.to_string(),
         username: snapshot.username,
         participation_rating: snapshot.rating,
         user_role: match moderation.role {
-            UserRole::User => JsonUserRole::User,
-            UserRole::Moderator => JsonUserRole::Moderator,
-            UserRole::Admin => JsonUserRole::Admin,
+            UserRole::User => UserRoleResponse::User,
+            UserRole::Moderator => UserRoleResponse::Moderator,
+            UserRole::Admin => UserRoleResponse::Admin,
         },
         user_type: match moderation.user_type {
-            UserType::Guest => JsonUserType::Guest,
-            UserType::Bot => JsonUserType::Bot,
-            UserType::Player => JsonUserType::Player,
+            UserType::Guest => UserTypeResponse::Guest,
+            UserType::Bot => UserTypeResponse::Bot,
+            UserType::Player => UserTypeResponse::Player,
         },
     }))
 }
@@ -86,7 +91,7 @@ async fn get_user_info(
 async fn get_player_stats(
     State(app): State<AppState>,
     Path(user_id): Path<String>,
-) -> Result<Json<JsonPlayerStatsInfo>, ServiceError> {
+) -> Result<Json<PlayerStatsInfoResponse>, ServiceError> {
     let user_id = UserId(
         Uuid::parse_str(&user_id)
             .map_err(|_| ServiceError::BadRequest("Invalid user ID".to_string()))?,
@@ -105,7 +110,7 @@ async fn get_rating_history(
     State(app): State<AppState>,
     Path(user_id): Path<String>,
     Query(query): Query<RatingHistoryQuery>,
-) -> Result<Json<JsonRatingHistory>, ServiceError> {
+) -> Result<Json<RatingHistoryResponse>, ServiceError> {
     let user_id = UserId(
         Uuid::parse_str(&user_id)
             .map_err(|_| ServiceError::BadRequest("Invalid user ID".to_string()))?,
@@ -116,17 +121,17 @@ async fn get_rating_history(
         .get_rating_history(user_id, query.from.map(|t| t.0), query.to.map(|t| t.0))
         .await
     {
-        Ok(history) => Ok(Json(JsonRatingHistory {
+        Ok(history) => Ok(Json(RatingHistoryResponse {
             entries: history
                 .entries
                 .into_iter()
-                .map(|entry| JsonRatingHistoryEntry {
+                .map(|entry| RatingHistoryResponseEntry {
                     timestamp: entry.timestamp,
                     rating: entry.rating,
                 })
                 .collect(),
             first_entry_before_range: history.first_entry_before_range.map(|entry| {
-                JsonRatingHistoryEntry {
+                RatingHistoryResponseEntry {
                     timestamp: entry.timestamp,
                     rating: entry.rating,
                 }
@@ -140,7 +145,7 @@ async fn get_rating_history(
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct JsonRatingEntry {
+struct RatingResponseEntry {
     user_id: String,
     rating: f64,
 }
@@ -148,7 +153,7 @@ struct JsonRatingEntry {
 async fn query_player_ratings(
     State(app): State<AppState>,
     Query(query): Query<PaginationQuery>,
-) -> Result<Json<PaginatedResponse<JsonRatingEntry>>, ServiceError> {
+) -> Result<Json<PaginatedResponse<RatingResponseEntry>>, ServiceError> {
     let query = RatingQuery {
         pagination: Pagination::new(query.page.saturating_sub(1), query.page_size),
         ..Default::default()
@@ -163,7 +168,7 @@ async fn query_player_ratings(
             items: response
                 .items
                 .into_iter()
-                .map(|(user_id, rating)| JsonRatingEntry {
+                .map(|(user_id, rating)| RatingResponseEntry {
                     user_id: user_id.to_string(),
                     rating,
                 })
@@ -187,14 +192,14 @@ struct SerdeTimestamp(#[serde(with = "chrono::serde::ts_milliseconds")] DateTime
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct JsonRatingHistory {
-    entries: Vec<JsonRatingHistoryEntry>,
-    first_entry_before_range: Option<JsonRatingHistoryEntry>,
+struct RatingHistoryResponse {
+    entries: Vec<RatingHistoryResponseEntry>,
+    first_entry_before_range: Option<RatingHistoryResponseEntry>,
 }
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct JsonRatingHistoryEntry {
+struct RatingHistoryResponseEntry {
     #[serde(with = "chrono::serde::ts_milliseconds")]
     timestamp: DateTime<Utc>,
     rating: f64,
@@ -202,8 +207,8 @@ struct JsonRatingHistoryEntry {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct JsonPlayerStatsInfo {
-    ranking: Option<JsonPlayerRankingInfo>,
+struct PlayerStatsInfoResponse {
+    ranking: Option<PlayerRankingInfoResponse>,
     games_played: u32,
     rated_games_played: u32,
     games_won: u32,
@@ -215,15 +220,15 @@ struct JsonPlayerStatsInfo {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
-struct JsonPlayerRankingInfo {
+struct PlayerRankingInfoResponse {
     rating: f64,
     max_rating: f64,
     rank: u32,
 }
 
-impl From<PlayerStatsView> for JsonPlayerStatsInfo {
+impl From<PlayerStatsView> for PlayerStatsInfoResponse {
     fn from(stats: PlayerStatsView) -> Self {
-        JsonPlayerStatsInfo {
+        PlayerStatsInfoResponse {
             games_played: stats.games_played,
             rated_games_played: stats.rated_games_played,
             games_won: stats.games_won,
@@ -231,7 +236,7 @@ impl From<PlayerStatsView> for JsonPlayerStatsInfo {
             games_drawn: stats.games_drawn,
             win_streak: stats.win_streak,
             longest_win_streak: stats.longest_win_streak,
-            ranking: stats.ranking.map(|ranking| JsonPlayerRankingInfo {
+            ranking: stats.ranking.map(|ranking| PlayerRankingInfoResponse {
                 rating: ranking.rating,
                 max_rating: ranking.max_rating,
                 rank: ranking.ranking,

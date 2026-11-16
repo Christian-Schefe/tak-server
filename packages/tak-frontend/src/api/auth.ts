@@ -80,7 +80,13 @@ export interface RefreshRequest {
 export function useRefresh() {
   const { fetchTyped } = useFetch();
   return async (request: RefreshRequest) => {
-    return await fetchTyped(authenticatedUserResponseSchema, '/api/auth/refresh', 'POST', request);
+    return await fetchTyped(
+      authenticatedUserResponseSchema,
+      '/api/auth/refresh',
+      'POST',
+      request,
+      false,
+    );
   };
 }
 

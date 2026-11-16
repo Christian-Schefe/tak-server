@@ -26,10 +26,11 @@ settingsStore.initializeSettings();
 
 const authStore = useAuthStore();
 router.beforeEach((to) => {
-  const isAuthenticated = authStore.data?.userId !== undefined;
+  const isAuthenticated = !!authStore.data;
   if (!isAuthenticated && to.meta.noAuth !== true) {
     return { name: '/(auth)/login' };
   }
 });
-await Promise.all([authStore.maybeRefreshToken(), router.isReady()]);
+
+await Promise.all([authStore.getAuthData(), router.isReady()]);
 app.mount('#app');

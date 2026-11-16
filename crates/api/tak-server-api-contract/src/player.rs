@@ -1,6 +1,6 @@
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum JsonUserType {
+pub enum UserTypeResponse {
     Guest,
     Bot,
     Player,
@@ -8,7 +8,7 @@ pub enum JsonUserType {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum JsonUserRole {
+pub enum UserRoleResponse {
     User,
     Moderator,
     Admin,
@@ -16,10 +16,10 @@ pub enum JsonUserRole {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct JsonUserInfo {
+pub struct UserInfoResponse {
     pub user_id: String,
-    pub user_role: JsonUserRole,
-    pub user_type: JsonUserType,
+    pub user_role: UserRoleResponse,
+    pub user_type: UserTypeResponse,
     pub username: String,
     pub participation_rating: Option<f64>,
 }

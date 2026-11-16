@@ -80,15 +80,8 @@ pub struct TakGame<T: TakInstant> {
 impl<T: TakInstant> TakGame<T> {
     pub fn new(settings: &TakGameSettings) -> Self {
         let base_game = TakBaseGame::new(&settings.base);
-        let contingent = match &settings.time_settings {
-            TakTimeSettings::Realtime(settings) => settings.contingent,
-            TakTimeSettings::Async(settings) => settings.contingent,
-        };
         let clock = TakClock {
-            remaining_time: TakTimeInfo {
-                white_remaining: contingent,
-                black_remaining: contingent,
-            },
+            remaining_time: settings.time_settings.initial_time_info(),
             is_ticking: None,
         };
 

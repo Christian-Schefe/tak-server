@@ -4,7 +4,7 @@ use axum::{
     routing::get,
 };
 use tak_domain::UserId;
-use tak_server_api_contract::game::JsonGameRecord;
+use tak_server_api_contract::game::GameRecordResponse;
 use tak_server_app::{
     ports::{
         Pagination, SortOrder,
@@ -24,7 +24,7 @@ pub fn register_routes() -> axum::Router<AppState> {
 async fn query_game_history(
     State(app): State<AppState>,
     Query(pagination): Query<PaginationQuery>,
-) -> Result<Json<PaginatedResponse<JsonGameRecord>>, ServiceError> {
+) -> Result<Json<PaginatedResponse<GameRecordResponse>>, ServiceError> {
     let filter = GameQuery {
         pagination: Pagination::new(pagination.page.saturating_sub(1), pagination.page_size),
         sort: Some((SortOrder::Descending, GameSortBy::Date)),
@@ -52,7 +52,7 @@ async fn query_player_game_history(
     State(app): State<AppState>,
     Path(user_id): Path<String>,
     Query(pagination): Query<PaginationQuery>,
-) -> Result<Json<PaginatedResponse<JsonGameRecord>>, ServiceError> {
+) -> Result<Json<PaginatedResponse<GameRecordResponse>>, ServiceError> {
     let user_id = UserId::try_from(user_id)
         .map_err(|_| ServiceError::BadRequest("Invalid user ID".to_string()))?;
     let filter = GameQuery {

@@ -8,15 +8,14 @@ export function useFetch() {
     path: string,
     method: 'GET' | 'POST' | 'DELETE' = 'GET',
     body?: unknown,
-    auth: boolean = true,
+    doRefresh: boolean = true,
   ): Promise<Response> {
     const headers: HeadersInit = {};
-    if (auth) {
-      await authStore.maybeRefreshToken();
-      if (authStore.data !== null) {
-        headers['Authorization'] = `Bearer ${authStore.data.jwt}`;
-      }
+    const authData = await authStore.getAuthData(doRefresh);
+    if (authData) {
+      headers['Authorization'] = `Bearer ${authData.jwt}`;
     }
+
     if (method === 'POST' && body !== undefined && !(body instanceof FormData)) {
       headers['Content-Type'] = 'application/json';
     }
@@ -35,6 +34,9 @@ export function useFetch() {
       });
     }
     if (!response.ok) {
+      if (response.status === 401) {
+        authStore.setAuthData(null);
+      }
       throw new Error(
         `Failed to fetch ${path}: ${response.status.toString()} ${response.statusText}`,
       );
@@ -47,9 +49,9 @@ export function useFetch() {
     path: string,
     method: 'GET' | 'POST' | 'DELETE' = 'GET',
     body?: unknown,
-    auth: boolean = true,
+    doRefresh: boolean = true,
   ): Promise<T> {
-    const response = await fetch2(path, method, body, auth);
+    const response = await fetch2(path, method, body, doRefresh);
     const data = await response.json();
     const parsed = schema.safeParse(data);
     if (!parsed.success) {
