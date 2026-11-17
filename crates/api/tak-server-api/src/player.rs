@@ -27,7 +27,7 @@ pub fn register_routes() -> axum::Router<AppState> {
 }
 
 async fn get_online_users(State(app): State<AppState>) -> Json<Vec<String>> {
-    let users = app.app.account_get_online_use_case.get_online_users();
+    let users = app.app.player_use_case.get_online_users();
     Json(users.into_iter().map(|a| a.to_string()).collect())
 }
 
@@ -57,12 +57,7 @@ async fn get_user_info(
             ));
         }
     };
-    let moderation = match app
-        .app
-        .account_moderate_use_case
-        .get_moderation(user_id)
-        .await
-    {
+    let moderation = match app.app.moderation_use_case.get_moderation(user_id).await {
         Ok(moderation) => moderation,
         Err(_) => {
             return Err(ServiceError::Internal(
@@ -98,7 +93,7 @@ async fn get_player_stats(
     );
     let stats = app
         .app
-        .get_stats_use_case
+        .player_use_case
         .get_stats(user_id)
         .await
         .map_err(|_| ServiceError::Internal("Failed to retrieve player stats".to_string()))?;
@@ -117,7 +112,7 @@ async fn get_rating_history(
     );
     match app
         .app
-        .player_get_rating_use_case
+        .player_use_case
         .get_rating_history(user_id, query.from.map(|t| t.0), query.to.map(|t| t.0))
         .await
     {
@@ -158,12 +153,7 @@ async fn query_player_ratings(
         pagination: Pagination::new(query.page.saturating_sub(1), query.page_size),
         ..Default::default()
     };
-    match app
-        .app
-        .player_get_rating_use_case
-        .query_player_ratings(query)
-        .await
-    {
+    match app.app.player_use_case.query_player_ratings(query).await {
         Ok(response) => Ok(Json(PaginatedResponse {
             items: response
                 .items

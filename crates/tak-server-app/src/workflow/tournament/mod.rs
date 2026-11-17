@@ -12,7 +12,6 @@ use tak_domain::{
 pub mod get;
 pub mod host;
 pub mod register;
-pub mod tournament_match;
 
 #[derive(Clone, Debug)]
 pub struct TournamentMetadataView {

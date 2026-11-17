@@ -93,10 +93,7 @@ impl PlayerConnectionDriver {
             set_online
         };
         if set_online {
-            self.app
-                .account_set_online_use_case
-                .set_online(user_id)
-                .await;
+            self.app.player_use_case.set_online(user_id).await;
         }
     }
 
@@ -127,10 +124,7 @@ impl PlayerConnectionDriver {
             .listener_disconnect_use_case
             .handle_listener_disconnect(connection_id.0);
         if let Some(user_id) = set_account_offline {
-            self.app
-                .account_set_online_use_case
-                .set_offline(user_id)
-                .await;
+            self.app.player_use_case.set_offline(user_id).await;
         }
     }
 

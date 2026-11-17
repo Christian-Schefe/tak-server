@@ -12,7 +12,7 @@ use tak_server_api_contract::{
 };
 use tak_server_app::workflow::{
     gameplay::query::GameQueryError,
-    matchmaking::{get::GetMatchError, readiness::MatchReadinessError},
+    matchmaking::{GetMatchError, MatchReadinessError},
 };
 
 use crate::{AppState, ServiceError, auth::Auth, game::from_game};
@@ -44,7 +44,7 @@ async fn get_match(
             .parse::<i64>()
             .map_err(|_| ServiceError::BadRequest(format!("Invalid match ID: {}", match_id)))?,
     );
-    match app.app.match_get_use_case.get_match(match_id).await {
+    match app.app.matchmaking_use_case.get_match(match_id).await {
         Ok(m) => Ok(Json(MatchResponse::from_match(match_id, m))),
         Err(GetMatchError::NotFound) => Err(ServiceError::NotFound(format!(
             "Match not found: {}",
@@ -175,7 +175,7 @@ async fn set_player_ready(
     );
     if let Err(e) = app
         .app
-        .match_readiness_use_case
+        .matchmaking_use_case
         .set_player_ready(match_id, auth.user_id)
         .await
     {
@@ -204,7 +204,7 @@ async fn set_player_not_ready(
     );
     if let Err(e) = app
         .app
-        .match_readiness_use_case
+        .matchmaking_use_case
         .set_player_not_ready(match_id, auth.user_id)
         .await
     {
@@ -230,10 +230,7 @@ async fn get_match_readiness_status(
             .parse::<i64>()
             .map_err(|_| ServiceError::BadRequest(format!("Invalid match ID: {}", match_id)))?,
     );
-    let match_readiness_status = app
-        .app
-        .match_readiness_use_case
-        .get_readiness_status(match_id);
+    let match_readiness_status = app.app.matchmaking_use_case.get_readiness_status(match_id);
     Ok(Json(MatchReadinessStatusResponse {
         ready_player: match_readiness_status
             .player_ready

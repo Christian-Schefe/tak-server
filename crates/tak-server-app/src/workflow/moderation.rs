@@ -11,11 +11,14 @@ use crate::{
 };
 use tak_domain::{
     UserId,
-    moderation::{Moderation, PermissionPolicy, UserRole},
+    moderation::{
+        AdminUserPolicy, HigherRoleUserPolicy, Moderation, ModeratorUserPolicy, PermissionPolicy,
+        UserRole,
+    },
 };
 
 #[async_trait::async_trait]
-pub trait ModeratePlayerUseCase {
+pub trait ModerationUseCase {
     async fn get_moderation(&self, user_id: UserId) -> Result<Moderation, ModerationError>;
     async fn ban_player(
         &self,
@@ -61,18 +64,9 @@ pub enum ModerationError {
     Internal,
 }
 
-pub struct ModerationPolicies {
-    pub ban_policy: Arc<dyn PermissionPolicy + Send + Sync + 'static>,
-    pub silence_policy: Arc<dyn PermissionPolicy + Send + Sync + 'static>,
-    pub set_moderator_policy: Arc<dyn PermissionPolicy + Send + Sync + 'static>,
-    pub set_admin_policy: Arc<dyn PermissionPolicy + Send + Sync + 'static>,
-    pub set_user_policy: Arc<dyn PermissionPolicy + Send + Sync + 'static>,
-}
-
-pub struct ModeratePlayerUseCaseImpl<Ports: PortsCollection, E: EmailPort, A: AccountPort> {
+pub struct ModerationUseCaseImpl<Ports: PortsCollection, E: EmailPort, A: AccountPort> {
     ports: Arc<Ports>,
     email_port: Arc<E>,
-    policies: ModerationPolicies,
     account_info_service: Arc<A>,
 }
 
@@ -80,18 +74,12 @@ impl<
     Ports: PortsCollection + Send + Sync + 'static,
     E: EmailPort + Send + Sync + 'static,
     A: AccountPort + Send + Sync + 'static,
-> ModeratePlayerUseCaseImpl<Ports, E, A>
+> ModerationUseCaseImpl<Ports, E, A>
 {
-    pub fn new(
-        ports: Arc<Ports>,
-        email_port: Arc<E>,
-        policies: ModerationPolicies,
-        account_info_service: Arc<A>,
-    ) -> Self {
+    pub fn new(ports: Arc<Ports>, email_port: Arc<E>, account_info_service: Arc<A>) -> Self {
         Self {
             ports,
             email_port,
-            policies,
             account_info_service,
         }
     }
@@ -100,7 +88,7 @@ impl<
         &self,
         user_id: UserId,
         target_user_id: UserId,
-        policy: Arc<dyn PermissionPolicy + Send + Sync + 'static>,
+        policy: impl PermissionPolicy,
         task: impl FnOnce(&mut Moderation),
     ) -> Result<(), ModerationError> {
         let ctx = self
@@ -184,14 +172,9 @@ impl<
         target_user_id: UserId,
         is_banned: bool,
     ) -> Result<(), ModerationError> {
-        self.do_moderation(
-            user_id,
-            target_user_id,
-            self.policies.ban_policy.clone(),
-            |target_account| {
-                target_account.set_banned(is_banned);
-            },
-        )
+        self.do_moderation(user_id, target_user_id, AdminUserPolicy, |target_account| {
+            target_account.set_banned(is_banned);
+        })
         .await
     }
 
@@ -204,7 +187,7 @@ impl<
         self.do_moderation(
             user_id,
             target_user_id,
-            self.policies.silence_policy.clone(),
+            ModeratorUserPolicy,
             |target_account| {
                 target_account.set_silenced(is_silenced);
             },
@@ -218,15 +201,14 @@ impl<
         target_user_id: UserId,
         role: UserRole,
     ) -> Result<(), ModerationError> {
-        let policy = match role {
-            UserRole::Moderator => &self.policies.set_moderator_policy,
-            UserRole::Admin => &self.policies.set_admin_policy,
-            UserRole::User => &self.policies.set_user_policy,
-        };
-
-        self.do_moderation(user_id, target_user_id, policy.clone(), |target_account| {
-            target_account.set_role(role);
-        })
+        self.do_moderation(
+            user_id,
+            target_user_id,
+            HigherRoleUserPolicy,
+            |target_account| {
+                target_account.set_role(role);
+            },
+        )
         .await
     }
 }
@@ -236,7 +218,7 @@ impl<
     Ports: PortsCollection + Send + Sync + 'static,
     E: EmailPort + Send + Sync + 'static,
     A: AccountPort + Send + Sync + 'static,
-> ModeratePlayerUseCase for ModeratePlayerUseCaseImpl<Ports, E, A>
+> ModerationUseCase for ModerationUseCaseImpl<Ports, E, A>
 {
     async fn get_moderation(&self, user_id: UserId) -> Result<Moderation, ModerationError> {
         let ctx = self.ports.transaction_manager().simple();

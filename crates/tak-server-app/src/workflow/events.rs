@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use tak_domain::event::Event;
 
-use crate::ports::event::EventRepository;
+use crate::{PortsCollection, ports::event::EventRepository};
 
 #[async_trait::async_trait]
-pub trait ListEventsUseCase {
+pub trait EventsUseCase {
     async fn list_events(&self) -> Result<Vec<Event>, ListEventsError>;
 }
 
@@ -13,20 +13,20 @@ pub enum ListEventsError {
     RepositoryError,
 }
 
-pub struct ListEventsUseCaseImpl<R: EventRepository> {
-    event_repository: Arc<R>,
+pub struct EventsUseCaseImpl<Ports: PortsCollection> {
+    ports: Arc<Ports>,
 }
 
-impl<R: EventRepository> ListEventsUseCaseImpl<R> {
-    pub fn new(event_repository: Arc<R>) -> Self {
-        Self { event_repository }
+impl<Ports: PortsCollection> EventsUseCaseImpl<Ports> {
+    pub fn new(ports: Arc<Ports>) -> Self {
+        Self { ports }
     }
 }
 
 #[async_trait::async_trait]
-impl<R: EventRepository + Send + Sync + 'static> ListEventsUseCase for ListEventsUseCaseImpl<R> {
+impl<Ports: PortsCollection + Send + Sync + 'static> EventsUseCase for EventsUseCaseImpl<Ports> {
     async fn list_events(&self) -> Result<Vec<Event>, ListEventsError> {
-        match self.event_repository.get_events().await {
+        match self.ports.event_repository().get_events().await {
             Ok(events) => Ok(events),
             Err(e) => {
                 tracing::error!("Error retrieving events: {}", e);

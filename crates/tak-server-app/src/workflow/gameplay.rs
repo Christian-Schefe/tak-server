@@ -11,18 +11,23 @@ use crate::{
         transaction::{RepoError, TransactionManager},
     },
     workflow::{
-        gameplay::lifecycle::LifecycleGameWorkflow, player::notify_player::NotifyPlayerWorkflow,
+        gameplay::lifecycle::LifecycleGameWorkflow, listener::notify_player::NotifyPlayerWorkflow,
     },
 };
 use tak_core::{InvalidUndoReason, TakAction};
 use tak_domain::{
-    GameId, UserId,
+    GameId, ListenerId, UserId,
     game::{
         CheckDisconnectTimeoutResult, GameAbortError, GameAcceptRequestError,
         GameCheckTimeoutError, GameDoActionError, GameRequest, GameRequestType, GameResignError,
         GameSetRequestError, GameUndoActionError,
     },
+    spectator::SpectatorService,
 };
+
+pub mod lifecycle;
+pub mod query;
+
 pub enum ObserveOutcome {
     Finished,
     Continue(std::time::Duration),
@@ -34,7 +39,7 @@ pub enum ObserveError {
 }
 
 #[async_trait::async_trait]
-pub trait DoActionUseCase {
+pub trait GameplayUseCase {
     async fn do_action(
         &self,
         game_id: GameId,
@@ -56,12 +61,17 @@ pub trait DoActionUseCase {
     async fn resign(&self, game_id: GameId, user_id: UserId) -> Result<(), PlayerActionError>;
     async fn abort(&self, game_id: GameId, user_id: UserId) -> Result<(), ActionError<AbortError>>;
 
-    async fn check_game_timeout(&self, game_id: GameId) -> Result<ObserveOutcome, ObserveError>;
     async fn check_player_timeout(
         &self,
         user_id: UserId,
         disconnected_at: Instant,
     ) -> Result<ObserveOutcome, ObserveError>;
+    async fn observe_game(
+        &self,
+        game_id: GameId,
+        listener_id: ListenerId,
+    ) -> Result<(), ObserveGameError>;
+    fn unobserve_game(&self, game_id: GameId, listener_id: ListenerId);
 }
 
 #[derive(Debug)]
@@ -92,28 +102,41 @@ pub enum AbortError {
     GameAlreadyStarted,
 }
 
-pub struct DoActionUseCaseImpl<
+pub enum ObserveGameError {
+    GameNotFound,
+    Internal,
+}
+
+pub struct GameplayUseCaseImpl<
     Ports: PortsCollection,
     NP: NotifyPlayerWorkflow,
     F: LifecycleGameWorkflow<Ports::TrCtx>,
+    S: SpectatorService,
 > {
     ports: Arc<Ports>,
     notify_player_workflow: Arc<NP>,
     finalize_game_workflow: Arc<F>,
+    spectator_service: Arc<S>,
 }
 
-impl<Ports: PortsCollection, NP: NotifyPlayerWorkflow, F: LifecycleGameWorkflow<Ports::TrCtx>>
-    DoActionUseCaseImpl<Ports, NP, F>
+impl<
+    Ports: PortsCollection,
+    NP: NotifyPlayerWorkflow,
+    F: LifecycleGameWorkflow<Ports::TrCtx>,
+    S: SpectatorService,
+> GameplayUseCaseImpl<Ports, NP, F, S>
 {
     pub fn new(
         ports: Arc<Ports>,
         notify_player_workflow: Arc<NP>,
         finalize_game_workflow: Arc<F>,
+        spectator_service: Arc<S>,
     ) -> Self {
         Self {
             ports,
             notify_player_workflow,
             finalize_game_workflow,
+            spectator_service,
         }
     }
 }
@@ -123,7 +146,8 @@ impl<
     Ports: PortsCollection + Send + Sync + 'static,
     NP: NotifyPlayerWorkflow + Send + Sync + 'static,
     F: LifecycleGameWorkflow<Ports::TrCtx> + Send + Sync + 'static,
-> DoActionUseCase for DoActionUseCaseImpl<Ports, NP, F>
+    S: SpectatorService + Send + Sync + 'static,
+> GameplayUseCase for GameplayUseCaseImpl<Ports, NP, F, S>
 {
     async fn do_action(
         &self,
@@ -391,32 +415,6 @@ impl<
         }
     }
 
-    async fn check_game_timeout(&self, game_id: GameId) -> Result<ObserveOutcome, ObserveError> {
-        let mut result = ObserveOutcome::Finished;
-        match self
-            .finalize_game_workflow
-            .modify_game(game_id, |game, _| {
-                let now = SystemTime::now();
-                match game.check_timeout(now) {
-                    Err(GameCheckTimeoutError::Timeout) => Ok(()),
-                    Ok(time_info) => {
-                        result = ObserveOutcome::Continue(
-                            time_info.white_remaining.min(time_info.black_remaining)
-                                + std::time::Duration::from_millis(100),
-                        );
-                        Ok(())
-                    }
-                }
-            })
-            .await
-        {
-            Ok(Ok(())) => {}
-            Ok(Err(())) => return Err(ObserveError::GameNotFound),
-            Err(()) => return Err(ObserveError::Internal),
-        };
-        Ok(result)
-    }
-
     async fn check_player_timeout(
         &self,
         user_id: UserId,
@@ -488,5 +486,31 @@ impl<
             )),
             None => Ok(ObserveOutcome::Finished),
         }
+    }
+
+    async fn observe_game(
+        &self,
+        game_id: GameId,
+        listener_id: ListenerId,
+    ) -> Result<(), ObserveGameError> {
+        let ctx = self.ports.transaction_manager().simple();
+        match self.ports.game_repository().get_game(&ctx, game_id).await {
+            Ok(None) => return Err(ObserveGameError::GameNotFound),
+            Ok(Some(record)) => {
+                if record.result.is_some() {
+                    return Err(ObserveGameError::GameNotFound);
+                }
+            }
+            Err(RepoError(e)) => {
+                tracing::error!("Failed to retrieve game {} from repository: {}", game_id, e);
+                return Err(ObserveGameError::Internal);
+            }
+        }
+        self.spectator_service.observe_game(game_id, listener_id);
+        Ok(())
+    }
+
+    fn unobserve_game(&self, game_id: GameId, listener_id: ListenerId) {
+        self.spectator_service.unobserve_game(game_id, listener_id);
     }
 }

@@ -75,7 +75,7 @@ async fn get_chat_messages(
     };
     let mut messages = app
         .app
-        .chat_message_use_case
+        .chat_use_case
         .get_messages(
             &conversation,
             messages_query.cursor.map(|v| ChatMessageId(v)),

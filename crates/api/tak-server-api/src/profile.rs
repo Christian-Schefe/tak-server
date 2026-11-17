@@ -9,7 +9,7 @@ use axum::{
     routing::{get, post},
 };
 use tak_domain::{UserId, profile::ProfilePictureFileType};
-use tak_server_app::workflow::account::AccountProfileView;
+use tak_server_app::workflow::profile::AccountProfileView;
 
 use crate::{AppState, ServiceError, auth::Auth};
 
@@ -32,7 +32,7 @@ async fn get_profile(
     };
     let profile = app
         .app
-        .get_profile_use_case
+        .profile_use_case
         .get_profile(user_id)
         .await
         .map_err(|_| ServiceError::Internal("Failed to retrieve player profile".to_string()))?;
@@ -65,7 +65,7 @@ async fn update_profile(
     };
 
     app.app
-        .update_profile_use_case
+        .profile_use_case
         .update_profile(auth.user_id, payload.display_name, country)
         .await
         .map_err(|_| ServiceError::Internal("Failed to update player profile".to_string()))
@@ -91,7 +91,7 @@ async fn get_profile_picture(
     };
     let profile_picture = app
         .app
-        .get_profile_use_case
+        .profile_use_case
         .get_profile_picture(user_id)
         .await
         .map_err(|_| ServiceError::Internal("Failed to retrieve profile picture".to_string()))?;
@@ -152,7 +152,7 @@ async fn set_profile_picture(
 
         match app
             .app
-            .update_profile_use_case
+            .profile_use_case
             .set_profile_picture(auth.user_id, img)
             .await
         {

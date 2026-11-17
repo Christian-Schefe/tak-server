@@ -18,18 +18,15 @@ use tak_player_connection::{ConnectionId, PlayerSimpleConnectionPort};
 use tak_server_api_contract::{
     game::{ForPlayerResponse, GameRequestResponse},
     ws::{
-        ClientMessage, ClientMessageWrapper, ChatConversationResponse, ChatMessageResponse,
+        ChatConversationResponse, ChatMessageResponse, ClientMessage, ClientMessageWrapper,
         ServerGameEventType, ServerMatchEventType, ServerMessage,
     },
 };
 use tak_server_app::{
     ports::notification::{ListenerGameMessageType, ListenerMatchEventType, ListenerMessage},
     workflow::{
-        chat::message::ChatSendMessageError,
-        gameplay::{
-            do_action::{ActionError, DoActionError, PlayerActionError},
-            observe::ObserveGameError,
-        },
+        chat::ChatSendMessageError,
+        gameplay::{ActionError, DoActionError, ObserveGameError, PlayerActionError},
     },
 };
 use tokio::select;
@@ -231,7 +228,7 @@ async fn handle_authenticated_client_message(
             };
             match app
                 .app
-                .game_do_action_use_case
+                .gameplay_use_case
                 .do_action(game_id, user_id, action)
                 .await
             {
@@ -265,7 +262,9 @@ async fn handle_authenticated_client_message(
             tracing::info!("Received ChatMessage: {:?} -> {}", conversation, message);
             let message_target = match conversation {
                 ChatConversationResponse::Global => ChatConversation::Global,
-                ChatConversationResponse::Room { room_name } => ChatConversation::Room { room_name },
+                ChatConversationResponse::Room { room_name } => {
+                    ChatConversation::Room { room_name }
+                }
                 ChatConversationResponse::Private { user_id1, user_id2 } => {
                     let Ok(user_id1) = UserId::try_from(user_id1) else {
                         return Err(ServiceError::BadRequest(
@@ -283,7 +282,7 @@ async fn handle_authenticated_client_message(
             };
             match app
                 .app
-                .chat_message_use_case
+                .chat_use_case
                 .send_message(user_id, &message_target, &message)
                 .await
             {
@@ -307,7 +306,7 @@ async fn handle_authenticated_client_message(
             };
             if spectate {
                 app.app
-                    .game_observe_use_case
+                    .gameplay_use_case
                     .observe_game(game_id, connection_id.0)
                     .await
                     .map_err(|e| match e {
@@ -320,7 +319,7 @@ async fn handle_authenticated_client_message(
                     })?;
             } else {
                 app.app
-                    .game_observe_use_case
+                    .gameplay_use_case
                     .unobserve_game(game_id, connection_id.0);
             }
             Ok(())
@@ -328,12 +327,10 @@ async fn handle_authenticated_client_message(
         ClientMessage::JoinChatRoom { room_name, join } => {
             tracing::info!("Received JoinChatRoom for room {}: {}", room_name, join);
             if join {
-                app.app
-                    .chat_room_use_case
-                    .join_room(&room_name, connection_id.0);
+                app.app.chat_use_case.join_room(&room_name, connection_id.0);
             } else {
                 app.app
-                    .chat_room_use_case
+                    .chat_use_case
                     .leave_room(&room_name, connection_id.0);
             }
             Ok(())
@@ -444,11 +441,15 @@ fn from_listener_message(message: ListenerMessage) -> Option<ServerMessage> {
         } => {
             let conversation = match conversation {
                 ChatConversation::Global => ChatConversationResponse::Global,
-                ChatConversation::Room { room_name } => ChatConversationResponse::Room { room_name },
-                ChatConversation::Private { user_ids: members } => ChatConversationResponse::Private {
-                    user_id1: members.0.to_string(),
-                    user_id2: members.1.to_string(),
-                },
+                ChatConversation::Room { room_name } => {
+                    ChatConversationResponse::Room { room_name }
+                }
+                ChatConversation::Private { user_ids: members } => {
+                    ChatConversationResponse::Private {
+                        user_id1: members.0.to_string(),
+                        user_id2: members.1.to_string(),
+                    }
+                }
             };
             Some(ServerMessage::ChatMessage {
                 message: ChatMessageResponse {

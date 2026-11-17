@@ -9,12 +9,10 @@ use crate::{
         notification::{ListenerGameMessageType, ListenerMessage, ListenerNotificationPort},
         rating::RatingRepository,
         stats::{RatingHistoryRepository, StatsRepository},
+        tournament::TournamentPlayerRepository,
         transaction::{RepoError, TransactionManager},
     },
-    workflow::{
-        player::notify_player::NotifyPlayerWorkflow,
-        tournament::tournament_match::TournamentMatchWorkflow,
-    },
+    workflow::listener::notify_player::NotifyPlayerWorkflow,
 };
 use tak_core::{TakActionRecord, TakGameResult, TakPlayer};
 use tak_domain::{
@@ -41,14 +39,12 @@ pub struct LifecycleGameWorkflowImpl<
     NP: NotifyPlayerWorkflow,
     SPS: SpectatorService,
     L: ListenerNotificationPort,
-    TM: TournamentMatchWorkflow<Ports::TrCtx>,
 > {
     ports: Arc<Ports>,
     rating_service: Arc<R>,
     notify_player_workflow: Arc<NP>,
     spectator_service: Arc<SPS>,
     listener_notification_port: Arc<L>,
-    tournament_match_workflow: Arc<TM>,
 }
 
 impl<
@@ -57,8 +53,7 @@ impl<
     NP: NotifyPlayerWorkflow,
     SPS: SpectatorService,
     L: ListenerNotificationPort,
-    TM: TournamentMatchWorkflow<Ports::TrCtx>,
-> LifecycleGameWorkflowImpl<Ports, R, NP, SPS, L, TM>
+> LifecycleGameWorkflowImpl<Ports, R, NP, SPS, L>
 {
     pub fn new(
         ports: Arc<Ports>,
@@ -66,7 +61,6 @@ impl<
         notify_player_workflow: Arc<NP>,
         spectator_service: Arc<SPS>,
         listener_notification_port: Arc<L>,
-        tournament_match_workflow: Arc<TM>,
     ) -> Self {
         Self {
             ports,
@@ -74,7 +68,6 @@ impl<
             notify_player_workflow,
             spectator_service,
             listener_notification_port,
-            tournament_match_workflow,
         }
     }
 }
@@ -84,8 +77,7 @@ impl<
     NP: NotifyPlayerWorkflow + Send + Sync + 'static,
     SPS: SpectatorService + Send + Sync + 'static,
     L: ListenerNotificationPort + Send + Sync + 'static,
-    TM: TournamentMatchWorkflow<Ports::TrCtx> + Send + Sync + 'static,
-> LifecycleGameWorkflowImpl<Ports, R, NP, SPS, L, TM>
+> LifecycleGameWorkflowImpl<Ports, R, NP, SPS, L>
 {
     async fn handle_match(
         &self,
@@ -96,7 +88,6 @@ impl<
         result: TakGameResult,
     ) -> Result<(), String> {
         let match_repo = self.ports.match_repository();
-        let tournament_match_workflow = self.tournament_match_workflow.clone();
 
         let mut match_data = match match_repo.get_match(ctx, match_id).await {
             Ok(Some(data)) => data,
@@ -144,13 +135,38 @@ impl<
             }
         }
         if let MatchStatus::Completed = match_data.status {
-            tournament_match_workflow
-                .handle_completed_match(ctx, match_data)
-                .await
+            let Some(tournament_info) = &match_data.tournament_info else {
+                return Ok(());
+            };
+            let winner = match_data.get_winner();
+            let repo = self.ports.tournament_player_repository();
+            if let Some(winner_id) = winner {
+                repo.increase_player_score(&ctx, tournament_info.tournament_id, winner_id, 2)
+                    .await
+                    .map_err(|RepoError(e)| {
+                        tracing::error!("Failed to handle completed match {}: {}", match_id, e);
+                        "Failed to handle completed match".to_string()
+                    })?;
+            } else {
+                futures::try_join!(
+                    repo.increase_player_score(
+                        &ctx,
+                        tournament_info.tournament_id,
+                        match_data.player1.user_id,
+                        1,
+                    ),
+                    repo.increase_player_score(
+                        &ctx,
+                        tournament_info.tournament_id,
+                        match_data.player2.user_id,
+                        1,
+                    ),
+                )
                 .map_err(|RepoError(e)| {
                     tracing::error!("Failed to handle completed match {}: {}", match_id, e);
                     "Failed to handle completed match".to_string()
                 })?;
+            }
         }
         Ok(())
     }
@@ -426,8 +442,7 @@ impl<
     NP: NotifyPlayerWorkflow + Send + Sync + 'static,
     SPS: SpectatorService + Send + Sync + 'static,
     L: ListenerNotificationPort + Send + Sync + 'static,
-    TM: TournamentMatchWorkflow<Ports::TrCtx> + Send + Sync + 'static,
-> LifecycleGameWorkflow<Ports::TrCtx> for LifecycleGameWorkflowImpl<Ports, R, NP, SPS, L, TM>
+> LifecycleGameWorkflow<Ports::TrCtx> for LifecycleGameWorkflowImpl<Ports, R, NP, SPS, L>
 {
     async fn modify_game<F, Err>(&self, game_id: GameId, func: F) -> Result<Result<(), Err>, ()>
     where

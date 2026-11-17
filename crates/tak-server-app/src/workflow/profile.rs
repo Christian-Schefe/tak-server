@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use country_code_enum::CountryCode;
-
 use image::DynamicImage;
 use tak_domain::{
     UserId,
@@ -17,8 +16,38 @@ use crate::{
     },
 };
 
+pub struct AccountProfileView {
+    pub display_name: Option<String>,
+    pub country: Option<CountryCode>,
+    pub profile_picture_version: Option<ProfilePictureVersion>,
+}
+
+impl From<AccountProfile> for AccountProfileView {
+    fn from(profile: AccountProfile) -> Self {
+        Self {
+            display_name: profile.display_name,
+            country: profile.country,
+            profile_picture_version: profile.profile_picture_version,
+        }
+    }
+}
+
+pub enum UpdateProfileError {
+    AccountNotFound,
+    Internal,
+}
+
+pub enum GetProfileError {
+    RepositoryError,
+}
+
 #[async_trait::async_trait]
-pub trait UpdateProfileUseCase {
+pub trait ProfileUseCase {
+    async fn get_profile(&self, user_id: UserId) -> Result<AccountProfileView, GetProfileError>;
+    async fn get_profile_picture(
+        &self,
+        user_id: UserId,
+    ) -> Result<Option<ProfilePicture>, GetProfileError>;
     async fn update_profile(
         &self,
         user_id: UserId,
@@ -32,25 +61,61 @@ pub trait UpdateProfileUseCase {
     ) -> Result<ProfilePictureVersion, UpdateProfileError>;
 }
 
-pub enum UpdateProfileError {
-    AccountNotFound,
-    Internal,
-}
-
-pub struct UpdateProfileUseCaseImpl<Ports: PortsCollection> {
+pub struct ProfileUseCaseImpl<Ports: PortsCollection> {
     ports: Arc<Ports>,
 }
 
-impl<Ports: PortsCollection> UpdateProfileUseCaseImpl<Ports> {
+impl<Ports: PortsCollection> ProfileUseCaseImpl<Ports> {
     pub fn new(ports: Arc<Ports>) -> Self {
         Self { ports }
     }
 }
 
 #[async_trait::async_trait]
-impl<Ports: PortsCollection + Send + Sync + 'static> UpdateProfileUseCase
-    for UpdateProfileUseCaseImpl<Ports>
-{
+impl<Ports: PortsCollection + Send + Sync + 'static> ProfileUseCase for ProfileUseCaseImpl<Ports> {
+    async fn get_profile(&self, user_id: UserId) -> Result<AccountProfileView, GetProfileError> {
+        let ctx = self.ports.transaction_manager().simple();
+        match self
+            .ports
+            .profile_repository()
+            .get_profile_information(&ctx, user_id)
+            .await
+        {
+            Ok(Some(profile_information)) => Ok(profile_information.into()),
+            Ok(None) => Ok(AccountProfileView {
+                display_name: None,
+                country: None,
+                profile_picture_version: None,
+            }),
+            Err(RepoError(e)) => {
+                tracing::error!(
+                    "Failed to retrieve profile information for account {}: {}",
+                    user_id,
+                    e
+                );
+                Err(GetProfileError::RepositoryError)
+            }
+        }
+    }
+
+    async fn get_profile_picture(
+        &self,
+        user_id: UserId,
+    ) -> Result<Option<ProfilePicture>, GetProfileError> {
+        match self
+            .ports
+            .profile_picture_repository()
+            .get_profile_picture(user_id)
+            .await
+        {
+            Ok(profile_picture) => Ok(profile_picture),
+            Err(RepoError(e)) => {
+                tracing::error!("Failed to retrieve profile picture: {}", e);
+                Err(GetProfileError::RepositoryError)
+            }
+        }
+    }
+
     async fn update_profile(
         &self,
         user_id: UserId,

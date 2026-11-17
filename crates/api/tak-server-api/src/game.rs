@@ -12,12 +12,12 @@ use tak_domain::{
     game_record::{GameMetadata, GameRecord},
 };
 use tak_server_api_contract::game::{
-    ForPlayerResponse, GameMetadataResponse, GameRatingInfoResponse, GameRecordResponse, GameRequestResponse,
-    GameRequestResponseType, GameRequestsResponse, GameSettingsResponse, GameStatusResponse, GameStatusResponseType,
-    PlayerSnapshotResponse,
+    ForPlayerResponse, GameMetadataResponse, GameRatingInfoResponse, GameRecordResponse,
+    GameRequestResponse, GameRequestResponseType, GameRequestsResponse, GameSettingsResponse,
+    GameStatusResponse, GameStatusResponseType, PlayerSnapshotResponse,
 };
 use tak_server_app::workflow::gameplay::{
-    do_action::{ActionError, HandleRequestError, PlayerActionError},
+    ActionError, HandleRequestError, PlayerActionError,
     query::{GameDetailView, GameQueryError},
 };
 
@@ -73,7 +73,7 @@ async fn resign_game(
 ) -> Result<(), ServiceError> {
     let game_id = GameId(game_id);
     app.app
-        .game_do_action_use_case
+        .gameplay_use_case
         .resign(game_id, auth.user_id)
         .await
         .map_err(|e| match e {
@@ -105,7 +105,7 @@ async fn set_request(
     };
     match app
         .app
-        .game_do_action_use_case
+        .gameplay_use_case
         .set_request(game_id, auth.user_id, request)
         .await
     {
@@ -141,7 +141,7 @@ async fn accept_request(
 
     let res = app
         .app
-        .game_do_action_use_case
+        .gameplay_use_case
         .accept_request(game_id, auth.user_id, request_type)
         .await;
     tracing::info!(
@@ -192,12 +192,15 @@ pub fn from_metadata(game_id: GameId, metadata: &GameMetadata) -> GameMetadataRe
 pub fn from_game(game_id: GameId, record: &GameRecord) -> GameRecordResponse {
     let result = record.result.map(|res| game_result_to_string(res));
 
-    let rating_info = record.rating_info.as_ref().map(|info| GameRatingInfoResponse {
-        rating_change: ForPlayerResponse {
-            white: info.rating_change_white,
-            black: info.rating_change_black,
-        },
-    });
+    let rating_info = record
+        .rating_info
+        .as_ref()
+        .map(|info| GameRatingInfoResponse {
+            rating_change: ForPlayerResponse {
+                white: info.rating_change_white,
+                black: info.rating_change_black,
+            },
+        });
     let metadata = from_metadata(game_id, &record.metadata);
 
     GameRecordResponse {

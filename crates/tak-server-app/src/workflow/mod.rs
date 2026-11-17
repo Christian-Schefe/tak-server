@@ -1,4 +1,5 @@
 pub mod account;
+pub mod authentication;
 pub mod chat;
 pub mod events;
 pub mod gameplay;
@@ -6,5 +7,6 @@ pub mod listener;
 pub mod matchmaking;
 pub mod moderation;
 pub mod player;
+pub mod profile;
 pub mod shutdown;
 pub mod tournament;

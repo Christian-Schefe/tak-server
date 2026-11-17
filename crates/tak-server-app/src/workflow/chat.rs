@@ -1,3 +1,10 @@
+use std::sync::Arc;
+
+use tak_domain::{
+    ChatMessageId, ListenerId, UserId,
+    chat::{ChatConversation, ChatMessage, ChatRoomService, ContentPolicy},
+};
+
 use crate::{
     PortsCollection,
     ports::{
@@ -6,16 +13,34 @@ use crate::{
         notification::{ListenerMessage, ListenerNotificationPort},
         transaction::{RepoError, TransactionManager},
     },
-    workflow::chat::ChatMessageView,
-};
-use std::sync::Arc;
-use tak_domain::{
-    ChatMessageId, UserId,
-    chat::{ChatConversation, ChatMessage, ChatRoomService, ContentPolicy},
 };
 
+#[derive(Clone, Debug)]
+pub struct ChatMessageView {
+    pub id: ChatMessageId,
+    pub date: chrono::DateTime<chrono::Utc>,
+    pub sender: UserId,
+    pub message: String,
+}
+
+impl ChatMessageView {
+    fn from(id: ChatMessageId, message: ChatMessage) -> Self {
+        Self {
+            id,
+            date: message.date,
+            sender: message.sender,
+            message: message.message,
+        }
+    }
+}
+
+pub enum ChatSendMessageError {
+    NotAllowed(String),
+    RepositoryError,
+}
+
 #[async_trait::async_trait]
-pub trait ChatMessageUseCase {
+pub trait ChatUseCase {
     async fn send_message(
         &self,
         from: UserId,
@@ -28,14 +53,11 @@ pub trait ChatMessageUseCase {
         before: Option<ChatMessageId>,
         limit: usize,
     ) -> Result<Vec<ChatMessageView>, ()>;
+    fn join_room(&self, room_name: &String, listener_id: ListenerId);
+    fn leave_room(&self, room_name: &String, listener_id: ListenerId);
 }
 
-pub enum ChatSendMessageError {
-    NotAllowed(String),
-    RepositoryError,
-}
-
-pub struct ChatMessageUseCaseImpl<
+pub struct ChatUseCaseImpl<
     Ports: PortsCollection,
     L: ListenerNotificationPort,
     P: UserConnectionPort,
@@ -55,7 +77,7 @@ impl<
     P: UserConnectionPort,
     C: ChatRoomService,
     Co: ContentPolicy,
-> ChatMessageUseCaseImpl<Ports, L, P, C, Co>
+> ChatUseCaseImpl<Ports, L, P, C, Co>
 {
     pub fn new(
         ports: Arc<Ports>,
@@ -81,7 +103,7 @@ impl<
     P: UserConnectionPort + Send + Sync + 'static,
     C: ChatRoomService + Send + Sync + 'static,
     Co: ContentPolicy + Send + Sync + 'static,
-> ChatMessageUseCase for ChatMessageUseCaseImpl<Ports, L, P, C, Co>
+> ChatUseCase for ChatUseCaseImpl<Ports, L, P, C, Co>
 {
     async fn send_message(
         &self,
@@ -178,5 +200,13 @@ impl<
                 Err(())
             }
         }
+    }
+
+    fn join_room(&self, room_name: &String, listener_id: ListenerId) {
+        self.chat_room_service.join_room(room_name, listener_id);
+    }
+
+    fn leave_room(&self, room_name: &String, listener_id: ListenerId) {
+        self.chat_room_service.leave_room(room_name, listener_id);
     }
 }

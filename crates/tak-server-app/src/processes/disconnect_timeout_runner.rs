@@ -1,27 +1,122 @@
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::Arc,
+    time::{Instant, SystemTime},
+};
 
 use dashmap::DashMap;
-use tak_domain::UserId;
+use tak_domain::{
+    UserId,
+    game::{CheckDisconnectTimeoutResult, GameCheckTimeoutError},
+};
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 
-use crate::workflow::gameplay::do_action::{DoActionUseCase, ObserveError, ObserveOutcome};
+use crate::{
+    PortsCollection,
+    ports::{
+        game::GameRepository,
+        transaction::{RepoError, TransactionManager},
+    },
+    workflow::gameplay::{ObserveError, ObserveOutcome, lifecycle::LifecycleGameWorkflow},
+};
 
 pub trait DisconnectTimeoutRunner {
     fn start_disconnect_timeout(this: Arc<Self>, user_id: UserId);
     fn cancel_disconnect_timeout(&self, user_id: UserId);
 }
 
-pub struct DisconnectTimeoutRunnerImpl<O: DoActionUseCase + Send + Sync + 'static> {
+pub struct DisconnectTimeoutRunnerImpl<
+    Ports: PortsCollection,
+    L: LifecycleGameWorkflow<Ports::TrCtx> + Send + Sync + 'static,
+> {
     tasks: Arc<DashMap<UserId, CancellationToken>>,
-    observer: Arc<O>,
+    ports: Arc<Ports>,
+    finalize_game_workflow: Arc<L>,
 }
 
-impl<O: DoActionUseCase + Send + Sync + 'static> DisconnectTimeoutRunnerImpl<O> {
-    pub fn new(observer: Arc<O>) -> Self {
+impl<
+    Ports: PortsCollection + Send + Sync + 'static,
+    L: LifecycleGameWorkflow<Ports::TrCtx> + Send + Sync + 'static,
+> DisconnectTimeoutRunnerImpl<Ports, L>
+{
+    pub fn new(ports: Arc<Ports>, finalize_game_workflow: Arc<L>) -> Self {
         Self {
             tasks: Arc::new(DashMap::new()),
-            observer,
+            ports,
+            finalize_game_workflow,
+        }
+    }
+
+    async fn check_player_timeout(
+        &self,
+        user_id: UserId,
+        disconnected_at: Instant,
+    ) -> Result<ObserveOutcome, ObserveError> {
+        let now = SystemTime::now();
+        let disconnected_duration = Instant::now().saturating_duration_since(disconnected_at);
+        let ctx = self.ports.transaction_manager().simple();
+        let games = match self
+            .ports
+            .game_repository()
+            .get_ongoing_games_by_player(&ctx, user_id)
+            .await
+        {
+            Ok(games) => games,
+            Err(RepoError(e)) => {
+                tracing::error!("Error retrieving games for player {}: {}", user_id, e);
+                return Err(ObserveError::Internal);
+            }
+        };
+
+        let mut wait_duration = None;
+
+        for (game_id, record) in games {
+            match self
+                .finalize_game_workflow
+                .modify_game(game_id, |game, _| {
+                    let Some(player) = record.metadata.get_player(user_id) else {
+                        tracing::warn!(
+                            "Player {} not found in game {} while checking player timeout",
+                            user_id,
+                            game_id
+                        );
+                        return Err(());
+                    };
+                    match game.check_disconnect_timeout(player, disconnected_duration, now) {
+                        Err(GameCheckTimeoutError::Timeout) => Ok(()),
+                        Ok(res) => match res {
+                            CheckDisconnectTimeoutResult::TimedOut => Ok(()),
+                            CheckDisconnectTimeoutResult::CantTimeOut => Ok(()),
+                            CheckDisconnectTimeoutResult::NoTimeout(duration) => {
+                                wait_duration = match wait_duration {
+                                    Some(current) if current < duration => Some(current),
+                                    _ => Some(duration),
+                                };
+                                Ok(())
+                            }
+                        },
+                    }
+                })
+                .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(())) => {}
+                Err(()) => {
+                    tracing::error!(
+                        "Error checking disconnect timeout for player {} in game {}",
+                        user_id,
+                        game_id
+                    );
+                    return Err(ObserveError::Internal);
+                }
+            }
+        }
+
+        match wait_duration {
+            Some(duration) => Ok(ObserveOutcome::Continue(
+                duration + std::time::Duration::from_millis(100),
+            )),
+            None => Ok(ObserveOutcome::Finished),
         }
     }
 
@@ -36,10 +131,7 @@ impl<O: DoActionUseCase + Send + Sync + 'static> DisconnectTimeoutRunnerImpl<O> 
                 tracing::info!("Disconnect timeout cancelled for player {:?}", user_id);
                 return;
             }
-            let res = this
-                .observer
-                .check_player_timeout(user_id, disconnected_at)
-                .await;
+            let res = this.check_player_timeout(user_id, disconnected_at).await;
             match res {
                 Ok(ObserveOutcome::Finished) => {
                     tracing::info!(
@@ -81,8 +173,10 @@ impl<O: DoActionUseCase + Send + Sync + 'static> DisconnectTimeoutRunnerImpl<O> 
     }
 }
 
-impl<O: DoActionUseCase + Send + Sync + 'static> DisconnectTimeoutRunner
-    for DisconnectTimeoutRunnerImpl<O>
+impl<
+    Ports: PortsCollection + Send + Sync + 'static,
+    L: LifecycleGameWorkflow<Ports::TrCtx> + Send + Sync + 'static,
+> DisconnectTimeoutRunner for DisconnectTimeoutRunnerImpl<Ports, L>
 {
     fn start_disconnect_timeout(this: Arc<Self>, user_id: UserId) {
         tracing::info!("Starting disconnect timeout for player {:?}", user_id);

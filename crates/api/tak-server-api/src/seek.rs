@@ -9,7 +9,7 @@ use tak_server_api_contract::{
     game::GameSettingsResponse,
     seek::{CreateSeekRequest, SeekResponse},
 };
-use tak_server_app::workflow::matchmaking::{SeekView, accept::AcceptSeekError};
+use tak_server_app::workflow::matchmaking::{AcceptSeekError, SeekView};
 
 use crate::{AppState, ServiceError, auth::Auth};
 
@@ -22,7 +22,7 @@ pub fn register_routes() -> axum::Router<AppState> {
 }
 
 async fn get_seeks(State(app): State<AppState>) -> Json<Vec<SeekResponse>> {
-    let seeks = app.app.seek_list_use_case.list_seeks();
+    let seeks = app.app.matchmaking_use_case.list_seeks();
     Json(seeks.into_iter().map(|seek| from_seek_view(seek)).collect())
 }
 
@@ -42,7 +42,7 @@ async fn create_seek(
 
     let game_settings = payload.game_settings.to_game_settings();
 
-    match app.app.seek_create_use_case.create_seek(
+    match app.app.matchmaking_use_case.create_seek(
         auth.user_id,
         color,
         game_settings,
@@ -62,7 +62,7 @@ async fn cancel_seek(
 ) -> Result<(), ServiceError> {
     if !app
         .app
-        .seek_cancel_use_case
+        .matchmaking_use_case
         .cancel_seek(auth.user_id, SeekId(seek_id))
     {
         return Err(ServiceError::NotFound("Seek not found".to_string()));
@@ -77,7 +77,7 @@ async fn accept_seek(
 ) -> Result<(), ServiceError> {
     match app
         .app
-        .seek_accept_use_case
+        .matchmaking_use_case
         .accept_seek(auth.user_id, SeekId(seek_id))
         .await
     {
