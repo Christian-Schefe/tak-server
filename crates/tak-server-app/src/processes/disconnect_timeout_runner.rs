@@ -8,16 +8,16 @@ use tak_domain::{
     UserId,
     game::{CheckDisconnectTimeoutResult, GameCheckTimeoutError},
 };
+use terrors::OneOf;
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
     PortsCollection,
-    ports::{
-        game::GameRepository,
-        transaction::{RepoError, TransactionManager},
-    },
-    workflow::gameplay::{ObserveError, ObserveOutcome, lifecycle::LifecycleGameWorkflow},
+    application::gameplay::ObserveOutcome,
+    errors::{AppResult, GameNotFound, InternalError},
+    ports::{game::GameRepository, transaction::TransactionManager},
+    workflow::lifecycle::LifecycleGameWorkflow,
 };
 
 pub trait DisconnectTimeoutRunner {
@@ -51,22 +51,16 @@ impl<
         &self,
         user_id: UserId,
         disconnected_at: Instant,
-    ) -> Result<ObserveOutcome, ObserveError> {
+    ) -> AppResult<ObserveOutcome, (GameNotFound, InternalError)> {
         let now = SystemTime::now();
         let disconnected_duration = Instant::now().saturating_duration_since(disconnected_at);
         let ctx = self.ports.transaction_manager().simple();
-        let games = match self
+        let games = self
             .ports
             .game_repository()
             .get_ongoing_games_by_player(&ctx, user_id)
             .await
-        {
-            Ok(games) => games,
-            Err(RepoError(e)) => {
-                tracing::error!("Error retrieving games for player {}: {}", user_id, e);
-                return Err(ObserveError::Internal);
-            }
-        };
+            .map_err(OneOf::broaden)?;
 
         let mut wait_duration = None;
 
@@ -101,13 +95,11 @@ impl<
             {
                 Ok(Ok(())) => {}
                 Ok(Err(())) => {}
-                Err(()) => {
-                    tracing::error!(
-                        "Error checking disconnect timeout for player {} in game {}",
-                        user_id,
-                        game_id
-                    );
-                    return Err(ObserveError::Internal);
+                Err(e) => {
+                    return match e.narrow() {
+                        Ok(InternalError) => Err(OneOf::new(InternalError)),
+                        Err(_) => Err(OneOf::new(GameNotFound)),
+                    };
                 }
             }
         }
@@ -154,17 +146,11 @@ impl<
                         _ = tokio::time::sleep(delay) => {}
                     }
                 }
-                Err(ObserveError::GameNotFound) => {
+                Err(e) => {
                     tracing::error!(
-                        "Error checking disconnect timeout for player {:?}: Game not found",
-                        user_id
-                    );
-                    return;
-                }
-                Err(ObserveError::Internal) => {
-                    tracing::error!(
-                        "Error checking disconnect timeout for player {:?}: Internal error",
-                        user_id
+                        "Error checking disconnect timeout for player {:?}: {:?}",
+                        user_id,
+                        e
                     );
                     return;
                 }

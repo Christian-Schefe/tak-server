@@ -23,11 +23,11 @@ use tak_server_api_contract::{
     },
 };
 use tak_server_app::{
-    ports::notification::{ListenerGameMessageType, ListenerMatchEventType, ListenerMessage},
-    workflow::{
+    application::{
         chat::ChatSendMessageError,
         gameplay::{ActionError, DoActionError, ObserveGameError, PlayerActionError},
     },
+    ports::notification::{ListenerGameMessageType, ListenerMatchEventType, ListenerMessage},
 };
 use tokio::select;
 use tokio_util::sync::CancellationToken;

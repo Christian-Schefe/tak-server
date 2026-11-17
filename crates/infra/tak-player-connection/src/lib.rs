@@ -117,11 +117,11 @@ impl PlayerConnectionDriver {
         };
         if let Some(listener_id) = player_listener_id {
             self.app
-                .listener_disconnect_use_case
+                .listener_use_case
                 .handle_listener_disconnect(listener_id);
         }
         self.app
-            .listener_disconnect_use_case
+            .listener_use_case
             .handle_listener_disconnect(connection_id.0);
         if let Some(user_id) = set_account_offline {
             self.app.player_use_case.set_offline(user_id).await;

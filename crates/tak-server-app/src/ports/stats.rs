@@ -4,7 +4,7 @@ use tak_domain::{
     stats::{PlayerStats, RatingHistoryEntry, RatingHistoryRange},
 };
 
-use crate::ports::transaction::RepoError;
+use crate::errors::{AppResult, InternalError};
 
 #[async_trait::async_trait]
 pub trait StatsRepository<TrCtx> {
@@ -12,18 +12,18 @@ pub trait StatsRepository<TrCtx> {
         &self,
         ctx: &TrCtx,
         user_id: UserId,
-    ) -> Result<Option<PlayerStats>, RepoError>;
+    ) -> AppResult<Option<PlayerStats>, (InternalError,)>;
     async fn set_player_stats(
         &self,
         ctx: &TrCtx,
         user_id: UserId,
         stats: PlayerStats,
-    ) -> Result<(), RepoError>;
+    ) -> AppResult<(), (InternalError,)>;
     async fn remove_player_stats(
         &self,
         ctx: &TrCtx,
         user_id: UserId,
-    ) -> Result<(), RepoError>;
+    ) -> AppResult<(), (InternalError,)>;
 }
 
 #[async_trait::async_trait]
@@ -34,11 +34,11 @@ pub trait RatingHistoryRepository<TrCtx> {
         user_id: UserId,
         from: Option<DateTime<Utc>>,
         to: Option<DateTime<Utc>>,
-    ) -> Result<RatingHistoryRange, RepoError>;
+    ) -> AppResult<RatingHistoryRange, (InternalError,)>;
     async fn add_rating_history_entry(
         &self,
         ctx: &TrCtx,
         user_id: UserId,
         rating: RatingHistoryEntry,
-    ) -> Result<(), RepoError>;
+    ) -> AppResult<(), (InternalError,)>;
 }

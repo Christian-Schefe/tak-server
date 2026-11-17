@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, sync::Arc};
+use std::sync::Arc;
 
 use tak_core::{TakGameSettings, TakPlayer, TakTimeSettings};
 
@@ -6,22 +6,26 @@ use tak_domain::{
     MatchId, SeekId, UserId,
     game::Game,
     game_record::{GameMetadata, GameRecord},
-    matches::{Match, MatchMode, MatchReadinessService, MatchSettings, MatchStatus},
-    seek::{CreateSeekError, Seek, SeekService},
+    matches::{Match, MatchMode, MatchSettings, MatchStatus},
+    seek::Seek,
 };
+use terrors::OneOf;
 
 use crate::{
     PortsCollection,
+    errors::{
+        AppResult, CantBeginGameInMatch, InternalError, InvalidGameSettings, MatchNotFound,
+        PlayerNotFound,
+    },
     ports::{
         game::{GameRepository, GameStateRepository},
-        matches::MatchRepository,
+        matches::{MatchReadinessService, MatchRepository},
         notification::{ListenerMatchEventType, ListenerMessage, ListenerNotificationPort},
-        transaction::{RepoError, TransactionManager},
+        seeks::SeekService,
+        transaction::TransactionManager,
     },
     processes::game_timeout_runner::GameTimeoutRunner,
-    workflow::{
-        account::get_snapshot::GetSnapshotWorkflow, listener::notify_player::NotifyPlayerWorkflow,
-    },
+    workflow::{get_snapshot::GetSnapshotWorkflow, notify_player::NotifyPlayerWorkflow},
 };
 
 #[derive(Clone, Debug)]
@@ -33,11 +37,10 @@ pub struct SeekView {
     pub is_rated: bool,
 }
 
-impl<T: Borrow<Seek>> From<T> for SeekView {
-    fn from(seek: T) -> Self {
-        let seek = seek.borrow();
+impl SeekView {
+    pub fn from(id: SeekId, seek: &Seek) -> Self {
         SeekView {
-            id: seek.id,
+            id,
             creator_id: seek.creator_id,
             color: seek.color,
             game_settings: seek.game_settings.clone(),
@@ -51,31 +54,6 @@ pub struct MatchReadinessStatus {
     pub player_ready: Option<UserId>,
 }
 
-#[derive(Clone, Debug)]
-pub enum GetMatchError {
-    NotFound,
-    InternalError,
-}
-
-#[derive(Clone, Debug)]
-pub enum MatchReadinessError {
-    MatchNotFound,
-    Internal,
-}
-
-#[derive(Clone, Debug)]
-pub enum AcceptSeekError {
-    SeekNotFound,
-    Internal,
-}
-
-#[derive(Debug)]
-pub enum CreateGameFromMatchError {
-    MatchNotFound,
-    Internal,
-    AlreadyInProgress,
-}
-
 #[async_trait::async_trait]
 pub trait MatchmakingUseCase {
     fn get_seek(&self, seek_id: SeekId) -> Option<SeekView>;
@@ -86,20 +64,23 @@ pub trait MatchmakingUseCase {
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
         is_rated: bool,
-    ) -> Result<SeekView, CreateSeekError>;
-    async fn get_match(&self, match_id: MatchId) -> Result<Match, GetMatchError>;
+    ) -> AppResult<SeekView, (InvalidGameSettings,)>;
+    async fn get_match(
+        &self,
+        match_id: MatchId,
+    ) -> AppResult<Match, (MatchNotFound, InternalError)>;
     fn get_readiness_status(&self, match_id: MatchId) -> MatchReadinessStatus;
     async fn set_player_ready(
         &self,
         match_id: MatchId,
         user_id: UserId,
-    ) -> Result<(), MatchReadinessError>;
+    ) -> AppResult<(), (MatchNotFound, InternalError)>;
     async fn set_player_not_ready(
         &self,
         match_id: MatchId,
         user_id: UserId,
-    ) -> Result<(), MatchReadinessError>;
-    async fn accept_seek(&self, player: UserId, seek_id: SeekId) -> Result<(), AcceptSeekError>;
+    ) -> AppResult<(), (MatchNotFound, InternalError)>;
+    async fn accept_seek(&self, player: UserId, seek_id: SeekId) -> AppResult<(), AcceptSeekError>;
     fn cancel_seeks(&self, player: UserId);
     fn cancel_seek(&self, player: UserId, seek_id: SeekId) -> bool;
 }
@@ -111,7 +92,7 @@ pub struct MatchmakingUseCaseImpl<
     M: MatchReadinessService,
     P: NotifyPlayerWorkflow,
     GT: GameTimeoutRunner,
-    GS: GetSnapshotWorkflow,
+    GS: GetSnapshotWorkflow<Ports::TrCtx>,
 > {
     ports: Arc<Ports>,
     seek_service: Arc<S>,
@@ -129,7 +110,7 @@ impl<
     M: MatchReadinessService,
     P: NotifyPlayerWorkflow,
     GT: GameTimeoutRunner,
-    GS: GetSnapshotWorkflow,
+    GS: GetSnapshotWorkflow<Ports::TrCtx>,
 > MatchmakingUseCaseImpl<Ports, S, N, M, P, GT, GS>
 {
     pub fn new(
@@ -152,21 +133,21 @@ impl<
         }
     }
 
-    async fn get_match(&self, match_id: MatchId) -> Result<Match, MatchReadinessError> {
+    async fn get_match(
+        &self,
+        match_id: MatchId,
+    ) -> AppResult<Match, (MatchNotFound, InternalError)> {
         let ctx = self.ports.transaction_manager().simple();
-        match self
+        let Some(match_entry) = self
             .ports
             .match_repository()
             .get_match(&ctx, match_id)
             .await
-        {
-            Ok(Some(match_entry)) => Ok(match_entry),
-            Ok(None) => Err(MatchReadinessError::MatchNotFound),
-            Err(RepoError(e)) => {
-                tracing::error!("Database error while retrieving match {}: {}", match_id, e);
-                Err(MatchReadinessError::Internal)
-            }
-        }
+            .map_err(OneOf::broaden)?
+        else {
+            return Err(OneOf::new(MatchNotFound));
+        };
+        Ok(match_entry)
     }
 
     #[tracing::instrument(skip(self, ctx))]
@@ -174,23 +155,29 @@ impl<
         &self,
         ctx: &Ports::TrCtx,
         match_id: MatchId,
-    ) -> Result<(), CreateGameFromMatchError> {
+    ) -> AppResult<
+        (),
+        (
+            CantBeginGameInMatch,
+            MatchNotFound,
+            PlayerNotFound,
+            InternalError,
+        ),
+    > {
         let date = chrono::Utc::now();
 
-        let mut match_entry = match self.ports.match_repository().get_match(ctx, match_id).await {
-            Ok(Some(match_entry)) => match_entry,
-            Ok(None) => {
-                tracing::error!("Match {} not found", match_id);
-                return Err(CreateGameFromMatchError::MatchNotFound);
-            }
-            Err(RepoError(e)) => {
-                tracing::error!("Error while retrieving match {}: {}", match_id, e);
-                return Err(CreateGameFromMatchError::Internal);
-            }
+        let Some(mut match_entry) = self
+            .ports
+            .match_repository()
+            .get_match(ctx, match_id)
+            .await
+            .map_err(OneOf::broaden)?
+        else {
+            return Err(OneOf::new(MatchNotFound));
         };
         let player1_color = match_entry.try_begin_game().map_err(|e| {
             tracing::error!("Failed to start game for match {}: {}", match_id, e);
-            CreateGameFromMatchError::AlreadyInProgress
+            OneOf::new(CantBeginGameInMatch)
         })?;
 
         let (white_id, black_id) = match player1_color {
@@ -198,21 +185,21 @@ impl<
             TakPlayer::Black => (match_entry.player2.user_id, match_entry.player1.user_id),
         };
 
-        let snapshot_white = match self
+        let Some(snapshot_white) = self
             .get_snapshot_workflow
-            .get_snapshot(white_id, date)
+            .get_snapshot(ctx, white_id)
             .await
-        {
-            Ok(snapshot) => snapshot,
-            Err(_) => return Err(CreateGameFromMatchError::Internal),
+            .map_err(OneOf::broaden)?
+        else {
+            return Err(OneOf::new(PlayerNotFound));
         };
-        let snapshot_black = match self
+        let Some(snapshot_black) = self
             .get_snapshot_workflow
-            .get_snapshot(black_id, date)
+            .get_snapshot(ctx, black_id)
             .await
-        {
-            Ok(snapshot) => snapshot,
-            Err(_) => return Err(CreateGameFromMatchError::Internal),
+            .map_err(OneOf::broaden)?
+        else {
+            return Err(OneOf::new(PlayerNotFound));
         };
 
         let metadata = GameMetadata::new(
@@ -228,49 +215,23 @@ impl<
 
         let game_record = GameRecord::new(metadata);
 
-        let game_id = match self
+        let game_id = self
             .ports
             .game_repository()
             .create_game(ctx, game_record.clone())
             .await
-        {
-            Ok(id) => id,
-            Err(RepoError(e)) => {
-                tracing::error!("Failed to save ongoing game for match {}: {}", match_id, e);
-                return Err(CreateGameFromMatchError::Internal);
-            }
-        };
-        match self
-            .ports
+            .map_err(OneOf::broaden)?;
+        self.ports
             .game_state_repository()
             .set_state(ctx, game_id, game_state)
             .await
-        {
-            Ok(_) => {}
-            Err(RepoError(e)) => {
-                tracing::error!(
-                    "Failed to save ongoing game state for match {}: {}",
-                    match_id,
-                    e
-                );
-                return Err(CreateGameFromMatchError::Internal);
-            }
-        }
+            .map_err(OneOf::broaden)?;
 
-        if let Err(RepoError(e)) = self
-            .ports
+        self.ports
             .match_repository()
             .update_match(ctx, match_id, match_entry)
             .await
-        {
-            tracing::error!(
-                "Failed to start game {} in match {}: {}",
-                game_id,
-                match_id,
-                e
-            );
-            return Err(CreateGameFromMatchError::MatchNotFound);
-        }
+            .map_err(OneOf::broaden)?;
         GameTimeoutRunner::schedule_game_timeout_check(self.game_timeout_runner.clone(), game_id);
         let msg = ListenerMessage::GameStarted {
             game_id,
@@ -290,11 +251,13 @@ impl<
     M: MatchReadinessService + Send + Sync + 'static,
     P: NotifyPlayerWorkflow + Send + Sync + 'static,
     GT: GameTimeoutRunner + Send + Sync + 'static,
-    GS: GetSnapshotWorkflow + Send + Sync + 'static,
+    GS: GetSnapshotWorkflow<Ports::TrCtx> + Send + Sync + 'static,
 > MatchmakingUseCase for MatchmakingUseCaseImpl<Ports, S, N, M, P, GT, GS>
 {
     fn get_seek(&self, seek_id: SeekId) -> Option<SeekView> {
-        self.seek_service.get_seek(seek_id).map(SeekView::from)
+        self.seek_service
+            .get_seek(seek_id)
+            .map(|seek| SeekView::from(seek_id, &seek))
     }
 
     fn list_seeks(&self) -> Vec<SeekView> {
@@ -302,7 +265,7 @@ impl<
             .seek_service
             .list_seeks()
             .into_iter()
-            .map(SeekView::from)
+            .map(|(seek_id, seek)| SeekView::from(seek_id, &seek))
             .collect();
         res
     }
@@ -313,11 +276,12 @@ impl<
         color: Option<TakPlayer>,
         game_settings: TakGameSettings,
         is_rated: bool,
-    ) -> Result<SeekView, CreateSeekError> {
-        let created_seek = self
-            .seek_service
-            .create_seek(player, color, game_settings, is_rated)?;
-        let seek_view: SeekView = created_seek.into();
+    ) -> AppResult<SeekView, (InvalidGameSettings,)> {
+        let Some(seek) = Seek::new(player, color, game_settings, is_rated) else {
+            return Err(OneOf::new(InvalidGameSettings));
+        };
+        let seek_id = self.seek_service.create_seek(seek.clone());
+        let seek_view: SeekView = SeekView::from(seek_id, &seek);
         let message = ListenerMessage::SeekCreated {
             seek: seek_view.clone(),
         };
@@ -327,21 +291,21 @@ impl<
         Ok(seek_view)
     }
 
-    async fn get_match(&self, match_id: MatchId) -> Result<Match, GetMatchError> {
+    async fn get_match(
+        &self,
+        match_id: MatchId,
+    ) -> AppResult<Match, (MatchNotFound, InternalError)> {
         let ctx = self.ports.transaction_manager().simple();
-        match self
+        let Some(m) = self
             .ports
             .match_repository()
             .get_match(&ctx, match_id)
             .await
-        {
-            Ok(Some(m)) => Ok(m),
-            Ok(None) => Err(GetMatchError::NotFound),
-            Err(RepoError(e)) => {
-                tracing::error!("Failed to retrieve match {}: {:?}", match_id, e);
-                Err(GetMatchError::InternalError)
-            }
-        }
+            .map_err(OneOf::broaden)?
+        else {
+            return Err(OneOf::new(MatchNotFound));
+        };
+        Ok(m)
     }
 
     fn get_readiness_status(&self, match_id: MatchId) -> MatchReadinessStatus {
@@ -355,7 +319,7 @@ impl<
         &self,
         match_id: MatchId,
         user_id: UserId,
-    ) -> Result<(), MatchReadinessError> {
+    ) -> AppResult<(), (MatchNotFound, InternalError)> {
         let match_entry = self.get_match(match_id).await?;
         if match_entry.player1.user_id != user_id && match_entry.player2.user_id != user_id {
             tracing::error!(
@@ -363,7 +327,7 @@ impl<
                 user_id,
                 match_id
             );
-            return Err(MatchReadinessError::MatchNotFound);
+            return Err(OneOf::new(MatchNotFound));
         }
         let MatchStatus::Waiting = match_entry.status else {
             tracing::error!(
@@ -371,7 +335,7 @@ impl<
                 match_id,
                 match_entry.status
             );
-            return Err(MatchReadinessError::MatchNotFound);
+            return Err(OneOf::new(MatchNotFound));
         };
         let should_create_game = self
             .match_readiness_service
@@ -383,22 +347,16 @@ impl<
                 .transaction_manager()
                 .transaction()
                 .await
-                .map_err(|RepoError(e)| {
-                    tracing::error!("Failed to start transaction: {:?}", e);
-                    MatchReadinessError::Internal
-                })?;
+                .map_err(OneOf::broaden)?;
             if let Err(e) = self.create_game_from_match(&ctx, match_id).await {
                 tracing::error!("Failed to create game from match {}: {:?}", match_id, e);
-                return Err(MatchReadinessError::Internal);
+                return Err(OneOf::new(InternalError));
             }
             self.ports
                 .transaction_manager()
                 .commit(ctx)
                 .await
-                .map_err(|RepoError(e)| {
-                    tracing::error!("Failed to commit transaction: {:?}", e);
-                    MatchReadinessError::Internal
-                })?;
+                .map_err(OneOf::broaden)?;
         } else {
             let msg = ListenerMessage::MatchEvent {
                 match_id,
@@ -476,18 +434,18 @@ impl<
                 )
             });
 
-        for cancelled_seek in cancelled_seeks
+        for (cancelled_seek_id, cancelled_seek) in cancelled_seeks
             .into_iter()
             .chain(cancelled_seeks2.into_iter())
         {
             let message = ListenerMessage::SeekCancelled {
-                seek: (&cancelled_seek).into(),
+                seek: SeekView::from(cancelled_seek_id, &cancelled_seek),
             };
             self.notification_port.notify_all(&message);
         }
 
         let message = ListenerMessage::SeekAccepted {
-            seek: (&seek).into(),
+            seek: SeekView::from(seek_id, &seek),
         };
         self.notification_port.notify_all(&message);
 
@@ -545,6 +503,13 @@ impl<
 
         match self.create_game_from_match(&ctx, match_id).await {
             Ok(_) => Ok(()),
+            Err(CreateGameFromMatchError::PlayerNotFound) => {
+                tracing::error!(
+                    "Failed to create game from match {}: player not found",
+                    match_id
+                );
+                Err(AcceptSeekError::Internal)
+            }
             Err(CreateGameFromMatchError::AlreadyInProgress) => {
                 tracing::error!(
                     "Failed to create game from match {}: already in progress",
@@ -582,10 +547,13 @@ impl<
             })?;
         Ok(())
     }
+
     fn cancel_seeks(&self, player: UserId) {
-        for cancelled_seek in self.seek_service.cancel_player_seeks(player, |_| true) {
+        for (cancelled_seek_id, cancelled_seek) in
+            self.seek_service.cancel_player_seeks(player, |_| true)
+        {
             let message = ListenerMessage::SeekCancelled {
-                seek: cancelled_seek.into(),
+                seek: SeekView::from(cancelled_seek_id, &cancelled_seek),
             };
             self.notification_port.notify_all(&message);
         }
@@ -594,7 +562,7 @@ impl<
     fn cancel_seek(&self, player: UserId, seek_id: SeekId) -> bool {
         if let Some(cancelled_seek) = self.seek_service.cancel_seek(player, seek_id) {
             let message = ListenerMessage::SeekCancelled {
-                seek: cancelled_seek.into(),
+                seek: SeekView::from(seek_id, &cancelled_seek),
             };
             self.notification_port.notify_all(&message);
             return true;

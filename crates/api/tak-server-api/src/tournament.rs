@@ -6,9 +6,8 @@ use tak_domain::{
     TournamentId,
     tournament::{TournamentFormat, TournamentStatus},
 };
-use tak_server_app::workflow::tournament::{
-    TournamentDetailView, TournamentMetadataView, TournamentView,
-    register::TournamentRegistrationError,
+use tak_server_app::application::tournament::{
+    TournamentDetailView, TournamentMetadataView, TournamentRegistrationError, TournamentView,
 };
 
 use crate::{AppState, ServiceError, auth::Auth, matches::MatchSettingsResponse};
@@ -47,7 +46,7 @@ pub fn register_routes() -> axum::Router<AppState> {
 async fn get_tournaments(
     State(app): State<AppState>,
 ) -> Result<Json<Vec<TournamentResponse>>, ServiceError> {
-    match app.app.get_tournaments_use_case.get_tournaments().await {
+    match app.app.tournament_use_case.get_tournaments().await {
         Ok(tournaments) => Ok(Json(
             tournaments
                 .into_iter()
@@ -71,7 +70,7 @@ async fn get_tournament(
     );
     let tournament = match app
         .app
-        .get_tournaments_use_case
+        .tournament_use_case
         .get_tournament(tournament_id)
         .await
     {
@@ -97,7 +96,7 @@ async fn register_player_to_tournament(
             .map_err(|_| ServiceError::BadRequest("Invalid tournament ID".to_string()))?,
     );
     app.app
-        .tournament_player_registration_use_case
+        .tournament_use_case
         .register_player_in_tournament(tournament_id, auth.user_id)
         .await
         .map_err(|e| match e {
@@ -124,7 +123,7 @@ async fn unregister_player_from_tournament(
             .map_err(|_| ServiceError::BadRequest("Invalid tournament ID".to_string()))?,
     );
     app.app
-        .tournament_player_registration_use_case
+        .tournament_use_case
         .unregister_player_from_tournament(tournament_id, auth.user_id)
         .await
         .map_err(|e| match e {
@@ -147,7 +146,7 @@ async fn create_tournament(
 ) -> Result<(), ServiceError> {
     match app
         .app
-        .host_tournament_use_case
+        .tournament_use_case
         .create_tournament(
             auth.user_id,
             payload.name,
@@ -188,7 +187,7 @@ async fn start_tournament(
     );
     match app
         .app
-        .host_tournament_use_case
+        .tournament_use_case
         .begin_tournament(auth.user_id, tournament_id)
         .await
     {
@@ -214,7 +213,7 @@ async fn finish_tournament(
     );
     match app
         .app
-        .host_tournament_use_case
+        .tournament_use_case
         .finish_tournament(auth.user_id, tournament_id)
         .await
     {
@@ -240,7 +239,7 @@ async fn start_next_round_of_tournament(
     );
     match app
         .app
-        .host_tournament_use_case
+        .tournament_use_case
         .start_next_round(auth.user_id, tournament_id)
         .await
     {
@@ -267,7 +266,7 @@ async fn set_registration_open(
     );
     match app
         .app
-        .host_tournament_use_case
+        .tournament_use_case
         .set_registration_open(auth.user_id, tournament_id, payload.registration_open)
         .await
     {

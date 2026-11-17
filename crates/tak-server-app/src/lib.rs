@@ -1,18 +1,33 @@
 use std::sync::Arc;
 
 use crate::{
+    application::{
+        authentication::{AuthenticationUseCase, AuthenticationUseCaseImpl},
+        chat::{ChatUseCase, ChatUseCaseImpl},
+        events::{EventsUseCase, EventsUseCaseImpl},
+        gameplay::{GameplayUseCase, GameplayUseCaseImpl},
+        listener::{ListenerUseCase, ListenerUseCaseImpl},
+        matchmaking::{MatchmakingUseCase, MatchmakingUseCaseImpl},
+        moderation::{ModerationUseCase, ModerationUseCaseImpl},
+        player::{PlayerUseCase, PlayerUseCaseImpl},
+        profile::{ProfileUseCase, ProfileUseCaseImpl},
+        shutdown::{ShutdownUseCase, ShutdownUseCaseImpl},
+        tournament::{TournamentUseCase, TournamentUseCaseImpl},
+    },
     ports::{
         authentication::AccountPort,
-        chat::ChatRepository,
+        chat::{ChatRepository, ChatRoomServiceImpl},
         connection::{UserConnectionPort, UserOnlineStatusPort},
         email::EmailPort,
         event::EventRepository,
         game::{GameHistoryRepository, GameRepository, GameStateRepository},
-        matches::MatchRepository,
+        matches::{MatchReadinessServiceImpl, MatchRepository},
         moderation::ModerationRepository,
         notification::ListenerNotificationPort,
         profile::{AccountProfileRepository, ProfilePictureRepository},
         rating::RatingRepository,
+        seeks::SeekServiceImpl,
+        spectator::SpectatorServiceImpl,
         stats::{RatingHistoryRepository, StatsRepository},
         tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
         transaction::TransactionManager,
@@ -22,61 +37,28 @@ use crate::{
         game_timeout_runner::GameTimeoutRunnerImpl,
     },
     workflow::{
-        account::get_snapshot::{GetSnapshotWorkflow, GetSnapshotWorkflowImpl},
-        authentication::{AuthenticationUseCase, AuthenticationUseCaseImpl},
-        chat::{ChatUseCase, ChatUseCaseImpl},
-        events::{EventsUseCase, EventsUseCaseImpl},
-        gameplay::{
-            GameplayUseCase, GameplayUseCaseImpl,
-            lifecycle::LifecycleGameWorkflowImpl,
-            query::{GameQueryUseCase, GameQueryUseCaseImpl},
-        },
-        listener::{
-            disconnect::{ListenerDisconnectUseCase, ListenerDisconnectUseCaseImpl},
-            notify_player::NotifyPlayerWorkflowImpl,
-        },
-        matchmaking::{MatchmakingUseCase, MatchmakingUseCaseImpl},
-        moderation::{ModerationUseCase, ModerationUseCaseImpl},
-        player::{PlayerUseCase, PlayerUseCaseImpl},
-        profile::{ProfileUseCase, ProfileUseCaseImpl},
-        shutdown::{ShutdownWorkflow, ShutdownWorkflowImpl},
-        tournament::{
-            get::{GetTournamentUseCase, GetTournamentUseCaseImpl},
-            host::{HostTournamentUseCase, HostTournamentUseCaseImpl},
-            register::{
-                TournamentPlayerRegistrationUseCase, TournamentPlayerRegistrationUseCaseImpl,
-            },
-        },
+        get_snapshot::GetSnapshotWorkflowImpl, lifecycle::LifecycleGameWorkflowImpl,
+        notify_player::NotifyPlayerWorkflowImpl,
     },
 };
-use tak_domain::{
-    chat::{ChatRoomServiceImpl, RustrictContentPolicy},
-    matches::MatchReadinessServiceImpl,
-    rating::RatingServiceImpl,
-    seek::SeekServiceImpl,
-    spectator::SpectatorServiceImpl,
-};
 
+pub mod application;
 pub mod ports;
 pub mod processes;
 pub mod workflow;
+pub mod errors;
 
 pub struct Application {
     pub matchmaking_use_case: Arc<dyn MatchmakingUseCase + Send + Sync + 'static>,
-    pub listener_disconnect_use_case: Arc<dyn ListenerDisconnectUseCase + Send + Sync + 'static>,
+    pub listener_use_case: Arc<dyn ListenerUseCase + Send + Sync + 'static>,
     pub player_use_case: Arc<dyn PlayerUseCase + Send + Sync + 'static>,
     pub gameplay_use_case: Arc<dyn GameplayUseCase + Send + Sync + 'static>,
-    pub game_query_use_case: Arc<dyn GameQueryUseCase + Send + Sync + 'static>,
     pub chat_use_case: Arc<dyn ChatUseCase + Send + Sync + 'static>,
     pub moderation_use_case: Arc<dyn ModerationUseCase + Send + Sync + 'static>,
     pub events_use_case: Arc<dyn EventsUseCase + Send + Sync + 'static>,
-    pub get_snapshot_workflow: Arc<dyn GetSnapshotWorkflow + Send + Sync + 'static>,
     pub profile_use_case: Arc<dyn ProfileUseCase + Send + Sync + 'static>,
-    pub get_tournaments_use_case: Arc<dyn GetTournamentUseCase + Send + Sync + 'static>,
-    pub tournament_player_registration_use_case:
-        Arc<dyn TournamentPlayerRegistrationUseCase + Send + Sync + 'static>,
-    pub host_tournament_use_case: Arc<dyn HostTournamentUseCase + Send + Sync + 'static>,
-    pub shutdown_workflow: Arc<dyn ShutdownWorkflow + Send + Sync + 'static>,
+    pub tournament_use_case: Arc<dyn TournamentUseCase + Send + Sync + 'static>,
+    pub shutdown_use_case: Arc<dyn ShutdownUseCase + Send + Sync + 'static>,
     pub authentication_use_case: Arc<dyn AuthenticationUseCase + Send + Sync + 'static>,
 }
 
@@ -358,14 +340,11 @@ pub async fn build_application<
     let seek_service = Arc::new(SeekServiceImpl::new());
     let spectator_service = Arc::new(SpectatorServiceImpl::new());
     let chat_room_service = Arc::new(ChatRoomServiceImpl::new());
-    let rating_service = Arc::new(RatingServiceImpl::new());
-    let chat_content_policy = Arc::new(RustrictContentPolicy::new());
     let match_readiness_service = Arc::new(MatchReadinessServiceImpl::new());
 
     let get_snapshot_workflow = Arc::new(GetSnapshotWorkflowImpl::new(
         ports.clone(),
         authentication_service.clone(),
-        rating_service.clone(),
     ));
 
     let notify_player_workflow = Arc::new(NotifyPlayerWorkflowImpl::new(
@@ -376,7 +355,6 @@ pub async fn build_application<
 
     let finalize_game_workflow = Arc::new(LifecycleGameWorkflowImpl::new(
         ports.clone(),
-        rating_service.clone(),
         notify_player_workflow.clone(),
         spectator_service.clone(),
         listener_notification_port.clone(),
@@ -388,8 +366,6 @@ pub async fn build_application<
         finalize_game_workflow.clone(),
     ));
 
-    let shutdown_workflow = Arc::new(ShutdownWorkflowImpl::new());
-
     let application = Application {
         matchmaking_use_case: Arc::new(MatchmakingUseCaseImpl::new(
             ports.clone(),
@@ -400,12 +376,10 @@ pub async fn build_application<
             game_timeout_scheduler.clone(),
             get_snapshot_workflow.clone(),
         )),
-
-        listener_disconnect_use_case: Arc::new(ListenerDisconnectUseCaseImpl::new(
+        listener_use_case: Arc::new(ListenerUseCaseImpl::new(
             spectator_service.clone(),
             chat_room_service.clone(),
         )),
-
         player_use_case: Arc::new(PlayerUseCaseImpl::new(
             ports.clone(),
             user_online_status_port.clone(),
@@ -414,49 +388,34 @@ pub async fn build_application<
             player_disconnect_timeout_scheduler.clone(),
             match_readiness_service.clone(),
             notify_player_workflow.clone(),
+            get_snapshot_workflow.clone(),
         )),
-
         gameplay_use_case: Arc::new(GameplayUseCaseImpl::new(
             ports.clone(),
             notify_player_workflow.clone(),
             finalize_game_workflow.clone(),
             spectator_service.clone(),
         )),
-
-        game_query_use_case: Arc::new(GameQueryUseCaseImpl::new(ports.clone())),
-
         chat_use_case: Arc::new(ChatUseCaseImpl::new(
             ports.clone(),
             listener_notification_port.clone(),
             player_connection_port.clone(),
             chat_room_service.clone(),
-            chat_content_policy.clone(),
         )),
-
         moderation_use_case: Arc::new(ModerationUseCaseImpl::new(
             ports.clone(),
             email_port.clone(),
             authentication_service.clone(),
         )),
-
         events_use_case: Arc::new(EventsUseCaseImpl::new(ports.clone())),
-
-        get_snapshot_workflow,
         profile_use_case: Arc::new(ProfileUseCaseImpl::new(ports.clone())),
-
-        get_tournaments_use_case: Arc::new(GetTournamentUseCaseImpl::new(ports.clone())),
-        tournament_player_registration_use_case: Arc::new(
-            TournamentPlayerRegistrationUseCaseImpl::new(ports.clone()),
-        ),
-        host_tournament_use_case: Arc::new(HostTournamentUseCaseImpl::new(ports.clone())),
-
-        shutdown_workflow,
-
+        tournament_use_case: Arc::new(TournamentUseCaseImpl::new(ports.clone())),
         authentication_use_case: Arc::new(AuthenticationUseCaseImpl::new(
             ports.clone(),
             authentication_service.clone(),
             email_port.clone(),
         )),
+        shutdown_use_case: Arc::new(ShutdownUseCaseImpl::new()),
     };
 
     application

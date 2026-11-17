@@ -4,7 +4,7 @@ use tak_domain::{
     profile::{AccountProfile, ProfilePicture},
 };
 
-use crate::ports::transaction::RepoError;
+use crate::errors::{AppResult, InternalError};
 
 #[async_trait::async_trait]
 pub trait AccountProfileRepository<RpCtx> {
@@ -13,12 +13,12 @@ pub trait AccountProfileRepository<RpCtx> {
         ctx: &RpCtx,
         user_id: UserId,
         profile_information: AccountProfile,
-    ) -> Result<(), RepoError>;
+    ) -> AppResult<(), (InternalError,)>;
     async fn get_profile_information(
         &self,
         ctx: &RpCtx,
         user_id: UserId,
-    ) -> Result<Option<AccountProfile>, RepoError>;
+    ) -> AppResult<Option<AccountProfile>, (InternalError,)>;
 }
 
 #[async_trait::async_trait]
@@ -27,9 +27,9 @@ pub trait ProfilePictureRepository {
         &self,
         user_id: UserId,
         image: DynamicImage,
-    ) -> Result<(), RepoError>;
+    ) -> AppResult<(), (InternalError,)>;
     async fn get_profile_picture(
         &self,
         user_id: UserId,
-    ) -> Result<Option<ProfilePicture>, RepoError>;
+    ) -> AppResult<Option<ProfilePicture>, (InternalError,)>;
 }

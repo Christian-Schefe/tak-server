@@ -1,10 +1,12 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use tak_domain::{
-    TournamentId, UserId,
+    MatchId, TournamentId, UserId,
     matches::{Match, MatchSettings, MatchStatus, MatchTournamentInfo},
     tournament::{
-        Tournament, TournamentFormat, TournamentMetadata, TournamentRound, TournamentStatus,
+        Tournament, TournamentFormat, TournamentMetadata, TournamentPlayer, TournamentRound,
+        TournamentStatus,
     },
 };
 
@@ -19,8 +21,96 @@ use crate::{
     },
 };
 
+#[derive(Clone, Debug)]
+pub struct TournamentMetadataView {
+    pub tournament_id: TournamentId,
+    pub name: String,
+    pub tournament_format: TournamentFormat,
+    pub match_settings: MatchSettings,
+}
+
+#[derive(Clone, Debug)]
+pub struct TournamentView {
+    pub metadata: TournamentMetadataView,
+    pub status: TournamentStatus,
+}
+
+#[derive(Clone, Debug)]
+pub struct TournamentDetailView {
+    pub tournament: TournamentView,
+    pub player_scores: HashMap<UserId, u32>,
+    pub rounds: Vec<TournamentRoundView>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TournamentRoundView {
+    pub matches: Vec<MatchId>,
+    pub byes: Vec<UserId>,
+}
+
+impl TournamentMetadataView {
+    pub fn from_metadata(tournament_id: TournamentId, metadata: TournamentMetadata) -> Self {
+        Self {
+            tournament_id,
+            name: metadata.name,
+            tournament_format: metadata.format,
+            match_settings: metadata.match_settings,
+        }
+    }
+}
+
+impl TournamentView {
+    pub fn from_tournament(tournament_id: TournamentId, tournament: Tournament) -> Self {
+        Self {
+            metadata: TournamentMetadataView::from_metadata(tournament_id, tournament.metadata),
+            status: tournament.status,
+        }
+    }
+}
+
+impl TournamentDetailView {
+    pub fn from_tournament(
+        tournament_id: TournamentId,
+        tournament: Tournament,
+        tournament_players: Vec<TournamentPlayer>,
+        rounds: Vec<TournamentRound>,
+    ) -> Self {
+        Self {
+            tournament: TournamentView::from_tournament(tournament_id, tournament),
+            player_scores: tournament_players
+                .into_iter()
+                .map(|tp| (tp.user_id, tp.score))
+                .collect(),
+            rounds: rounds
+                .into_iter()
+                .map(TournamentRoundView::from_tournament_round)
+                .collect(),
+        }
+    }
+}
+
+impl TournamentRoundView {
+    pub fn from_tournament_round(tournament_round: TournamentRound) -> Self {
+        Self {
+            matches: tournament_round.matches,
+            byes: tournament_round.byes,
+        }
+    }
+}
+
+pub enum TournamentRegistrationError {
+    TournamentNotFound,
+    TournamentNotUpcoming,
+    StorageError,
+}
+
 #[async_trait::async_trait]
-pub trait HostTournamentUseCase {
+pub trait TournamentUseCase {
+    async fn get_tournaments(&self) -> Result<Vec<TournamentView>, ()>;
+    async fn get_tournament(
+        &self,
+        tournament_id: TournamentId,
+    ) -> Result<Option<TournamentDetailView>, ()>;
     async fn create_tournament(
         &self,
         user_id: UserId,
@@ -49,13 +139,23 @@ pub trait HostTournamentUseCase {
         tournament_id: TournamentId,
         open: bool,
     ) -> Result<(), ()>;
+    async fn register_player_in_tournament(
+        &self,
+        tournament_id: TournamentId,
+        user_id: UserId,
+    ) -> Result<(), TournamentRegistrationError>;
+    async fn unregister_player_from_tournament(
+        &self,
+        tournament_id: TournamentId,
+        user_id: UserId,
+    ) -> Result<(), TournamentRegistrationError>;
 }
 
-pub struct HostTournamentUseCaseImpl<Ports: PortsCollection> {
+pub struct TournamentUseCaseImpl<Ports: PortsCollection> {
     ports: Arc<Ports>,
 }
 
-impl<Ports: PortsCollection> HostTournamentUseCaseImpl<Ports> {
+impl<Ports: PortsCollection> TournamentUseCaseImpl<Ports> {
     pub fn new(ports: Arc<Ports>) -> Self {
         Self { ports }
     }
@@ -82,9 +182,59 @@ impl<Ports: PortsCollection> HostTournamentUseCaseImpl<Ports> {
 }
 
 #[async_trait::async_trait]
-impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
-    for HostTournamentUseCaseImpl<Ports>
+impl<Ports: PortsCollection + Send + Sync + 'static> TournamentUseCase
+    for TournamentUseCaseImpl<Ports>
 {
+    async fn get_tournaments(&self) -> Result<Vec<TournamentView>, ()> {
+        let ctx = self.ports.transaction_manager().simple();
+        match self
+            .ports
+            .tournament_repository()
+            .list_tournaments(&ctx)
+            .await
+        {
+            Ok(tournaments) => Ok(tournaments
+                .into_iter()
+                .map(|(id, t)| TournamentView::from_tournament(id, t))
+                .collect()),
+            Err(RepoError(e)) => {
+                tracing::error!("Failed to list tournaments: {:?}", e);
+                Err(())
+            }
+        }
+    }
+
+    async fn get_tournament(
+        &self,
+        tournament_id: TournamentId,
+    ) -> Result<Option<TournamentDetailView>, ()> {
+        let ctx = self.ports.transaction_manager().simple();
+        let tournament_repo = self.ports.tournament_repository();
+        let tournament_player_repo = self.ports.tournament_player_repository();
+        let tournament_round_repo = self.ports.tournament_round_repository();
+        match futures::try_join!(
+            tournament_repo.get_tournament(&ctx, tournament_id),
+            tournament_player_repo.get_tournament_players(&ctx, tournament_id),
+            tournament_round_repo.get_tournament_rounds(&ctx, tournament_id),
+        ) {
+            Ok((tournament, tournament_players, rounds)) => {
+                let Some(tournament) = tournament else {
+                    return Ok(None);
+                };
+                Ok(Some(TournamentDetailView::from_tournament(
+                    tournament_id,
+                    tournament,
+                    tournament_players,
+                    rounds,
+                )))
+            }
+            Err(RepoError(e)) => {
+                tracing::error!("Failed to get tournament: {:?}", e);
+                Err(())
+            }
+        }
+    }
+
     #[tracing::instrument(skip(self))]
     async fn create_tournament(
         &self,
@@ -578,5 +728,112 @@ impl<Ports: PortsCollection + Send + Sync + 'static> HostTournamentUseCase
             return Err(());
         }
         Ok(())
+    }
+    #[tracing::instrument(skip(self))]
+    async fn register_player_in_tournament(
+        &self,
+        tournament_id: TournamentId,
+        user_id: UserId,
+    ) -> Result<(), TournamentRegistrationError> {
+        let ctx = self.ports.transaction_manager().simple();
+        let tournament = match self
+            .ports
+            .tournament_repository()
+            .get_tournament(&ctx, tournament_id)
+            .await
+        {
+            Ok(Some(tournament)) => Ok(tournament),
+            Ok(None) => Err(TournamentRegistrationError::TournamentNotFound),
+            Err(RepoError(e)) => {
+                tracing::error!(
+                    "Failed to get tournament with id {}: {:?}",
+                    tournament_id,
+                    e
+                );
+                Err(TournamentRegistrationError::StorageError)
+            }
+        }?;
+        let TournamentStatus::Upcoming {
+            registration_open: true,
+        } = tournament.status
+        else {
+            tracing::warn!(
+                "Attempted to register player {} in tournament {} which is not upcoming or not open for registration",
+                user_id,
+                tournament_id
+            );
+            return Err(TournamentRegistrationError::TournamentNotUpcoming);
+        };
+        if let Err(RepoError(e)) = self
+            .ports
+            .tournament_player_repository()
+            .create_tournament_player(&ctx, tournament_id, TournamentPlayer::new(user_id))
+            .await
+        {
+            tracing::error!(
+                "Failed to register player {} in tournament {}: {:?}",
+                user_id,
+                tournament_id,
+                e
+            );
+            Err(TournamentRegistrationError::StorageError)
+        } else {
+            Ok(())
+        }
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn unregister_player_from_tournament(
+        &self,
+        tournament_id: TournamentId,
+        user_id: UserId,
+    ) -> Result<(), TournamentRegistrationError> {
+        let ctx = self.ports.transaction_manager().simple();
+        let tournament = match self
+            .ports
+            .tournament_repository()
+            .get_tournament(&ctx, tournament_id)
+            .await
+        {
+            Ok(Some(tournament)) => Ok(tournament),
+            Ok(None) => {
+                return Err(TournamentRegistrationError::TournamentNotFound);
+            }
+            Err(RepoError(e)) => {
+                tracing::error!(
+                    "Failed to get tournament with id {}: {:?}",
+                    tournament_id,
+                    e
+                );
+                Err(TournamentRegistrationError::StorageError)
+            }
+        }?;
+        let TournamentStatus::Upcoming {
+            registration_open: true,
+        } = tournament.status
+        else {
+            tracing::warn!(
+                "Attempted to unregister player {} in tournament {} which is not upcoming or not open for registration",
+                user_id,
+                tournament_id
+            );
+            return Err(TournamentRegistrationError::TournamentNotUpcoming);
+        };
+        if let Err(RepoError(e)) = self
+            .ports
+            .tournament_player_repository()
+            .remove_tournament_player(&ctx, tournament_id, user_id)
+            .await
+        {
+            tracing::error!(
+                "Failed to unregister player {} from tournament {}: {:?}",
+                user_id,
+                tournament_id,
+                e
+            );
+            Err(TournamentRegistrationError::StorageError)
+        } else {
+            Ok(())
+        }
     }
 }

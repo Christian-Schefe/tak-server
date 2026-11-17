@@ -1,6 +1,6 @@
 use tak_domain::{UserId, moderation::Moderation};
 
-use crate::ports::transaction::RepoError;
+use crate::errors::{AppResult, InternalError};
 
 #[async_trait::async_trait]
 pub trait ModerationRepository<RpCtx> {
@@ -8,11 +8,11 @@ pub trait ModerationRepository<RpCtx> {
         &self,
         ctx: &RpCtx,
         user_id: UserId,
-    ) -> Result<Option<Moderation>, RepoError>;
+    ) -> AppResult<Option<Moderation>, (InternalError,)>;
     async fn set_moderation(
         &self,
         ctx: &RpCtx,
         user_id: UserId,
         moderation: Moderation,
-    ) -> Result<(), RepoError>;
+    ) -> AppResult<(), (InternalError,)>;
 }

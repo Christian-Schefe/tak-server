@@ -1,6 +1,9 @@
 use tak_domain::{UserId, rating::PlayerRating};
 
-use crate::ports::{PaginatedResponse, Pagination, SortOrder, transaction::RepoError};
+use crate::{
+    errors::{AppResult, InternalError},
+    ports::{PaginatedResponse, Pagination, SortOrder},
+};
 
 #[async_trait::async_trait]
 pub trait RatingRepository<RpCtx> {
@@ -8,23 +11,23 @@ pub trait RatingRepository<RpCtx> {
         &self,
         ctx: &RpCtx,
         user_id: UserId,
-    ) -> Result<Option<PlayerRating>, RepoError>;
+    ) -> AppResult<Option<PlayerRating>, (InternalError,)>;
     async fn get_player_ranking(
         &self,
         ctx: &RpCtx,
         user_id: UserId,
-    ) -> Result<Option<(u32, PlayerRating)>, RepoError>;
+    ) -> AppResult<Option<(u32, PlayerRating)>, (InternalError,)>;
     async fn query_player_ratings(
         &self,
         ctx: &RpCtx,
         query: RatingQuery,
-    ) -> Result<PaginatedResponse<PlayerRating>, RepoError>;
+    ) -> AppResult<PaginatedResponse<PlayerRating>, (InternalError,)>;
     async fn set_player_rating(
         &self,
         ctx: &RpCtx,
         user_id: UserId,
         rating: PlayerRating,
-    ) -> Result<(), RepoError>;
+    ) -> AppResult<(), (InternalError,)>;
 }
 
 #[derive(Debug, Clone)]

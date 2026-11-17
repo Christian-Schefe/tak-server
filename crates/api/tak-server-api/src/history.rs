@@ -6,11 +6,11 @@ use axum::{
 use tak_domain::UserId;
 use tak_server_api_contract::game::GameRecordResponse;
 use tak_server_app::{
+    application::gameplay::GameQueryError,
     ports::{
         Pagination, SortOrder,
         game::{GamePlayerFilter, GameQuery, GameSortBy},
     },
-    workflow::gameplay::query::GameQueryError,
 };
 
 use crate::{AppState, PaginatedResponse, PaginationQuery, ServiceError, game::from_game};
@@ -32,7 +32,7 @@ async fn query_game_history(
     };
     let history = app
         .app
-        .game_query_use_case
+        .gameplay_use_case
         .query_games(filter)
         .await
         .map_err(|GameQueryError::RepositoryError| {
@@ -63,7 +63,7 @@ async fn query_player_game_history(
     };
     let history = app
         .app
-        .game_query_use_case
+        .gameplay_use_case
         .query_games(filter)
         .await
         .map_err(|GameQueryError::RepositoryError| {

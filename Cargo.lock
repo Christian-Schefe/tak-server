@@ -5162,10 +5162,8 @@ dependencies = [
  "bytes",
  "chrono",
  "country-code-enum",
- "dashmap",
  "futures",
  "image",
- "more-concurrent-maps",
  "nonempty",
  "rustrict",
  "tak-core",
@@ -5338,6 +5336,7 @@ dependencies = [
  "rustrict",
  "tak-core",
  "tak-domain",
+ "terrors",
  "tokio",
  "tokio-util",
  "tracing",
@@ -5387,6 +5386,12 @@ dependencies = [
  "rustix",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "terrors"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "987fd8c678ca950df2a18b2c6e9da6ca511d449278fab3565efe0d49c0c07a5d"
 
 [[package]]
 name = "thiserror"

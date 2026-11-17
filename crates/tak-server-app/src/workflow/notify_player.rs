@@ -3,8 +3,9 @@ use std::sync::Arc;
 use crate::ports::{
     connection::UserConnectionPort,
     notification::{ListenerMessage, ListenerNotificationPort},
+    spectator::SpectatorService,
 };
-use tak_domain::{GameId, UserId, spectator::SpectatorService};
+use tak_domain::{GameId, UserId};
 
 pub trait NotifyPlayerWorkflow {
     fn notify_players_and_observers_of_game(

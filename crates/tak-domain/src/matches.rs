@@ -1,9 +1,6 @@
-use std::sync::Arc;
-
-use dashmap::DashMap;
 use tak_core::{TakGameSettings, TakPlayer};
 
-use crate::{MatchId, TournamentId, UserId};
+use crate::{TournamentId, UserId};
 
 #[derive(Clone, Debug)]
 pub struct Match {
@@ -137,76 +134,4 @@ pub enum MatchStatus {
     Waiting,
     Ongoing,
     Completed,
-}
-
-pub trait MatchReadinessService {
-    fn get_readiness_status(&self, match_id: MatchId) -> Option<UserId>;
-    fn set_player_ready(&self, match_id: MatchId, player: UserId) -> bool;
-    fn set_player_not_ready(&self, match_id: MatchId, player: UserId) -> bool;
-    fn set_player_not_ready_everywhere(&self, player: UserId) -> Vec<MatchId>;
-}
-
-pub struct MatchReadinessServiceImpl {
-    match_readiness: Arc<DashMap<MatchId, UserId>>,
-}
-
-impl MatchReadinessServiceImpl {
-    pub fn new() -> Self {
-        Self {
-            match_readiness: Arc::new(DashMap::new()),
-        }
-    }
-}
-
-impl MatchReadinessService for MatchReadinessServiceImpl {
-    fn get_readiness_status(&self, match_id: MatchId) -> Option<UserId> {
-        self.match_readiness
-            .get(&match_id)
-            .map(|entry| *entry.value())
-    }
-
-    fn set_player_ready(&self, match_id: MatchId, player: UserId) -> bool {
-        let request = self.match_readiness.get(&match_id);
-        if let Some(already_ready) = &request {
-            if *already_ready.value() == player {
-                false
-            } else {
-                drop(request);
-                self.match_readiness.remove(&match_id);
-                true
-            }
-        } else {
-            drop(request);
-            self.match_readiness.insert(match_id, player);
-            false
-        }
-    }
-
-    fn set_player_not_ready(&self, match_id: MatchId, player: UserId) -> bool {
-        let request = self.match_readiness.get(&match_id);
-        if let Some(already_ready) = &request {
-            if *already_ready.value() == player {
-                drop(request);
-                self.match_readiness.remove(&match_id);
-                true
-            } else {
-                false
-            }
-        } else {
-            false
-        }
-    }
-
-    fn set_player_not_ready_everywhere(&self, player: UserId) -> Vec<MatchId> {
-        let mut match_ids = Vec::new();
-        self.match_readiness.retain(|match_id, ready_player| {
-            if *ready_player == player {
-                match_ids.push(*match_id);
-                false
-            } else {
-                true
-            }
-        });
-        match_ids
-    }
 }

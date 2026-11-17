@@ -10,8 +10,9 @@ use tak_domain::{
 };
 use tak_server_api_contract::player::{UserInfoResponse, UserRoleResponse, UserTypeResponse};
 use tak_server_app::{
+    application::player::PlayerStatsView,
     ports::{Pagination, rating::RatingQuery},
-    workflow::{account::get_snapshot::GetSnapshotError, player::PlayerStatsView},
+    workflow::get_snapshot::GetSnapshotError,
 };
 use uuid::Uuid;
 
@@ -39,12 +40,7 @@ async fn get_user_info(
         Uuid::parse_str(&user_id)
             .map_err(|_| ServiceError::BadRequest("Invalid user ID".to_string()))?,
     );
-    let snapshot = match app
-        .app
-        .get_snapshot_workflow
-        .get_snapshot(user_id, Utc::now())
-        .await
-    {
+    let snapshot = match app.app.player_use_case.get_player(user_id).await {
         Ok(snapshot) => snapshot,
         Err(GetSnapshotError::NotFound) => {
             return Err(ServiceError::NotFound(

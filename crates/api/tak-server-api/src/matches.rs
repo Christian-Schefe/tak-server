@@ -10,8 +10,8 @@ use tak_server_api_contract::{
     game::{GameRecordResponse, GameSettingsResponse},
     matches::MatchReadinessStatusResponse,
 };
-use tak_server_app::workflow::{
-    gameplay::query::GameQueryError,
+use tak_server_app::application::{
+    gameplay::GameQueryError,
     matchmaking::{GetMatchError, MatchReadinessError},
 };
 
@@ -247,12 +247,7 @@ async fn get_match_games(
             .parse::<i64>()
             .map_err(|_| ServiceError::BadRequest(format!("Invalid match ID: {}", match_id)))?,
     );
-    match app
-        .app
-        .game_query_use_case
-        .get_games_of_match(match_id)
-        .await
-    {
+    match app.app.gameplay_use_case.get_games_of_match(match_id).await {
         Ok(games) => Ok(Json(
             games
                 .into_iter()

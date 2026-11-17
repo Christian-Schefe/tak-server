@@ -2,7 +2,7 @@ use std::{sync::Arc, time::SystemTime};
 
 use tak_domain::{GameId, game::GameCheckTimeoutError};
 
-use crate::workflow::gameplay::{ObserveOutcome, lifecycle::LifecycleGameWorkflow};
+use crate::{application::gameplay::ObserveOutcome, workflow::lifecycle::LifecycleGameWorkflow};
 
 pub trait GameTimeoutRunner {
     fn schedule_game_timeout_check(this: Arc<Self>, game_id: GameId);
@@ -54,17 +54,12 @@ impl<RpCtx: Send + Sync + 'static, L: LifecycleGameWorkflow<RpCtx> + Send + Sync
                 .await
             {
                 Ok(Ok(())) => {}
-                Ok(Err(())) => {
+                Ok(Err(())) => {}
+                Err(e) => {
                     tracing::error!(
-                        "Error checking game timeout for game {:?}: Game not found",
-                        game_id
-                    );
-                    return;
-                }
-                Err(()) => {
-                    tracing::error!(
-                        "Error checking game timeout for game {:?}: Internal error",
-                        game_id
+                        "Error checking game timeout for game {:?}: {:?}",
+                        game_id,
+                        e
                     );
                     return;
                 }

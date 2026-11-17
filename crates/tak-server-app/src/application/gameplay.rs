@@ -5,106 +5,148 @@ use std::{
 
 use crate::{
     PortsCollection,
+    errors::{
+        AppResult, GameCantAbort, GameNotFound, GameNotOngoing, GameRequestNotFound, InternalError,
+        InvalidGameAction, NotAPlayerInGame,
+    },
     ports::{
-        game::GameRepository,
+        PaginatedResponse,
+        game::{GameHistoryRepository, GameQuery, GameRepository, GameStateRepository},
         notification::{ListenerGameMessageType, ListenerMessage},
-        transaction::{RepoError, TransactionManager},
+        spectator::SpectatorService,
+        transaction::TransactionManager,
     },
-    workflow::{
-        gameplay::lifecycle::LifecycleGameWorkflow, listener::notify_player::NotifyPlayerWorkflow,
-    },
+    workflow::{lifecycle::LifecycleGameWorkflow, notify_player::NotifyPlayerWorkflow},
 };
 use tak_core::{InvalidUndoReason, TakAction};
 use tak_domain::{
-    GameId, ListenerId, UserId,
+    GameId, ListenerId, MatchId, UserId,
     game::{
         CheckDisconnectTimeoutResult, GameAbortError, GameAcceptRequestError,
-        GameCheckTimeoutError, GameDoActionError, GameRequest, GameRequestType, GameResignError,
-        GameSetRequestError, GameUndoActionError,
+        GameCheckTimeoutError, GameDoActionError, GameEvent, GameRequest, GameRequestType,
+        GameResignError, GameSetRequestError, GameState, GameUndoActionError,
     },
-    spectator::SpectatorService,
+    game_record::GameRecord,
 };
-
-pub mod lifecycle;
-pub mod query;
+use terrors::OneOf;
 
 pub enum ObserveOutcome {
     Finished,
     Continue(std::time::Duration),
 }
 
-pub enum ObserveError {
-    GameNotFound,
-    Internal,
+#[derive(Debug, Clone)]
+pub struct GameDetailView {
+    pub record: GameRecord,
+    pub state: Option<GameState>,
+    pub events: Vec<GameEvent>,
 }
 
 #[async_trait::async_trait]
 pub trait GameplayUseCase {
+    async fn get_game(
+        &self,
+        game_id: GameId,
+    ) -> AppResult<Option<GameDetailView>, (InternalError,)>;
+    async fn query_games(
+        &self,
+        filter: GameQuery,
+    ) -> AppResult<PaginatedResponse<(GameId, GameRecord)>, (InternalError,)>;
+    async fn get_games_of_match(
+        &self,
+        match_id: MatchId,
+    ) -> AppResult<Vec<(GameId, GameRecord)>, (InternalError,)>;
+    async fn get_ongoing_games(&self) -> AppResult<Vec<(GameId, GameRecord)>, (InternalError,)>;
     async fn do_action(
         &self,
         game_id: GameId,
         user_id: UserId,
         action: TakAction,
-    ) -> Result<(), ActionError<DoActionError>>;
+    ) -> AppResult<
+        (),
+        (
+            InvalidGameAction,
+            GameNotFound,
+            GameNotOngoing,
+            NotAPlayerInGame,
+            InternalError,
+        ),
+    >;
     async fn set_request(
         &self,
         game_id: GameId,
         user_id: UserId,
         request: GameRequest,
-    ) -> Result<(), PlayerActionError>;
+    ) -> AppResult<
+        (),
+        (
+            NotAPlayerInGame,
+            GameNotFound,
+            GameNotOngoing,
+            InternalError,
+        ),
+    >;
     async fn accept_request(
         &self,
         game_id: GameId,
         user_id: UserId,
         request_type: GameRequestType,
-    ) -> Result<(), ActionError<HandleRequestError>>;
-    async fn resign(&self, game_id: GameId, user_id: UserId) -> Result<(), PlayerActionError>;
-    async fn abort(&self, game_id: GameId, user_id: UserId) -> Result<(), ActionError<AbortError>>;
-
+    ) -> AppResult<
+        (),
+        (
+            GameRequestNotFound,
+            NotAPlayerInGame,
+            GameNotFound,
+            GameNotOngoing,
+            InternalError,
+        ),
+    >;
+    async fn resign(
+        &self,
+        game_id: GameId,
+        user_id: UserId,
+    ) -> AppResult<
+        (),
+        (
+            NotAPlayerInGame,
+            GameNotFound,
+            GameNotOngoing,
+            InternalError,
+        ),
+    >;
+    async fn abort(
+        &self,
+        game_id: GameId,
+        user_id: UserId,
+    ) -> AppResult<
+        (),
+        (
+            GameCantAbort,
+            NotAPlayerInGame,
+            GameNotFound,
+            GameNotOngoing,
+            InternalError,
+        ),
+    >;
     async fn check_player_timeout(
         &self,
         user_id: UserId,
         disconnected_at: Instant,
-    ) -> Result<ObserveOutcome, ObserveError>;
+    ) -> AppResult<
+        ObserveOutcome,
+        (
+            NotAPlayerInGame,
+            GameNotFound,
+            GameNotOngoing,
+            InternalError,
+        ),
+    >;
     async fn observe_game(
         &self,
         game_id: GameId,
         listener_id: ListenerId,
-    ) -> Result<(), ObserveGameError>;
+    ) -> AppResult<(), (GameNotFound, InternalError)>;
     fn unobserve_game(&self, game_id: GameId, listener_id: ListenerId);
-}
-
-#[derive(Debug)]
-pub enum PlayerActionError {
-    GameNotFound,
-    NotAPlayerInGame,
-    Internal,
-}
-
-#[derive(Debug)]
-pub enum ActionError<R> {
-    NotPossible(PlayerActionError),
-    ActionError(R),
-}
-
-#[derive(Debug)]
-pub enum DoActionError {
-    InvalidAction(tak_core::InvalidActionReason),
-    NotPlayersTurn,
-}
-
-#[derive(Debug)]
-pub enum HandleRequestError {
-    RequestNotFound,
-}
-
-pub enum AbortError {
-    GameAlreadyStarted,
-}
-
-pub enum ObserveGameError {
-    GameNotFound,
-    Internal,
 }
 
 pub struct GameplayUseCaseImpl<
@@ -149,12 +191,75 @@ impl<
     S: SpectatorService + Send + Sync + 'static,
 > GameplayUseCase for GameplayUseCaseImpl<Ports, NP, F, S>
 {
+    async fn query_games(
+        &self,
+        filter: GameQuery,
+    ) -> AppResult<PaginatedResponse<(GameId, GameRecord)>, (InternalError,)> {
+        let ctx = self.ports.transaction_manager().simple();
+        let results = self
+            .ports
+            .game_repository()
+            .query_games(&ctx, filter)
+            .await?;
+        Ok(results.map(|(id, record)| (id, record)))
+    }
+
+    async fn get_game(
+        &self,
+        game_id: GameId,
+    ) -> AppResult<Option<GameDetailView>, (InternalError,)> {
+        let ctx = self.ports.transaction_manager().simple();
+        let Some(game) = self.ports.game_repository().get_game(&ctx, game_id).await? else {
+            return Ok(None);
+        };
+        let state = self
+            .ports
+            .game_state_repository()
+            .get_state(&ctx, game_id)
+            .await?;
+        let events = self
+            .ports
+            .game_history_repository()
+            .get_events(&ctx, game_id)
+            .await?;
+        Ok(Some(GameDetailView {
+            record: game,
+            state,
+            events,
+        }))
+    }
+
+    async fn get_games_of_match(
+        &self,
+        match_id: MatchId,
+    ) -> AppResult<Vec<(GameId, GameRecord)>, (InternalError,)> {
+        let ctx = self.ports.transaction_manager().simple();
+        self.ports
+            .game_repository()
+            .get_games_of_match(&ctx, match_id)
+            .await
+    }
+
+    async fn get_ongoing_games(&self) -> AppResult<Vec<(GameId, GameRecord)>, (InternalError,)> {
+        let ctx = self.ports.transaction_manager().simple();
+        self.ports.game_repository().get_ongoing_games(&ctx).await
+    }
+
     async fn do_action(
         &self,
         game_id: GameId,
         user_id: UserId,
         action: TakAction,
-    ) -> Result<(), ActionError<DoActionError>> {
+    ) -> AppResult<
+        (),
+        (
+            InvalidGameAction,
+            GameNotFound,
+            GameNotOngoing,
+            NotAPlayerInGame,
+            InternalError,
+        ),
+    > {
         let now = SystemTime::now();
         tracing::debug!(
             "Player {} is performing action {:?} in game {}",
@@ -162,21 +267,18 @@ impl<
             action,
             game_id
         );
-        match self
-            .finalize_game_workflow
+        self.finalize_game_workflow
             .modify_game(game_id, |game, metadata| {
                 let Some(player) = metadata.get_player(user_id) else {
-                    return Err(ActionError::NotPossible(
-                        PlayerActionError::NotAPlayerInGame,
-                    ));
+                    return Err(OneOf::new(NotAPlayerInGame));
                 };
                 if let Err(e) = game.do_action(player, action, now) {
                     match e {
-                        GameDoActionError::InvalidAction(e) => {
-                            return Err(ActionError::ActionError(DoActionError::InvalidAction(e)));
+                        GameDoActionError::InvalidAction(_) => {
+                            return Err(OneOf::new(InvalidGameAction));
                         }
                         GameDoActionError::NotPlayersTurn => {
-                            return Err(ActionError::ActionError(DoActionError::NotPlayersTurn));
+                            return Err(OneOf::new(InvalidGameAction));
                         }
                         GameDoActionError::Timeout => {}
                     }
@@ -185,11 +287,8 @@ impl<
                 Ok(())
             })
             .await
-        {
-            Ok(Err(e)) => Err(e),
-            Ok(Ok(())) => Ok(()),
-            Err(()) => Err(ActionError::NotPossible(PlayerActionError::Internal)),
-        }
+            .map_err(OneOf::broaden)??;
+        Ok(())
     }
 
     async fn set_request(
@@ -197,14 +296,21 @@ impl<
         game_id: GameId,
         user_id: UserId,
         request: GameRequest,
-    ) -> Result<(), PlayerActionError> {
+    ) -> AppResult<
+        (),
+        (
+            NotAPlayerInGame,
+            GameNotFound,
+            GameNotOngoing,
+            InternalError,
+        ),
+    > {
         let now = SystemTime::now();
         let mut message = None;
-        match self
-            .finalize_game_workflow
+        self.finalize_game_workflow
             .modify_game(game_id, |game, metadata| {
                 let Some(player) = metadata.get_player(user_id) else {
-                    return Err(PlayerActionError::NotAPlayerInGame);
+                    return Err(OneOf::new(NotAPlayerInGame));
                 };
                 match game.set_request(player, request.clone(), now) {
                     Err(GameSetRequestError::Timeout) => Ok(()),
@@ -228,11 +334,7 @@ impl<
                 }
             })
             .await
-        {
-            Ok(Err(e)) => return Err(e),
-            Ok(Ok(())) => {}
-            Err(()) => return Err(PlayerActionError::Internal),
-        }
+            .map_err(OneOf::broaden)??;
         if let Some((msg, white_user_id, black_user_id)) = message {
             self.notify_player_workflow
                 .notify_players_and_observers_of_game(
@@ -249,7 +351,16 @@ impl<
         game_id: GameId,
         user_id: UserId,
         request_type: GameRequestType,
-    ) -> Result<(), ActionError<HandleRequestError>> {
+    ) -> AppResult<
+        (),
+        (
+            GameRequestNotFound,
+            NotAPlayerInGame,
+            GameNotFound,
+            GameNotOngoing,
+            InternalError,
+        ),
+    > {
         tracing::info!(
             "Player {} is accepting request of type {:?} in game {}",
             user_id,
@@ -258,22 +369,17 @@ impl<
         );
         let now = SystemTime::now();
         let mut messages = Vec::new();
-        match self
-            .finalize_game_workflow
+        self.finalize_game_workflow
             .modify_game(game_id, |game, metadata| {
                 let Some(player) = metadata.get_player(user_id) else {
-                    return Err(ActionError::NotPossible(
-                        PlayerActionError::NotAPlayerInGame,
-                    ));
+                    return Err(OneOf::new(NotAPlayerInGame));
                 };
                 let opponent_id = metadata.get_user_id(player.opponent());
                 match request_type {
                     GameRequestType::Draw => match game.accept_draw_request(player, now) {
                         Err(GameAcceptRequestError::Timeout) => Ok(()),
                         Err(GameAcceptRequestError::NoRequestToAccept) => {
-                            return Err(ActionError::ActionError(
-                                HandleRequestError::RequestNotFound,
-                            ));
+                            return Err(OneOf::new(GameRequestNotFound));
                         }
                         Ok(()) => {
                             let time_info = game.game.get_time_info(now);
@@ -295,9 +401,7 @@ impl<
                     GameRequestType::Undo => match game.accept_undo_request(player, now) {
                         Err(GameUndoActionError::Timeout) => Ok(()),
                         Err(GameUndoActionError::NoUndoAvailable) => {
-                            return Err(ActionError::ActionError(
-                                HandleRequestError::RequestNotFound,
-                            ));
+                            return Err(OneOf::new(GameRequestNotFound));
                         }
                         Err(GameUndoActionError::FailedToUndo(
                             InvalidUndoReason::FailedToReconstructGame,
@@ -306,7 +410,7 @@ impl<
                                 "Failed to undo action in game {}: failed to reconstruct game",
                                 game_id
                             );
-                            return Err(ActionError::NotPossible(PlayerActionError::Internal));
+                            return Err(OneOf::new(InternalError));
                         }
                         Ok(())
                         | Err(GameUndoActionError::FailedToUndo(InvalidUndoReason::NoHistory)) => {
@@ -329,9 +433,7 @@ impl<
                     GameRequestType::MoreTime => match game.accept_more_time_request(player, now) {
                         Err(GameAcceptRequestError::Timeout) => Ok(()),
                         Err(GameAcceptRequestError::NoRequestToAccept) => {
-                            return Err(ActionError::ActionError(
-                                HandleRequestError::RequestNotFound,
-                            ));
+                            return Err(OneOf::new(GameRequestNotFound));
                         }
                         Ok(()) => {
                             let time_info = game.game.get_time_info(now);
@@ -353,11 +455,7 @@ impl<
                 }
             })
             .await
-        {
-            Ok(Err(e)) => return Err(e),
-            Ok(Ok(())) => {}
-            Err(()) => return Err(ActionError::NotPossible(PlayerActionError::Internal)),
-        }
+            .map_err(OneOf::broaden)??;
         for (msg, white_user_id, black_user_id) in messages {
             self.notify_player_workflow
                 .notify_players_and_observers_of_game(
@@ -369,13 +467,24 @@ impl<
         Ok(())
     }
 
-    async fn resign(&self, game_id: GameId, user_id: UserId) -> Result<(), PlayerActionError> {
+    async fn resign(
+        &self,
+        game_id: GameId,
+        user_id: UserId,
+    ) -> AppResult<
+        (),
+        (
+            NotAPlayerInGame,
+            GameNotFound,
+            GameNotOngoing,
+            InternalError,
+        ),
+    > {
         let now = SystemTime::now();
-        match self
-            .finalize_game_workflow
+        self.finalize_game_workflow
             .modify_game(game_id, |game, metadata| {
                 let Some(player) = metadata.get_player(user_id) else {
-                    return Err(PlayerActionError::NotAPlayerInGame);
+                    return Err(OneOf::new(NotAPlayerInGame));
                 };
                 match game.resign(player, now) {
                     Err(GameResignError::Timeout) => Ok(()),
@@ -383,64 +492,70 @@ impl<
                 }
             })
             .await
-        {
-            Ok(res) => res,
-            Err(()) => return Err(PlayerActionError::Internal),
-        }
+            .map_err(OneOf::broaden)??;
+        Ok(())
     }
 
-    async fn abort(&self, game_id: GameId, user_id: UserId) -> Result<(), ActionError<AbortError>> {
+    async fn abort(
+        &self,
+        game_id: GameId,
+        user_id: UserId,
+    ) -> AppResult<
+        (),
+        (
+            GameCantAbort,
+            NotAPlayerInGame,
+            GameNotFound,
+            GameNotOngoing,
+            InternalError,
+        ),
+    > {
         let now = SystemTime::now();
-        match self
-            .finalize_game_workflow
+        self.finalize_game_workflow
             .modify_game(game_id, |game, metadata| {
                 let Some(_) = metadata.get_player(user_id) else {
-                    return Err(ActionError::NotPossible(
-                        PlayerActionError::NotAPlayerInGame,
-                    ));
+                    return Err(OneOf::new(NotAPlayerInGame));
                 };
                 match game.abort(now) {
                     Err(GameAbortError::Timeout) => Ok(()),
                     Err(GameAbortError::CantAbort) => {
-                        return Err(ActionError::ActionError(AbortError::GameAlreadyStarted));
+                        return Err(OneOf::new(GameCantAbort));
                     }
                     Ok(()) => Ok(()),
                 }
             })
             .await
-        {
-            Ok(Err(e)) => return Err(e),
-            Ok(Ok(())) => Ok(()),
-            Err(()) => return Err(ActionError::NotPossible(PlayerActionError::Internal)),
-        }
+            .map_err(OneOf::broaden)??;
+        Ok(())
     }
 
     async fn check_player_timeout(
         &self,
         user_id: UserId,
         disconnected_at: Instant,
-    ) -> Result<ObserveOutcome, ObserveError> {
+    ) -> AppResult<
+        ObserveOutcome,
+        (
+            NotAPlayerInGame,
+            GameNotFound,
+            GameNotOngoing,
+            InternalError,
+        ),
+    > {
         let now = SystemTime::now();
         let disconnected_duration = Instant::now().saturating_duration_since(disconnected_at);
         let ctx = self.ports.transaction_manager().simple();
-        let games = match self
+        let games = self
             .ports
             .game_repository()
             .get_ongoing_games_by_player(&ctx, user_id)
             .await
-        {
-            Ok(games) => games,
-            Err(RepoError(e)) => {
-                tracing::error!("Error retrieving games for player {}: {}", user_id, e);
-                return Err(ObserveError::Internal);
-            }
-        };
+            .map_err(OneOf::broaden)?;
 
         let mut wait_duration = None;
 
         for (game_id, record) in games {
-            match self
-                .finalize_game_workflow
+            self.finalize_game_workflow
                 .modify_game(game_id, |game, _| {
                     let Some(player) = record.metadata.get_player(user_id) else {
                         tracing::warn!(
@@ -448,7 +563,7 @@ impl<
                             user_id,
                             game_id
                         );
-                        return Err(());
+                        return Err(OneOf::new(NotAPlayerInGame));
                     };
                     match game.check_disconnect_timeout(player, disconnected_duration, now) {
                         Err(GameCheckTimeoutError::Timeout) => Ok(()),
@@ -466,18 +581,7 @@ impl<
                     }
                 })
                 .await
-            {
-                Ok(Ok(())) => {}
-                Ok(Err(())) => {}
-                Err(()) => {
-                    tracing::error!(
-                        "Error checking disconnect timeout for player {} in game {}",
-                        user_id,
-                        game_id
-                    );
-                    return Err(ObserveError::Internal);
-                }
-            }
+                .map_err(OneOf::broaden)??;
         }
 
         match wait_duration {
@@ -492,20 +596,17 @@ impl<
         &self,
         game_id: GameId,
         listener_id: ListenerId,
-    ) -> Result<(), ObserveGameError> {
+    ) -> AppResult<(), (GameNotFound, InternalError)> {
         let ctx = self.ports.transaction_manager().simple();
-        match self.ports.game_repository().get_game(&ctx, game_id).await {
-            Ok(None) => return Err(ObserveGameError::GameNotFound),
-            Ok(Some(record)) => {
-                if record.result.is_some() {
-                    return Err(ObserveGameError::GameNotFound);
-                }
-            }
-            Err(RepoError(e)) => {
-                tracing::error!("Failed to retrieve game {} from repository: {}", game_id, e);
-                return Err(ObserveGameError::Internal);
-            }
-        }
+        let Some(_) = self
+            .ports
+            .game_state_repository()
+            .get_state(&ctx, game_id)
+            .await
+            .map_err(OneOf::broaden)?
+        else {
+            return Err(OneOf::new(GameNotFound));
+        };
         self.spectator_service.observe_game(game_id, listener_id);
         Ok(())
     }

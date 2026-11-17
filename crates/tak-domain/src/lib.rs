@@ -8,7 +8,6 @@ pub mod player;
 pub mod profile;
 pub mod rating;
 pub mod seek;
-pub mod spectator;
 pub mod stats;
 pub mod tournament;
 

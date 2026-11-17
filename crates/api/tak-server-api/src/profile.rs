@@ -9,7 +9,7 @@ use axum::{
     routing::{get, post},
 };
 use tak_domain::{UserId, profile::ProfilePictureFileType};
-use tak_server_app::workflow::profile::AccountProfileView;
+use tak_server_app::application::profile::AccountProfileView;
 
 use crate::{AppState, ServiceError, auth::Auth};
 

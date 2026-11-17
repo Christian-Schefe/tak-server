@@ -16,9 +16,8 @@ use tak_server_api_contract::game::{
     GameRequestResponse, GameRequestResponseType, GameRequestsResponse, GameSettingsResponse,
     GameStatusResponse, GameStatusResponseType, PlayerSnapshotResponse,
 };
-use tak_server_app::workflow::gameplay::{
-    ActionError, HandleRequestError, PlayerActionError,
-    query::{GameDetailView, GameQueryError},
+use tak_server_app::application::gameplay::{
+    ActionError, GameDetailView, GameQueryError, HandleRequestError, PlayerActionError,
 };
 
 use crate::{AppState, ServiceError, auth::Auth};
@@ -35,7 +34,7 @@ pub fn register_routes() -> axum::Router<AppState> {
 async fn get_games(
     State(app): State<AppState>,
 ) -> Result<Json<Vec<GameMetadataResponse>>, ServiceError> {
-    let games = match app.app.game_query_use_case.get_ongoing_games().await {
+    let games = match app.app.gameplay_use_case.get_ongoing_games().await {
         Ok(games) => games,
         Err(GameQueryError::RepositoryError) => {
             return Err(ServiceError::Internal("Failed to get ongoing games".into()));
@@ -54,7 +53,7 @@ async fn get_game(
     Path(game_id): Path<i64>,
 ) -> Result<Json<GameStatusResponse>, ServiceError> {
     let game_id = GameId(game_id);
-    match app.app.game_query_use_case.get_game(game_id).await {
+    match app.app.gameplay_use_case.get_game(game_id).await {
         Ok(Some(detail)) => Ok(Json(status_from_game_detail(game_id, detail))),
         Ok(None) => Err(ServiceError::NotFound(format!(
             "Game with id {} not found",

@@ -1,18 +1,18 @@
 #[async_trait::async_trait]
-pub trait ShutdownWorkflow {
+pub trait ShutdownUseCase {
     async fn shutdown(&self);
 }
 
-pub struct ShutdownWorkflowImpl {}
+pub struct ShutdownUseCaseImpl {}
 
-impl ShutdownWorkflowImpl {
+impl ShutdownUseCaseImpl {
     pub fn new() -> Self {
         Self {}
     }
 }
 
 #[async_trait::async_trait]
-impl ShutdownWorkflow for ShutdownWorkflowImpl {
+impl ShutdownUseCase for ShutdownUseCaseImpl {
     async fn shutdown(&self) {
         //TODO: Send message to players that the server is shutting down
     }

@@ -1,8 +1,15 @@
 use chrono::{DateTime, Utc};
 use tak_core::{TakGameResult, TakPlayer};
-use tak_domain::{GameId, MatchId, UserId, game::{GameEvent, GameState}, game_record::GameRecord};
+use tak_domain::{
+    GameId, MatchId, UserId,
+    game::{GameEvent, GameState},
+    game_record::GameRecord,
+};
 
-use crate::ports::{PaginatedResponse, Pagination, SortOrder, transaction::RepoError};
+use crate::{
+    errors::{AppResult, InternalError},
+    ports::{PaginatedResponse, Pagination, SortOrder},
+};
 
 #[async_trait::async_trait]
 pub trait GameStateRepository<RpCtx> {
@@ -11,10 +18,13 @@ pub trait GameStateRepository<RpCtx> {
         ctx: &RpCtx,
         game_id: GameId,
         game: GameState,
-    ) -> Result<(), RepoError>;
-    async fn get_state(&self, ctx: &RpCtx, game_id: GameId)
-    -> Result<Option<GameState>, RepoError>;
-    async fn remove_state(&self, ctx: &RpCtx, game_id: GameId) -> Result<(), RepoError>;
+    ) -> AppResult<(), (InternalError,)>;
+    async fn get_state(
+        &self,
+        ctx: &RpCtx,
+        game_id: GameId,
+    ) -> AppResult<Option<GameState>, (InternalError,)>;
+    async fn remove_state(&self, ctx: &RpCtx, game_id: GameId) -> AppResult<(), (InternalError,)>;
 }
 
 #[async_trait::async_trait]
@@ -24,42 +34,52 @@ pub trait GameHistoryRepository<RpCtx> {
         ctx: &RpCtx,
         game_id: GameId,
         events: Vec<GameEvent>,
-    ) -> Result<(), RepoError>;
+    ) -> AppResult<(), (InternalError,)>;
     async fn get_events(
         &self,
         ctx: &RpCtx,
         game_id: GameId,
-    ) -> Result<Vec<GameEvent>, RepoError>; 
+    ) -> AppResult<Vec<GameEvent>, (InternalError,)>;
 }
 
 #[async_trait::async_trait]
 pub trait GameRepository<RpCtx> {
-    async fn create_game(&self, ctx: &RpCtx, game: GameRecord) -> Result<GameId, RepoError>;
-    async fn get_game(&self, ctx: &RpCtx, game_id: GameId)
-    -> Result<Option<GameRecord>, RepoError>;
+    async fn create_game(
+        &self,
+        ctx: &RpCtx,
+        game: GameRecord,
+    ) -> AppResult<GameId, (InternalError,)>;
+    async fn get_game(
+        &self,
+        ctx: &RpCtx,
+        game_id: GameId,
+    ) -> AppResult<Option<GameRecord>, (InternalError,)>;
     async fn update_game(
         &self,
         ctx: &RpCtx,
         game_id: GameId,
         game: GameRecord,
-    ) -> Result<(), RepoError>;
+    ) -> AppResult<(), (InternalError,)>;
     async fn get_ongoing_games_by_player(
         &self,
         ctx: &RpCtx,
         user_id: UserId,
-    ) -> Result<Vec<(GameId, GameRecord)>, RepoError>;
-    async fn get_ongoing_games(&self, ctx: &RpCtx) -> Result<Vec<(GameId, GameRecord)>, RepoError>;
+    ) -> AppResult<Vec<(GameId, GameRecord)>, (InternalError,)>;
+    async fn get_ongoing_games(
+        &self,
+        ctx: &RpCtx,
+    ) -> AppResult<Vec<(GameId, GameRecord)>, (InternalError,)>;
 
     async fn query_games(
         &self,
         ctx: &RpCtx,
         query: GameQuery,
-    ) -> Result<PaginatedResponse<(GameId, GameRecord)>, RepoError>;
+    ) -> AppResult<PaginatedResponse<(GameId, GameRecord)>, (InternalError,)>;
     async fn get_games_of_match(
         &self,
         ctx: &RpCtx,
         match_id: MatchId,
-    ) -> Result<Vec<(GameId, GameRecord)>, RepoError>;
+    ) -> AppResult<Vec<(GameId, GameRecord)>, (InternalError,)>;
 }
 
 #[derive(Debug, Clone, Default)]

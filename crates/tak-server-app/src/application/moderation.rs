@@ -257,7 +257,7 @@ impl<
         {
             Ok(Some(info)) => info,
             Ok(None) => return Err(ModerationError::Internal),
-            Err(()) => {
+            Err(_) => {
                 tracing::error!("Failed to get account info for user_id: {}", target_user_id);
                 return Err(ModerationError::Internal);
             }

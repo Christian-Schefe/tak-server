@@ -3,7 +3,7 @@ use tak_domain::{
     tournament::{Tournament, TournamentPlayer, TournamentRound, TournamentStatus},
 };
 
-use crate::ports::transaction::RepoError;
+use crate::errors::{AppResult, InternalError};
 
 #[async_trait::async_trait]
 pub trait TournamentRepository<TrCtx> {
@@ -11,22 +11,22 @@ pub trait TournamentRepository<TrCtx> {
         &self,
         ctx: &TrCtx,
         tournament: Tournament,
-    ) -> Result<TournamentId, RepoError>;
+    ) -> AppResult<TournamentId, (InternalError,)>;
     async fn list_tournaments(
         &self,
         ctx: &TrCtx,
-    ) -> Result<Vec<(TournamentId, Tournament)>, RepoError>;
+    ) -> AppResult<Vec<(TournamentId, Tournament)>, (InternalError,)>;
     async fn get_tournament(
         &self,
         ctx: &TrCtx,
         tournament_id: TournamentId,
-    ) -> Result<Option<Tournament>, RepoError>;
+    ) -> AppResult<Option<Tournament>, (InternalError,)>;
     async fn set_tournament_status(
         &self,
         ctx: &TrCtx,
         tournament_id: TournamentId,
         status: TournamentStatus,
-    ) -> Result<(), RepoError>;
+    ) -> AppResult<(), (InternalError,)>;
 }
 
 #[async_trait::async_trait]
@@ -35,14 +35,14 @@ pub trait TournamentRoundRepository<TrCtx> {
         &self,
         ctx: &TrCtx,
         tournament_id: TournamentId,
-    ) -> Result<Vec<TournamentRound>, RepoError>;
+    ) -> AppResult<Vec<TournamentRound>, (InternalError,)>;
     async fn create_tournament_round(
         &self,
         ctx: &TrCtx,
         tournament_id: TournamentId,
         round_index: usize,
         tournament_round: TournamentRound,
-    ) -> Result<(), RepoError>;
+    ) -> AppResult<(), (InternalError,)>;
 }
 
 #[async_trait::async_trait]
@@ -51,31 +51,31 @@ pub trait TournamentPlayerRepository<TrCtx> {
         &self,
         ctx: &TrCtx,
         tournament_id: TournamentId,
-    ) -> Result<Vec<TournamentPlayer>, RepoError>;
+    ) -> AppResult<Vec<TournamentPlayer>, (InternalError,)>;
     async fn create_tournament_player(
         &self,
         ctx: &TrCtx,
         tournament_id: TournamentId,
         player: TournamentPlayer,
-    ) -> Result<(), RepoError>;
+    ) -> AppResult<(), (InternalError,)>;
     async fn increase_player_score(
         &self,
         ctx: &TrCtx,
         tournament_id: TournamentId,
         user_id: UserId,
         score_increase: u32,
-    ) -> Result<(), RepoError>;
+    ) -> AppResult<(), (InternalError,)>;
     async fn remove_tournament_player(
         &self,
         ctx: &TrCtx,
         tournament_id: TournamentId,
         user_id: UserId,
-    ) -> Result<(), RepoError>;
+    ) -> AppResult<(), (InternalError,)>;
     async fn set_player_seeding_score(
         &self,
         ctx: &TrCtx,
         tournament_id: TournamentId,
         user_id: UserId,
         seeding_score: i32,
-    ) -> Result<(), RepoError>;
+    ) -> AppResult<(), (InternalError,)>;
 }

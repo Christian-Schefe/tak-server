@@ -2,16 +2,18 @@ use std::sync::Arc;
 
 use tak_domain::{
     ChatMessageId, ListenerId, UserId,
-    chat::{ChatConversation, ChatMessage, ChatRoomService, ContentPolicy},
+    chat::{ChatConversation, ChatMessage, ContentPolicy, RustrictContentPolicy},
 };
+use terrors::OneOf;
 
 use crate::{
     PortsCollection,
+    errors::{AppResult, InsufficientPermissions, InternalError, InvalidChatMessage},
     ports::{
-        chat::ChatRepository,
+        chat::{ChatRepository, ChatRoomService},
         connection::UserConnectionPort,
         notification::{ListenerMessage, ListenerNotificationPort},
-        transaction::{RepoError, TransactionManager},
+        transaction::TransactionManager,
     },
 };
 
@@ -34,11 +36,6 @@ impl ChatMessageView {
     }
 }
 
-pub enum ChatSendMessageError {
-    NotAllowed(String),
-    RepositoryError,
-}
-
 #[async_trait::async_trait]
 pub trait ChatUseCase {
     async fn send_message(
@@ -46,13 +43,13 @@ pub trait ChatUseCase {
         from: UserId,
         conversation: &ChatConversation,
         message: &str,
-    ) -> Result<(), ChatSendMessageError>;
+    ) -> AppResult<(), (InsufficientPermissions, InvalidChatMessage, InternalError)>;
     async fn get_messages(
         &self,
         conversation: &ChatConversation,
         before: Option<ChatMessageId>,
         limit: usize,
-    ) -> Result<Vec<ChatMessageView>, ()>;
+    ) -> AppResult<Vec<ChatMessageView>, (InternalError,)>;
     fn join_room(&self, room_name: &String, listener_id: ListenerId);
     fn leave_room(&self, room_name: &String, listener_id: ListenerId);
 }
@@ -62,36 +59,27 @@ pub struct ChatUseCaseImpl<
     L: ListenerNotificationPort,
     P: UserConnectionPort,
     C: ChatRoomService,
-    Co: ContentPolicy,
 > {
     ports: Arc<Ports>,
     listener_notification_port: Arc<L>,
     player_connection_port: Arc<P>,
     chat_room_service: Arc<C>,
-    content_policy: Arc<Co>,
 }
 
-impl<
-    Ports: PortsCollection,
-    L: ListenerNotificationPort,
-    P: UserConnectionPort,
-    C: ChatRoomService,
-    Co: ContentPolicy,
-> ChatUseCaseImpl<Ports, L, P, C, Co>
+impl<Ports: PortsCollection, L: ListenerNotificationPort, P: UserConnectionPort, C: ChatRoomService>
+    ChatUseCaseImpl<Ports, L, P, C>
 {
     pub fn new(
         ports: Arc<Ports>,
         listener_notification_port: Arc<L>,
         player_connection_port: Arc<P>,
         chat_room_service: Arc<C>,
-        content_policy: Arc<Co>,
     ) -> Self {
         Self {
             ports,
             listener_notification_port,
             player_connection_port,
             chat_room_service,
-            content_policy,
         }
     }
 }
@@ -102,15 +90,14 @@ impl<
     L: ListenerNotificationPort + Send + Sync + 'static,
     P: UserConnectionPort + Send + Sync + 'static,
     C: ChatRoomService + Send + Sync + 'static,
-    Co: ContentPolicy + Send + Sync + 'static,
-> ChatUseCase for ChatUseCaseImpl<Ports, L, P, C, Co>
+> ChatUseCase for ChatUseCaseImpl<Ports, L, P, C>
 {
     async fn send_message(
         &self,
         from_user_id: UserId,
         conversation: &ChatConversation,
         message: &str,
-    ) -> Result<(), ChatSendMessageError> {
+    ) -> AppResult<(), (InsufficientPermissions, InvalidChatMessage, InternalError)> {
         let is_allowed_to_send = match conversation {
             ChatConversation::Private { user_ids } => {
                 user_ids.0 == from_user_id || user_ids.1 == from_user_id
@@ -119,14 +106,12 @@ impl<
             ChatConversation::Global => true,
         };
         if !is_allowed_to_send {
-            return Err(ChatSendMessageError::NotAllowed(
-                "You are not allowed to send a message in this conversation".to_string(),
-            ));
+            return Err(OneOf::new(InsufficientPermissions));
         }
 
-        let filtered_message = match self.content_policy.filter_message(&message) {
+        let filtered_message = match RustrictContentPolicy.filter_message(&message) {
             Ok(msg) => msg,
-            Err(reason) => return Err(ChatSendMessageError::NotAllowed(reason)),
+            Err(_reason) => return Err(OneOf::new(InvalidChatMessage)),
         };
 
         let chat_msg = ChatMessage {
@@ -136,18 +121,12 @@ impl<
         };
 
         let ctx = self.ports.transaction_manager().simple();
-        let msg_id = match self
+        let msg_id = self
             .ports
             .chat_repository()
             .save_message(&ctx, conversation.clone(), chat_msg.clone())
             .await
-        {
-            Ok(id) => id,
-            Err(RepoError(e)) => {
-                tracing::error!("Failed to save chat message: {}", e);
-                return Err(ChatSendMessageError::RepositoryError);
-            }
-        };
+            .map_err(OneOf::broaden)?;
 
         let msg = ListenerMessage::ChatMessage {
             message: ChatMessageView::from(msg_id, chat_msg),
@@ -183,23 +162,18 @@ impl<
         conversation: &ChatConversation,
         before: Option<ChatMessageId>,
         limit: usize,
-    ) -> Result<Vec<ChatMessageView>, ()> {
+    ) -> AppResult<Vec<ChatMessageView>, (InternalError,)> {
         let ctx = self.ports.transaction_manager().simple();
-        match self
+        let messages = self
             .ports
             .chat_repository()
             .get_messages(&ctx, conversation.clone(), before, limit)
             .await
-        {
-            Ok(messages) => Ok(messages
-                .into_iter()
-                .map(|(id, msg)| ChatMessageView::from(id, msg))
-                .collect()),
-            Err(RepoError(e)) => {
-                tracing::error!("Failed to retrieve chat messages: {}", e);
-                Err(())
-            }
-        }
+            .map_err(OneOf::broaden)?;
+        Ok(messages
+            .into_iter()
+            .map(|(id, msg)| ChatMessageView::from(id, msg))
+            .collect())
     }
 
     fn join_room(&self, room_name: &String, listener_id: ListenerId) {

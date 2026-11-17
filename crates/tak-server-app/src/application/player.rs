@@ -3,25 +3,31 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 
 use tak_core::TakTimeSettings;
-use tak_domain::{
-    UserId, matches::MatchReadinessService, rating::PlayerRating, seek::SeekService,
-    stats::PlayerStats,
-};
+use tak_domain::{UserId, rating::PlayerRating, stats::PlayerStats};
 
 use crate::{
     PortsCollection,
+    application::matchmaking::SeekView,
     ports::{
         PaginatedResponse,
         connection::UserOnlineStatusPort,
-        matches::MatchRepository,
+        matches::{MatchReadinessService, MatchRepository},
         notification::{ListenerMatchEventType, ListenerMessage, ListenerNotificationPort},
         rating::{RatingQuery, RatingRepository},
+        seeks::SeekService,
         stats::{RatingHistoryRepository, StatsRepository},
         transaction::{RepoError, TransactionManager},
     },
     processes::disconnect_timeout_runner::DisconnectTimeoutRunner,
-    workflow::listener::notify_player::NotifyPlayerWorkflow,
+    workflow::{get_snapshot::GetSnapshotWorkflow, notify_player::NotifyPlayerWorkflow},
 };
+
+#[derive(Debug, Clone)]
+pub struct PlayerInfoView {
+    pub user_id: UserId,
+    pub username: String,
+    pub rating: Option<f64>,
+}
 
 pub struct PlayerStatsView {
     pub ranking: Option<PlayerRankingView>,
@@ -69,6 +75,11 @@ pub struct RatingHistoryRangeView {
     pub first_entry_before_range: Option<RatingHistoryEntryView>,
 }
 
+pub enum GetPlayerError {
+    NotFound,
+    Internal,
+}
+
 pub enum GetStatsError {
     Internal,
 }
@@ -77,13 +88,9 @@ pub enum GetRatingError {
     Internal,
 }
 
-pub enum GetSnapshotError {
-    NotFound,
-    Internal,
-}
-
 #[async_trait::async_trait]
 pub trait PlayerUseCase {
+    async fn get_player(&self, user_id: UserId) -> Result<PlayerInfoView, GetPlayerError>;
     async fn get_stats(&self, user_id: UserId) -> Result<PlayerStatsView, GetStatsError>;
     async fn get_rating_history(
         &self,
@@ -108,6 +115,7 @@ pub struct PlayerUseCaseImpl<
     D: DisconnectTimeoutRunner,
     M: MatchReadinessService,
     NP: NotifyPlayerWorkflow,
+    SN: GetSnapshotWorkflow<Ports::TrCtx>,
 > {
     ports: Arc<Ports>,
     user_online_status_port: Arc<P>,
@@ -116,6 +124,7 @@ pub struct PlayerUseCaseImpl<
     disconnect_timeout_runner: Arc<D>,
     match_readiness_service: Arc<M>,
     notify_player_workflow: Arc<NP>,
+    get_snapshot_workflow: Arc<SN>,
 }
 
 impl<
@@ -126,7 +135,8 @@ impl<
     D: DisconnectTimeoutRunner,
     M: MatchReadinessService,
     NP: NotifyPlayerWorkflow,
-> PlayerUseCaseImpl<Ports, P, L, S, D, M, NP>
+    SN: GetSnapshotWorkflow<Ports::TrCtx>,
+> PlayerUseCaseImpl<Ports, P, L, S, D, M, NP, SN>
 {
     pub fn new(
         ports: Arc<Ports>,
@@ -136,6 +146,7 @@ impl<
         disconnect_timeout_runner: Arc<D>,
         match_readiness_service: Arc<M>,
         notify_player_workflow: Arc<NP>,
+        get_snapshot_workflow: Arc<SN>,
     ) -> Self {
         Self {
             ports,
@@ -145,6 +156,7 @@ impl<
             disconnect_timeout_runner,
             match_readiness_service,
             notify_player_workflow,
+            get_snapshot_workflow,
         }
     }
 }
@@ -158,8 +170,26 @@ impl<
     D: DisconnectTimeoutRunner + Send + Sync + 'static,
     M: MatchReadinessService + Send + Sync + 'static,
     NP: NotifyPlayerWorkflow + Send + Sync + 'static,
-> PlayerUseCase for PlayerUseCaseImpl<Ports, P, L, S, D, M, NP>
+    SN: GetSnapshotWorkflow<Ports::TrCtx> + Send + Sync + 'static,
+> PlayerUseCase for PlayerUseCaseImpl<Ports, P, L, S, D, M, NP, SN>
 {
+    async fn get_player(&self, user_id: UserId) -> Result<PlayerInfoView, GetPlayerError> {
+        let ctx = self.ports.transaction_manager().simple();
+        let snapshot = match self.get_snapshot_workflow.get_snapshot(&ctx, user_id).await {
+            Ok(Some(snapshot)) => snapshot,
+            Ok(None) => return Err(GetPlayerError::NotFound),
+            Err(_) => {
+                tracing::error!("Failed to retrieve player snapshot: Internal error");
+                return Err(GetPlayerError::Internal);
+            }
+        };
+        Ok(PlayerInfoView {
+            user_id: snapshot.user_id,
+            username: snapshot.username,
+            rating: snapshot.rating,
+        })
+    }
+
     async fn get_stats(&self, user_id: UserId) -> Result<PlayerStatsView, GetStatsError> {
         let ctx = self.ports.transaction_manager().simple();
         let rating_info = match self
@@ -286,9 +316,9 @@ impl<
                 TakTimeSettings::Realtime(_)
             )
         });
-        for cancelled_seek in cancelled_seeks {
+        for (cancelled_seek_id, cancelled_seek) in cancelled_seeks {
             let message = ListenerMessage::SeekCancelled {
-                seek: cancelled_seek.into(),
+                seek: SeekView::from(cancelled_seek_id, &cancelled_seek),
             };
             self.notification_port.notify_all(&message);
         }
