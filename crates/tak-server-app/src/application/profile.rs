@@ -6,13 +6,15 @@ use tak_domain::{
     UserId,
     profile::{AccountProfile, ProfilePicture, ProfilePictureVersion},
 };
+use terrors::OneOf;
 
 use crate::{
     PortsCollection,
+    errors::{AppResult, InternalError, UserNotFound},
     ports::{
         moderation::ModerationRepository,
         profile::{AccountProfileRepository, ProfilePictureRepository},
-        transaction::{RepoError, TransactionManager},
+        transaction::TransactionManager,
     },
 };
 
@@ -32,33 +34,25 @@ impl From<AccountProfile> for AccountProfileView {
     }
 }
 
-pub enum UpdateProfileError {
-    AccountNotFound,
-    Internal,
-}
-
-pub enum GetProfileError {
-    RepositoryError,
-}
-
 #[async_trait::async_trait]
 pub trait ProfileUseCase {
-    async fn get_profile(&self, user_id: UserId) -> Result<AccountProfileView, GetProfileError>;
+    async fn get_profile(&self, user_id: UserId)
+    -> AppResult<AccountProfileView, (InternalError,)>;
     async fn get_profile_picture(
         &self,
         user_id: UserId,
-    ) -> Result<Option<ProfilePicture>, GetProfileError>;
+    ) -> AppResult<Option<ProfilePicture>, (InternalError,)>;
     async fn update_profile(
         &self,
         user_id: UserId,
         display_name: Option<String>,
         country: Option<CountryCode>,
-    ) -> Result<(), UpdateProfileError>;
+    ) -> AppResult<(), (UserNotFound, InternalError)>;
     async fn set_profile_picture(
         &self,
         user_id: UserId,
         picture_data: DynamicImage,
-    ) -> Result<ProfilePictureVersion, UpdateProfileError>;
+    ) -> AppResult<ProfilePictureVersion, (UserNotFound, InternalError)>;
 }
 
 pub struct ProfileUseCaseImpl<Ports: PortsCollection> {
@@ -73,47 +67,34 @@ impl<Ports: PortsCollection> ProfileUseCaseImpl<Ports> {
 
 #[async_trait::async_trait]
 impl<Ports: PortsCollection + Send + Sync + 'static> ProfileUseCase for ProfileUseCaseImpl<Ports> {
-    async fn get_profile(&self, user_id: UserId) -> Result<AccountProfileView, GetProfileError> {
+    async fn get_profile(
+        &self,
+        user_id: UserId,
+    ) -> AppResult<AccountProfileView, (InternalError,)> {
         let ctx = self.ports.transaction_manager().simple();
         match self
             .ports
             .profile_repository()
             .get_profile_information(&ctx, user_id)
-            .await
+            .await?
         {
-            Ok(Some(profile_information)) => Ok(profile_information.into()),
-            Ok(None) => Ok(AccountProfileView {
+            Some(profile_information) => Ok(profile_information.into()),
+            None => Ok(AccountProfileView {
                 display_name: None,
                 country: None,
                 profile_picture_version: None,
             }),
-            Err(RepoError(e)) => {
-                tracing::error!(
-                    "Failed to retrieve profile information for account {}: {}",
-                    user_id,
-                    e
-                );
-                Err(GetProfileError::RepositoryError)
-            }
         }
     }
 
     async fn get_profile_picture(
         &self,
         user_id: UserId,
-    ) -> Result<Option<ProfilePicture>, GetProfileError> {
-        match self
-            .ports
+    ) -> AppResult<Option<ProfilePicture>, (InternalError,)> {
+        self.ports
             .profile_picture_repository()
             .get_profile_picture(user_id)
             .await
-        {
-            Ok(profile_picture) => Ok(profile_picture),
-            Err(RepoError(e)) => {
-                tracing::error!("Failed to retrieve profile picture: {}", e);
-                Err(GetProfileError::RepositoryError)
-            }
-        }
     }
 
     async fn update_profile(
@@ -121,30 +102,18 @@ impl<Ports: PortsCollection + Send + Sync + 'static> ProfileUseCase for ProfileU
         user_id: UserId,
         display_name: Option<String>,
         country: Option<CountryCode>,
-    ) -> Result<(), UpdateProfileError> {
+    ) -> AppResult<(), (UserNotFound, InternalError)> {
         let ctx = self.ports.transaction_manager().simple();
-        match self
+        let account = self
             .ports
             .moderation_repository()
             .get_moderation(&ctx, user_id)
             .await
-        {
-            Ok(Some(acc)) => {
-                if acc.is_guest() {
-                    return Err(UpdateProfileError::AccountNotFound);
-                }
-            }
-            Ok(None) => {
-                return Err(UpdateProfileError::AccountNotFound);
-            }
-            Err(RepoError(e)) => {
-                tracing::error!(
-                    "Failed to retrieve moderation for account {}: {}",
-                    user_id,
-                    e
-                );
-                return Err(UpdateProfileError::Internal);
-            }
+            .map_err(OneOf::broaden)?
+            .ok_or(OneOf::new(UserNotFound))?;
+
+        if account.is_guest() {
+            return Err(OneOf::new(UserNotFound));
         }
 
         let mut profile_data = match self
@@ -152,84 +121,44 @@ impl<Ports: PortsCollection + Send + Sync + 'static> ProfileUseCase for ProfileU
             .profile_repository()
             .get_profile_information(&ctx, user_id)
             .await
+            .map_err(OneOf::broaden)?
         {
-            Ok(Some(data)) => data,
-            Ok(None) => AccountProfile::new(),
-            Err(RepoError(e)) => {
-                tracing::error!(
-                    "Failed to retrieve profile information for account {}: {}",
-                    user_id,
-                    e
-                );
-                return Err(UpdateProfileError::Internal);
-            }
+            Some(data) => data,
+            None => AccountProfile::new(),
         };
         profile_data.country = country;
         profile_data.display_name = display_name;
-        match self
-            .ports
+        self.ports
             .profile_repository()
             .insert_profile_information(&ctx, user_id, profile_data)
             .await
-        {
-            Ok(()) => Ok(()),
-            Err(RepoError(e)) => {
-                tracing::error!(
-                    "Failed to update profile information for account {}: {}",
-                    user_id,
-                    e
-                );
-                Err(UpdateProfileError::Internal)
-            }
-        }
+            .map_err(OneOf::broaden)?;
+        Ok(())
     }
 
     async fn set_profile_picture(
         &self,
         user_id: UserId,
         picture_data: DynamicImage,
-    ) -> Result<ProfilePictureVersion, UpdateProfileError> {
+    ) -> AppResult<ProfilePictureVersion, (UserNotFound, InternalError)> {
         let ctx = self.ports.transaction_manager().simple();
-        match self
+        let account = self
             .ports
             .moderation_repository()
             .get_moderation(&ctx, user_id)
             .await
-        {
-            Ok(Some(acc)) => {
-                if acc.is_guest() {
-                    return Err(UpdateProfileError::AccountNotFound);
-                }
-            }
-            Ok(None) => {
-                return Err(UpdateProfileError::AccountNotFound);
-            }
-            Err(RepoError(e)) => {
-                tracing::error!(
-                    "Failed to retrieve moderation for account {}: {}",
-                    user_id,
-                    e
-                );
-                return Err(UpdateProfileError::Internal);
-            }
-        };
-        let profile_data = match self
+            .map_err(OneOf::broaden)?
+            .ok_or(OneOf::new(UserNotFound))?;
+        if account.is_guest() {
+            return Err(OneOf::new(UserNotFound));
+        }
+        let profile_data = self
             .ports
             .profile_repository()
             .get_profile_information(&ctx, user_id)
             .await
-        {
-            Ok(Some(data)) => data,
-            Ok(None) => AccountProfile::new(),
-            Err(RepoError(e)) => {
-                tracing::error!(
-                    "Failed to retrieve profile information for account {}: {}",
-                    user_id,
-                    e
-                );
-                return Err(UpdateProfileError::Internal);
-            }
-        };
+            .map_err(OneOf::broaden)?
+            .unwrap_or_else(AccountProfile::new);
         let new_version = profile_data
             .profile_picture_version
             .map(|x| x.increment())
@@ -244,43 +173,22 @@ impl<Ports: PortsCollection + Send + Sync + 'static> ProfileUseCase for ProfileU
             profile_picture_version: Some(new_version),
             display_name: profile_data.display_name,
         };
-        match self
-            .ports
+        self.ports
             .profile_repository()
             .insert_profile_information(&ctx, user_id, new_profile_data)
             .await
-        {
-            Ok(()) => (),
-            Err(RepoError(e)) => {
-                tracing::error!(
-                    "Failed to update profile information for account {}: {}",
-                    user_id,
-                    e
-                );
-                return Err(UpdateProfileError::Internal);
-            }
-        }
+            .map_err(OneOf::broaden)?;
         tracing::info!(
             "Setting new profile picture for account {} with version {}",
             user_id,
             new_version.0
         );
         let prepared_image = ProfilePicture::prepare_image(picture_data);
-        match self
-            .ports
+        self.ports
             .profile_picture_repository()
             .set_profile_picture(user_id, prepared_image)
             .await
-        {
-            Ok(()) => Ok(new_version),
-            Err(RepoError(e)) => {
-                tracing::error!(
-                    "Failed to set profile picture for account {}: {}",
-                    user_id,
-                    e
-                );
-                Err(UpdateProfileError::Internal)
-            }
-        }
+            .map_err(OneOf::broaden)?;
+        Ok(new_version)
     }
 }

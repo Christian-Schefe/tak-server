@@ -13,9 +13,6 @@ use axum_extra::{
 };
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use tak_domain::UserId;
-use tak_server_app::application::authentication::{
-    LoginError, LogoutError, RecoverError, RefreshError, RegisterError, ResetError,
-};
 
 use crate::{AppState, ServiceError};
 

@@ -27,13 +27,16 @@ pub struct GameNotOngoing;
 pub struct MatchNotFound;
 
 #[derive(Copy, Debug, Clone, PartialEq)]
+pub struct SeekNotFound;
+
+#[derive(Copy, Debug, Clone, PartialEq)]
 pub struct InsufficientPermissions;
 
 #[derive(Copy, Debug, Clone, PartialEq)]
 pub struct InvalidChatMessage;
 
 #[derive(Copy, Debug, Clone, PartialEq)]
-pub struct NotAPlayerInGame;
+pub struct UnexpectedPlayer;
 
 #[derive(Copy, Debug, Clone, PartialEq)]
 pub struct InvalidGameAction;
@@ -48,7 +51,13 @@ pub struct GameCantAbort;
 pub struct InvalidGameSettings;
 
 #[derive(Copy, Debug, Clone, PartialEq)]
-pub struct PlayerNotFound;
+pub struct UserNotFound;
 
 #[derive(Copy, Debug, Clone, PartialEq)]
-pub struct CantBeginGameInMatch;
+pub struct TournamentNotFound;
+
+#[derive(Copy, Debug, Clone, PartialEq)]
+pub struct UnexpectedTournamentStatus;
+
+#[derive(Copy, Debug, Clone, PartialEq)]
+pub struct InvalidMatchStatus;

@@ -5,7 +5,10 @@ use tak_domain::{
     UserId,
     profile::{ProfilePicture, ProfilePictureFileType},
 };
-use tak_server_app::ports::{profile::ProfilePictureRepository, transaction::RepoError};
+use tak_server_app::{
+    errors::{AppResult, InternalError},
+    ports::profile::ProfilePictureRepository,
+};
 
 pub struct ProfilePictureRepositoryImpl {
     file_path: PathBuf,
@@ -43,7 +46,7 @@ impl ProfilePictureRepository for ProfilePictureRepositoryImpl {
         &self,
         user_id: UserId,
         image: DynamicImage,
-    ) -> Result<(), RepoError> {
+    ) -> AppResult<(), (InternalError,)> {
         let (shard_path, file_name) = self.get_file_path(user_id);
         let file_path = shard_path.join(file_name);
         let mut bytes: Vec<u8> = Vec::new();

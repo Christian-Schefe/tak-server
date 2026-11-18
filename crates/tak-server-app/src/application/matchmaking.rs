@@ -14,8 +14,8 @@ use terrors::OneOf;
 use crate::{
     PortsCollection,
     errors::{
-        AppResult, CantBeginGameInMatch, InternalError, InvalidGameSettings, MatchNotFound,
-        PlayerNotFound,
+        AppResult, InternalError, InvalidGameSettings, InvalidMatchStatus, MatchNotFound,
+        UserNotFound, SeekNotFound, UnexpectedPlayer,
     },
     ports::{
         game::{GameRepository, GameStateRepository},
@@ -79,8 +79,20 @@ pub trait MatchmakingUseCase {
         &self,
         match_id: MatchId,
         user_id: UserId,
-    ) -> AppResult<(), (MatchNotFound, InternalError)>;
-    async fn accept_seek(&self, player: UserId, seek_id: SeekId) -> AppResult<(), AcceptSeekError>;
+    ) -> AppResult<
+        (),
+        (
+            UnexpectedPlayer,
+            InvalidMatchStatus,
+            MatchNotFound,
+            InternalError,
+        ),
+    >;
+    async fn accept_seek(
+        &self,
+        player: UserId,
+        seek_id: SeekId,
+    ) -> AppResult<(), (SeekNotFound, InternalError)>;
     fn cancel_seeks(&self, player: UserId);
     fn cancel_seek(&self, player: UserId, seek_id: SeekId) -> bool;
 }
@@ -158,9 +170,9 @@ impl<
     ) -> AppResult<
         (),
         (
-            CantBeginGameInMatch,
+            InvalidMatchStatus,
             MatchNotFound,
-            PlayerNotFound,
+            UserNotFound,
             InternalError,
         ),
     > {
@@ -177,7 +189,7 @@ impl<
         };
         let player1_color = match_entry.try_begin_game().map_err(|e| {
             tracing::error!("Failed to start game for match {}: {}", match_id, e);
-            OneOf::new(CantBeginGameInMatch)
+            OneOf::new(InvalidMatchStatus)
         })?;
 
         let (white_id, black_id) = match player1_color {
@@ -191,7 +203,7 @@ impl<
             .await
             .map_err(OneOf::broaden)?
         else {
-            return Err(OneOf::new(PlayerNotFound));
+            return Err(OneOf::new(UserNotFound));
         };
         let Some(snapshot_black) = self
             .get_snapshot_workflow
@@ -199,7 +211,7 @@ impl<
             .await
             .map_err(OneOf::broaden)?
         else {
-            return Err(OneOf::new(PlayerNotFound));
+            return Err(OneOf::new(UserNotFound));
         };
 
         let metadata = GameMetadata::new(
@@ -379,15 +391,23 @@ impl<
         &self,
         match_id: MatchId,
         user_id: UserId,
-    ) -> Result<(), MatchReadinessError> {
-        let match_entry = self.get_match(match_id).await?;
+    ) -> AppResult<
+        (),
+        (
+            UnexpectedPlayer,
+            InvalidMatchStatus,
+            MatchNotFound,
+            InternalError,
+        ),
+    > {
+        let match_entry = self.get_match(match_id).await.map_err(OneOf::broaden)?;
         if match_entry.player1.user_id != user_id && match_entry.player2.user_id != user_id {
             tracing::error!(
                 "Player {} is not a participant in match {}",
                 user_id,
                 match_id
             );
-            return Err(MatchReadinessError::MatchNotFound);
+            return Err(OneOf::new(UnexpectedPlayer));
         }
         let MatchStatus::Waiting = match_entry.status else {
             tracing::error!(
@@ -395,7 +415,7 @@ impl<
                 match_id,
                 match_entry.status
             );
-            return Err(MatchReadinessError::Internal);
+            return Err(OneOf::new(InvalidMatchStatus));
         };
         let did_remove = self
             .match_readiness_service
@@ -413,11 +433,15 @@ impl<
         Ok(())
     }
     #[tracing::instrument(skip(self))]
-    async fn accept_seek(&self, player: UserId, seek_id: SeekId) -> Result<(), AcceptSeekError> {
+    async fn accept_seek(
+        &self,
+        player: UserId,
+        seek_id: SeekId,
+    ) -> AppResult<(), (SeekNotFound, InternalError)> {
         let seek = self
             .seek_service
             .remove_seek_if(seek_id, |s| s.creator_id != player)
-            .ok_or(AcceptSeekError::SeekNotFound)?;
+            .ok_or(OneOf::new(SeekNotFound))?;
 
         let cancelled_seeks = self.seek_service.cancel_player_seeks(player, |seek| {
             matches!(
@@ -476,75 +500,27 @@ impl<
             .transaction_manager()
             .transaction()
             .await
-            .map_err(|RepoError(e)| {
-                tracing::error!(
-                    "Failed to start transaction for accepting seek {}: {}",
-                    seek_id,
-                    e
-                );
-                AcceptSeekError::Internal
-            })?;
-        let match_id = match self
+            .map_err(OneOf::broaden)?;
+        let match_id = self
             .ports
             .match_repository()
             .create_match(&ctx, match_data)
             .await
-        {
-            Ok(id) => id,
-            Err(RepoError(e)) => {
-                tracing::error!(
-                    "Failed to create match from accepted seek {}: {}",
-                    seek_id,
-                    e
-                );
-                return Err(AcceptSeekError::Internal);
-            }
-        };
+            .map_err(OneOf::broaden)?;
 
         match self.create_game_from_match(&ctx, match_id).await {
-            Ok(_) => Ok(()),
-            Err(CreateGameFromMatchError::PlayerNotFound) => {
-                tracing::error!(
-                    "Failed to create game from match {}: player not found",
-                    match_id
-                );
-                Err(AcceptSeekError::Internal)
+            Ok(_) => {}
+            Err(e) => {
+                tracing::error!("Failed to create game from match {}: {:?}", match_id, e);
+                return Err(OneOf::new(InternalError));
             }
-            Err(CreateGameFromMatchError::AlreadyInProgress) => {
-                tracing::error!(
-                    "Failed to create game from match {}: already in progress",
-                    match_id
-                );
-                Err(AcceptSeekError::Internal)
-            }
-            Err(CreateGameFromMatchError::Internal) => {
-                tracing::error!(
-                    "Failed to create game from match {}: internal error",
-                    match_id
-                );
-                Err(AcceptSeekError::Internal)
-            }
-            Err(CreateGameFromMatchError::MatchNotFound) => {
-                tracing::error!(
-                    "Failed to create game from match {}: match not found",
-                    match_id
-                );
-                Err(AcceptSeekError::Internal)
-            }
-        }?;
+        }
 
         self.ports
             .transaction_manager()
             .commit(ctx)
             .await
-            .map_err(|RepoError(e)| {
-                tracing::error!(
-                    "Failed to commit transaction for accepting seek {}: {}",
-                    seek_id,
-                    e
-                );
-                AcceptSeekError::Internal
-            })?;
+            .map_err(OneOf::broaden)?;
         Ok(())
     }
 

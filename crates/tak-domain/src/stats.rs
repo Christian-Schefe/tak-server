@@ -27,6 +27,20 @@ pub struct PlayerStats {
     pub longest_win_streak: u32,
 }
 
+impl PlayerStats {
+    pub fn new() -> Self {
+        Self {
+            rated_games_played: 0,
+            games_played: 0,
+            games_won: 0,
+            games_lost: 0,
+            games_drawn: 0,
+            win_streak: 0,
+            longest_win_streak: 0,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum GameOutcome {
     Win,

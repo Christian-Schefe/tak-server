@@ -4,10 +4,12 @@ use chrono::{DateTime, Utc};
 
 use tak_core::TakTimeSettings;
 use tak_domain::{UserId, rating::PlayerRating, stats::PlayerStats};
+use terrors::OneOf;
 
 use crate::{
     PortsCollection,
     application::matchmaking::SeekView,
+    errors::{AppResult, InternalError, UserNotFound},
     ports::{
         PaginatedResponse,
         connection::UserOnlineStatusPort,
@@ -16,7 +18,7 @@ use crate::{
         rating::{RatingQuery, RatingRepository},
         seeks::SeekService,
         stats::{RatingHistoryRepository, StatsRepository},
-        transaction::{RepoError, TransactionManager},
+        transaction::TransactionManager,
     },
     processes::disconnect_timeout_runner::DisconnectTimeoutRunner,
     workflow::{get_snapshot::GetSnapshotWorkflow, notify_player::NotifyPlayerWorkflow},
@@ -75,36 +77,26 @@ pub struct RatingHistoryRangeView {
     pub first_entry_before_range: Option<RatingHistoryEntryView>,
 }
 
-pub enum GetPlayerError {
-    NotFound,
-    Internal,
-}
-
-pub enum GetStatsError {
-    Internal,
-}
-
-pub enum GetRatingError {
-    Internal,
-}
-
 #[async_trait::async_trait]
 pub trait PlayerUseCase {
-    async fn get_player(&self, user_id: UserId) -> Result<PlayerInfoView, GetPlayerError>;
-    async fn get_stats(&self, user_id: UserId) -> Result<PlayerStatsView, GetStatsError>;
+    async fn get_player(
+        &self,
+        user_id: UserId,
+    ) -> AppResult<PlayerInfoView, (UserNotFound, InternalError)>;
+    async fn get_stats(&self, user_id: UserId) -> AppResult<PlayerStatsView, (InternalError,)>;
     async fn get_rating_history(
         &self,
         user_id: UserId,
         from: Option<DateTime<Utc>>,
         to: Option<DateTime<Utc>>,
-    ) -> Result<RatingHistoryRangeView, GetRatingError>;
+    ) -> AppResult<RatingHistoryRangeView, (InternalError,)>;
     async fn query_player_ratings(
         &self,
         query: RatingQuery,
-    ) -> Result<PaginatedResponse<(UserId, f64)>, GetRatingError>;
+    ) -> AppResult<PaginatedResponse<(UserId, f64)>, (InternalError,)>;
     fn get_online_users(&self) -> Vec<UserId>;
     async fn set_online(&self, user_id: UserId);
-    async fn set_offline(&self, user_id: UserId);
+    async fn set_offline(&self, user_id: UserId) -> AppResult<(), (InternalError,)>;
 }
 
 pub struct PlayerUseCaseImpl<
@@ -173,16 +165,17 @@ impl<
     SN: GetSnapshotWorkflow<Ports::TrCtx> + Send + Sync + 'static,
 > PlayerUseCase for PlayerUseCaseImpl<Ports, P, L, S, D, M, NP, SN>
 {
-    async fn get_player(&self, user_id: UserId) -> Result<PlayerInfoView, GetPlayerError> {
+    async fn get_player(
+        &self,
+        user_id: UserId,
+    ) -> AppResult<PlayerInfoView, (UserNotFound, InternalError)> {
         let ctx = self.ports.transaction_manager().simple();
-        let snapshot = match self.get_snapshot_workflow.get_snapshot(&ctx, user_id).await {
-            Ok(Some(snapshot)) => snapshot,
-            Ok(None) => return Err(GetPlayerError::NotFound),
-            Err(_) => {
-                tracing::error!("Failed to retrieve player snapshot: Internal error");
-                return Err(GetPlayerError::Internal);
-            }
-        };
+        let snapshot = self
+            .get_snapshot_workflow
+            .get_snapshot(&ctx, user_id)
+            .await
+            .map_err(OneOf::broaden)?
+            .ok_or(OneOf::new(UserNotFound))?;
         Ok(PlayerInfoView {
             user_id: snapshot.user_id,
             username: snapshot.username,
@@ -190,42 +183,19 @@ impl<
         })
     }
 
-    async fn get_stats(&self, user_id: UserId) -> Result<PlayerStatsView, GetStatsError> {
+    async fn get_stats(&self, user_id: UserId) -> AppResult<PlayerStatsView, (InternalError,)> {
         let ctx = self.ports.transaction_manager().simple();
-        let rating_info = match self
+        let rating_info = self
             .ports
             .rating_repository()
             .get_player_ranking(&ctx, user_id)
-            .await
-        {
-            Ok(Some(rating_info)) => Some(rating_info),
-            Ok(None) => None,
-            Err(RepoError(e)) => {
-                tracing::error!("Failed to retrieve player rating: {}", e);
-                return Err(GetStatsError::Internal);
-            }
-        };
-        let stats = match self
+            .await?;
+        let stats = self
             .ports
             .stats_repository()
             .get_player_stats(&ctx, user_id)
-            .await
-        {
-            Ok(Some(stats)) => stats,
-            Ok(None) => PlayerStats {
-                rated_games_played: 0,
-                games_played: 0,
-                games_won: 0,
-                games_lost: 0,
-                games_drawn: 0,
-                win_streak: 0,
-                longest_win_streak: 0,
-            },
-            Err(RepoError(e)) => {
-                tracing::error!("Failed to retrieve player stats: {}", e);
-                return Err(GetStatsError::Internal);
-            }
-        };
+            .await?
+            .unwrap_or_else(PlayerStats::new);
         Ok(PlayerStatsView::from(rating_info, stats))
     }
 
@@ -234,21 +204,13 @@ impl<
         user_id: UserId,
         from: Option<DateTime<Utc>>,
         to: Option<DateTime<Utc>>,
-    ) -> Result<RatingHistoryRangeView, GetRatingError> {
+    ) -> AppResult<RatingHistoryRangeView, (InternalError,)> {
         let ctx = self.ports.transaction_manager().simple();
         let rating_history_range = self
             .ports
             .rating_history_repository()
             .get_rating_history(&ctx, user_id, from, to)
-            .await
-            .map_err(|RepoError(e)| {
-                tracing::error!(
-                    "Error retrieving rating history for player {}: {}",
-                    user_id,
-                    e
-                );
-                GetRatingError::Internal
-            })?;
+            .await?;
         Ok(RatingHistoryRangeView {
             entries: rating_history_range
                 .entries
@@ -270,17 +232,13 @@ impl<
     async fn query_player_ratings(
         &self,
         query: RatingQuery,
-    ) -> Result<PaginatedResponse<(UserId, f64)>, GetRatingError> {
+    ) -> AppResult<PaginatedResponse<(UserId, f64)>, (InternalError,)> {
         let ctx = self.ports.transaction_manager().simple();
         let paginated_ratings = self
             .ports
             .rating_repository()
             .query_player_ratings(&ctx, query)
-            .await
-            .map_err(|RepoError(e)| {
-                tracing::error!("Error querying player ratings: {}", e);
-                GetRatingError::Internal
-            })?;
+            .await?;
         Ok(PaginatedResponse {
             total_count: paginated_ratings.total_count,
             items: paginated_ratings
@@ -305,7 +263,7 @@ impl<
     }
 
     #[tracing::instrument(skip(self))]
-    async fn set_offline(&self, user_id: UserId) {
+    async fn set_offline(&self, user_id: UserId) -> AppResult<(), (InternalError,)> {
         if let Some(users) = self.user_online_status_port.set_user_offline(user_id) {
             let message = ListenerMessage::UsersOnline { users };
             self.notification_port.notify_all(&message);
@@ -328,7 +286,7 @@ impl<
 
         let ctx = self.ports.transaction_manager().simple();
         let ctx_ref = &ctx;
-        let matches = match futures::future::join_all(cancelled_match_readiness.into_iter().map(
+        let matches = futures::future::join_all(cancelled_match_readiness.into_iter().map(
             |match_id| async move {
                 self.ports
                     .match_repository()
@@ -339,17 +297,7 @@ impl<
         ))
         .await
         .into_iter()
-        .collect::<Result<Vec<_>, _>>()
-        {
-            Ok(matches) => matches,
-            Err(RepoError(e)) => {
-                tracing::error!(
-                    "Failed to retrieve match entries when setting account offline: {:?}",
-                    e
-                );
-                return;
-            }
-        };
+        .collect::<Result<Vec<_>, _>>()?;
         for (match_id, match_entry) in matches {
             match match_entry {
                 Some(match_entry) => {
@@ -371,5 +319,6 @@ impl<
             self.disconnect_timeout_runner.clone(),
             user_id,
         );
+        Ok(())
     }
 }

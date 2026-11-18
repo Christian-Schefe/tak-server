@@ -2,11 +2,10 @@ use std::sync::Arc;
 
 use crate::{
     PortsCollection,
+    errors::{AppResult, InsufficientPermissions, InternalError, UserNotFound},
     ports::{
-        authentication::AccountPort,
-        email::EmailPort,
-        moderation::ModerationRepository,
-        transaction::{RepoError, TransactionManager},
+        authentication::AccountPort, email::EmailPort, moderation::ModerationRepository,
+        transaction::TransactionManager,
     },
 };
 use tak_domain::{
@@ -16,52 +15,50 @@ use tak_domain::{
         UserRole,
     },
 };
+use terrors::OneOf;
 
 #[async_trait::async_trait]
 pub trait ModerationUseCase {
-    async fn get_moderation(&self, user_id: UserId) -> Result<Moderation, ModerationError>;
+    async fn get_moderation(
+        &self,
+        user_id: UserId,
+    ) -> AppResult<Moderation, (UserNotFound, InternalError)>;
     async fn ban_player(
         &self,
         user_id: UserId,
         target_user_id: UserId,
         reason: &str,
-    ) -> Result<(), ModerationError>;
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)>;
     async fn unban_player(
         &self,
         user_id: UserId,
         target_user_id: UserId,
-    ) -> Result<(), ModerationError>;
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)>;
     async fn silence_player(
         &self,
         user_id: UserId,
         target_user_id: UserId,
-    ) -> Result<(), ModerationError>;
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)>;
     async fn unsilence_player(
         &self,
         user_id: UserId,
         target_user_id: UserId,
-    ) -> Result<(), ModerationError>;
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)>;
     async fn set_moderator(
         &self,
         user_id: UserId,
         target_user_id: UserId,
-    ) -> Result<(), ModerationError>;
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)>;
     async fn set_user(
         &self,
         user_id: UserId,
         target_user_id: UserId,
-    ) -> Result<(), ModerationError>;
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)>;
     async fn set_admin(
         &self,
         user_id: UserId,
         target_user_id: UserId,
-    ) -> Result<(), ModerationError>;
-}
-
-pub enum ModerationError {
-    UserNotFound,
-    InsufficientPermissions,
-    Internal,
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)>;
 }
 
 pub struct ModerationUseCaseImpl<Ports: PortsCollection, E: EmailPort, A: AccountPort> {
@@ -90,54 +87,34 @@ impl<
         target_user_id: UserId,
         policy: impl PermissionPolicy,
         task: impl FnOnce(&mut Moderation),
-    ) -> Result<(), ModerationError> {
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)> {
         let ctx = self
             .ports
             .transaction_manager()
             .transaction()
             .await
-            .map_err(|RepoError(e)| {
-                tracing::error!("Failed to start transaction: {:?}", e);
-                ModerationError::Internal
-            })?;
-        let executing_account = match self
+            .map_err(OneOf::broaden)?;
+        let Some(executing_account) = self
             .ports
             .moderation_repository()
             .get_moderation(&ctx, user_id)
             .await
-        {
-            Ok(Some(account)) => account,
-            Ok(None) => {
-                return Err(ModerationError::UserNotFound);
-            }
-            Err(RepoError(e)) => {
-                tracing::error!("Failed to retrieve account for user {}: {}", user_id, e);
-                return Err(ModerationError::Internal);
-            }
+            .map_err(OneOf::broaden)?
+        else {
+            return Err(OneOf::new(UserNotFound));
         };
-        let mut target_account = match self
+        let Some(mut target_account) = self
             .ports
             .moderation_repository()
             .get_moderation(&ctx, target_user_id)
             .await
-        {
-            Ok(Some(account)) => account,
-            Ok(None) => {
-                tracing::error!("Target user {} not found", target_user_id);
-                return Err(ModerationError::UserNotFound);
-            }
-            Err(RepoError(e)) => {
-                tracing::error!(
-                    "Failed to retrieve account for user {}: {}",
-                    target_user_id,
-                    e
-                );
-                return Err(ModerationError::Internal);
-            }
+            .map_err(OneOf::broaden)?
+        else {
+            return Err(OneOf::new(UserNotFound));
         };
 
         if !policy.has_permissions(&executing_account, &target_account) {
-            return Err(ModerationError::InsufficientPermissions);
+            return Err(OneOf::new(InsufficientPermissions));
         }
 
         task(&mut target_account);
@@ -146,23 +123,13 @@ impl<
             .moderation_repository()
             .set_moderation(&ctx, target_user_id, target_account)
             .await
-            .map_err(|RepoError(e)| {
-                tracing::error!(
-                    "Failed to update moderation for account {}: {}",
-                    target_user_id,
-                    e
-                );
-                ModerationError::Internal
-            })?;
+            .map_err(OneOf::broaden)?;
 
         self.ports
             .transaction_manager()
             .commit(ctx)
             .await
-            .map_err(|RepoError(e)| {
-                tracing::error!("Failed to commit transaction: {:?}", e);
-                ModerationError::Internal
-            })?;
+            .map_err(OneOf::broaden)?;
         Ok(())
     }
 
@@ -171,7 +138,7 @@ impl<
         user_id: UserId,
         target_user_id: UserId,
         is_banned: bool,
-    ) -> Result<(), ModerationError> {
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)> {
         self.do_moderation(user_id, target_user_id, AdminUserPolicy, |target_account| {
             target_account.set_banned(is_banned);
         })
@@ -183,7 +150,7 @@ impl<
         user_id: UserId,
         target_user_id: UserId,
         is_silenced: bool,
-    ) -> Result<(), ModerationError> {
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)> {
         self.do_moderation(
             user_id,
             target_user_id,
@@ -200,7 +167,7 @@ impl<
         user_id: UserId,
         target_user_id: UserId,
         role: UserRole,
-    ) -> Result<(), ModerationError> {
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)> {
         self.do_moderation(
             user_id,
             target_user_id,
@@ -220,25 +187,21 @@ impl<
     A: AccountPort + Send + Sync + 'static,
 > ModerationUseCase for ModerationUseCaseImpl<Ports, E, A>
 {
-    async fn get_moderation(&self, user_id: UserId) -> Result<Moderation, ModerationError> {
+    async fn get_moderation(
+        &self,
+        user_id: UserId,
+    ) -> AppResult<Moderation, (UserNotFound, InternalError)> {
         let ctx = self.ports.transaction_manager().simple();
-        match self
+        let Some(moderation) = self
             .ports
             .moderation_repository()
             .get_moderation(&ctx, user_id)
             .await
-        {
-            Ok(Some(moderation)) => Ok(moderation),
-            Ok(None) => Err(ModerationError::UserNotFound),
-            Err(RepoError(e)) => {
-                tracing::error!(
-                    "Failed to retrieve moderation for user_id: {}: {:?}",
-                    user_id,
-                    e
-                );
-                Err(ModerationError::Internal)
-            }
-        }
+            .map_err(OneOf::broaden)?
+        else {
+            return Err(OneOf::new(UserNotFound));
+        };
+        Ok(moderation)
     }
 
     async fn ban_player(
@@ -246,21 +209,17 @@ impl<
         user_id: UserId,
         target_user_id: UserId,
         reason: &str,
-    ) -> Result<(), ModerationError> {
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)> {
         self.set_player_banned(user_id, target_user_id, true)
             .await?;
 
-        let target_account_info = match self
+        let Some(target_account_info) = self
             .account_info_service
             .get_account_info(target_user_id)
             .await
-        {
-            Ok(Some(info)) => info,
-            Ok(None) => return Err(ModerationError::Internal),
-            Err(_) => {
-                tracing::error!("Failed to get account info for user_id: {}", target_user_id);
-                return Err(ModerationError::Internal);
-            }
+            .map_err(OneOf::broaden)?
+        else {
+            return Err(OneOf::new(UserNotFound));
         };
 
         if let Some(email) = &target_account_info.email {
@@ -289,7 +248,7 @@ impl<
         &self,
         user_id: UserId,
         target_user_id: UserId,
-    ) -> Result<(), ModerationError> {
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)> {
         self.set_player_banned(user_id, target_user_id, false)
             .await?;
         Ok(())
@@ -299,7 +258,7 @@ impl<
         &self,
         user_id: UserId,
         target_user_id: UserId,
-    ) -> Result<(), ModerationError> {
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)> {
         self.set_player_silenced(user_id, target_user_id, true)
             .await
     }
@@ -308,7 +267,7 @@ impl<
         &self,
         user_id: UserId,
         target_user_id: UserId,
-    ) -> Result<(), ModerationError> {
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)> {
         self.set_player_silenced(user_id, target_user_id, false)
             .await
     }
@@ -317,7 +276,7 @@ impl<
         &self,
         user_id: UserId,
         target_user_id: UserId,
-    ) -> Result<(), ModerationError> {
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)> {
         self.set_role(user_id, target_user_id, UserRole::Moderator)
             .await
     }
@@ -326,7 +285,7 @@ impl<
         &self,
         user_id: UserId,
         target_user_id: UserId,
-    ) -> Result<(), ModerationError> {
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)> {
         self.set_role(user_id, target_user_id, UserRole::User).await
     }
 
@@ -334,7 +293,7 @@ impl<
         &self,
         user_id: UserId,
         target_user_id: UserId,
-    ) -> Result<(), ModerationError> {
+    ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)> {
         self.set_role(user_id, target_user_id, UserRole::Admin)
             .await
     }

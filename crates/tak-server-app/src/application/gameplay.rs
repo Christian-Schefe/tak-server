@@ -7,7 +7,7 @@ use crate::{
     PortsCollection,
     errors::{
         AppResult, GameCantAbort, GameNotFound, GameNotOngoing, GameRequestNotFound, InternalError,
-        InvalidGameAction, NotAPlayerInGame,
+        InvalidGameAction, UnexpectedPlayer,
     },
     ports::{
         PaginatedResponse,
@@ -68,7 +68,7 @@ pub trait GameplayUseCase {
             InvalidGameAction,
             GameNotFound,
             GameNotOngoing,
-            NotAPlayerInGame,
+            UnexpectedPlayer,
             InternalError,
         ),
     >;
@@ -80,7 +80,7 @@ pub trait GameplayUseCase {
     ) -> AppResult<
         (),
         (
-            NotAPlayerInGame,
+            UnexpectedPlayer,
             GameNotFound,
             GameNotOngoing,
             InternalError,
@@ -95,7 +95,7 @@ pub trait GameplayUseCase {
         (),
         (
             GameRequestNotFound,
-            NotAPlayerInGame,
+            UnexpectedPlayer,
             GameNotFound,
             GameNotOngoing,
             InternalError,
@@ -108,7 +108,7 @@ pub trait GameplayUseCase {
     ) -> AppResult<
         (),
         (
-            NotAPlayerInGame,
+            UnexpectedPlayer,
             GameNotFound,
             GameNotOngoing,
             InternalError,
@@ -122,7 +122,7 @@ pub trait GameplayUseCase {
         (),
         (
             GameCantAbort,
-            NotAPlayerInGame,
+            UnexpectedPlayer,
             GameNotFound,
             GameNotOngoing,
             InternalError,
@@ -135,7 +135,7 @@ pub trait GameplayUseCase {
     ) -> AppResult<
         ObserveOutcome,
         (
-            NotAPlayerInGame,
+            UnexpectedPlayer,
             GameNotFound,
             GameNotOngoing,
             InternalError,
@@ -256,7 +256,7 @@ impl<
             InvalidGameAction,
             GameNotFound,
             GameNotOngoing,
-            NotAPlayerInGame,
+            UnexpectedPlayer,
             InternalError,
         ),
     > {
@@ -270,7 +270,7 @@ impl<
         self.finalize_game_workflow
             .modify_game(game_id, |game, metadata| {
                 let Some(player) = metadata.get_player(user_id) else {
-                    return Err(OneOf::new(NotAPlayerInGame));
+                    return Err(OneOf::new(UnexpectedPlayer));
                 };
                 if let Err(e) = game.do_action(player, action, now) {
                     match e {
@@ -299,7 +299,7 @@ impl<
     ) -> AppResult<
         (),
         (
-            NotAPlayerInGame,
+            UnexpectedPlayer,
             GameNotFound,
             GameNotOngoing,
             InternalError,
@@ -310,7 +310,7 @@ impl<
         self.finalize_game_workflow
             .modify_game(game_id, |game, metadata| {
                 let Some(player) = metadata.get_player(user_id) else {
-                    return Err(OneOf::new(NotAPlayerInGame));
+                    return Err(OneOf::new(UnexpectedPlayer));
                 };
                 match game.set_request(player, request.clone(), now) {
                     Err(GameSetRequestError::Timeout) => Ok(()),
@@ -355,7 +355,7 @@ impl<
         (),
         (
             GameRequestNotFound,
-            NotAPlayerInGame,
+            UnexpectedPlayer,
             GameNotFound,
             GameNotOngoing,
             InternalError,
@@ -372,7 +372,7 @@ impl<
         self.finalize_game_workflow
             .modify_game(game_id, |game, metadata| {
                 let Some(player) = metadata.get_player(user_id) else {
-                    return Err(OneOf::new(NotAPlayerInGame));
+                    return Err(OneOf::new(UnexpectedPlayer));
                 };
                 let opponent_id = metadata.get_user_id(player.opponent());
                 match request_type {
@@ -474,7 +474,7 @@ impl<
     ) -> AppResult<
         (),
         (
-            NotAPlayerInGame,
+            UnexpectedPlayer,
             GameNotFound,
             GameNotOngoing,
             InternalError,
@@ -484,7 +484,7 @@ impl<
         self.finalize_game_workflow
             .modify_game(game_id, |game, metadata| {
                 let Some(player) = metadata.get_player(user_id) else {
-                    return Err(OneOf::new(NotAPlayerInGame));
+                    return Err(OneOf::new(UnexpectedPlayer));
                 };
                 match game.resign(player, now) {
                     Err(GameResignError::Timeout) => Ok(()),
@@ -504,7 +504,7 @@ impl<
         (),
         (
             GameCantAbort,
-            NotAPlayerInGame,
+            UnexpectedPlayer,
             GameNotFound,
             GameNotOngoing,
             InternalError,
@@ -514,7 +514,7 @@ impl<
         self.finalize_game_workflow
             .modify_game(game_id, |game, metadata| {
                 let Some(_) = metadata.get_player(user_id) else {
-                    return Err(OneOf::new(NotAPlayerInGame));
+                    return Err(OneOf::new(UnexpectedPlayer));
                 };
                 match game.abort(now) {
                     Err(GameAbortError::Timeout) => Ok(()),
@@ -536,7 +536,7 @@ impl<
     ) -> AppResult<
         ObserveOutcome,
         (
-            NotAPlayerInGame,
+            UnexpectedPlayer,
             GameNotFound,
             GameNotOngoing,
             InternalError,
@@ -563,7 +563,7 @@ impl<
                             user_id,
                             game_id
                         );
-                        return Err(OneOf::new(NotAPlayerInGame));
+                        return Err(OneOf::new(UnexpectedPlayer));
                     };
                     match game.check_disconnect_timeout(player, disconnected_duration, now) {
                         Err(GameCheckTimeoutError::Timeout) => Ok(()),
