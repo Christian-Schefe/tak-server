@@ -39,16 +39,13 @@ impl<Ports: PortsCollection + Send + Sync + 'static, A: AccountPort + Send + Syn
         ctx: &Ports::TrCtx,
         user_id: UserId,
     ) -> AppResult<Option<PlayerSnapshot>, (InternalError,)> {
-        let username = match self.account_info_service.get_account_info(user_id).await {
-            Ok(Some(info)) => info.username,
-            Ok(None) => return Ok(None),
-            Err(_) => {
-                tracing::error!(
-                    "Failed to retrieve account for player {}: Repository error",
-                    user_id.to_string(),
-                );
-                return Err(OneOf::new(InternalError));
-            }
+        let Some(account) = self
+            .account_info_service
+            .get_account_info(user_id)
+            .await
+            .map_err(OneOf::broaden)?
+        else {
+            return Ok(None);
         };
         let current_rating = match self
             .ports
@@ -61,6 +58,10 @@ impl<Ports: PortsCollection + Send + Sync + 'static, A: AccountPort + Send + Syn
             None => None,
         };
 
-        Ok(Some(PlayerSnapshot::new(user_id, username, current_rating)))
+        Ok(Some(PlayerSnapshot::new(
+            user_id,
+            account.username,
+            current_rating,
+        )))
     }
 }

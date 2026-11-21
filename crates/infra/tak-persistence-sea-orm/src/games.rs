@@ -10,10 +10,14 @@ use tak_domain::{
     game_record::{GameMetadata, GameRatingInfo, GameRecord, PlayerSnapshot},
 };
 use tak_persistence_sea_orm_entities::game;
-use tak_server_app::ports::{
-    PaginatedResponse, SortOrder,
-    game::{DateSelector, GameIdSelector, GamePlayerFilter, GameQuery, GameRepository, GameSortBy},
-    transaction::RepoError,
+use tak_server_app::{
+    errors::{AppResult, InternalError, OneOf},
+    ports::{
+        PaginatedResponse, SortOrder,
+        game::{
+            DateSelector, GameIdSelector, GamePlayerFilter, GameQuery, GameRepository, GameSortBy,
+        },
+    },
 };
 
 use crate::{game_settings_from_json, game_settings_to_json, transaction::RepositoryContext};
@@ -75,13 +79,10 @@ impl GameRepositoryImpl {
             },
         ))
     }
-    fn game_to_model(
-        game_id: Option<GameId>,
-        record: &GameRecord,
-    ) -> Result<game::ActiveModel, String> {
+    fn game_to_model(game_id: Option<GameId>, record: &GameRecord) -> game::ActiveModel {
         let result = record.result.map(|f| game_result_to_string(f));
 
-        Ok(game::ActiveModel {
+        game::ActiveModel {
             id: game_id.map_or(Default::default(), |id| Set(id.0)),
 
             date: Set(record.metadata.date),
@@ -103,7 +104,7 @@ impl GameRepositoryImpl {
                 .map(|info| info.rating_change_black)),
             game_settings: Set(game_settings_to_json(&record.metadata.settings)),
             match_id: Set(record.metadata.match_id.map(|id| id.0)),
-        })
+        }
     }
 }
 
@@ -113,15 +114,20 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         game_id: GameId,
-    ) -> Result<Option<GameRecord>, RepoError> {
+    ) -> AppResult<Option<GameRecord>, (InternalError,)> {
         let model = game::Entity::find_by_id(game_id.0)
             .one(ctx)
             .await
-            .map_err(|e| RepoError(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!("Failed to retrieve game: {}", e);
+                OneOf::new(InternalError)
+            })?;
 
         if let Some(model) = model {
-            let (_, game) = Self::model_to_game(model)
-                .map_err(|e| RepoError(format!("Failed to convert game model to record: {}", e)))?;
+            let (_, game) = Self::model_to_game(model).map_err(|e| {
+                tracing::error!("Failed to convert game model to record: {}", e);
+                OneOf::new(InternalError)
+            })?;
             Ok(Some(game))
         } else {
             Ok(None)
@@ -131,13 +137,12 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         game: GameRecord,
-    ) -> Result<GameId, RepoError> {
-        let model = Self::game_to_model(None, &game)
-            .map_err(|e| RepoError(format!("Failed to convert game record to model: {}", e)))?;
-        let res = game::Entity::insert(model)
-            .exec(ctx)
-            .await
-            .map_err(|e| RepoError(e.to_string()))?;
+    ) -> AppResult<GameId, (InternalError,)> {
+        let model = Self::game_to_model(None, &game);
+        let res = game::Entity::insert(model).exec(ctx).await.map_err(|e| {
+            tracing::error!("Failed to insert game: {}", e);
+            OneOf::new(InternalError)
+        })?;
         let game_id = GameId(res.last_insert_id);
         Ok(game_id)
     }
@@ -146,29 +151,33 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
         ctx: &RepositoryContext,
         game_id: GameId,
         game: GameRecord,
-    ) -> Result<(), RepoError> {
-        let model = Self::game_to_model(Some(game_id), &game)
-            .map_err(|e| RepoError(format!("Failed to convert game record to model: {}", e)))?;
-        game::Entity::update(model)
-            .exec(ctx)
-            .await
-            .map_err(|e| RepoError(e.to_string()))?;
+    ) -> AppResult<(), (InternalError,)> {
+        let model = Self::game_to_model(Some(game_id), &game);
+        game::Entity::update(model).exec(ctx).await.map_err(|e| {
+            tracing::error!("Failed to update game: {}", e);
+            OneOf::new(InternalError)
+        })?;
         Ok(())
     }
     async fn get_ongoing_games(
         &self,
         ctx: &RepositoryContext,
-    ) -> Result<Vec<(GameId, GameRecord)>, RepoError> {
+    ) -> AppResult<Vec<(GameId, GameRecord)>, (InternalError,)> {
         let models = game::Entity::find()
             .filter(game::Column::Result.is_null())
             .all(ctx)
             .await
-            .map_err(|e| RepoError(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!("Failed to retrieve ongoing games: {}", e);
+                OneOf::new(InternalError)
+            })?;
 
         let mut results = Vec::new();
         for model in models {
-            let (game_id, game) = Self::model_to_game(model)
-                .map_err(|e| RepoError(format!("Failed to convert game model to record: {}", e)))?;
+            let (game_id, game) = Self::model_to_game(model).map_err(|e| {
+                tracing::error!("Failed to convert game model to record: {}", e);
+                OneOf::new(InternalError)
+            })?;
             results.push((game_id, game));
         }
         Ok(results)
@@ -177,7 +186,7 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         player_id: UserId,
-    ) -> Result<Vec<(GameId, GameRecord)>, RepoError> {
+    ) -> AppResult<Vec<(GameId, GameRecord)>, (InternalError,)> {
         let models = game::Entity::find()
             .filter(
                 game::Column::Result.is_null().and(
@@ -188,12 +197,17 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
             )
             .all(ctx)
             .await
-            .map_err(|e| RepoError(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!("Failed to retrieve ongoing games by player: {}", e);
+                OneOf::new(InternalError)
+            })?;
 
         let mut results = Vec::new();
         for model in models {
-            let (game_id, game) = Self::model_to_game(model)
-                .map_err(|e| RepoError(format!("Failed to convert game model to record: {}", e)))?;
+            let (game_id, game) = Self::model_to_game(model).map_err(|e| {
+                tracing::error!("Failed to convert game model to record: {}", e);
+                OneOf::new(InternalError)
+            })?;
             results.push((game_id, game));
         }
         Ok(results)
@@ -202,7 +216,7 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         filter: GameQuery,
-    ) -> Result<PaginatedResponse<(GameId, GameRecord)>, RepoError> {
+    ) -> AppResult<PaginatedResponse<(GameId, GameRecord)>, (InternalError,)> {
         let mut query = game::Entity::find();
         if let Some(game_id_selector) = filter.id_selector {
             query = match game_id_selector {
@@ -292,11 +306,10 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
             query = query.filter(game::Column::Result.is_in(result_strings));
         }
 
-        let total_count: u64 = query
-            .clone()
-            .count(ctx)
-            .await
-            .map_err(|e| RepoError(e.to_string()))?;
+        let total_count: u64 = query.clone().count(ctx).await.map_err(|e| {
+            tracing::error!("Failed to count games: {}", e);
+            OneOf::new(InternalError)
+        })?;
 
         if let Some((sort_order, sort_by)) = filter.sort {
             query = match (sort_by, sort_order) {
@@ -318,12 +331,17 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
             query = query.limit(limit as u64);
         }
 
-        let models = query.all(ctx).await.map_err(|e| RepoError(e.to_string()))?;
+        let models = query.all(ctx).await.map_err(|e| {
+            tracing::error!("Failed to retrieve games: {}", e);
+            OneOf::new(InternalError)
+        })?;
 
         let mut results = Vec::new();
         for model in models {
-            let game_record = Self::model_to_game(model)
-                .map_err(|e| RepoError(format!("Failed to convert game model to record: {}", e)))?;
+            let game_record = Self::model_to_game(model).map_err(|e| {
+                tracing::error!("Failed to convert game model to record: {}", e);
+                OneOf::new(InternalError)
+            })?;
             results.push(game_record);
         }
 
@@ -337,17 +355,22 @@ impl GameRepository<RepositoryContext> for GameRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         match_id: MatchId,
-    ) -> Result<Vec<(GameId, GameRecord)>, RepoError> {
+    ) -> AppResult<Vec<(GameId, GameRecord)>, (InternalError,)> {
         let models = game::Entity::find()
             .filter(game::Column::MatchId.eq(match_id.0))
             .all(ctx)
             .await
-            .map_err(|e| RepoError(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!("Failed to retrieve games of match {}: {}", match_id.0, e);
+                OneOf::new(InternalError)
+            })?;
 
         let mut results = Vec::new();
         for model in models {
-            let game_record = Self::model_to_game(model)
-                .map_err(|e| RepoError(format!("Failed to convert game model to record: {}", e)))?;
+            let game_record = Self::model_to_game(model).map_err(|e| {
+                tracing::error!("Failed to convert game model to record: {}", e);
+                OneOf::new(InternalError)
+            })?;
             results.push(game_record);
         }
 

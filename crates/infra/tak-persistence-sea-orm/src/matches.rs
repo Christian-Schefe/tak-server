@@ -1,21 +1,21 @@
 use crate::transaction::RepositoryContext;
 use crate::{
     match_settings_from_json, match_settings_to_json, match_status_from_json, match_status_to_json,
+    tak_player_from_json, tak_player_to_json,
 };
 use sea_orm::ActiveValue::{NotSet, Set};
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
-use tak_core::TakPlayer;
 use tak_domain::matches::{Match, MatchPlayer, MatchTournamentInfo};
 use tak_domain::{MatchId, TournamentId, UserId};
 use tak_persistence_sea_orm_entities::matches;
+use tak_server_app::errors::{AppResult, InternalError, MatchNotFound, OneOf};
 use tak_server_app::ports::matches::MatchRepository;
-use tak_server_app::ports::transaction::RepoError;
 
 pub struct MatchRepositoryImpl;
 
 impl MatchRepositoryImpl {
-    fn model_to_match(model: matches::Model) -> Result<(MatchId, Match), String> {
-        Ok((
+    fn model_to_match(model: matches::Model) -> (MatchId, Match) {
+        (
             MatchId(model.match_id),
             Match {
                 player1: MatchPlayer {
@@ -26,14 +26,7 @@ impl MatchRepositoryImpl {
                     user_id: UserId(model.player2_id),
                     score: model.score_player2 as u32,
                 },
-                initial_color: match model.initial_color.as_str() {
-                    "white" => Ok(TakPlayer::White),
-                    "black" => Ok(TakPlayer::Black),
-                    _ => Err(format!(
-                        "Invalid initial color in database: {}",
-                        model.initial_color
-                    )),
-                }?,
+                initial_color: tak_player_from_json(&model.initial_color),
                 settings: match_settings_from_json(&model.settings),
                 status: match_status_from_json(&model.status),
                 games_played: model.games_played as u32,
@@ -50,21 +43,15 @@ impl MatchRepositoryImpl {
                     None
                 },
             },
-        ))
+        )
     }
 
-    fn match_to_model(
-        match_id: Option<MatchId>,
-        match_entry: &Match,
-    ) -> Result<matches::ActiveModel, String> {
-        Ok(matches::ActiveModel {
+    fn match_to_model(match_id: Option<MatchId>, match_entry: &Match) -> matches::ActiveModel {
+        matches::ActiveModel {
             match_id: match_id.map(|id| Set(id.0)).unwrap_or(NotSet),
             player1_id: Set(match_entry.player1.user_id.0),
             player2_id: Set(match_entry.player2.user_id.0),
-            initial_color: Set(match match_entry.initial_color {
-                TakPlayer::White => "white".to_string(),
-                TakPlayer::Black => "black".to_string(),
-            }),
+            initial_color: Set(tak_player_to_json(&match_entry.initial_color)),
             settings: Set(match_settings_to_json(&match_entry.settings)),
             status: Set(match_status_to_json(&match_entry.status)),
             games_played: Set(match_entry.games_played as i32),
@@ -82,7 +69,7 @@ impl MatchRepositoryImpl {
                 .tournament_info
                 .as_ref()
                 .map(|info| info.round_match_number as i64)),
-        })
+        }
     }
 }
 
@@ -92,15 +79,14 @@ impl MatchRepository<RepositoryContext> for MatchRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         new_match: Match,
-    ) -> Result<MatchId, RepoError> {
-        let active_model = Self::match_to_model(None, &new_match)
-            .map_err(|e| RepoError(format!("Failed to convert match to model: {}", e)))?;
+    ) -> AppResult<MatchId, (InternalError,)> {
+        let active_model = Self::match_to_model(None, &new_match);
         match matches::Entity::insert(active_model).exec(ctx).await {
             Ok(inserted) => Ok(MatchId(inserted.last_insert_id)),
-            Err(e) => Err(RepoError(format!(
-                "Failed to insert match into database: {}",
-                e
-            ))),
+            Err(e) => {
+                tracing::error!("Failed to create match: {}", e);
+                Err(OneOf::new(InternalError))
+            }
         }
     }
 
@@ -108,17 +94,19 @@ impl MatchRepository<RepositoryContext> for MatchRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         match_id: MatchId,
-    ) -> Result<Option<Match>, RepoError> {
-        match matches::Entity::find_by_id(match_id.0).one(ctx).await {
-            Ok(Some(model)) => Self::model_to_match(model)
-                .map_err(|e| RepoError(format!("Failed to convert model to match: {}", e)))
-                .map(|(_, match_entry)| Some(match_entry)),
-            Ok(None) => Ok(None),
-            Err(e) => Err(RepoError(format!(
-                "Failed to query match from database: {}",
-                e
-            ))),
-        }
+    ) -> AppResult<Option<Match>, (InternalError,)> {
+        let Some(model) = matches::Entity::find_by_id(match_id.0)
+            .one(ctx)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to retrieve match {}: {}", match_id.0, e);
+                OneOf::new(InternalError)
+            })?
+        else {
+            return Ok(None);
+        };
+        let (_, match_entry) = Self::model_to_match(model);
+        Ok(Some(match_entry))
     }
 
     async fn update_match(
@@ -126,15 +114,14 @@ impl MatchRepository<RepositoryContext> for MatchRepositoryImpl {
         ctx: &RepositoryContext,
         match_id: MatchId,
         updated_match: Match,
-    ) -> Result<(), RepoError> {
-        let active_model = Self::match_to_model(Some(match_id), &updated_match)
-            .map_err(|e| RepoError(format!("Failed to convert match to model: {}", e)))?;
+    ) -> AppResult<(), (MatchNotFound, InternalError)> {
+        let active_model = Self::match_to_model(Some(match_id), &updated_match);
         match matches::Entity::update(active_model).exec(ctx).await {
             Ok(_) => Ok(()),
-            Err(e) => Err(RepoError(format!(
-                "Failed to update match in database: {}",
-                e
-            ))),
+            Err(e) => {
+                tracing::error!("Failed to update match {}: {}", match_id.0, e);
+                Err(OneOf::new(InternalError))
+            }
         }
     }
 
@@ -142,21 +129,19 @@ impl MatchRepository<RepositoryContext> for MatchRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         tournament_id: TournamentId,
-    ) -> Result<Vec<(MatchId, Match)>, RepoError> {
-        match matches::Entity::find()
+    ) -> AppResult<Vec<(MatchId, Match)>, (InternalError,)> {
+        let models = matches::Entity::find()
             .filter(matches::Column::TournamentId.eq(tournament_id.0))
             .all(ctx)
             .await
-        {
-            Ok(models) => models
-                .into_iter()
-                .map(Self::model_to_match)
-                .collect::<Result<Vec<_>, String>>()
-                .map_err(|e| RepoError(format!("Failed to convert model to match: {}", e))),
-            Err(e) => Err(RepoError(format!(
-                "Failed to query matches from database: {}",
-                e
-            ))),
-        }
+            .map_err(|e| {
+                tracing::error!(
+                    "Failed to retrieve matches of tournament {}: {}",
+                    tournament_id.0,
+                    e
+                );
+                OneOf::new(InternalError)
+            })?;
+        Ok(models.into_iter().map(Self::model_to_match).collect())
     }
 }

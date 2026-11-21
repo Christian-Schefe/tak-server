@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     PortsCollection,
     application::gameplay::ObserveOutcome,
-    errors::{AppResult, GameNotFound, InternalError},
+    errors::{AppResult, GameNotFound, GameNotOngoing, InternalError},
     ports::{game::GameRepository, transaction::TransactionManager},
     workflow::lifecycle::LifecycleGameWorkflow,
 };
@@ -51,7 +51,7 @@ impl<
         &self,
         user_id: UserId,
         disconnected_at: Instant,
-    ) -> AppResult<ObserveOutcome, (GameNotFound, InternalError)> {
+    ) -> AppResult<ObserveOutcome, (GameNotFound, GameNotOngoing, InternalError)> {
         let now = SystemTime::now();
         let disconnected_duration = Instant::now().saturating_duration_since(disconnected_at);
         let ctx = self.ports.transaction_manager().simple();
@@ -65,7 +65,7 @@ impl<
         let mut wait_duration = None;
 
         for (game_id, record) in games {
-            match self
+            let _ = self
                 .finalize_game_workflow
                 .modify_game(game_id, |game, _| {
                     let Some(player) = record.metadata.get_player(user_id) else {
@@ -91,17 +91,7 @@ impl<
                         },
                     }
                 })
-                .await
-            {
-                Ok(Ok(())) => {}
-                Ok(Err(())) => {}
-                Err(e) => {
-                    return match e.narrow() {
-                        Ok(InternalError) => Err(OneOf::new(InternalError)),
-                        Err(_) => Err(OneOf::new(GameNotFound)),
-                    };
-                }
-            }
+                .await?;
         }
 
         match wait_duration {

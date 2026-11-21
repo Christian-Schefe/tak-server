@@ -1,6 +1,6 @@
 use sea_orm::entity::prelude::*;
 
-use crate::{JsonMatchSettings, JsonMatchStatus};
+use crate::{JsonMatchSettings, JsonMatchStatus, JsonTakPlayer};
 
 #[sea_orm::model]
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
@@ -10,7 +10,7 @@ pub struct Model {
     pub match_id: i64,
     pub player1_id: Uuid,
     pub player2_id: Uuid,
-    pub initial_color: String,
+    pub initial_color: JsonTakPlayer,
     pub settings: JsonMatchSettings,
     pub status: JsonMatchStatus,
     pub games_played: i32,

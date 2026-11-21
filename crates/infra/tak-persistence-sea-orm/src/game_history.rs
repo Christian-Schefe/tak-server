@@ -4,7 +4,10 @@ use sea_orm::{
 };
 use tak_domain::{GameId, game::GameEvent};
 use tak_persistence_sea_orm_entities::game_history;
-use tak_server_app::ports::{game::GameHistoryRepository, transaction::RepoError};
+use tak_server_app::{
+    errors::{AppResult, InternalError, OneOf},
+    ports::game::GameHistoryRepository,
+};
 
 use crate::{game_event_from_json, game_event_to_json, transaction::RepositoryContext};
 
@@ -31,7 +34,7 @@ impl GameHistoryRepository<RepositoryContext> for GameHistoryRepositoryImpl {
         ctx: &RepositoryContext,
         game_id: GameId,
         events: Vec<GameEvent>,
-    ) -> Result<(), RepoError> {
+    ) -> AppResult<(), (InternalError,)> {
         let models: Vec<_> = events
             .into_iter()
             .map(|event| Self::event_to_model(game_id, &event))
@@ -39,7 +42,10 @@ impl GameHistoryRepository<RepositoryContext> for GameHistoryRepositoryImpl {
         game_history::Entity::insert_many(models)
             .exec(ctx)
             .await
-            .map_err(|e| RepoError(format!("Failed to insert game event: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!("Failed to insert game event: {}", e);
+                OneOf::new(InternalError)
+            })?;
 
         Ok(())
     }
@@ -48,18 +54,23 @@ impl GameHistoryRepository<RepositoryContext> for GameHistoryRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         game_id: GameId,
-    ) -> Result<Vec<GameEvent>, RepoError> {
+    ) -> AppResult<Vec<GameEvent>, (InternalError,)> {
         let models = game_history::Entity::find()
             .filter(game_history::Column::GameId.eq(game_id.0))
             .order_by_id_asc()
             .all(ctx)
             .await
-            .map_err(|e| RepoError(format!("Failed to fetch game events: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!("Failed to fetch game events: {}", e);
+                OneOf::new(InternalError)
+            })?;
         models
             .into_iter()
             .map(|model| {
-                Self::model_to_event(model)
-                    .map_err(|e| RepoError(format!("Failed to convert model to event: {}", e)))
+                Self::model_to_event(model).map_err(|e| {
+                    tracing::error!("Failed to convert model to event: {}", e);
+                    OneOf::new(InternalError)
+                })
             })
             .collect::<Result<Vec<_>, _>>()
     }

@@ -8,7 +8,10 @@ use tak_domain::{
     profile::{AccountProfile, ProfilePictureVersion},
 };
 use tak_persistence_sea_orm_entities::profile;
-use tak_server_app::ports::{profile::AccountProfileRepository, transaction::RepoError};
+use tak_server_app::{
+    errors::{AppResult, InternalError, OneOf},
+    ports::profile::AccountProfileRepository,
+};
 
 pub struct ProfileRepositoryImpl;
 
@@ -19,7 +22,7 @@ impl AccountProfileRepository<RepositoryContext> for ProfileRepositoryImpl {
         ctx: &RepositoryContext,
         user_id: UserId,
         profile_information: AccountProfile,
-    ) -> Result<(), RepoError> {
+    ) -> AppResult<(), (InternalError,)> {
         let active_model = profile::ActiveModel {
             user_id: sea_orm::ActiveValue::Set(user_id.0),
             display_name: sea_orm::ActiveValue::Set(profile_information.display_name.clone()),
@@ -42,7 +45,14 @@ impl AccountProfileRepository<RepositoryContext> for ProfileRepositoryImpl {
             )
             .exec(ctx)
             .await
-            .map_err(|e| RepoError(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!(
+                    "Failed to insert profile information for user {}: {}",
+                    user_id.0,
+                    e
+                );
+                OneOf::new(InternalError)
+            })?;
         Ok(())
     }
 
@@ -50,11 +60,18 @@ impl AccountProfileRepository<RepositoryContext> for ProfileRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         user_id: UserId,
-    ) -> Result<Option<AccountProfile>, RepoError> {
+    ) -> AppResult<Option<AccountProfile>, (InternalError,)> {
         let profile_model = profile::Entity::find_by_id(user_id.0)
             .one(ctx)
             .await
-            .map_err(|e| RepoError(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!(
+                    "Failed to retrieve profile information for user {}: {}",
+                    user_id.0,
+                    e
+                );
+                OneOf::new(InternalError)
+            })?;
 
         if let Some(model) = profile_model {
             let profile_information = AccountProfile {

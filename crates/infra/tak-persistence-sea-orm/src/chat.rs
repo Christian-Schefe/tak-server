@@ -4,7 +4,10 @@ use tak_domain::{
     chat::{ChatConversation, ChatMessage},
 };
 use tak_persistence_sea_orm_entities::chat;
-use tak_server_app::ports::{chat::ChatRepository, transaction::RepoError};
+use tak_server_app::{
+    errors::{AppResult, InternalError, OneOf},
+    ports::chat::ChatRepository,
+};
 
 use crate::transaction::RepositoryContext;
 
@@ -28,7 +31,7 @@ impl ChatRepository<RepositoryContext> for ChatRepositoryImpl {
         ctx: &RepositoryContext,
         conversation: ChatConversation,
         message: ChatMessage,
-    ) -> Result<ChatMessageId, RepoError> {
+    ) -> AppResult<ChatMessageId, (InternalError,)> {
         let new_message = chat::ActiveModel {
             conversation: Set(conversation_id_from_chat_conversation(&conversation)),
             id: Default::default(),
@@ -39,7 +42,10 @@ impl ChatRepository<RepositoryContext> for ChatRepositoryImpl {
         let inserted_message = chat::Entity::insert(new_message)
             .exec(ctx)
             .await
-            .map_err(|e| RepoError(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!("Failed to save message: {}", e);
+                OneOf::new(InternalError)
+            })?;
         Ok(ChatMessageId::new(inserted_message.last_insert_id))
     }
 
@@ -49,7 +55,7 @@ impl ChatRepository<RepositoryContext> for ChatRepositoryImpl {
         conversation: ChatConversation,
         cursor: Option<ChatMessageId>,
         limit: usize,
-    ) -> Result<Vec<(ChatMessageId, ChatMessage)>, RepoError> {
+    ) -> AppResult<Vec<(ChatMessageId, ChatMessage)>, (InternalError,)> {
         let mut query = chat::Entity::find().filter(
             chat::Column::Conversation.eq(conversation_id_from_chat_conversation(&conversation)),
         );
@@ -58,7 +64,10 @@ impl ChatRepository<RepositoryContext> for ChatRepositoryImpl {
         }
         query = query.order_by_desc(chat::Column::Date).limit(limit as u64);
 
-        let results = query.all(ctx).await.map_err(|e| RepoError(e.to_string()))?;
+        let results = query.all(ctx).await.map_err(|e| {
+            tracing::error!("Failed to get messages: {}", e);
+            OneOf::new(InternalError)
+        })?;
 
         let messages = results
             .into_iter()

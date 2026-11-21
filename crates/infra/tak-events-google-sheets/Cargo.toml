@@ -8,3 +8,4 @@ async-trait    = "0.1.89"
 google-sheets4 = "5"
 tak-domain     = { path = "../../tak-domain" }
 tak-server-app = { path = "../../tak-server-app" }
+tracing        = "0.1.44"

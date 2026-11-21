@@ -15,7 +15,7 @@ use crate::{
     PortsCollection,
     errors::{
         AppResult, InternalError, InvalidGameSettings, InvalidMatchStatus, MatchNotFound,
-        UserNotFound, SeekNotFound, UnexpectedPlayer,
+        SeekNotFound, UnexpectedPlayer, UserNotFound,
     },
     ports::{
         game::{GameRepository, GameStateRepository},

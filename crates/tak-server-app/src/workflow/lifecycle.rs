@@ -361,7 +361,14 @@ impl<
             self.handle_match(&ctx, game_id, match_id, &record.metadata, result)
                 .await
                 .map_err(|e| match OneOf::narrow(e) {
-                    Ok(MatchNotFound) => return OneOf::new(InternalError),
+                    Ok(MatchNotFound) => {
+                        tracing::error!(
+                            "Match {} not found while finalizing game {}",
+                            match_id,
+                            game_id
+                        );
+                        return OneOf::new(InternalError);
+                    }
                     Err(e) => e,
                 })?;
         } else {

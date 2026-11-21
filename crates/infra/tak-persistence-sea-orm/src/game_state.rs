@@ -1,7 +1,10 @@
 use sea_orm::{ActiveValue::Set, EntityTrait, Iterable, sea_query::OnConflict};
 use tak_domain::{GameId, game::GameState};
 use tak_persistence_sea_orm_entities::game_state;
-use tak_server_app::ports::{game::GameStateRepository, transaction::RepoError};
+use tak_server_app::{
+    errors::{AppResult, InternalError, OneOf},
+    ports::game::GameStateRepository,
+};
 
 use crate::{
     game_requests_from_json, game_requests_to_json, history_from_json, history_to_json,
@@ -38,7 +41,7 @@ impl GameStateRepository<RepositoryContext> for GameStateRepositoryImpl {
         ctx: &RepositoryContext,
         game_id: GameId,
         game: GameState,
-    ) -> Result<(), RepoError> {
+    ) -> AppResult<(), (InternalError,)> {
         let active_model = Self::game_to_model(game_id, &game);
         game_state::Entity::insert(active_model)
             .on_conflict(
@@ -52,7 +55,10 @@ impl GameStateRepository<RepositoryContext> for GameStateRepositoryImpl {
             )
             .exec(ctx)
             .await
-            .map_err(|e| RepoError(format!("Failed to insert/update game state: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!("Failed to insert or update game state: {}", e);
+                OneOf::new(InternalError)
+            })?;
         Ok(())
     }
 
@@ -60,15 +66,19 @@ impl GameStateRepository<RepositoryContext> for GameStateRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         game_id: GameId,
-    ) -> Result<Option<GameState>, RepoError> {
+    ) -> AppResult<Option<GameState>, (InternalError,)> {
         let model = game_state::Entity::find_by_id(game_id.0)
             .one(ctx)
             .await
-            .map_err(|e| RepoError(format!("Failed to retrieve game state: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!("Failed to retrieve game state: {}", e);
+                OneOf::new(InternalError)
+            })?;
         match model {
             Some(model) => {
                 let game_state = Self::model_to_game(model).map_err(|e| {
-                    RepoError(format!("Failed to convert model to game state: {}", e))
+                    tracing::error!("Failed to convert game state model to game state: {}", e);
+                    OneOf::new(InternalError)
                 })?;
                 Ok(Some(game_state))
             }
@@ -80,11 +90,14 @@ impl GameStateRepository<RepositoryContext> for GameStateRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         game_id: GameId,
-    ) -> Result<(), RepoError> {
+    ) -> AppResult<(), (InternalError,)> {
         game_state::Entity::delete_by_id(game_id.0)
             .exec(ctx)
             .await
-            .map_err(|e| RepoError(format!("Failed to delete game state: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!("Failed to delete game state: {}", e);
+                OneOf::new(InternalError)
+            })?;
         Ok(())
     }
 }

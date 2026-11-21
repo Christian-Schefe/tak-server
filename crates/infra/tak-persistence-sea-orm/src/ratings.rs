@@ -7,10 +7,12 @@ use sea_orm::{
 };
 use tak_domain::{UserId, rating::PlayerRating};
 use tak_persistence_sea_orm_entities::rating;
-use tak_server_app::ports::{
-    PaginatedResponse, SortOrder,
-    rating::{RatingQuery, RatingRepository, RatingSortBy},
-    transaction::RepoError,
+use tak_server_app::{
+    errors::{AppResult, InternalError, OneOf},
+    ports::{
+        PaginatedResponse, SortOrder,
+        rating::{RatingQuery, RatingRepository, RatingSortBy},
+    },
 };
 
 pub struct RatingRepositoryImpl;
@@ -60,11 +62,18 @@ impl RatingRepository<RepositoryContext> for RatingRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         user_id: UserId,
-    ) -> Result<Option<PlayerRating>, RepoError> {
+    ) -> AppResult<Option<PlayerRating>, (InternalError,)> {
         let rating_model = rating::Entity::find_by_id(user_id.0)
             .one(ctx)
             .await
-            .map_err(|e| RepoError(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!(
+                    "Failed to retrieve player rating for user {}: {}",
+                    user_id.0,
+                    e
+                );
+                OneOf::new(InternalError)
+            })?;
         match rating_model {
             Some(model) => Ok(Some(Self::model_to_rating(model))),
             None => Ok(None),
@@ -75,11 +84,18 @@ impl RatingRepository<RepositoryContext> for RatingRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         user_id: UserId,
-    ) -> Result<Option<(u32, PlayerRating)>, RepoError> {
+    ) -> AppResult<Option<(u32, PlayerRating)>, (InternalError,)> {
         let rating_model = rating::Entity::find_by_id(user_id.0)
             .one(ctx)
             .await
-            .map_err(|e| RepoError(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!(
+                    "Failed to retrieve player ranking for user {}: {}",
+                    user_id.0,
+                    e
+                );
+                OneOf::new(InternalError)
+            })?;
         match rating_model {
             Some(model) => {
                 let player_rating = Self::model_to_rating(model);
@@ -87,7 +103,10 @@ impl RatingRepository<RepositoryContext> for RatingRepositoryImpl {
                     .filter(rating::Column::Rating.gt(player_rating.rating))
                     .count(ctx)
                     .await
-                    .map_err(|e| RepoError(e.to_string()))?;
+                    .map_err(|e| {
+                        tracing::error!("Failed to count better ratings: {}", e);
+                        OneOf::new(InternalError)
+                    })?;
                 Ok(Some(((better_count + 1) as u32, player_rating)))
             }
             None => Ok(None),
@@ -98,14 +117,13 @@ impl RatingRepository<RepositoryContext> for RatingRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         filter: RatingQuery,
-    ) -> Result<PaginatedResponse<PlayerRating>, RepoError> {
+    ) -> AppResult<PaginatedResponse<PlayerRating>, (InternalError,)> {
         let mut query = rating::Entity::find();
 
-        let total_count = query
-            .clone()
-            .count(ctx)
-            .await
-            .map_err(|e| RepoError(e.to_string()))?;
+        let total_count = query.clone().count(ctx).await.map_err(|e| {
+            tracing::error!("Failed to count player ratings: {}", e);
+            OneOf::new(InternalError)
+        })?;
 
         if let Some((sort_order, sort_by)) = filter.sort {
             let order = match sort_order {
@@ -136,7 +154,10 @@ impl RatingRepository<RepositoryContext> for RatingRepositoryImpl {
         let items = query
             .all(ctx)
             .await
-            .map_err(|e| RepoError(e.to_string()))?
+            .map_err(|e| {
+                tracing::error!("Failed to retrieve player ratings: {}", e);
+                OneOf::new(InternalError)
+            })?
             .into_iter()
             .map(Self::model_to_rating)
             .collect::<Vec<_>>();
@@ -152,7 +173,7 @@ impl RatingRepository<RepositoryContext> for RatingRepositoryImpl {
         ctx: &RepositoryContext,
         user_id: UserId,
         rating: PlayerRating,
-    ) -> Result<(), RepoError> {
+    ) -> AppResult<(), (InternalError,)> {
         let active_model = Self::rating_to_model(user_id, &rating);
         rating::Entity::insert(active_model)
             .on_conflict(
@@ -166,7 +187,10 @@ impl RatingRepository<RepositoryContext> for RatingRepositoryImpl {
             )
             .exec(ctx)
             .await
-            .map_err(|e| RepoError(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!("Failed to set player rating for user {}: {}", user_id.0, e);
+                OneOf::new(InternalError)
+            })?;
         Ok(())
     }
 }

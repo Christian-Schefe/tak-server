@@ -1,7 +1,10 @@
 use std::str::FromStr;
 
 use lettre::{Message, SmtpTransport, Transport, message::Mailbox};
-use tak_server_app::ports::email::{EmailPort, SendEmailError};
+use tak_server_app::{
+    errors::{AppResult, InternalError, InvalidEmailAddress, OneOf},
+    ports::email::EmailPort,
+};
 
 pub struct LettreEmailAdapter {
     transport: SmtpTransport,
@@ -21,32 +24,25 @@ impl LettreEmailAdapter {
 }
 
 impl EmailPort for LettreEmailAdapter {
-    fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<(), SendEmailError> {
+    fn send_email(
+        &self,
+        to: &str,
+        subject: &str,
+        body: &str,
+    ) -> AppResult<(), (InvalidEmailAddress, InternalError)> {
         let email = Message::builder()
             .from(self.from.clone())
-            .to(Mailbox::from_str(to).map_err(|e| {
-                SendEmailError::InvalidToAddress(format!("Failed to parse address: {}", e))
-            })?)
+            .to(Mailbox::from_str(to).map_err(|_| OneOf::new(InvalidEmailAddress))?)
             .subject(subject)
             .body(body.to_string())
-            .map_err(|e| SendEmailError::SendEmailError(format!("Failed to build email: {}", e)))?;
-        self.transport
-            .send(&email)
-            .map_err(|e| SendEmailError::SendEmailError(format!("Failed to send email: {}", e)))?;
-        Ok(())
-    }
-}
-
-pub struct LogEmailAdapter;
-
-impl EmailPort for LogEmailAdapter {
-    fn send_email(&self, to: &str, subject: &str, body: &str) -> Result<(), SendEmailError> {
-        tracing::info!(
-            "Simulated sending email to: {}, subject: {}, body: {}",
-            to,
-            subject,
-            body
-        );
+            .map_err(|e| {
+                tracing::error!("Failed to build email message: {}", e);
+                OneOf::new(InternalError)
+            })?;
+        self.transport.send(&email).map_err(|e| {
+            tracing::error!("Failed to send email: {}", e);
+            OneOf::new(InternalError)
+        })?;
         Ok(())
     }
 }

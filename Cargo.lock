@@ -5188,6 +5188,7 @@ dependencies = [
  "google-sheets4",
  "tak-domain",
  "tak-server-app",
+ "tracing",
 ]
 
 [[package]]

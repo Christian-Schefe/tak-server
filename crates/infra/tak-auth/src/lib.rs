@@ -10,23 +10,26 @@ use chrono::{DateTime, Utc};
 use rand::{TryRngCore, rngs::OsRng};
 use sha2::Digest;
 use tak_domain::UserId;
-use tak_server_app::ports::{
-    authentication::{AccountInfo, AccountPort, RefreshToken},
-    transaction::RepoError,
+use tak_server_app::{
+    errors::{AppResult, EmailTaken, InternalError, InvalidCredentials, OneOf},
+    ports::authentication::{AccountInfo, AccountPort, RefreshToken},
 };
 
 mod guest;
 
 #[async_trait::async_trait]
 pub trait AccountRepository {
-    async fn create_account(&self, account: Account) -> Result<(), RepoError>;
-    async fn get_account(&self, user_id: UserId) -> Result<Option<Account>, RepoError>;
-    async fn update_account(&self, account: Account) -> Result<(), RepoError>;
+    async fn create_account(&self, account: Account) -> AppResult<(), (EmailTaken, InternalError)>;
+    async fn get_account(&self, user_id: UserId) -> AppResult<Option<Account>, (InternalError,)>;
+    async fn update_account(&self, account: Account) -> AppResult<(), (InternalError,)>;
     async fn get_account_by_username(
         &self,
         username: &str,
-    ) -> Result<Option<Account>, RepoError>;
-    async fn get_account_by_email(&self, email: &str) -> Result<Option<Account>, RepoError>;
+    ) -> AppResult<Option<Account>, (InternalError,)>;
+    async fn get_account_by_email(
+        &self,
+        email: &str,
+    ) -> AppResult<Option<Account>, (InternalError,)>;
 }
 
 pub struct Account {
@@ -60,25 +63,34 @@ impl<AR: AccountRepository> AuthService<AR> {
     }
 }
 
-async fn hash_password(argon2: &Argon2<'static>, password: &str) -> Result<String, String> {
+async fn hash_password(
+    argon2: &Argon2<'static>,
+    password: &str,
+) -> AppResult<String, (InternalError,)> {
     tokio::task::spawn_blocking({
         let argon2 = argon2.clone();
         let password = password.to_string();
         move || {
             argon2
                 .hash_password(password.as_bytes())
-                .map_err(|_| "Failed to hash password".to_string())
+                .map_err(|e| {
+                    tracing::error!("Failed to hash password: {:?}", e);
+                    OneOf::new(InternalError)
+                })
                 .map(|hash| hash.to_string())
         }
     })
     .await
-    .map_err(|_| "Failed to hash password".to_string())?
+    .map_err(|e| {
+        tracing::error!("Failed to join hash_password task: {:?}", e);
+        OneOf::new(InternalError)
+    })?
 }
 async fn verify_password(
     argon2: &Argon2<'static>,
     password: &str,
     password_hash: &str,
-) -> Result<bool, String> {
+) -> AppResult<bool, (InternalError,)> {
     tokio::task::spawn_blocking({
         let argon2 = argon2.clone();
         let password = password.to_string();
@@ -86,11 +98,17 @@ async fn verify_password(
         move || match argon2.verify_password(password.as_bytes(), password_hash.as_str()) {
             Ok(()) => Ok(true),
             Err(argon2::password_hash::Error::PasswordInvalid) => Ok(false),
-            Err(_) => Err("Failed to verify password".to_string()),
+            Err(e) => {
+                tracing::error!("Failed to verify password: {:?}", e);
+                Err(OneOf::new(InternalError))
+            }
         }
     })
     .await
-    .map_err(|_| "Failed to verify password".to_string())?
+    .map_err(|e| {
+        tracing::error!("Failed to join verify_password task: {:?}", e);
+        OneOf::new(InternalError)
+    })?
 }
 
 #[async_trait::async_trait]
@@ -103,8 +121,10 @@ where
         email: &str,
         username: &str,
         password: &str,
-    ) -> Result<UserId, String> {
-        let password_hash = hash_password(&self.argon2, password).await?;
+    ) -> AppResult<UserId, (EmailTaken, InternalError)> {
+        let password_hash = hash_password(&self.argon2, password)
+            .await
+            .map_err(OneOf::broaden)?;
         let user_id = UserId::new();
         let account = Account {
             user_id: user_id.clone(),
@@ -114,61 +134,57 @@ where
             unique_name: Some(username.to_string()),
         };
 
-        match self.account_repo.create_account(account).await {
-            Ok(()) => Ok(user_id),
-            Err(RepoError(e)) => {
-                tracing::error!("Failed to create account: {}", e);
-                Err("Failed to create account".into())
-            }
-        }
+        self.account_repo
+            .create_account(account)
+            .await
+            .map_err(OneOf::broaden)?;
+        Ok(user_id)
     }
 
     async fn login_account(
         &self,
         identifier: &str,
         password: &str,
-    ) -> Result<Option<UserId>, String> {
+    ) -> AppResult<UserId, (InvalidCredentials, InternalError)> {
         let is_email = identifier.contains('@');
         let account = match if is_email {
             self.account_repo.get_account_by_email(identifier).await
         } else {
             self.account_repo.get_account_by_username(identifier).await
-        } {
-            Ok(Some(account)) => account,
-            Ok(None) => return Ok(None),
-            Err(RepoError(e)) => {
-                tracing::error!("Failed to retrieve account {}: {}", identifier, e);
-                return Err("Failed to retrieve account".into());
-            }
+        }
+        .map_err(OneOf::broaden)?
+        {
+            Some(account) => account,
+            None => return Err(OneOf::new(InvalidCredentials)),
         };
         let Some(password_hash) = &account.password_hash else {
-            return Ok(None);
+            return Err(OneOf::new(InvalidCredentials));
         };
-        let valid = verify_password(&self.argon2, password, password_hash).await?;
-        if valid {
-            Ok(Some(account.user_id))
-        } else {
-            Ok(None)
+        if !verify_password(&self.argon2, password, password_hash)
+            .await
+            .map_err(OneOf::broaden)?
+        {
+            return Err(OneOf::new(InvalidCredentials));
         }
+        Ok(account.user_id)
     }
 
-    async fn find_account(&self, identifier: &str) -> Result<Option<UserId>, String> {
+    async fn find_account(&self, identifier: &str) -> AppResult<Option<UserId>, (InternalError,)> {
         let is_email = identifier.contains('@');
-        match if is_email {
+        let account = match if is_email {
             self.account_repo.get_account_by_email(identifier).await
         } else {
             self.account_repo.get_account_by_username(identifier).await
-        } {
-            Ok(Some(account)) => Ok(Some(account.user_id)),
-            Ok(None) => Ok(None),
-            Err(RepoError(e)) => {
-                tracing::error!("Failed to retrieve account {}: {}", identifier, e);
-                Err("Failed to retrieve account".into())
-            }
         }
+        .map_err(OneOf::broaden)?
+        {
+            Some(account) => account,
+            None => return Ok(None),
+        };
+        Ok(Some(account.user_id))
     }
 
-    async fn create_guest_account(&self) -> Result<UserId, String> {
+    async fn create_guest_account(&self) -> AppResult<UserId, (InternalError,)> {
         let user_id = UserId::new();
         let name = guest::generate_guest_name();
         let account = Account {
@@ -178,25 +194,30 @@ where
             password_hash: None,
             unique_name: None,
         };
-        match self.account_repo.create_account(account).await {
-            Ok(()) => Ok(user_id),
-            Err(RepoError(e)) => {
-                tracing::error!("Failed to create guest account: {}", e);
-                Err("Failed to create guest account".into())
-            }
-        }
+        self.account_repo
+            .create_account(account)
+            .await
+            .map_err(|_| OneOf::new(InternalError))?;
+        Ok(user_id)
     }
-    fn generate_reset_token(&self, user_id: UserId, duration: Duration) -> Result<String, String> {
+    fn generate_reset_token(
+        &self,
+        user_id: UserId,
+        duration: Duration,
+    ) -> AppResult<String, (InternalError,)> {
         let mut bytes = [0u8; 32];
-        OsRng
-            .try_fill_bytes(&mut bytes)
-            .map_err(|_| "Failed to generate reset token".to_string())?;
+        OsRng.try_fill_bytes(&mut bytes).map_err(|e| {
+            tracing::error!("Failed to generate reset token: {}", e);
+            OneOf::new(InternalError)
+        })?;
         let token = URL_SAFE_NO_PAD.encode(bytes);
         let mut registry = self.reset_token_registry.lock().unwrap();
         evict_expired_tokens(&mut registry);
         let expiry = Utc::now()
-            + chrono::Duration::from_std(duration)
-                .map_err(|_| "Failed to calculate expiry time".to_string())?;
+            + chrono::Duration::from_std(duration).map_err(|e| {
+                tracing::error!("Failed to calculate expiry time: {}", e);
+                OneOf::new(InternalError)
+            })?;
         let token_hash = sha2::Sha256::digest(token.as_bytes()).to_vec();
         registry.insert(user_id, (token_hash, expiry));
         Ok(token)
@@ -206,7 +227,7 @@ where
         user_id: UserId,
         token: &str,
         new_password: &str,
-    ) -> Result<Option<()>, String> {
+    ) -> AppResult<Option<()>, (InvalidCredentials, InternalError)> {
         {
             let mut registry = self.reset_token_registry.lock().unwrap();
             let Some((token_hash, expiry)) = registry.get(&user_id) else {
@@ -221,20 +242,23 @@ where
                 return Ok(None);
             }
         }
-        let new_password_hash = hash_password(&self.argon2, new_password).await?;
-        let mut account = match self.account_repo.get_account(user_id).await {
-            Ok(Some(account)) => account,
-            Ok(None) => return Ok(None),
-            Err(RepoError(e)) => {
-                tracing::error!("Failed to retrieve account {}: {}", user_id, e);
-                return Err("Failed to retrieve account".into());
-            }
+        let new_password_hash = hash_password(&self.argon2, new_password)
+            .await
+            .map_err(OneOf::broaden)?;
+        let mut account = match self
+            .account_repo
+            .get_account(user_id)
+            .await
+            .map_err(OneOf::broaden)?
+        {
+            Some(account) => account,
+            None => return Ok(None),
         };
         account.password_hash = Some(new_password_hash);
         self.account_repo
             .update_account(account)
             .await
-            .map_err(|_| "Failed to update account".to_string())?;
+            .map_err(OneOf::broaden)?;
         {
             let mut registry = self.reset_token_registry.lock().unwrap();
             registry.remove(&user_id);
@@ -242,69 +266,73 @@ where
         Ok(Some(()))
     }
 
-    async fn get_account_info(&self, user_id: UserId) -> Result<Option<AccountInfo>, ()> {
-        match self.account_repo.get_account(user_id).await {
-            Ok(Some(account)) => Ok(Some(AccountInfo {
+    async fn get_account_info(
+        &self,
+        user_id: UserId,
+    ) -> AppResult<Option<AccountInfo>, (InternalError,)> {
+        Ok(self
+            .account_repo
+            .get_account(user_id)
+            .await
+            .map_err(OneOf::broaden)?
+            .map(|account| AccountInfo {
                 username: account.username,
                 email: account.email,
-            })),
-            Ok(None) => Ok(None),
-            Err(RepoError(e)) => {
-                tracing::error!("Failed to retrieve account {}: {}", user_id, e);
-                Err(())
-            }
-        }
+            }))
     }
 
     fn generate_refresh_token(
         &self,
         user_id: UserId,
         duration: Duration,
-    ) -> Result<RefreshToken, String> {
+    ) -> AppResult<RefreshToken, (InternalError,)> {
         let mut registry = self.refresh_token_registry.lock().unwrap();
-        generate_refresh_token(&mut registry, user_id, duration)
+        generate_token(&mut registry, user_id, duration)
     }
     fn rotate_refresh_token(
         &self,
         user_id: UserId,
         refresh_token: &str,
         duration: Duration,
-    ) -> Result<Option<RefreshToken>, String> {
+    ) -> AppResult<RefreshToken, (InvalidCredentials, InternalError)> {
         let mut registry = self.refresh_token_registry.lock().unwrap();
         let Some((token_hash, expiry)) = registry.get(&user_id) else {
-            return Ok(None);
+            return Err(OneOf::new(InvalidCredentials));
         };
         if Utc::now() > *expiry {
             registry.remove(&user_id);
-            return Ok(None);
+            return Err(OneOf::new(InvalidCredentials));
         }
         let provided_token_hash = sha2::Sha256::digest(refresh_token.as_bytes()).to_vec();
         if provided_token_hash != *token_hash {
-            return Ok(None);
+            return Err(OneOf::new(InvalidCredentials));
         }
-        generate_refresh_token(&mut registry, user_id, duration).map(Some)
+        generate_token(&mut registry, user_id, duration).map_err(OneOf::broaden)
     }
-    fn invalidate_refresh_token(&self, user_id: UserId) -> Result<(), String> {
+    fn invalidate_refresh_token(&self, user_id: UserId) -> AppResult<(), (InternalError,)> {
         let mut registry = self.refresh_token_registry.lock().unwrap();
         registry.remove(&user_id);
         Ok(())
     }
 }
 
-fn generate_refresh_token(
+fn generate_token(
     registry: &mut HashMap<UserId, (Vec<u8>, DateTime<Utc>)>,
     user_id: UserId,
     duration: Duration,
-) -> Result<RefreshToken, String> {
+) -> AppResult<RefreshToken, (InternalError,)> {
     let mut bytes = [0u8; 32];
-    OsRng
-        .try_fill_bytes(&mut bytes)
-        .map_err(|_| "Failed to generate reset token".to_string())?;
+    OsRng.try_fill_bytes(&mut bytes).map_err(|e| {
+        tracing::error!("Failed to generate refresh token: {}", e);
+        OneOf::new(InternalError)
+    })?;
     let token = URL_SAFE_NO_PAD.encode(bytes);
     evict_expired_tokens(registry);
     let expiry = Utc::now()
-        + chrono::Duration::from_std(duration)
-            .map_err(|_| "Failed to calculate expiry time".to_string())?;
+        + chrono::Duration::from_std(duration).map_err(|e| {
+            tracing::error!("Failed to calculate expiry time: {}", e);
+            OneOf::new(InternalError)
+        })?;
     let token_hash = sha2::Sha256::digest(token.as_bytes()).to_vec();
     registry.insert(user_id, (token_hash, expiry));
     Ok(RefreshToken {

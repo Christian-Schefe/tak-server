@@ -3,8 +3,8 @@ use sea_orm::sea_query::OnConflict;
 use sea_orm::{EntityTrait, Iterable};
 use tak_domain::{UserId, stats::PlayerStats};
 use tak_persistence_sea_orm_entities::stats;
+use tak_server_app::errors::{AppResult, InternalError, OneOf};
 use tak_server_app::ports::stats::StatsRepository;
-use tak_server_app::ports::transaction::RepoError;
 
 pub struct StatsRepositoryImpl;
 
@@ -41,11 +41,18 @@ impl StatsRepository<RepositoryContext> for StatsRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         user_id: UserId,
-    ) -> Result<Option<PlayerStats>, RepoError> {
+    ) -> AppResult<Option<PlayerStats>, (InternalError,)> {
         let Some(model) = stats::Entity::find_by_id(user_id.0)
             .one(ctx)
             .await
-            .map_err(|e| RepoError(e.to_string()))?
+            .map_err(|e| {
+                tracing::error!(
+                    "Failed to retrieve player stats for user {}: {}",
+                    user_id.0,
+                    e
+                );
+                OneOf::new(InternalError)
+            })?
         else {
             return Ok(None);
         };
@@ -59,7 +66,7 @@ impl StatsRepository<RepositoryContext> for StatsRepositoryImpl {
         ctx: &RepositoryContext,
         user_id: UserId,
         stats: PlayerStats,
-    ) -> Result<(), RepoError> {
+    ) -> AppResult<(), (InternalError,)> {
         let active_model = Self::stats_to_model(user_id, &stats);
         stats::Entity::insert(active_model)
             .on_conflict(
@@ -73,7 +80,10 @@ impl StatsRepository<RepositoryContext> for StatsRepositoryImpl {
             )
             .exec(ctx)
             .await
-            .map_err(|e| RepoError(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!("Failed to set player stats for user {}: {}", user_id.0, e);
+                OneOf::new(InternalError)
+            })?;
         Ok(())
     }
 
@@ -81,10 +91,17 @@ impl StatsRepository<RepositoryContext> for StatsRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         user_id: UserId,
-    ) -> Result<(), RepoError> {
+    ) -> AppResult<(), (InternalError,)> {
         match stats::Entity::delete_by_id(user_id.0).exec(ctx).await {
             Ok(_) => Ok(()),
-            Err(e) => Err(RepoError(e.to_string())),
+            Err(e) => {
+                tracing::error!(
+                    "Failed to remove player stats for user {}: {}",
+                    user_id.0,
+                    e
+                );
+                Err(OneOf::new(InternalError))
+            }
         }
     }
 }

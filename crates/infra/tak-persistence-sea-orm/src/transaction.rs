@@ -2,7 +2,10 @@ use sea_orm::{
     ConnectionTrait, DatabaseConnection, DatabaseTransaction, DbBackend, DbErr, ExecResult,
     QueryResult, Statement, TransactionTrait,
 };
-use tak_server_app::ports::transaction::{RepoError, TransactionManager};
+use tak_server_app::{
+    errors::{AppResult, InternalError, OneOf},
+    ports::transaction::TransactionManager,
+};
 
 use crate::create_db_pool;
 
@@ -61,41 +64,43 @@ impl TransactionManager<RepositoryContext> for TransactionManagerImpl {
     fn simple(&self) -> RepositoryContext {
         RepositoryContext::Connection(self.db.clone())
     }
-    async fn transaction(&self) -> Result<RepositoryContext, RepoError> {
+    async fn transaction(&self) -> AppResult<RepositoryContext, (InternalError,)> {
         match self.db.begin().await {
             Ok(tr) => Ok(RepositoryContext::Transaction(tr)),
-            Err(e) => Err(RepoError::new(format!(
-                "Failed to start transaction: {:?}",
-                e
-            ))),
+            Err(e) => {
+                tracing::error!("Failed to start transaction: {}", e);
+                Err(OneOf::new(InternalError))
+            }
         }
     }
-    async fn commit(&self, ctx: RepositoryContext) -> Result<(), RepoError> {
+    async fn commit(&self, ctx: RepositoryContext) -> AppResult<(), (InternalError,)> {
         match ctx {
             RepositoryContext::Transaction(tr) => match tr.commit().await {
                 Ok(_) => Ok(()),
-                Err(e) => Err(RepoError::new(format!(
-                    "Failed to commit transaction: {:?}",
-                    e
-                ))),
+                Err(e) => {
+                    tracing::error!("Failed to commit transaction: {}", e);
+                    Err(OneOf::new(InternalError))
+                }
             },
-            RepositoryContext::Connection(_) => Err(RepoError::new(
-                "Cannot commit a non-transaction context".to_string(),
-            )),
+            RepositoryContext::Connection(_) => {
+                tracing::error!("Cannot commit a non-transaction context");
+                Err(OneOf::new(InternalError))
+            }
         }
     }
-    async fn rollback(&self, ctx: RepositoryContext) -> Result<(), RepoError> {
+    async fn rollback(&self, ctx: RepositoryContext) -> AppResult<(), (InternalError,)> {
         match ctx {
             RepositoryContext::Transaction(tr) => match tr.rollback().await {
                 Ok(_) => Ok(()),
-                Err(e) => Err(RepoError::new(format!(
-                    "Failed to rollback transaction: {:?}",
-                    e
-                ))),
+                Err(e) => {
+                    tracing::error!("Failed to rollback transaction: {}", e);
+                    Err(OneOf::new(InternalError))
+                }
             },
-            RepositoryContext::Connection(_) => Err(RepoError::new(
-                "Cannot rollback a non-transaction context".to_string(),
-            )),
+            RepositoryContext::Connection(_) => {
+                tracing::error!("Cannot rollback a non-transaction context");
+                Err(OneOf::new(InternalError))
+            }
         }
     }
 }

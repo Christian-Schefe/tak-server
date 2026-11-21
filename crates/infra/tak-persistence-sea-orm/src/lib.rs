@@ -9,15 +9,17 @@ use tak_core::{
     ptn::{action_from_ptn, action_to_ptn, game_result_from_string, game_result_to_string},
 };
 use tak_domain::{
+    MatchId, UserId,
     game::{GameEvent, GameEventType, GameRequests},
     matches::{MatchMode, MatchSettings, MatchStatus},
-    tournament::{TournamentFormat, TournamentStatus},
+    tournament::{TournamentFormat, TournamentRound, TournamentStatus},
 };
 use tak_persistence_sea_orm_entities::{
     JsonActionRecord, JsonAsyncTimeSettings, JsonClock, JsonGameEvent, JsonGameEventType,
     JsonGameRequests, JsonGameSettings, JsonHistory, JsonMatchMode, JsonMatchSettings,
     JsonMatchStatus, JsonRealtimeTimeExtra, JsonRealtimeTimeSettings, JsonTakOpening,
-    JsonTakPlayer, JsonTimeInfo, JsonTimeSettings, JsonTournamentFormat, JsonTournamentStatus,
+    JsonTakPlayer, JsonTimeInfo, JsonTimeSettings, JsonTournamentFormat, JsonTournamentRound,
+    JsonTournamentStatus,
 };
 use tak_persistence_sea_orm_migrations::Migrator;
 
@@ -412,5 +414,19 @@ fn tournament_status_from_json(status: &JsonTournamentStatus) -> TournamentStatu
         },
         JsonTournamentStatus::Ongoing => TournamentStatus::Ongoing,
         JsonTournamentStatus::Completed => TournamentStatus::Completed,
+    }
+}
+
+fn tournament_round_to_json(round: &TournamentRound) -> JsonTournamentRound {
+    JsonTournamentRound {
+        byes: round.byes.iter().map(|id| id.0).collect(),
+        matches: round.matches.iter().map(|id| id.0).collect(),
+    }
+}
+
+fn tournament_round_from_json(round: &JsonTournamentRound) -> TournamentRound {
+    TournamentRound {
+        byes: round.byes.iter().map(|id| UserId(*id)).collect(),
+        matches: round.matches.iter().map(|id| MatchId(*id)).collect(),
     }
 }

@@ -6,7 +6,7 @@ use tak_domain::{
     profile::{ProfilePicture, ProfilePictureFileType},
 };
 use tak_server_app::{
-    errors::{AppResult, InternalError},
+    errors::{AppResult, InternalError, OneOf},
     ports::profile::ProfilePictureRepository,
 };
 
@@ -52,30 +52,33 @@ impl ProfilePictureRepository for ProfilePictureRepositoryImpl {
         let mut bytes: Vec<u8> = Vec::new();
         image
             .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::WebP)
-            .map_err(|e| RepoError(format!("Failed to encode image: {}", e)))?;
-        tokio::fs::create_dir_all(shard_path)
-            .await
-            .map_err(|e| RepoError(format!("Failed to create shard directory: {}", e)))?;
-        tokio::fs::write(file_path, bytes)
-            .await
-            .map_err(|e| RepoError(format!("Failed to write image file: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!("Failed to encode image: {}", e);
+                OneOf::new(InternalError)
+            })?;
+        tokio::fs::create_dir_all(shard_path).await.map_err(|e| {
+            tracing::error!("Failed to create shard directory: {}", e);
+            OneOf::new(InternalError)
+        })?;
+        tokio::fs::write(file_path, bytes).await.map_err(|e| {
+            tracing::error!("Failed to write image file: {}", e);
+            OneOf::new(InternalError)
+        })?;
         Ok(())
     }
 
     async fn get_profile_picture(
         &self,
         user_id: UserId,
-    ) -> Result<Option<ProfilePicture>, RepoError> {
+    ) -> AppResult<Option<ProfilePicture>, (InternalError,)> {
         let (shard_path, file_name) = self.get_file_path(user_id);
         let file_path = shard_path.join(file_name);
         let file = match tokio::fs::File::open(&file_path).await {
             Ok(file) => file,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => {
-                return Err(RepoError(format!(
-                    "Failed to open profile picture file: {}",
-                    e
-                )));
+                tracing::error!("Failed to open profile picture file: {}", e);
+                return Err(OneOf::new(InternalError));
             }
         };
         let stream = tokio_util::io::ReaderStream::new(file);

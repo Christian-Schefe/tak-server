@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use sea_orm::{DeriveValueType, FromJsonQueryResult, sea_query::ValueTypeErr};
+use sea_orm::{DeriveValueType, FromJsonQueryResult, sea_query::ValueTypeErr, sqlx::types::uuid};
 
 pub mod account;
 pub mod chat;
@@ -28,11 +28,34 @@ pub struct JsonGameSettings {
     pub time_settings: JsonTimeSettings,
 }
 
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, DeriveValueType)]
 #[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[sea_orm(value_type = "String")]
 pub enum JsonTakPlayer {
     White,
     Black,
+}
+
+impl std::str::FromStr for JsonTakPlayer {
+    type Err = ValueTypeErr;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "white" => Ok(JsonTakPlayer::White),
+            "black" => Ok(JsonTakPlayer::Black),
+            _ => Err(ValueTypeErr),
+        }
+    }
+}
+
+impl std::fmt::Display for JsonTakPlayer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            JsonTakPlayer::White => "white",
+            JsonTakPlayer::Black => "black",
+        };
+        write!(f, "{}", s)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -216,4 +239,11 @@ pub enum JsonTournamentStatus {
     Upcoming { registration_open: bool },
     Ongoing,
     Completed,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, FromJsonQueryResult)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonTournamentRound {
+    pub byes: Vec<uuid::Uuid>,
+    pub matches: Vec<i64>,
 }

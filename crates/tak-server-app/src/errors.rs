@@ -1,5 +1,4 @@
-use terrors::OneOf;
-
+pub use terrors::OneOf;
 pub type AppResult<T, E> = Result<T, OneOf<E>>;
 
 #[derive(Copy, Debug, Clone, PartialEq)]

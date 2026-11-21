@@ -1,8 +1,8 @@
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, SqlErr};
 use tak_auth::{Account, AccountRepository};
 use tak_domain::UserId;
 use tak_persistence_sea_orm_entities::account;
-use tak_server_app::ports::transaction::RepoError;
+use tak_server_app::errors::{AppResult, EmailTaken, InternalError, OneOf};
 
 use crate::create_db_pool;
 
@@ -25,81 +25,93 @@ impl AccountRepositoryImpl {
             unique_name: sea_orm::ActiveValue::Set(account.unique_name.clone()),
         }
     }
-    fn model_to_account(&self, model: account::Model) -> Result<Account, String> {
-        Ok(Account {
+    fn model_to_account(&self, model: account::Model) -> Account {
+        Account {
             user_id: UserId(model.user_id),
             username: model.username,
             email: model.email,
             password_hash: model.password_hash,
             unique_name: model.unique_name,
-        })
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl AccountRepository for AccountRepositoryImpl {
-    async fn create_account(&self, account: Account) -> Result<(), RepoError> {
+    async fn create_account(&self, account: Account) -> AppResult<(), (EmailTaken, InternalError)> {
         let active_model = self.account_to_active_model(&account);
         account::Entity::insert(active_model)
             .exec(&self.db)
             .await
-            .map_err(|e| RepoError(e.to_string()))?;
+            .map_err(|e| match e.sql_err() {
+                Some(SqlErr::UniqueConstraintViolation(_)) => OneOf::new(EmailTaken),
+                _ => {
+                    tracing::error!("Failed to create account: {}", e);
+                    OneOf::new(InternalError)
+                }
+            })?;
         Ok(())
     }
 
-    async fn get_account(&self, user_id: UserId) -> Result<Option<Account>, RepoError> {
+    async fn get_account(&self, user_id: UserId) -> AppResult<Option<Account>, (InternalError,)> {
         let Some(model) = account::Entity::find_by_id(user_id.0)
             .one(&self.db)
             .await
-            .map_err(|e| RepoError(e.to_string()))?
+            .map_err(|e| {
+                tracing::error!("Failed to get account: {}", e);
+                OneOf::new(InternalError)
+            })?
         else {
             return Ok(None);
         };
-        Ok(Some(
-            self.model_to_account(model)
-                .map_err(|e| RepoError(e.to_string()))?,
-        ))
+        Ok(Some(self.model_to_account(model)))
     }
 
-    async fn update_account(&self, account: Account) -> Result<(), RepoError> {
+    async fn update_account(&self, account: Account) -> AppResult<(), (InternalError,)> {
         let active_model = self.account_to_active_model(&account);
         account::Entity::update(active_model)
             .exec(&self.db)
             .await
-            .map_err(|e| RepoError(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!("Failed to update account: {}", e);
+                OneOf::new(InternalError)
+            })?;
         Ok(())
     }
 
     async fn get_account_by_username(
         &self,
         username: &str,
-    ) -> Result<Option<Account>, RepoError> {
+    ) -> AppResult<Option<Account>, (InternalError,)> {
         let Some(model) = account::Entity::find()
             .filter(account::Column::Username.eq(username))
             .one(&self.db)
             .await
-            .map_err(|e| RepoError(e.to_string()))?
+            .map_err(|e| {
+                tracing::error!("Failed to get account by username: {}", e);
+                OneOf::new(InternalError)
+            })?
         else {
             return Ok(None);
         };
-        Ok(Some(
-            self.model_to_account(model)
-                .map_err(|e| RepoError(e.to_string()))?,
-        ))
+        Ok(Some(self.model_to_account(model)))
     }
 
-    async fn get_account_by_email(&self, email: &str) -> Result<Option<Account>, RepoError> {
+    async fn get_account_by_email(
+        &self,
+        email: &str,
+    ) -> AppResult<Option<Account>, (InternalError,)> {
         let Some(model) = account::Entity::find()
             .filter(account::Column::Email.eq(email))
             .one(&self.db)
             .await
-            .map_err(|e| RepoError(e.to_string()))?
+            .map_err(|e| {
+                tracing::error!("Failed to get account by email: {}", e);
+                OneOf::new(InternalError)
+            })?
         else {
             return Ok(None);
         };
-        Ok(Some(
-            self.model_to_account(model)
-                .map_err(|e| RepoError(e.to_string()))?,
-        ))
+        Ok(Some(self.model_to_account(model)))
     }
 }

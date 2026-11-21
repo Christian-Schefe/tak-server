@@ -8,7 +8,10 @@ use tak_domain::{
     stats::{RatingHistoryEntry, RatingHistoryRange},
 };
 use tak_persistence_sea_orm_entities::rating_history;
-use tak_server_app::ports::{stats::RatingHistoryRepository, transaction::RepoError};
+use tak_server_app::{
+    errors::{AppResult, InternalError, OneOf},
+    ports::stats::RatingHistoryRepository,
+};
 
 pub struct RatingHistoryRepositoryImpl;
 
@@ -40,7 +43,7 @@ impl RatingHistoryRepository<RepositoryContext> for RatingHistoryRepositoryImpl 
         user_id: UserId,
         from: Option<DateTime<Utc>>,
         to: Option<DateTime<Utc>>,
-    ) -> Result<RatingHistoryRange, RepoError> {
+    ) -> AppResult<RatingHistoryRange, (InternalError,)> {
         let entries: Vec<RatingHistoryEntry> = rating_history::Entity::find()
             .filter(rating_history::Column::UserId.eq(user_id.0))
             .apply_if(from, |query, from| {
@@ -52,7 +55,10 @@ impl RatingHistoryRepository<RepositoryContext> for RatingHistoryRepositoryImpl 
             .order_by_desc(rating_history::Column::Timestamp)
             .all(ctx)
             .await
-            .map_err(|e| RepoError(format!("Failed to retrieve rating history: {e}")))
+            .map_err(|e| {
+                tracing::error!("Failed to retrieve rating history: {}", e);
+                OneOf::new(InternalError)
+            })
             .map(|models| models.into_iter().map(Self::model_to_rating).collect())?;
 
         let first_entry_before_range = if let Some(from) = from {
@@ -62,7 +68,10 @@ impl RatingHistoryRepository<RepositoryContext> for RatingHistoryRepositoryImpl 
                 .order_by_desc(rating_history::Column::Timestamp)
                 .one(ctx)
                 .await
-                .map_err(|e| RepoError(format!("Failed to retrieve rating history: {e}")))?;
+                .map_err(|e| {
+                    tracing::error!("Failed to retrieve rating history: {}", e);
+                    OneOf::new(InternalError)
+                })?;
             first_value_outside_range.map(Self::model_to_rating)
         } else {
             None
@@ -77,7 +86,7 @@ impl RatingHistoryRepository<RepositoryContext> for RatingHistoryRepositoryImpl 
         ctx: &RepositoryContext,
         user_id: UserId,
         rating: RatingHistoryEntry,
-    ) -> Result<(), RepoError> {
+    ) -> AppResult<(), (InternalError,)> {
         let model = Self::rating_to_model(user_id, &rating);
         rating_history::Entity::insert(model)
             .on_conflict(
@@ -90,7 +99,10 @@ impl RatingHistoryRepository<RepositoryContext> for RatingHistoryRepositoryImpl 
             )
             .exec(ctx)
             .await
-            .map_err(|e| RepoError(format!("Failed to add rating history entry: {e}")))?;
+            .map_err(|e| {
+                tracing::error!("Failed to add rating history entry: {}", e);
+                OneOf::new(InternalError)
+            })?;
         Ok(())
     }
 }

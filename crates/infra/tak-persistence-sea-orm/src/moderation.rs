@@ -5,7 +5,10 @@ use tak_domain::{
     moderation::{Moderation, ModerationFlag, ModerationFlags, UserRole, UserType},
 };
 use tak_persistence_sea_orm_entities::moderation;
-use tak_server_app::ports::{moderation::ModerationRepository, transaction::RepoError};
+use tak_server_app::{
+    errors::{AppResult, InternalError, OneOf},
+    ports::moderation::ModerationRepository,
+};
 
 use crate::transaction::RepositoryContext;
 
@@ -70,16 +73,29 @@ impl ModerationRepository<RepositoryContext> for ModerationRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         user_id: UserId,
-    ) -> Result<Option<Moderation>, RepoError> {
+    ) -> AppResult<Option<Moderation>, (InternalError,)> {
         let Some(model) = moderation::Entity::find_by_id(user_id.0)
             .one(ctx)
             .await
-            .map_err(|e| RepoError(e.to_string()))?
+            .map_err(|e| {
+                tracing::error!(
+                    "Failed to retrieve moderation for user {}: {}",
+                    user_id.0,
+                    e
+                );
+                OneOf::new(InternalError)
+            })?
         else {
             return Ok(None);
         };
-        let (_, moderation) =
-            Self::model_to_moderation(model).map_err(|e| RepoError(e.to_string()))?;
+        let (_, moderation) = Self::model_to_moderation(model).map_err(|e| {
+            tracing::error!(
+                "Failed to convert moderation model to domain object for user {}: {}",
+                user_id.0,
+                e
+            );
+            OneOf::new(InternalError)
+        })?;
         Ok(Some(moderation))
     }
     async fn set_moderation(
@@ -87,7 +103,7 @@ impl ModerationRepository<RepositoryContext> for ModerationRepositoryImpl {
         ctx: &RepositoryContext,
         user_id: UserId,
         moderation: Moderation,
-    ) -> Result<(), RepoError> {
+    ) -> AppResult<(), (InternalError,)> {
         let active_model = Self::moderation_to_active_model(user_id, &moderation);
         moderation::Entity::insert(active_model)
             .on_conflict(
@@ -101,7 +117,10 @@ impl ModerationRepository<RepositoryContext> for ModerationRepositoryImpl {
             )
             .exec(ctx)
             .await
-            .map_err(|e| RepoError(e.to_string()))?;
+            .map_err(|e| {
+                tracing::error!("Failed to set moderation for user {}: {}", user_id.0, e);
+                OneOf::new(InternalError)
+            })?;
         Ok(())
     }
 }
