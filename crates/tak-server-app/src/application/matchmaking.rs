@@ -9,7 +9,7 @@ use tak_domain::{
     matches::{Match, MatchMode, MatchSettings, MatchStatus},
     seek::Seek,
 };
-use terrors::OneOf;
+use better_errors::OneOf;
 
 use crate::{
     PortsCollection,

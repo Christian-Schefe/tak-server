@@ -17,7 +17,7 @@ use tak_domain::{
     UserId,
     moderation::{Moderation, UserType},
 };
-use terrors::OneOf;
+use better_errors::OneOf;
 use url::Url;
 
 #[derive(Clone, Debug)]

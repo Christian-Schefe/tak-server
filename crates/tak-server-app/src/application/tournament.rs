@@ -9,7 +9,7 @@ use tak_domain::{
         TournamentStatus,
     },
 };
-use terrors::OneOf;
+use better_errors::OneOf;
 
 use crate::{
     PortsCollection,

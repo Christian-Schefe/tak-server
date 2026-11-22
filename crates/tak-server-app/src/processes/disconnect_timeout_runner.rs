@@ -8,7 +8,7 @@ use tak_domain::{
     UserId,
     game::{CheckDisconnectTimeoutResult, GameCheckTimeoutError},
 };
-use terrors::OneOf;
+use better_errors::OneOf;
 use tokio::select;
 use tokio_util::sync::CancellationToken;
 

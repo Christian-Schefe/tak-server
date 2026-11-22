@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 
 use tak_core::TakTimeSettings;
 use tak_domain::{UserId, rating::PlayerRating, stats::PlayerStats};
-use terrors::OneOf;
+use better_errors::OneOf;
 
 use crate::{
     PortsCollection,

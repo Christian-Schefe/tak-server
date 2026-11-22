@@ -1,4 +1,4 @@
-pub use terrors::OneOf;
+pub use better_errors::*;
 pub type AppResult<T, E> = Result<T, OneOf<E>>;
 
 #[derive(Copy, Debug, Clone, PartialEq)]

@@ -5,7 +5,7 @@ use crate::{
 };
 use std::sync::Arc;
 use tak_domain::{UserId, game_record::PlayerSnapshot};
-use terrors::OneOf;
+use better_errors::OneOf;
 
 #[async_trait::async_trait]
 pub trait GetSnapshotWorkflow<RpCtx> {

@@ -28,7 +28,7 @@ use tak_domain::{
     },
     game_record::GameRecord,
 };
-use terrors::OneOf;
+use better_errors::OneOf;
 
 pub enum ObserveOutcome {
     Finished,

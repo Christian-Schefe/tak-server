@@ -15,7 +15,7 @@ use tak_domain::{
         UserRole,
     },
 };
-use terrors::OneOf;
+use better_errors::OneOf;
 
 #[async_trait::async_trait]
 pub trait ModerationUseCase {

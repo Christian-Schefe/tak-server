@@ -4,7 +4,7 @@ edition = "2024"
 [workspace]
 members = [
     "crates/api/tak-server-api",
-    "crates/api/tak-server-api-contract",
+    "crates/api/tak-server-api-contract", "crates/better-errors",
     "crates/infra/tak-auth",
     "crates/infra/tak-email-lettre",
     "crates/infra/tak-events-google-sheets",

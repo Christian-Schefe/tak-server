@@ -25,7 +25,7 @@ use tak_domain::{
     rating::{PlayerRating, calculate_ratings},
     stats::{GameOutcome, PlayerStats, RatingHistoryEntry},
 };
-use terrors::OneOf;
+use better_errors::OneOf;
 
 #[async_trait::async_trait]
 pub trait LifecycleGameWorkflow<RpCtx> {

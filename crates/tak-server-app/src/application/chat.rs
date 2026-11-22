@@ -4,7 +4,7 @@ use tak_domain::{
     ChatMessageId, ListenerId, UserId,
     chat::{ChatConversation, ChatMessage, ContentPolicy, RustrictContentPolicy},
 };
-use terrors::OneOf;
+use better_errors::OneOf;
 
 use crate::{
     PortsCollection,

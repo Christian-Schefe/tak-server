@@ -6,7 +6,7 @@ use tak_domain::{
     UserId,
     profile::{AccountProfile, ProfilePicture, ProfilePictureVersion},
 };
-use terrors::OneOf;
+use better_errors::OneOf;
 
 use crate::{
     PortsCollection,

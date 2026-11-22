@@ -2,7 +2,13 @@ use std::sync::Arc;
 
 use axum::{Router, response::IntoResponse, routing::get};
 use tak_player_connection::PlayerConnectionDriver;
-use tak_server_app::Application;
+use tak_server_app::{
+    Application,
+    errors::{
+        GameNotFound, InternalError, InvalidCredentials, MatchNotFound, OneOf, OneOfNarrow,
+        TypeSet, UserNotFound,
+    },
+};
 
 use tower_http::csrf::CsrfLayer;
 pub use ws::WsService;
@@ -90,7 +96,7 @@ pub enum ServiceError {
     Unauthorized(String),
     BadRequest(String),
     NotPossible(String),
-    Internal(String),
+    Internal,
     Forbidden(String),
 }
 
@@ -101,8 +107,8 @@ impl ServiceError {
             | ServiceError::Unauthorized(msg)
             | ServiceError::BadRequest(msg)
             | ServiceError::NotPossible(msg)
-            | ServiceError::Internal(msg)
             | ServiceError::Forbidden(msg) => msg,
+            ServiceError::Internal => "Internal server error",
         }
     }
 
@@ -112,7 +118,7 @@ impl ServiceError {
             ServiceError::Unauthorized(_) => axum::http::StatusCode::UNAUTHORIZED,
             ServiceError::BadRequest(_) => axum::http::StatusCode::BAD_REQUEST,
             ServiceError::NotPossible(_) => axum::http::StatusCode::BAD_REQUEST,
-            ServiceError::Internal(_) => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            ServiceError::Internal => axum::http::StatusCode::INTERNAL_SERVER_ERROR,
             ServiceError::Forbidden(_) => axum::http::StatusCode::FORBIDDEN,
         }
     }
@@ -125,7 +131,7 @@ impl std::fmt::Display for ServiceError {
             ServiceError::Unauthorized(msg) => write!(f, "Unauthorized: {}", msg),
             ServiceError::BadRequest(msg) => write!(f, "Bad request: {}", msg),
             ServiceError::NotPossible(msg) => write!(f, "Not possible: {}", msg),
-            ServiceError::Internal(msg) => write!(f, "Internal error: {}", msg),
+            ServiceError::Internal => write!(f, "Internal error"),
             ServiceError::Forbidden(msg) => write!(f, "Forbidden: {}", msg),
         }
     }
@@ -137,5 +143,51 @@ impl IntoResponse for ServiceError {
         let msg = self.message().to_string();
         let body = serde_json::json!({ "error": msg });
         (status, axum::Json(body)).into_response()
+    }
+}
+
+fn handle_error<E: TypeSet, A: IntoServiceError + 'static, I>(
+    err: OneOf<E>,
+) -> Result<ServiceError, OneOf<<E::Coprod as OneOfNarrow<A, I>>::Remainder>>
+where
+    E::Coprod: OneOfNarrow<A, I>,
+{
+    match err.narrow() {
+        Ok(x) => Ok(x.into_service_error()),
+        Err(e) => Err(e),
+    }
+}
+
+trait IntoServiceError {
+    fn into_service_error(self) -> ServiceError;
+}
+
+impl IntoServiceError for InternalError {
+    fn into_service_error(self) -> ServiceError {
+        ServiceError::Internal
+    }
+}
+
+impl IntoServiceError for UserNotFound {
+    fn into_service_error(self) -> ServiceError {
+        ServiceError::NotFound("User not found".to_string())
+    }
+}
+
+impl IntoServiceError for GameNotFound {
+    fn into_service_error(self) -> ServiceError {
+        ServiceError::NotFound("Game not found".to_string())
+    }
+}
+
+impl IntoServiceError for MatchNotFound {
+    fn into_service_error(self) -> ServiceError {
+        ServiceError::NotFound("Match not found".to_string())
+    }
+}
+
+impl IntoServiceError for InvalidCredentials {
+    fn into_service_error(self) -> ServiceError {
+        ServiceError::Unauthorized("Invalid credentials".to_string())
     }
 }
