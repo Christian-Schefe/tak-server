@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use better_errors::OneOf;
 use tak_domain::{
     MatchId, TournamentId, UserId,
     matches::{Match, MatchSettings, MatchStatus, MatchTournamentInfo},
@@ -9,7 +10,6 @@ use tak_domain::{
         TournamentStatus,
     },
 };
-use better_errors::OneOf;
 
 use crate::{
     PortsCollection,
@@ -101,12 +101,6 @@ impl TournamentRoundView {
             byes: tournament_round.byes,
         }
     }
-}
-
-pub enum TournamentRegistrationError {
-    TournamentNotFound,
-    TournamentNotUpcoming,
-    StorageError,
 }
 
 #[async_trait::async_trait]

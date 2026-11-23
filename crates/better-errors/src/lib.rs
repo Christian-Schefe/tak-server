@@ -1,5 +1,5 @@
 use frunk::{
-    Coprod, Coproduct, HList,
+    Coprod, Coproduct,
     coproduct::{
         CNil, CoprodInjector, CoprodUninjector, CoproductEmbedder, CoproductSelector,
         CoproductSubsetter, CoproductTaker,
@@ -8,10 +8,6 @@ use frunk::{
 
 pub trait TypeSet {
     type Coprod: TypeSetCoprod;
-    type Product: TypeSetProduct;
-    fn all(tuple: Self) -> AllOf<Self>
-    where
-        Self: Sized;
 }
 
 pub trait TypeSetCoprod {
@@ -19,31 +15,16 @@ pub trait TypeSetCoprod {
     fn to_type_set(self) -> OneOf<Self::TypeSet>;
 }
 
-pub trait TypeSetProduct {
-    type TypeSet: TypeSet;
-    fn to_type_set(self) -> AllOf<Self::TypeSet>;
-}
-
 macro_rules! impl_one_of {
     ($(($($T:ident),+)),+ $(,)?) => {
         $(
             impl<$($T),+> TypeSet for ($($T,)+) {
                 type Coprod = Coprod!($($T),+);
-                type Product = HList!($($T),+);
-                fn all(tuple: Self) -> AllOf<Self> {
-                    AllOf { value: tuple.into() }
-                }
             }
             impl <$($T),+> TypeSetCoprod for Coprod!($($T),+) {
                 type TypeSet = ($($T,)+);
                 fn to_type_set(self) -> OneOf<Self::TypeSet> {
                     OneOf { value: self }
-                }
-            }
-            impl <$($T),+> TypeSetProduct for HList!($($T),+) {
-                type TypeSet = ($($T,)+);
-                fn to_type_set(self) -> AllOf<Self::TypeSet> {
-                    AllOf { value: self }
                 }
             }
         )+
@@ -77,18 +58,8 @@ impl_one_of! {
     (A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X),
 }
 
-pub struct AllOf<T: TypeSet> {
-    value: T::Product,
-}
-
-impl<T: TypeSet> AllOf<T> {
-    pub fn new(value: T) -> AllOf<T> {
-        T::all(value)
-    }
-}
-
 pub struct OneOf<T: TypeSet> {
-    value: T::Coprod,
+    pub value: T::Coprod,
 }
 
 impl<T: TypeSet> OneOf<T> {
@@ -140,11 +111,11 @@ impl<T: TypeSet> OneOf<T> {
         OneOfSplit::split(self)
     }
 
-    pub fn erase_as<E: ?Sized>(&self) -> &E
+    pub fn convert<U>(self) -> U
     where
-        T: EraseAs<E> + FoldAs<E, fn(&E) -> &E, &E>,
+        T::Coprod: ConvertAs<U>,
     {
-        FoldAs::fold_as(&self.value, &mut |x| x.erase_as())
+        self.value.convert()
     }
 }
 
@@ -218,78 +189,25 @@ where
     }
 }
 
-pub trait EraseAs<T: ?Sized> {
-    fn erase_as(&self) -> &T;
-}
-pub trait FoldAs<T: ?Sized, F, R> {
-    fn fold_as(&self, f: &mut F) -> R;
+pub trait ConvertAs<T> {
+    fn convert(self) -> T;
 }
 
-impl<T: ?Sized, F, R> FoldAs<T, F, R> for CNil {
-    fn fold_as(&self, _: &mut F) -> R {
-        match *self {}
+impl<T> ConvertAs<T> for CNil {
+    fn convert(self) -> T {
+        unreachable!()
     }
 }
 
-impl<Head, Tail, T: ?Sized, F, R> FoldAs<T, F, R> for Coproduct<Head, Tail>
+impl<T, Head, Tail> ConvertAs<T> for Coproduct<Head, Tail>
 where
-    Head: EraseAs<T>,
-    Tail: FoldAs<T, F, R>,
-    F: FnMut(&T) -> R,
+    Head: Into<T>,
+    Tail: ConvertAs<T>,
 {
-    fn fold_as(&self, f: &mut F) -> R {
+    fn convert(self) -> T {
         match self {
-            Coproduct::Inl(value) => f(value.erase_as()),
-            Coproduct::Inr(tail) => tail.fold_as(f),
+            Coproduct::Inl(h) => h.into(),
+            Coproduct::Inr(t) => t.convert(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_one_of() {
-        let one_of = OneOf::<(i32, String)>::new(42);
-        let broadened = one_of.clone().broaden::<(i32, String, bool), _>();
-        let broadened2 = one_of.clone().broaden::<(i32, bool, String), _>();
-        let taken: Option<i32> = one_of.clone().take();
-        let narrowed = one_of.clone().narrow::<i32, _>();
-        let subset = broadened.clone().split::<(i32,), _>();
-        let subset2 = broadened.clone().split::<(bool, String), _>();
-
-        assert_eq!(one_of, one_of);
-        assert_eq!(broadened, broadened);
-        assert_eq!(broadened2, broadened2);
-    }
-
-    fn test_broaden_return() {
-        fn inner(
-            one_of: Result<(), OneOf<(i32, String)>>,
-        ) -> Result<(), OneOf<(i32, String, bool)>> {
-            one_of.map_err(OneOf::broaden)?;
-            Ok(())
-        }
-    }
-
-    struct Obj1;
-    struct Obj2;
-    struct Obj3;
-    trait ObjTrait {}
-    impl ObjTrait for Obj1 {}
-    impl ObjTrait for Obj2 {}
-    impl ObjTrait for Obj3 {}
-
-    impl<T: ObjTrait> EraseAs<dyn ObjTrait> for T {
-        fn erase_as(&self) -> &(dyn ObjTrait + 'static) {
-            todo!()
-        }
-    }
-
-    fn test_erase() {
-        let one_of = OneOf::<(i32, String)>::new(42);
-
-        let erased: &dyn ObjTrait = one_of.erase_as();
     }
 }

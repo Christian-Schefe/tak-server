@@ -11,8 +11,8 @@ use tak_domain::{
 use tak_server_api_contract::player::{UserInfoResponse, UserRoleResponse, UserTypeResponse};
 use tak_server_app::{
     application::player::PlayerStatsView,
+    errors::OneOf,
     ports::{Pagination, rating::RatingQuery},
-    workflow::get_snapshot::GetSnapshotError,
 };
 use uuid::Uuid;
 
@@ -40,27 +40,18 @@ async fn get_user_info(
         Uuid::parse_str(&user_id)
             .map_err(|_| ServiceError::BadRequest("Invalid user ID".to_string()))?,
     );
-    let snapshot = match app.app.player_use_case.get_player(user_id).await {
-        Ok(snapshot) => snapshot,
-        Err(GetSnapshotError::NotFound) => {
-            return Err(ServiceError::NotFound(
-                "Player account not found".to_string(),
-            ));
-        }
-        Err(GetSnapshotError::Internal) => {
-            return Err(ServiceError::Internal(
-                "Failed to retrieve player account".to_string(),
-            ));
-        }
-    };
-    let moderation = match app.app.moderation_use_case.get_moderation(user_id).await {
-        Ok(moderation) => moderation,
-        Err(_) => {
-            return Err(ServiceError::Internal(
-                "Failed to retrieve moderation info".to_string(),
-            ));
-        }
-    };
+    let snapshot = app
+        .app
+        .player_use_case
+        .get_player(user_id)
+        .await
+        .map_err(OneOf::convert::<ServiceError>)?;
+    let moderation = app
+        .app
+        .moderation_use_case
+        .get_moderation(user_id)
+        .await
+        .map_err(OneOf::convert::<ServiceError>)?;
 
     Ok(Json(UserInfoResponse {
         user_id: user_id.to_string(),
@@ -92,7 +83,7 @@ async fn get_player_stats(
         .player_use_case
         .get_stats(user_id)
         .await
-        .map_err(|_| ServiceError::Internal("Failed to retrieve player stats".to_string()))?;
+        .map_err(OneOf::convert::<ServiceError>)?;
 
     Ok(Json(stats.into()))
 }
@@ -106,32 +97,28 @@ async fn get_rating_history(
         Uuid::parse_str(&user_id)
             .map_err(|_| ServiceError::BadRequest("Invalid user ID".to_string()))?,
     );
-    match app
+    let history = app
         .app
         .player_use_case
         .get_rating_history(user_id, query.from.map(|t| t.0), query.to.map(|t| t.0))
         .await
-    {
-        Ok(history) => Ok(Json(RatingHistoryResponse {
-            entries: history
-                .entries
-                .into_iter()
-                .map(|entry| RatingHistoryResponseEntry {
-                    timestamp: entry.timestamp,
-                    rating: entry.rating,
-                })
-                .collect(),
-            first_entry_before_range: history.first_entry_before_range.map(|entry| {
-                RatingHistoryResponseEntry {
-                    timestamp: entry.timestamp,
-                    rating: entry.rating,
-                }
-            }),
-        })),
-        Err(_) => Err(ServiceError::Internal(
-            "Failed to retrieve rating history".to_string(),
-        )),
-    }
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(Json(RatingHistoryResponse {
+        entries: history
+            .entries
+            .into_iter()
+            .map(|entry| RatingHistoryResponseEntry {
+                timestamp: entry.timestamp,
+                rating: entry.rating,
+            })
+            .collect(),
+        first_entry_before_range: history.first_entry_before_range.map(|entry| {
+            RatingHistoryResponseEntry {
+                timestamp: entry.timestamp,
+                rating: entry.rating,
+            }
+        }),
+    }))
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -149,22 +136,23 @@ async fn query_player_ratings(
         pagination: Pagination::new(query.page.saturating_sub(1), query.page_size),
         ..Default::default()
     };
-    match app.app.player_use_case.query_player_ratings(query).await {
-        Ok(response) => Ok(Json(PaginatedResponse {
-            items: response
-                .items
-                .into_iter()
-                .map(|(user_id, rating)| RatingResponseEntry {
-                    user_id: user_id.to_string(),
-                    rating,
-                })
-                .collect(),
-            total_count: response.total_count as u32,
-        })),
-        Err(_) => Err(ServiceError::Internal(
-            "Failed to retrieve player ratings".to_string(),
-        )),
-    }
+    let ratings = app
+        .app
+        .player_use_case
+        .query_player_ratings(query)
+        .await
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(Json(PaginatedResponse {
+        items: ratings
+            .items
+            .into_iter()
+            .map(|(user_id, rating)| RatingResponseEntry {
+                user_id: user_id.to_string(),
+                rating,
+            })
+            .collect(),
+        total_count: ratings.total_count as u32,
+    }))
 }
 
 #[derive(serde::Deserialize)]

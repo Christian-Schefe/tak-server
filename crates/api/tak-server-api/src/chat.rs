@@ -4,6 +4,7 @@ use axum::{
 };
 use tak_domain::{ChatMessageId, UserId, chat::ChatConversation};
 use tak_server_api_contract::ws::ChatMessageResponse;
+use tak_server_app::errors::OneOf;
 use unordered_pair::UnorderedPair;
 
 use crate::{AppState, ServiceError};
@@ -82,7 +83,7 @@ async fn get_chat_messages(
             messages_query.limit + 1,
         )
         .await
-        .map_err(|_| ServiceError::Internal("Failed to retrieve chat messages".to_string()))?;
+        .map_err(OneOf::convert::<ServiceError>)?;
     let next_cursor = if messages.len() > messages_query.limit {
         messages.pop().and_then(|_| messages.last().map(|x| x.id.0))
     } else {

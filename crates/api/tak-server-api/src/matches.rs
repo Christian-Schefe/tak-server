@@ -10,10 +10,7 @@ use tak_server_api_contract::{
     game::{GameRecordResponse, GameSettingsResponse},
     matches::MatchReadinessStatusResponse,
 };
-use tak_server_app::application::{
-    gameplay::GameQueryError,
-    matchmaking::{GetMatchError, MatchReadinessError},
-};
+use tak_server_app::errors::OneOf;
 
 use crate::{AppState, ServiceError, auth::Auth, game::from_game};
 
@@ -44,17 +41,13 @@ async fn get_match(
             .parse::<i64>()
             .map_err(|_| ServiceError::BadRequest(format!("Invalid match ID: {}", match_id)))?,
     );
-    match app.app.matchmaking_use_case.get_match(match_id).await {
-        Ok(m) => Ok(Json(MatchResponse::from_match(match_id, m))),
-        Err(GetMatchError::NotFound) => Err(ServiceError::NotFound(format!(
-            "Match not found: {}",
-            match_id
-        ))),
-        Err(GetMatchError::InternalError) => Err(ServiceError::Internal(format!(
-            "Failed to retrieve match: {}",
-            match_id
-        ))),
-    }
+    let m = app
+        .app
+        .matchmaking_use_case
+        .get_match(match_id)
+        .await
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(Json(MatchResponse::from_match(match_id, m)))
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -167,58 +160,36 @@ async fn set_player_ready(
     auth: Auth,
     State(app): State<AppState>,
     Path(match_id): Path<String>,
-) -> Result<Json<()>, ServiceError> {
+) -> Result<(), ServiceError> {
     let match_id = MatchId(
         match_id
             .parse::<i64>()
             .map_err(|_| ServiceError::BadRequest(format!("Invalid match ID: {}", match_id)))?,
     );
-    if let Err(e) = app
-        .app
+    app.app
         .matchmaking_use_case
         .set_player_ready(match_id, auth.user_id)
         .await
-    {
-        match e {
-            MatchReadinessError::Internal => Err(ServiceError::BadRequest(
-                "Failed to set match readiness".into(),
-            )),
-            MatchReadinessError::MatchNotFound => {
-                Err(ServiceError::NotFound("Match not found".into()))
-            }
-        }
-    } else {
-        Ok(Json(()))
-    }
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(())
 }
 
 async fn set_player_not_ready(
     auth: Auth,
     State(app): State<AppState>,
     Path(match_id): Path<String>,
-) -> Result<Json<()>, ServiceError> {
+) -> Result<(), ServiceError> {
     let match_id = MatchId(
         match_id
             .parse::<i64>()
             .map_err(|_| ServiceError::BadRequest(format!("Invalid match ID: {}", match_id)))?,
     );
-    if let Err(e) = app
-        .app
+    app.app
         .matchmaking_use_case
         .set_player_not_ready(match_id, auth.user_id)
         .await
-    {
-        match e {
-            MatchReadinessError::Internal => Err(ServiceError::Internal(
-                "Failed to set match readiness".into(),
-            )),
-            MatchReadinessError::MatchNotFound => {
-                Err(ServiceError::NotFound("Match not found".into()))
-            }
-        }
-    } else {
-        Ok(Json(()))
-    }
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(())
 }
 
 async fn get_match_readiness_status(
@@ -247,16 +218,16 @@ async fn get_match_games(
             .parse::<i64>()
             .map_err(|_| ServiceError::BadRequest(format!("Invalid match ID: {}", match_id)))?,
     );
-    match app.app.gameplay_use_case.get_games_of_match(match_id).await {
-        Ok(games) => Ok(Json(
-            games
-                .into_iter()
-                .map(|(game_id, game)| from_game(game_id, &game))
-                .collect(),
-        )),
-        Err(GameQueryError::RepositoryError) => Err(ServiceError::Internal(format!(
-            "Failed to retrieve games of match {}",
-            match_id
-        ))),
-    }
+    let games = app
+        .app
+        .gameplay_use_case
+        .get_games_of_match(match_id)
+        .await
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(Json(
+        games
+            .into_iter()
+            .map(|(game_id, game)| from_game(game_id, &game))
+            .collect(),
+    ))
 }

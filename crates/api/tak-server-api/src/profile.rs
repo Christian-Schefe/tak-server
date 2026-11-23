@@ -9,7 +9,7 @@ use axum::{
     routing::{get, post},
 };
 use tak_domain::{UserId, profile::ProfilePictureFileType};
-use tak_server_app::application::profile::AccountProfileView;
+use tak_server_app::{application::profile::AccountProfileView, errors::OneOf};
 
 use crate::{AppState, ServiceError, auth::Auth};
 
@@ -35,7 +35,7 @@ async fn get_profile(
         .profile_use_case
         .get_profile(user_id)
         .await
-        .map_err(|_| ServiceError::Internal("Failed to retrieve player profile".to_string()))?;
+        .map_err(OneOf::convert::<ServiceError>)?;
 
     Ok(Json(profile.into()))
 }
@@ -68,7 +68,8 @@ async fn update_profile(
         .profile_use_case
         .update_profile(auth.user_id, payload.display_name, country)
         .await
-        .map_err(|_| ServiceError::Internal("Failed to update player profile".to_string()))
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(())
 }
 
 #[derive(serde::Deserialize)]
@@ -94,7 +95,7 @@ async fn get_profile_picture(
         .profile_use_case
         .get_profile_picture(user_id)
         .await
-        .map_err(|_| ServiceError::Internal("Failed to retrieve profile picture".to_string()))?;
+        .map_err(OneOf::convert::<ServiceError>)?;
     let Some(profile_picture) = profile_picture else {
         return Err(ServiceError::NotFound(
             "Profile picture not found".to_string(),
@@ -150,19 +151,11 @@ async fn set_profile_picture(
             }
         };
 
-        match app
-            .app
+        app.app
             .profile_use_case
             .set_profile_picture(auth.user_id, img)
             .await
-        {
-            Ok(_) => (),
-            Err(_) => {
-                return Err(ServiceError::Internal(
-                    "Failed to update profile picture".to_string(),
-                ));
-            }
-        }
+            .map_err(OneOf::convert::<ServiceError>)?;
     }
     Ok(())
 }

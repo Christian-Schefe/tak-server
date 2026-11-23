@@ -3,8 +3,7 @@ use std::{sync::Arc, time::Duration};
 use crate::{
     PortsCollection,
     errors::{
-        AccountNotFound, AppResult, EmailTaken, InternalError, InvalidCredentials,
-        InvalidEmailAddress,
+        AppResult, EmailTaken, InternalError, InvalidCredentials, InvalidEmailAddress, UserNotFound,
     },
     ports::{
         authentication::{AccountPort, RefreshToken},
@@ -13,11 +12,11 @@ use crate::{
         transaction::TransactionManager,
     },
 };
+use better_errors::OneOf;
 use tak_domain::{
     UserId,
     moderation::{Moderation, UserType},
 };
-use better_errors::OneOf;
 use url::Url;
 
 #[derive(Clone, Debug)]
@@ -42,7 +41,7 @@ pub trait AuthenticationUseCase {
     async fn recover(
         &self,
         identifier: String,
-    ) -> AppResult<(), (AccountNotFound, InvalidEmailAddress, InternalError)>;
+    ) -> AppResult<(), (UserNotFound, InvalidEmailAddress, InternalError)>;
     async fn reset(
         &self,
         identifier: String,
@@ -134,14 +133,14 @@ impl<
     async fn recover(
         &self,
         identifier: String,
-    ) -> AppResult<(), (AccountNotFound, InvalidEmailAddress, InternalError)> {
+    ) -> AppResult<(), (UserNotFound, InvalidEmailAddress, InternalError)> {
         let Some(user_id) = self
             .account_service
             .find_account(&identifier)
             .await
             .map_err(OneOf::broaden)?
         else {
-            return Err(OneOf::new(AccountNotFound));
+            return Err(OneOf::new(UserNotFound));
         };
 
         let Some(account_info) = self
@@ -150,7 +149,7 @@ impl<
             .await
             .map_err(OneOf::broaden)?
         else {
-            return Err(OneOf::new(AccountNotFound));
+            return Err(OneOf::new(UserNotFound));
         };
 
         let Some(email) = &account_info.email else {

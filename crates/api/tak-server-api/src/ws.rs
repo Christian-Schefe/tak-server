@@ -23,10 +23,7 @@ use tak_server_api_contract::{
     },
 };
 use tak_server_app::{
-    application::{
-        chat::ChatSendMessageError,
-        gameplay::{ActionError, DoActionError, ObserveGameError, PlayerActionError},
-    },
+    errors::{InternalError, OneOf},
     ports::notification::{ListenerGameMessageType, ListenerMatchEventType, ListenerMessage},
 };
 use tokio::select;
@@ -161,7 +158,10 @@ async fn send_ws(
         ws_sender
             .send(Message::Text(serde_json::to_string(&msg).unwrap().into()))
             .await
-            .map_err(|e| ServiceError::Internal(format!("Failed to send WS message: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!("Failed to send WS message: {}", e);
+                ServiceError::from(InternalError)
+            })?;
     }
     cancellation_token.cancel();
     Ok(())
@@ -226,34 +226,12 @@ async fn handle_authenticated_client_message(
                     "Invalid action format".to_string(),
                 ));
             };
-            match app
-                .app
+            app.app
                 .gameplay_use_case
                 .do_action(game_id, user_id, action)
                 .await
-            {
-                Ok(()) => Ok(()),
-                Err(ActionError::ActionError(e)) => match e {
-                    DoActionError::InvalidAction(reason) => Err(ServiceError::BadRequest(format!(
-                        "Invalid action: {:?}",
-                        reason
-                    ))),
-                    DoActionError::NotPlayersTurn => {
-                        Err(ServiceError::BadRequest("Not player's turn".to_string()))
-                    }
-                },
-                Err(ActionError::NotPossible(e)) => match e {
-                    PlayerActionError::GameNotFound => {
-                        Err(ServiceError::BadRequest("Game not found".to_string()))
-                    }
-                    PlayerActionError::NotAPlayerInGame => {
-                        Err(ServiceError::BadRequest("Not a player in game".to_string()))
-                    }
-                    PlayerActionError::Internal => Err(ServiceError::Internal(
-                        "Failed to process game action".to_string(),
-                    )),
-                },
-            }
+                .map_err(OneOf::convert::<ServiceError>)?;
+            Ok(())
         }
         ClientMessage::ChatMessage {
             message,
@@ -280,22 +258,12 @@ async fn handle_authenticated_client_message(
                     ChatConversation::Private { user_ids: members }
                 }
             };
-            match app
-                .app
+            app.app
                 .chat_use_case
                 .send_message(user_id, &message_target, &message)
                 .await
-            {
-                Ok(_) => Ok(()),
-                Err(e) => match e {
-                    ChatSendMessageError::NotAllowed(reason) => {
-                        Err(ServiceError::BadRequest(reason))
-                    }
-                    ChatSendMessageError::RepositoryError => Err(ServiceError::Internal(
-                        "Failed to save chat message".to_string(),
-                    )),
-                },
-            }
+                .map_err(OneOf::convert::<ServiceError>)?;
+            Ok(())
         }
         ClientMessage::SpectateGame { game_id, spectate } => {
             tracing::info!("Received SpectateGame for game {}: {}", game_id, spectate);
@@ -309,14 +277,7 @@ async fn handle_authenticated_client_message(
                     .gameplay_use_case
                     .observe_game(game_id, connection_id.0)
                     .await
-                    .map_err(|e| match e {
-                        ObserveGameError::GameNotFound => {
-                            ServiceError::NotFound("Game not found".to_string())
-                        }
-                        ObserveGameError::Internal => {
-                            ServiceError::Internal("Failed to observe game".to_string())
-                        }
-                    })?;
+                    .map_err(OneOf::convert::<ServiceError>)?;
             } else {
                 app.app
                     .gameplay_use_case

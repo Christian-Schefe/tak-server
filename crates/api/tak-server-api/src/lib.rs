@@ -5,8 +5,10 @@ use tak_player_connection::PlayerConnectionDriver;
 use tak_server_app::{
     Application,
     errors::{
-        GameNotFound, InternalError, InvalidCredentials, MatchNotFound, OneOf, OneOfNarrow,
-        TypeSet, UserNotFound,
+        EmailTaken, GameNotFound, GameNotOngoing, GameRequestNotFound, InsufficientPermissions,
+        InternalError, InvalidChatMessage, InvalidCredentials, InvalidEmailAddress,
+        InvalidGameAction, InvalidGameSettings, InvalidMatchStatus, MatchNotFound, SeekNotFound,
+        TournamentNotFound, UnexpectedPlayer, UnexpectedTournamentStatus, UserNotFound,
     },
 };
 
@@ -146,48 +148,110 @@ impl IntoResponse for ServiceError {
     }
 }
 
-fn handle_error<E: TypeSet, A: IntoServiceError + 'static, I>(
-    err: OneOf<E>,
-) -> Result<ServiceError, OneOf<<E::Coprod as OneOfNarrow<A, I>>::Remainder>>
-where
-    E::Coprod: OneOfNarrow<A, I>,
-{
-    match err.narrow() {
-        Ok(x) => Ok(x.into_service_error()),
-        Err(e) => Err(e),
-    }
-}
-
-trait IntoServiceError {
-    fn into_service_error(self) -> ServiceError;
-}
-
-impl IntoServiceError for InternalError {
-    fn into_service_error(self) -> ServiceError {
+impl From<InternalError> for ServiceError {
+    fn from(_: InternalError) -> ServiceError {
         ServiceError::Internal
     }
 }
 
-impl IntoServiceError for UserNotFound {
-    fn into_service_error(self) -> ServiceError {
+impl From<UserNotFound> for ServiceError {
+    fn from(_: UserNotFound) -> ServiceError {
         ServiceError::NotFound("User not found".to_string())
     }
 }
 
-impl IntoServiceError for GameNotFound {
-    fn into_service_error(self) -> ServiceError {
+impl From<GameNotFound> for ServiceError {
+    fn from(_: GameNotFound) -> ServiceError {
         ServiceError::NotFound("Game not found".to_string())
     }
 }
 
-impl IntoServiceError for MatchNotFound {
-    fn into_service_error(self) -> ServiceError {
+impl From<MatchNotFound> for ServiceError {
+    fn from(_: MatchNotFound) -> ServiceError {
         ServiceError::NotFound("Match not found".to_string())
     }
 }
 
-impl IntoServiceError for InvalidCredentials {
-    fn into_service_error(self) -> ServiceError {
+impl From<InvalidCredentials> for ServiceError {
+    fn from(_: InvalidCredentials) -> ServiceError {
         ServiceError::Unauthorized("Invalid credentials".to_string())
+    }
+}
+
+impl From<EmailTaken> for ServiceError {
+    fn from(_: EmailTaken) -> ServiceError {
+        ServiceError::BadRequest("Email already taken".to_string())
+    }
+}
+
+impl From<InvalidEmailAddress> for ServiceError {
+    fn from(_: InvalidEmailAddress) -> ServiceError {
+        ServiceError::NotPossible("Invalid email address".to_string())
+    }
+}
+
+impl From<UnexpectedPlayer> for ServiceError {
+    fn from(_: UnexpectedPlayer) -> ServiceError {
+        ServiceError::NotPossible("Unexpected player".to_string())
+    }
+}
+
+impl From<GameNotOngoing> for ServiceError {
+    fn from(_: GameNotOngoing) -> ServiceError {
+        ServiceError::NotPossible("Game not ongoing".to_string())
+    }
+}
+
+impl From<GameRequestNotFound> for ServiceError {
+    fn from(_: GameRequestNotFound) -> ServiceError {
+        ServiceError::NotFound("Game request not found".to_string())
+    }
+}
+
+impl From<InvalidMatchStatus> for ServiceError {
+    fn from(_: InvalidMatchStatus) -> ServiceError {
+        ServiceError::NotPossible("Invalid match status".to_string())
+    }
+}
+
+impl From<InvalidGameSettings> for ServiceError {
+    fn from(_: InvalidGameSettings) -> ServiceError {
+        ServiceError::BadRequest("Invalid game settings".to_string())
+    }
+}
+
+impl From<SeekNotFound> for ServiceError {
+    fn from(_: SeekNotFound) -> ServiceError {
+        ServiceError::NotFound("Seek not found".to_string())
+    }
+}
+
+impl From<TournamentNotFound> for ServiceError {
+    fn from(_: TournamentNotFound) -> ServiceError {
+        ServiceError::NotFound("Tournament not found".to_string())
+    }
+}
+
+impl From<UnexpectedTournamentStatus> for ServiceError {
+    fn from(_: UnexpectedTournamentStatus) -> ServiceError {
+        ServiceError::NotPossible("Unexpected tournament status".to_string())
+    }
+}
+
+impl From<InsufficientPermissions> for ServiceError {
+    fn from(_: InsufficientPermissions) -> ServiceError {
+        ServiceError::Unauthorized("Insufficient permissions".to_string())
+    }
+}
+
+impl From<InvalidChatMessage> for ServiceError {
+    fn from(_: InvalidChatMessage) -> ServiceError {
+        ServiceError::BadRequest("Invalid chat message".to_string())
+    }
+}
+
+impl From<InvalidGameAction> for ServiceError {
+    fn from(_: InvalidGameAction) -> ServiceError {
+        ServiceError::BadRequest("Invalid game action".to_string())
     }
 }

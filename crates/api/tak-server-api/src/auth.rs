@@ -13,6 +13,7 @@ use axum_extra::{
 };
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use tak_domain::UserId;
+use tak_server_app::errors::OneOf;
 
 use crate::{AppState, ServiceError};
 
@@ -79,22 +80,12 @@ async fn login(
     State(app): State<AppState>,
     Json(req): Json<LoginRequest>,
 ) -> Result<Json<AuthenticatedUserResponse>, ServiceError> {
-    let user = match app
+    let user = app
         .app
         .authentication_use_case
         .login(req.identifier, req.password)
         .await
-    {
-        Ok(user_id) => user_id,
-        Err(LoginError::InvalidCredentials) => {
-            return Err(ServiceError::Unauthorized(
-                "Invalid identifier or password".to_string(),
-            ));
-        }
-        Err(LoginError::Internal) => {
-            return Err(ServiceError::Internal(format!("Failed to login",)));
-        }
-    };
+        .map_err(OneOf::convert::<ServiceError>)?;
     let jwt = generate_jwt(user.user_id, JWT_DURATION);
 
     Ok(Json(AuthenticatedUserResponse {
@@ -107,12 +98,12 @@ async fn login(
 async fn login_guest(
     State(app): State<AppState>,
 ) -> Result<Json<AuthenticatedUserResponse>, ServiceError> {
-    let user = match app.app.authentication_use_case.create_guest_account().await {
-        Ok(user_id) => user_id,
-        Err(RegisterError::Internal) => {
-            return Err(ServiceError::Internal(format!("Failed to login as guest")));
-        }
-    };
+    let user = app
+        .app
+        .authentication_use_case
+        .create_guest_account()
+        .await
+        .map_err(OneOf::convert::<ServiceError>)?;
     let jwt = generate_jwt(user.user_id, JWT_DURATION);
 
     Ok(Json(AuthenticatedUserResponse {
@@ -135,22 +126,12 @@ async fn refresh(
 ) -> Result<Json<AuthenticatedUserResponse>, ServiceError> {
     let user_id = UserId::try_from(req.user_id.clone())
         .map_err(|_| ServiceError::BadRequest("Invalid user ID".to_string()))?;
-    let user = match app
+    let user = app
         .app
         .authentication_use_case
         .refresh(user_id, req.refresh_token)
         .await
-    {
-        Ok(user_id) => user_id,
-        Err(RefreshError::InvalidToken) => {
-            return Err(ServiceError::Unauthorized(
-                "Invalid refresh token".to_string(),
-            ));
-        }
-        Err(RefreshError::Internal) => {
-            return Err(ServiceError::Internal(format!("Failed to refresh token")));
-        }
-    };
+        .map_err(OneOf::convert::<ServiceError>)?;
     let jwt = generate_jwt(user.user_id, JWT_DURATION);
 
     Ok(Json(AuthenticatedUserResponse {
@@ -172,19 +153,12 @@ async fn register(
     State(app): State<AppState>,
     Json(req): Json<RegisterRequest>,
 ) -> Result<Json<AuthenticatedUserResponse>, ServiceError> {
-    let user = match app
+    let user = app
         .app
         .authentication_use_case
         .register(req.email, req.username, req.password)
         .await
-    {
-        Ok(user_id) => user_id,
-        Err(RegisterError::Internal) => {
-            return Err(ServiceError::Internal(
-                "Failed to register account".to_string(),
-            ));
-        }
-    };
+        .map_err(OneOf::convert::<ServiceError>)?;
     let jwt = generate_jwt(user.user_id, JWT_DURATION);
 
     Ok(Json(AuthenticatedUserResponse {
@@ -204,23 +178,12 @@ async fn recover(
     State(app): State<AppState>,
     Json(req): Json<RecoverRequest>,
 ) -> Result<(), ServiceError> {
-    match app
-        .app
+    app.app
         .authentication_use_case
         .recover(req.identifier)
         .await
-    {
-        Ok(()) => Ok(()),
-        Err(RecoverError::AccountNotFound) => {
-            Err(ServiceError::NotFound("Account not found".to_string()))
-        }
-        Err(RecoverError::EmailNotSet) => Err(ServiceError::NotPossible(
-            "Email not set for account".to_string(),
-        )),
-        Err(RecoverError::Internal) => Err(ServiceError::Internal(
-            "Failed to initiate account recovery".to_string(),
-        )),
-    }
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(())
 }
 
 #[derive(serde::Deserialize)]
@@ -235,30 +198,21 @@ async fn reset(
     State(app): State<AppState>,
     Json(req): Json<ResetRequest>,
 ) -> Result<(), ServiceError> {
-    match app
-        .app
+    app.app
         .authentication_use_case
         .reset(req.identifier, req.token, req.new_password)
         .await
-    {
-        Ok(()) => Ok(()),
-        Err(ResetError::InvalidToken) => Err(ServiceError::Unauthorized(
-            "Invalid token or password".to_string(),
-        )),
-        Err(ResetError::Internal) => Err(ServiceError::Internal(
-            "Failed to reset password".to_string(),
-        )),
-        Err(ResetError::AccountNotFound) => Err(ServiceError::NotFound(
-            "Invalid token or password".to_string(),
-        )),
-    }
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(())
 }
 
 async fn logout(State(app): State<AppState>, auth: Auth) -> Result<(), ServiceError> {
-    match app.app.authentication_use_case.logout(auth.user_id).await {
-        Ok(()) => Ok(()),
-        Err(LogoutError::Internal) => Err(ServiceError::Internal("Failed to logout".to_string())),
-    }
+    app.app
+        .authentication_use_case
+        .logout(auth.user_id)
+        .await
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(())
 }
 
 async fn create_api_token(

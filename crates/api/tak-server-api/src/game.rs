@@ -16,9 +16,7 @@ use tak_server_api_contract::game::{
     GameRequestResponse, GameRequestResponseType, GameRequestsResponse, GameSettingsResponse,
     GameStatusResponse, GameStatusResponseType, PlayerSnapshotResponse,
 };
-use tak_server_app::application::gameplay::{
-    ActionError, GameDetailView, GameQueryError, HandleRequestError, PlayerActionError,
-};
+use tak_server_app::{application::gameplay::GameDetailView, errors::OneOf};
 
 use crate::{AppState, ServiceError, auth::Auth};
 
@@ -34,12 +32,12 @@ pub fn register_routes() -> axum::Router<AppState> {
 async fn get_games(
     State(app): State<AppState>,
 ) -> Result<Json<Vec<GameMetadataResponse>>, ServiceError> {
-    let games = match app.app.gameplay_use_case.get_ongoing_games().await {
-        Ok(games) => games,
-        Err(GameQueryError::RepositoryError) => {
-            return Err(ServiceError::Internal("Failed to get ongoing games".into()));
-        }
-    };
+    let games = app
+        .app
+        .gameplay_use_case
+        .get_ongoing_games()
+        .await
+        .map_err(OneOf::convert::<ServiceError>)?;
     Ok(Json(
         games
             .into_iter()
@@ -53,15 +51,18 @@ async fn get_game(
     Path(game_id): Path<i64>,
 ) -> Result<Json<GameStatusResponse>, ServiceError> {
     let game_id = GameId(game_id);
-    match app.app.gameplay_use_case.get_game(game_id).await {
-        Ok(Some(detail)) => Ok(Json(status_from_game_detail(game_id, detail))),
-        Ok(None) => Err(ServiceError::NotFound(format!(
+    match app
+        .app
+        .gameplay_use_case
+        .get_game(game_id)
+        .await
+        .map_err(OneOf::convert::<ServiceError>)?
+    {
+        Some(detail) => Ok(Json(status_from_game_detail(game_id, detail))),
+        None => Err(ServiceError::NotFound(format!(
             "Game with id {} not found",
             game_id
         ))),
-        Err(GameQueryError::RepositoryError) => Err(ServiceError::Internal(
-            "Failed to retrieve game record".to_string(),
-        )),
     }
 }
 
@@ -75,17 +76,8 @@ async fn resign_game(
         .gameplay_use_case
         .resign(game_id, auth.user_id)
         .await
-        .map_err(|e| match e {
-            PlayerActionError::GameNotFound => {
-                ServiceError::NotFound(format!("Game with id {} not found", game_id))
-            }
-            PlayerActionError::NotAPlayerInGame => {
-                ServiceError::Forbidden("You are not a player in this game".to_string())
-            }
-            PlayerActionError::Internal => {
-                ServiceError::Internal("Failed to resign from game".to_string())
-            }
-        })
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(())
 }
 
 async fn set_request(
@@ -102,26 +94,12 @@ async fn set_request(
             GameRequest::MoreTime(amount_ms.map(|ms| Duration::from_millis(ms)))
         }
     };
-    match app
-        .app
+    app.app
         .gameplay_use_case
         .set_request(game_id, auth.user_id, request)
         .await
-    {
-        Ok(()) => Ok(()),
-        Err(e) => match e {
-            PlayerActionError::GameNotFound => Err(ServiceError::NotFound(format!(
-                "Game with id {} not found",
-                game_id
-            ))),
-            PlayerActionError::NotAPlayerInGame => Err(ServiceError::Forbidden(
-                "You are not a player in this game".to_string(),
-            )),
-            PlayerActionError::Internal => Err(ServiceError::Internal(
-                "Failed to set request for game".to_string(),
-            )),
-        },
-    }
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(())
 }
 
 async fn accept_request(
@@ -138,34 +116,12 @@ async fn accept_request(
         GameRequestResponseType::MoreTime => GameRequestType::MoreTime,
     };
 
-    let res = app
-        .app
+    app.app
         .gameplay_use_case
         .accept_request(game_id, auth.user_id, request_type)
-        .await;
-    tracing::info!(
-        %auth.user_id,
-        %game_id,
-        "ACCEPT Player is accepting request in game",
-    );
-    match res {
-        Ok(()) => Ok(()),
-        Err(ActionError::NotPossible(e)) => match e {
-            PlayerActionError::GameNotFound => Err(ServiceError::NotFound(format!(
-                "Game with id {} not found",
-                game_id
-            ))),
-            PlayerActionError::NotAPlayerInGame => Err(ServiceError::Forbidden(
-                "You are not a player in this game".to_string(),
-            )),
-            PlayerActionError::Internal => Err(ServiceError::Internal(
-                "Failed to accept request for game".to_string(),
-            )),
-        },
-        Err(ActionError::ActionError(HandleRequestError::RequestNotFound)) => Err(
-            ServiceError::NotFound("No such request to accept".to_string()),
-        ),
-    }
+        .await
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(())
 }
 
 pub fn from_metadata(game_id: GameId, metadata: &GameMetadata) -> GameMetadataResponse {

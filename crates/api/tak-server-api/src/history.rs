@@ -6,7 +6,7 @@ use axum::{
 use tak_domain::UserId;
 use tak_server_api_contract::game::GameRecordResponse;
 use tak_server_app::{
-    application::gameplay::GameQueryError,
+    errors::OneOf,
     ports::{
         Pagination, SortOrder,
         game::{GamePlayerFilter, GameQuery, GameSortBy},
@@ -35,9 +35,7 @@ async fn query_game_history(
         .gameplay_use_case
         .query_games(filter)
         .await
-        .map_err(|GameQueryError::RepositoryError| {
-            ServiceError::Internal("Failed to retrieve game history".to_string())
-        })?;
+        .map_err(OneOf::convert::<ServiceError>)?;
     Ok(Json(PaginatedResponse {
         items: history
             .items
@@ -66,9 +64,7 @@ async fn query_player_game_history(
         .gameplay_use_case
         .query_games(filter)
         .await
-        .map_err(|GameQueryError::RepositoryError| {
-            ServiceError::Internal("Failed to retrieve game history".to_string())
-        })?;
+        .map_err(OneOf::convert::<ServiceError>)?;
 
     Ok(Json(PaginatedResponse {
         items: history

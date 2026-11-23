@@ -9,7 +9,7 @@ use tak_server_api_contract::{
     game::GameSettingsResponse,
     seek::{CreateSeekRequest, SeekResponse},
 };
-use tak_server_app::application::matchmaking::{AcceptSeekError, CreateSeekError, SeekView};
+use tak_server_app::{application::matchmaking::SeekView, errors::OneOf};
 
 use crate::{AppState, ServiceError, auth::Auth};
 
@@ -42,17 +42,12 @@ async fn create_seek(
 
     let game_settings = payload.game_settings.to_game_settings();
 
-    match app.app.matchmaking_use_case.create_seek(
-        auth.user_id,
-        color,
-        game_settings,
-        payload.is_rated,
-    ) {
-        Ok(seek) => Ok(Json(from_seek_view(seek))),
-        Err(CreateSeekError::InvalidGameSettings) => Err(ServiceError::BadRequest(
-            "Invalid game settings".to_string(),
-        )),
-    }
+    let seek = app
+        .app
+        .matchmaking_use_case
+        .create_seek(auth.user_id, color, game_settings, payload.is_rated)
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(Json(from_seek_view(seek)))
 }
 
 async fn cancel_seek(
@@ -75,20 +70,12 @@ async fn accept_seek(
     State(app): State<AppState>,
     Path(seek_id): Path<u64>,
 ) -> Result<(), ServiceError> {
-    match app
-        .app
+    app.app
         .matchmaking_use_case
         .accept_seek(auth.user_id, SeekId(seek_id))
         .await
-    {
-        Ok(_) => Ok(()),
-        Err(AcceptSeekError::SeekNotFound) => {
-            Err(ServiceError::NotFound("Seek not found".to_string()))
-        }
-        Err(AcceptSeekError::Internal) => {
-            Err(ServiceError::Internal("Failed to accept seek".to_string()))
-        }
-    }
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(())
 }
 
 pub fn from_seek_view(seek: SeekView) -> SeekResponse {

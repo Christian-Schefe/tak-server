@@ -6,8 +6,9 @@ use tak_domain::{
     TournamentId,
     tournament::{TournamentFormat, TournamentStatus},
 };
-use tak_server_app::application::tournament::{
-    TournamentDetailView, TournamentMetadataView, TournamentRegistrationError, TournamentView,
+use tak_server_app::{
+    application::tournament::{TournamentDetailView, TournamentMetadataView, TournamentView},
+    errors::OneOf,
 };
 
 use crate::{AppState, ServiceError, auth::Auth, matches::MatchSettingsResponse};
@@ -46,17 +47,18 @@ pub fn register_routes() -> axum::Router<AppState> {
 async fn get_tournaments(
     State(app): State<AppState>,
 ) -> Result<Json<Vec<TournamentResponse>>, ServiceError> {
-    match app.app.tournament_use_case.get_tournaments().await {
-        Ok(tournaments) => Ok(Json(
-            tournaments
-                .into_iter()
-                .map(|t| TournamentResponse::from(&t))
-                .collect(),
-        )),
-        Err(_) => Err(ServiceError::Internal(
-            "Failed to retrieve tournaments".to_string(),
-        )),
-    }
+    let tournaments = app
+        .app
+        .tournament_use_case
+        .get_tournaments()
+        .await
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(Json(
+        tournaments
+            .into_iter()
+            .map(|t| TournamentResponse::from(&t))
+            .collect(),
+    ))
 }
 
 async fn get_tournament(
@@ -73,14 +75,10 @@ async fn get_tournament(
         .tournament_use_case
         .get_tournament(tournament_id)
         .await
+        .map_err(OneOf::convert::<ServiceError>)?
     {
-        Ok(Some(t)) => t,
-        Ok(None) => return Err(ServiceError::NotFound("Tournament not found".to_string())),
-        Err(_) => {
-            return Err(ServiceError::Internal(
-                "Failed to retrieve tournament".to_string(),
-            ));
-        }
+        Some(t) => t,
+        None => return Err(ServiceError::NotFound("Tournament not found".to_string())),
     };
     Ok(Json(TournamentDetailResponse::from(&tournament)))
 }
@@ -99,17 +97,8 @@ async fn register_player_to_tournament(
         .tournament_use_case
         .register_player_in_tournament(tournament_id, auth.user_id)
         .await
-        .map_err(|e| match e {
-            TournamentRegistrationError::TournamentNotFound => {
-                ServiceError::NotFound("Tournament not found".to_string())
-            }
-            TournamentRegistrationError::TournamentNotUpcoming => ServiceError::BadRequest(
-                "Tournament is not upcoming, registration is closed".to_string(),
-            ),
-            TournamentRegistrationError::StorageError => {
-                ServiceError::Internal("Failed to register player in tournament".to_string())
-            }
-        })
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(())
 }
 
 async fn unregister_player_from_tournament(
@@ -126,17 +115,8 @@ async fn unregister_player_from_tournament(
         .tournament_use_case
         .unregister_player_from_tournament(tournament_id, auth.user_id)
         .await
-        .map_err(|e| match e {
-            TournamentRegistrationError::TournamentNotFound => {
-                ServiceError::NotFound("Tournament not found".to_string())
-            }
-            TournamentRegistrationError::TournamentNotUpcoming => ServiceError::BadRequest(
-                "Tournament is not upcoming, registration is closed".to_string(),
-            ),
-            TournamentRegistrationError::StorageError => {
-                ServiceError::Internal("Failed to unregister player from tournament".to_string())
-            }
-        })
+        .map_err(OneOf::convert::<ServiceError>)?;
+    Ok(())
 }
 
 async fn create_tournament(
@@ -144,34 +124,27 @@ async fn create_tournament(
     State(app): State<AppState>,
     Json(payload): Json<CreateTournamentRequest>,
 ) -> Result<(), ServiceError> {
-    match app
-        .app
+    let format = match payload.tournament_format {
+        TournamentTypeResponse::Swiss { rounds } => TournamentFormat::Swiss {
+            rounds: rounds as usize,
+        },
+        TournamentTypeResponse::RoundRobin => TournamentFormat::RoundRobin,
+        TournamentTypeResponse::GroupRoundRobin { group_size } => {
+            TournamentFormat::GroupRoundRobin {
+                group_size: group_size as usize,
+            }
+        }
+    };
+    app.app
         .tournament_use_case
         .create_tournament(
             auth.user_id,
             payload.name,
-            match payload.tournament_format {
-                TournamentTypeResponse::Swiss { rounds } => TournamentFormat::Swiss {
-                    rounds: rounds as usize,
-                },
-                TournamentTypeResponse::RoundRobin => TournamentFormat::RoundRobin,
-                TournamentTypeResponse::GroupRoundRobin { group_size } => {
-                    TournamentFormat::GroupRoundRobin {
-                        group_size: group_size as usize,
-                    }
-                }
-            },
+            format,
             payload.match_settings.to_match_settings(),
         )
         .await
-    {
-        Ok(_) => {}
-        Err(_) => {
-            return Err(ServiceError::Internal(
-                "Failed to create tournament".to_string(),
-            ));
-        }
-    };
+        .map_err(OneOf::convert::<ServiceError>)?;
     Ok(())
 }
 
@@ -185,19 +158,11 @@ async fn start_tournament(
             .parse()
             .map_err(|_| ServiceError::BadRequest("Invalid tournament ID".to_string()))?,
     );
-    match app
-        .app
+    app.app
         .tournament_use_case
         .begin_tournament(auth.user_id, tournament_id)
         .await
-    {
-        Ok(_) => {}
-        Err(_) => {
-            return Err(ServiceError::Internal(
-                "Failed to start tournament".to_string(),
-            ));
-        }
-    };
+        .map_err(OneOf::convert::<ServiceError>)?;
     Ok(())
 }
 
@@ -211,19 +176,11 @@ async fn finish_tournament(
             .parse()
             .map_err(|_| ServiceError::BadRequest("Invalid tournament ID".to_string()))?,
     );
-    match app
-        .app
+    app.app
         .tournament_use_case
         .finish_tournament(auth.user_id, tournament_id)
         .await
-    {
-        Ok(_) => {}
-        Err(_) => {
-            return Err(ServiceError::Internal(
-                "Failed to finish tournament".to_string(),
-            ));
-        }
-    };
+        .map_err(OneOf::convert::<ServiceError>)?;
     Ok(())
 }
 
@@ -237,19 +194,11 @@ async fn start_next_round_of_tournament(
             .parse()
             .map_err(|_| ServiceError::BadRequest("Invalid tournament ID".to_string()))?,
     );
-    match app
-        .app
+    app.app
         .tournament_use_case
         .start_next_round(auth.user_id, tournament_id)
         .await
-    {
-        Ok(_) => {}
-        Err(_) => {
-            return Err(ServiceError::Internal(
-                "Failed to start next round of tournament".to_string(),
-            ));
-        }
-    };
+        .map_err(OneOf::convert::<ServiceError>)?;
     Ok(())
 }
 
@@ -264,19 +213,11 @@ async fn set_registration_open(
             .parse()
             .map_err(|_| ServiceError::BadRequest("Invalid tournament ID".to_string()))?,
     );
-    match app
-        .app
+    app.app
         .tournament_use_case
         .set_registration_open(auth.user_id, tournament_id, payload.registration_open)
         .await
-    {
-        Ok(_) => {}
-        Err(_) => {
-            return Err(ServiceError::Internal(
-                "Failed to set registration open/closed".to_string(),
-            ));
-        }
-    };
+        .map_err(OneOf::convert::<ServiceError>)?;
     Ok(())
 }
 

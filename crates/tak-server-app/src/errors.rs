@@ -8,9 +8,6 @@ pub struct InternalError;
 pub struct InvalidCredentials;
 
 #[derive(Copy, Debug, Clone, PartialEq)]
-pub struct AccountNotFound;
-
-#[derive(Copy, Debug, Clone, PartialEq)]
 pub struct InvalidEmailAddress;
 
 #[derive(Copy, Debug, Clone, PartialEq)]
