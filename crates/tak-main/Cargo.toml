@@ -11,7 +11,6 @@ tak-email-lettre                 = { path = "../infra/tak-email-lettre" }
 tak-events-google-sheets         = { path = "../infra/tak-events-google-sheets" }
 tak-persistence-profile-pictures = { path = "../infra/tak-persistence-profile-pictures" }
 tak-persistence-sea-orm          = { path = "../infra/tak-persistence-sea-orm" }
-tak-player-connection            = { path = "../infra/tak-player-connection" }
 tak-server-api                   = { path = "../api/tak-server-api" }
 tak-server-app                   = { path = "../tak-server-app" }
 tokio                            = { version = "1.47.1", features = ["full"] }

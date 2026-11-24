@@ -12,7 +12,7 @@ use sha2::Digest;
 use tak_domain::UserId;
 use tak_server_app::{
     errors::{AppResult, EmailTaken, InternalError, InvalidCredentials, OneOf},
-    ports::authentication::{AccountInfo, AccountPort, RefreshToken},
+    ports::authentication::{AccountInfo, AuthenticationPort, RefreshToken},
 };
 
 mod guest;
@@ -112,7 +112,7 @@ async fn verify_password(
 }
 
 #[async_trait::async_trait]
-impl<AR> AccountPort for AuthService<AR>
+impl<AR> AuthenticationPort for AuthService<AR>
 where
     AR: AccountRepository + Send + Sync + 'static,
 {

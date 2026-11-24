@@ -2,9 +2,8 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 
-use tak_core::TakTimeSettings;
-use tak_domain::{UserId, rating::PlayerRating, stats::PlayerStats};
 use better_errors::OneOf;
+use tak_domain::{UserId, rating::PlayerRating, stats::PlayerStats};
 
 use crate::{
     PortsCollection,
@@ -12,16 +11,11 @@ use crate::{
     errors::{AppResult, InternalError, UserNotFound},
     ports::{
         PaginatedResponse,
-        connection::UserOnlineStatusPort,
-        matches::{MatchReadinessService, MatchRepository},
-        notification::{ListenerMatchEventType, ListenerMessage, ListenerNotificationPort},
-        rating::{RatingQuery, RatingRepository},
-        seeks::SeekService,
-        stats::{RatingHistoryRepository, StatsRepository},
-        transaction::TransactionManager,
+        notification::{NotificationMatchEventType, NotificationMessage},
+        rating::RatingQuery,
     },
     processes::disconnect_timeout_runner::DisconnectTimeoutRunner,
-    workflow::{get_snapshot::GetSnapshotWorkflow, notify_player::NotifyPlayerWorkflow},
+    workflow::get_snapshot::get_snapshot,
 };
 
 #[derive(Debug, Clone)]
@@ -99,56 +93,16 @@ pub trait PlayerUseCase {
     async fn set_offline(&self, user_id: UserId) -> AppResult<(), (InternalError,)>;
 }
 
-pub struct PlayerUseCaseImpl<
-    Ports: PortsCollection,
-    P: UserOnlineStatusPort,
-    L: ListenerNotificationPort,
-    S: SeekService,
-    D: DisconnectTimeoutRunner,
-    M: MatchReadinessService,
-    NP: NotifyPlayerWorkflow,
-    SN: GetSnapshotWorkflow<Ports::TrCtx>,
-> {
+pub struct PlayerUseCaseImpl<Ports: PortsCollection, D: DisconnectTimeoutRunner> {
     ports: Arc<Ports>,
-    user_online_status_port: Arc<P>,
-    notification_port: Arc<L>,
-    seek_service: Arc<S>,
     disconnect_timeout_runner: Arc<D>,
-    match_readiness_service: Arc<M>,
-    notify_player_workflow: Arc<NP>,
-    get_snapshot_workflow: Arc<SN>,
 }
 
-impl<
-    Ports: PortsCollection,
-    P: UserOnlineStatusPort,
-    L: ListenerNotificationPort,
-    S: SeekService,
-    D: DisconnectTimeoutRunner,
-    M: MatchReadinessService,
-    NP: NotifyPlayerWorkflow,
-    SN: GetSnapshotWorkflow<Ports::TrCtx>,
-> PlayerUseCaseImpl<Ports, P, L, S, D, M, NP, SN>
-{
-    pub fn new(
-        ports: Arc<Ports>,
-        user_online_status_port: Arc<P>,
-        notification_port: Arc<L>,
-        seek_service: Arc<S>,
-        disconnect_timeout_runner: Arc<D>,
-        match_readiness_service: Arc<M>,
-        notify_player_workflow: Arc<NP>,
-        get_snapshot_workflow: Arc<SN>,
-    ) -> Self {
+impl<Ports: PortsCollection, D: DisconnectTimeoutRunner> PlayerUseCaseImpl<Ports, D> {
+    pub fn new(ports: Arc<Ports>, disconnect_timeout_runner: Arc<D>) -> Self {
         Self {
             ports,
-            user_online_status_port,
-            notification_port,
-            seek_service,
             disconnect_timeout_runner,
-            match_readiness_service,
-            notify_player_workflow,
-            get_snapshot_workflow,
         }
     }
 }
@@ -156,23 +110,15 @@ impl<
 #[async_trait::async_trait]
 impl<
     Ports: PortsCollection + Send + Sync + 'static,
-    P: UserOnlineStatusPort + Send + Sync + 'static,
-    L: ListenerNotificationPort + Send + Sync + 'static,
-    S: SeekService + Send + Sync + 'static,
     D: DisconnectTimeoutRunner + Send + Sync + 'static,
-    M: MatchReadinessService + Send + Sync + 'static,
-    NP: NotifyPlayerWorkflow + Send + Sync + 'static,
-    SN: GetSnapshotWorkflow<Ports::TrCtx> + Send + Sync + 'static,
-> PlayerUseCase for PlayerUseCaseImpl<Ports, P, L, S, D, M, NP, SN>
+> PlayerUseCase for PlayerUseCaseImpl<Ports, D>
 {
     async fn get_player(
         &self,
         user_id: UserId,
     ) -> AppResult<PlayerInfoView, (UserNotFound, InternalError)> {
         let ctx = self.ports.transaction_manager().simple();
-        let snapshot = self
-            .get_snapshot_workflow
-            .get_snapshot(&ctx, user_id)
+        let snapshot = get_snapshot(self.ports.as_ref(), &ctx, user_id)
             .await
             .map_err(OneOf::broaden)?
             .ok_or(OneOf::new(UserNotFound))?;
@@ -250,13 +196,17 @@ impl<
     }
 
     fn get_online_users(&self) -> Vec<UserId> {
-        self.user_online_status_port.get_online_users()
+        self.ports.user_online_status_port().get_online_users()
     }
     #[tracing::instrument(skip(self))]
     async fn set_online(&self, user_id: UserId) {
-        if let Some(users) = self.user_online_status_port.set_user_online(user_id) {
-            let message = ListenerMessage::UsersOnline { users };
-            self.notification_port.notify_all(&message);
+        if let Some(users) = self
+            .ports
+            .user_online_status_port()
+            .set_user_online(user_id)
+        {
+            let message = NotificationMessage::UsersOnline { users };
+            self.ports.notification_port().notify_all(&message);
         }
         self.disconnect_timeout_runner
             .cancel_disconnect_timeout(user_id);
@@ -264,24 +214,24 @@ impl<
 
     #[tracing::instrument(skip(self))]
     async fn set_offline(&self, user_id: UserId) -> AppResult<(), (InternalError,)> {
-        if let Some(users) = self.user_online_status_port.set_user_offline(user_id) {
-            let message = ListenerMessage::UsersOnline { users };
-            self.notification_port.notify_all(&message);
+        if let Some(users) = self
+            .ports
+            .user_online_status_port()
+            .set_user_offline(user_id)
+        {
+            let message = NotificationMessage::UsersOnline { users };
+            self.ports.notification_port().notify_all(&message);
         }
-        let cancelled_seeks = self.seek_service.cancel_player_seeks(user_id, |seek| {
-            matches!(
-                seek.game_settings.time_settings,
-                TakTimeSettings::Realtime(_)
-            )
-        });
+        let cancelled_seeks = self.ports.seek_service().cancel_player_seeks(user_id, true);
         for (cancelled_seek_id, cancelled_seek) in cancelled_seeks {
-            let message = ListenerMessage::SeekCancelled {
+            let message = NotificationMessage::SeekCancelled {
                 seek: SeekView::from(cancelled_seek_id, &cancelled_seek),
             };
-            self.notification_port.notify_all(&message);
+            self.ports.notification_port().notify_all(&message);
         }
         let cancelled_match_readiness = self
-            .match_readiness_service
+            .ports
+            .match_readiness_service()
             .set_player_not_ready_everywhere(user_id);
 
         let ctx = self.ports.transaction_manager().simple();
@@ -301,11 +251,13 @@ impl<
         for (match_id, match_entry) in matches {
             match match_entry {
                 Some(match_entry) => {
-                    let message = ListenerMessage::MatchEvent {
+                    let message = NotificationMessage::MatchEvent {
                         match_id: match_id,
-                        event_type: ListenerMatchEventType::MatchReadinessChanged { user_id: None },
+                        event_type: NotificationMatchEventType::MatchReadinessChanged {
+                            user_id: None,
+                        },
                     };
-                    self.notify_player_workflow.notify_players(
+                    self.ports.notification_port().notify_users(
                         &[match_entry.player1.user_id, match_entry.player2.user_id],
                         &message,
                     );
@@ -315,6 +267,10 @@ impl<
                 }
             }
         }
+
+        self.ports.spectator_service().unobserve_all_games(user_id);
+        self.ports.chat_room_service().leave_all_rooms(user_id);
+
         DisconnectTimeoutRunner::start_disconnect_timeout(
             self.disconnect_timeout_runner.clone(),
             user_id,

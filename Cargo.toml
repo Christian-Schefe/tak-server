@@ -12,7 +12,6 @@ members = [
     "crates/infra/tak-persistence-sea-orm",
     "crates/infra/tak-persistence-sea-orm-entities",
     "crates/infra/tak-persistence-sea-orm-migrations",
-    "crates/infra/tak-player-connection",
     "crates/more-concurrent-maps",
     "crates/tak-bot-tei-bridge",
     "crates/tak-core", "crates/tak-domain",

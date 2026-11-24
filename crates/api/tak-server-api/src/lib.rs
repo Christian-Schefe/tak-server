@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use axum::{Router, response::IntoResponse, routing::get};
-use tak_player_connection::PlayerConnectionDriver;
 use tak_server_app::{
     Application,
     errors::{
@@ -13,7 +12,7 @@ use tak_server_app::{
 };
 
 use tower_http::csrf::CsrfLayer;
-pub use ws::WsService;
+pub use ws::{UserOnlineStatusService, WsNotificationAdapter, WsService};
 
 mod auth;
 mod chat;
@@ -29,21 +28,15 @@ mod ws;
 #[derive(Clone)]
 pub struct AppState {
     pub app: Arc<Application>,
-    pub connection_driver: Arc<PlayerConnectionDriver>,
     pub ws: Arc<WsService>,
 }
 
 pub async fn serve(
     app: Arc<Application>,
     ws: Arc<WsService>,
-    connection_driver: Arc<PlayerConnectionDriver>,
     shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static,
 ) {
-    let state = AppState {
-        app,
-        ws,
-        connection_driver,
-    };
+    let state = AppState { app, ws };
 
     let csrf_layer = CsrfLayer::new();
 

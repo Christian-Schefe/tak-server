@@ -24,15 +24,11 @@ use tak_persistence_sea_orm::{
     },
     transaction::TransactionManagerImpl,
 };
-use tak_player_connection::{
-    AccountOnlineStatusService, PlayerConnectionDriver, PlayerConnectionService,
-};
-use tak_server_api::WsService;
-use tak_server_app::{PortsCollectionImpl, build_application};
+use tak_server_api::{WsNotificationAdapter, WsService};
+use tak_server_app::build_application;
 
-use crate::{compose::ComposedListenerNotificationService, logs::init_logger};
+use crate::logs::init_logger;
 
-mod compose;
 mod logs;
 
 async fn shutdown_signal() {
@@ -77,7 +73,6 @@ fn try_load_env() {
 async fn main() {
     try_load_env();
     let _guard = init_logger();
-    let ws_service = Arc::new(WsService::new());
 
     let game_repo = Arc::new(GameRepositoryImpl);
     let rating_repo = Arc::new(RatingRepositoryImpl);
@@ -85,16 +80,11 @@ async fn main() {
     let event_repo = Arc::new(NoopEventRepository);
     let stats_repo = Arc::new(StatsRepositoryImpl);
     let email_adapter = Arc::new(LettreEmailAdapter::new());
-    let player_connection_adapter =
-        Arc::new(PlayerConnectionService::new(vec![ws_service.clone()]));
-    let listener_notification_adapter = Arc::new(ComposedListenerNotificationService::new(vec![
-        player_connection_adapter.clone(), //for now only one adapter
-    ]));
+    let notification_adapter = Arc::new(WsNotificationAdapter::new());
 
     let account_repo = Arc::new(AccountRepositoryImpl::new().await);
     let authentication_adapter = Arc::new(AuthService::new(account_repo));
 
-    let account_online_status_adapter = Arc::new(AccountOnlineStatusService::new());
     let profile_picture_repo = Arc::new(ProfilePictureRepositoryImpl::new().await);
     let chat_repo = Arc::new(ChatRepositoryImpl);
     let rating_history_repo = Arc::new(RatingHistoryRepositoryImpl);
@@ -108,40 +98,30 @@ async fn main() {
 
     let transaction_manager = Arc::new(TransactionManagerImpl::new().await);
 
-    let ports = Arc::new(PortsCollectionImpl::new(
-        game_repo,
-        rating_repo,
-        event_repo,
-        stats_repo,
-        profile_repo,
-        profile_picture_repo,
-        chat_repo,
-        rating_history_repo,
-        tournament_repo,
-        tournament_player_registration_repo,
-        match_repo,
-        tournament_round_repo,
-        moderation_repo,
-        game_state_repo,
-        game_history_repo,
-        transaction_manager,
-    ));
     let app = Arc::new(
         build_application(
-            email_adapter.clone(),
-            listener_notification_adapter.clone(),
-            player_connection_adapter.clone(),
-            authentication_adapter.clone(),
-            account_online_status_adapter,
-            ports,
+            game_repo,
+            rating_repo,
+            event_repo,
+            stats_repo,
+            profile_repo,
+            profile_picture_repo,
+            chat_repo,
+            rating_history_repo,
+            tournament_repo,
+            tournament_player_registration_repo,
+            match_repo,
+            tournament_round_repo,
+            moderation_repo,
+            game_state_repo,
+            game_history_repo,
+            transaction_manager,
+            email_adapter,
+            notification_adapter.clone(),
+            authentication_adapter,
         )
         .await,
     );
-
-    let connection_driver = Arc::new(PlayerConnectionDriver::new(
-        app.clone(),
-        player_connection_adapter.clone(),
-    ));
 
     tracing::info!("Starting application");
 
@@ -151,6 +131,7 @@ async fn main() {
         tracing::info!("Executing shutdown workflow");
         app_clone.shutdown_use_case.shutdown().await;
     };
+    let ws_service = Arc::new(WsService::new(app.clone(), notification_adapter));
 
-    tak_server_api::serve(app, ws_service, connection_driver, on_shutdown).await;
+    tak_server_api::serve(app, ws_service, on_shutdown).await;
 }

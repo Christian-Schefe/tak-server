@@ -3,11 +3,8 @@ use std::sync::Arc;
 use crate::{
     PortsCollection,
     errors::{AppResult, InsufficientPermissions, InternalError, UserNotFound},
-    ports::{
-        authentication::AccountPort, email::EmailPort, moderation::ModerationRepository,
-        transaction::TransactionManager,
-    },
 };
+use better_errors::OneOf;
 use tak_domain::{
     UserId,
     moderation::{
@@ -15,7 +12,6 @@ use tak_domain::{
         UserRole,
     },
 };
-use better_errors::OneOf;
 
 #[async_trait::async_trait]
 pub trait ModerationUseCase {
@@ -61,24 +57,13 @@ pub trait ModerationUseCase {
     ) -> AppResult<(), (UserNotFound, InsufficientPermissions, InternalError)>;
 }
 
-pub struct ModerationUseCaseImpl<Ports: PortsCollection, E: EmailPort, A: AccountPort> {
+pub struct ModerationUseCaseImpl<Ports: PortsCollection> {
     ports: Arc<Ports>,
-    email_port: Arc<E>,
-    account_info_service: Arc<A>,
 }
 
-impl<
-    Ports: PortsCollection + Send + Sync + 'static,
-    E: EmailPort + Send + Sync + 'static,
-    A: AccountPort + Send + Sync + 'static,
-> ModerationUseCaseImpl<Ports, E, A>
-{
-    pub fn new(ports: Arc<Ports>, email_port: Arc<E>, account_info_service: Arc<A>) -> Self {
-        Self {
-            ports,
-            email_port,
-            account_info_service,
-        }
+impl<Ports: PortsCollection + Send + Sync + 'static> ModerationUseCaseImpl<Ports> {
+    pub fn new(ports: Arc<Ports>) -> Self {
+        Self { ports }
     }
 
     async fn do_moderation(
@@ -181,11 +166,8 @@ impl<
 }
 
 #[async_trait::async_trait]
-impl<
-    Ports: PortsCollection + Send + Sync + 'static,
-    E: EmailPort + Send + Sync + 'static,
-    A: AccountPort + Send + Sync + 'static,
-> ModerationUseCase for ModerationUseCaseImpl<Ports, E, A>
+impl<Ports: PortsCollection + Send + Sync + 'static> ModerationUseCase
+    for ModerationUseCaseImpl<Ports>
 {
     async fn get_moderation(
         &self,
@@ -214,7 +196,8 @@ impl<
             .await?;
 
         let Some(target_account_info) = self
-            .account_info_service
+            .ports
+            .authentication_port()
             .get_account_info(target_user_id)
             .await
             .map_err(OneOf::broaden)?
@@ -233,7 +216,7 @@ impl<
         The Playtak Team",
                 target_account_info.username, reason
             );
-            match self.email_port.send_email(&email, &subject, &body) {
+            match self.ports.email_port().send_email(&email, &subject, &body) {
                 Ok(_) => {}
                 Err(e) => {
                     tracing::error!("Failed to send ban email to {}: {:?}", email, e);

@@ -1,21 +1,16 @@
 use std::sync::Arc;
 
+use better_errors::OneOf;
 use country_code_enum::CountryCode;
 use image::DynamicImage;
 use tak_domain::{
     UserId,
-    profile::{AccountProfile, ProfilePicture, ProfilePictureVersion},
+    profile::{Profile, ProfilePicture, ProfilePictureVersion},
 };
-use better_errors::OneOf;
 
 use crate::{
     PortsCollection,
     errors::{AppResult, InternalError, UserNotFound},
-    ports::{
-        moderation::ModerationRepository,
-        profile::{AccountProfileRepository, ProfilePictureRepository},
-        transaction::TransactionManager,
-    },
 };
 
 pub struct AccountProfileView {
@@ -24,8 +19,8 @@ pub struct AccountProfileView {
     pub profile_picture_version: Option<ProfilePictureVersion>,
 }
 
-impl From<AccountProfile> for AccountProfileView {
-    fn from(profile: AccountProfile) -> Self {
+impl From<Profile> for AccountProfileView {
+    fn from(profile: Profile) -> Self {
         Self {
             display_name: profile.display_name,
             country: profile.country,
@@ -124,7 +119,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> ProfileUseCase for ProfileU
             .map_err(OneOf::broaden)?
         {
             Some(data) => data,
-            None => AccountProfile::new(),
+            None => Profile::new(),
         };
         profile_data.country = country;
         profile_data.display_name = display_name;
@@ -158,7 +153,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> ProfileUseCase for ProfileU
             .get_profile_information(&ctx, user_id)
             .await
             .map_err(OneOf::broaden)?
-            .unwrap_or_else(AccountProfile::new);
+            .unwrap_or_else(Profile::new);
         let new_version = profile_data
             .profile_picture_version
             .map(|x| x.increment())
@@ -168,7 +163,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> ProfileUseCase for ProfileU
             user_id,
             new_version.0
         );
-        let new_profile_data = AccountProfile {
+        let new_profile_data = Profile {
             country: profile_data.country,
             profile_picture_version: Some(new_version),
             display_name: profile_data.display_name,

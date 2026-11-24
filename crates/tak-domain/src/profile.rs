@@ -14,13 +14,13 @@ impl ProfilePictureVersion {
 }
 
 #[derive(Clone, Debug)]
-pub struct AccountProfile {
+pub struct Profile {
     pub display_name: Option<String>,
     pub country: Option<CountryCode>,
     pub profile_picture_version: Option<ProfilePictureVersion>,
 }
 
-impl AccountProfile {
+impl Profile {
     pub fn new() -> Self {
         Self {
             display_name: None,

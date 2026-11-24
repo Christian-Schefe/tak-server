@@ -3,19 +3,16 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use tak_core::TakTimeSettings;
 use tak_domain::{SeekId, UserId, seek::Seek};
 
 pub trait SeekService {
     fn create_seek(&self, seek: Seek) -> SeekId;
-    fn cancel_player_seeks(
-        &self,
-        player: UserId,
-        predicate: impl Fn(&Seek) -> bool,
-    ) -> Vec<(SeekId, Seek)>;
+    fn cancel_player_seeks(&self, player: UserId, only_realtime: bool) -> Vec<(SeekId, Seek)>;
     fn cancel_seek(&self, player: UserId, seek_id: SeekId) -> Option<Seek>;
     fn get_seek(&self, seek_id: SeekId) -> Option<Seek>;
     fn list_seeks(&self) -> Vec<(SeekId, Seek)>;
-    fn remove_seek_if(&self, seek_id: SeekId, predicate: impl Fn(&Seek) -> bool) -> Option<Seek>;
+    fn try_accept_seek(&self, seek_id: SeekId, user_id: UserId) -> Option<Seek>;
 }
 
 struct SeekRegistry {
@@ -49,16 +46,16 @@ impl SeekRegistry {
         seek_id
     }
 
-    fn cancel_player_seeks(
-        &mut self,
-        player: UserId,
-        predicate: impl Fn(&Seek) -> bool,
-    ) -> Vec<(SeekId, Seek)> {
+    fn cancel_player_seeks(&mut self, player: UserId, only_realtime: bool) -> Vec<(SeekId, Seek)> {
         let mut cancelled_seeks = Vec::new();
         if let Some(seek_ids) = self.seeks_by_player.remove(&player) {
             for seek_id in seek_ids {
                 if let Some(seek) = self.seeks.get(&seek_id)
-                    && predicate(seek)
+                    && (!only_realtime
+                        || matches!(
+                            seek.game_settings.time_settings,
+                            TakTimeSettings::Realtime(_)
+                        ))
                 {
                     cancelled_seeks.push((seek_id, seek.clone()));
                     self.seeks.remove(&seek_id);
@@ -127,15 +124,11 @@ impl SeekService for SeekServiceImpl {
         self.seek_registry.write().unwrap().add_seek(seek)
     }
 
-    fn cancel_player_seeks(
-        &self,
-        player: UserId,
-        predicate: impl Fn(&Seek) -> bool,
-    ) -> Vec<(SeekId, Seek)> {
+    fn cancel_player_seeks(&self, player: UserId, only_realtime: bool) -> Vec<(SeekId, Seek)> {
         self.seek_registry
             .write()
             .unwrap()
-            .cancel_player_seeks(player, predicate)
+            .cancel_player_seeks(player, only_realtime)
     }
 
     fn cancel_seek(&self, player: UserId, seek_id: SeekId) -> Option<Seek> {
@@ -162,10 +155,10 @@ impl SeekService for SeekServiceImpl {
             .collect()
     }
 
-    fn remove_seek_if(&self, seek_id: SeekId, predicate: impl Fn(&Seek) -> bool) -> Option<Seek> {
+    fn try_accept_seek(&self, seek_id: SeekId, user_id: UserId) -> Option<Seek> {
         self.seek_registry
             .write()
             .unwrap()
-            .remove_seek_if(seek_id, predicate)
+            .remove_seek_if(seek_id, |seek| seek.creator_id != user_id)
     }
 }

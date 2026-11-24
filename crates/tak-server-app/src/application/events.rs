@@ -5,7 +5,6 @@ use tak_domain::event::Event;
 use crate::{
     PortsCollection,
     errors::{AppResult, InternalError},
-    ports::event::EventRepository,
 };
 
 #[async_trait::async_trait]

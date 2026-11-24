@@ -2,22 +2,21 @@ use tak_core::{TakAction, TakGameResult, TakTimeInfo};
 
 use crate::application::{chat::ChatMessageView, matchmaking::SeekView};
 use tak_domain::{
-    GameId, ListenerId, MatchId, UserId, chat::ChatConversation, game::GameRequest,
-    game_record::GameRecord,
+    GameId, MatchId, UserId, chat::ChatConversation, game::GameRequest, game_record::GameRecord,
 };
 
-pub trait ListenerNotificationPort {
-    fn notify_listener(&self, listener: ListenerId, message: &ListenerMessage);
-    fn notify_listeners(&self, listeners: &[ListenerId], message: &ListenerMessage) {
-        for listener in listeners {
-            self.notify_listener(*listener, message);
+pub trait NotificationPort {
+    fn notify_user(&self, user_id: UserId, message: &NotificationMessage);
+    fn notify_users(&self, user_ids: &[UserId], message: &NotificationMessage) {
+        for listener in user_ids {
+            self.notify_user(*listener, message);
         }
     }
-    fn notify_all(&self, message: &ListenerMessage);
+    fn notify_all(&self, message: &NotificationMessage);
 }
 
 #[derive(Clone, Debug)]
-pub enum ListenerMessage {
+pub enum NotificationMessage {
     SeekCreated {
         seek: SeekView,
     },
@@ -40,12 +39,12 @@ pub enum ListenerMessage {
     },
     GameEvent {
         game_id: GameId,
-        event_type: ListenerGameMessageType,
+        event_type: NotificationGameMessageType,
         time_info: TakTimeInfo,
     },
     MatchEvent {
         match_id: MatchId,
-        event_type: ListenerMatchEventType,
+        event_type: NotificationMatchEventType,
     },
     ChatMessage {
         message: ChatMessageView,
@@ -57,12 +56,12 @@ pub enum ListenerMessage {
 }
 
 #[derive(Clone, Debug)]
-pub enum ListenerMatchEventType {
+pub enum NotificationMatchEventType {
     MatchReadinessChanged { user_id: Option<UserId> },
 }
 
 #[derive(Clone, Debug)]
-pub enum ListenerGameMessageType {
+pub enum NotificationGameMessageType {
     GameOver {
         game_result: TakGameResult,
     },

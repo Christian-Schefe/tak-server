@@ -5,12 +5,7 @@ use crate::{
     errors::{
         AppResult, EmailTaken, InternalError, InvalidCredentials, InvalidEmailAddress, UserNotFound,
     },
-    ports::{
-        authentication::{AccountPort, RefreshToken},
-        email::EmailPort,
-        moderation::ModerationRepository,
-        transaction::TransactionManager,
-    },
+    ports::authentication::RefreshToken,
 };
 use better_errors::OneOf;
 use tak_domain::{
@@ -57,29 +52,20 @@ pub trait AuthenticationUseCase {
     async fn logout(&self, user_id: UserId) -> AppResult<(), (InternalError,)>;
 }
 
-pub struct AuthenticationUseCaseImpl<Ports: PortsCollection, A: AccountPort, E: EmailPort> {
+pub struct AuthenticationUseCaseImpl<Ports: PortsCollection> {
     ports: Arc<Ports>,
-    account_service: Arc<A>,
-    email_service: Arc<E>,
 }
-impl<Ports: PortsCollection, A: AccountPort, E: EmailPort> AuthenticationUseCaseImpl<Ports, A, E> {
-    pub fn new(ports: Arc<Ports>, account_service: Arc<A>, email_service: Arc<E>) -> Self {
-        Self {
-            ports,
-            account_service,
-            email_service,
-        }
+impl<Ports: PortsCollection> AuthenticationUseCaseImpl<Ports> {
+    pub fn new(ports: Arc<Ports>) -> Self {
+        Self { ports }
     }
 }
 
 const REFRESH_TOKEN_DURATION: Duration = Duration::from_secs(60 * 60 * 24 * 7);
 
 #[async_trait::async_trait]
-impl<
-    Ports: PortsCollection + Send + Sync + 'static,
-    A: AccountPort + Send + Sync + 'static,
-    E: EmailPort + Send + Sync + 'static,
-> AuthenticationUseCase for AuthenticationUseCaseImpl<Ports, A, E>
+impl<Ports: PortsCollection + Send + Sync + 'static> AuthenticationUseCase
+    for AuthenticationUseCaseImpl<Ports>
 {
     async fn login(
         &self,
@@ -87,13 +73,15 @@ impl<
         password: String,
     ) -> AppResult<AuthenticatedUser, (InvalidCredentials, InternalError)> {
         let user_id = self
-            .account_service
+            .ports
+            .authentication_port()
             .login_account(&identifier, &password)
             .await?;
         Ok(AuthenticatedUser {
             user_id,
             refresh_token: self
-                .account_service
+                .ports
+                .authentication_port()
                 .generate_refresh_token(user_id.clone(), REFRESH_TOKEN_DURATION)
                 .map_err(OneOf::broaden)?,
         })
@@ -106,7 +94,8 @@ impl<
         password: String,
     ) -> AppResult<AuthenticatedUser, (EmailTaken, InternalError)> {
         let user_id = self
-            .account_service
+            .ports
+            .authentication_port()
             .register_account(&email, &username, &password)
             .await?;
 
@@ -120,7 +109,8 @@ impl<
             .await
             .map_err(OneOf::broaden)?;
         let refresh_token = self
-            .account_service
+            .ports
+            .authentication_port()
             .generate_refresh_token(user_id.clone(), REFRESH_TOKEN_DURATION)
             .map_err(OneOf::broaden)?;
 
@@ -135,7 +125,8 @@ impl<
         identifier: String,
     ) -> AppResult<(), (UserNotFound, InvalidEmailAddress, InternalError)> {
         let Some(user_id) = self
-            .account_service
+            .ports
+            .authentication_port()
             .find_account(&identifier)
             .await
             .map_err(OneOf::broaden)?
@@ -144,7 +135,8 @@ impl<
         };
 
         let Some(account_info) = self
-            .account_service
+            .ports
+            .authentication_port()
             .get_account_info(user_id)
             .await
             .map_err(OneOf::broaden)?
@@ -156,7 +148,8 @@ impl<
             return Err(OneOf::new(InvalidEmailAddress));
         };
         let token = self
-            .account_service
+            .ports
+            .authentication_port()
             .generate_reset_token(user_id, Duration::from_mins(30))
             .map_err(OneOf::broaden)?;
 
@@ -171,7 +164,8 @@ impl<
             account_info.username, base_url
         );
 
-        self.email_service
+        self.ports
+            .email_port()
             .send_email(email, "Password Reset", &body)
             .map_err(OneOf::broaden)?;
         Ok(())
@@ -184,21 +178,27 @@ impl<
         new_password: String,
     ) -> AppResult<(), (InvalidCredentials, InternalError)> {
         let Some(user_id) = self
-            .account_service
+            .ports
+            .authentication_port()
             .find_account(&identifier)
             .await
             .map_err(OneOf::broaden)?
         else {
             return Err(OneOf::new(InvalidCredentials));
         };
-        self.account_service
+        self.ports
+            .authentication_port()
             .reset_account_password(user_id, &token, &new_password)
             .await?;
         Ok(())
     }
 
     async fn create_guest_account(&self) -> AppResult<AuthenticatedUser, (InternalError,)> {
-        let user_id = self.account_service.create_guest_account().await?;
+        let user_id = self
+            .ports
+            .authentication_port()
+            .create_guest_account()
+            .await?;
 
         let mut moderation = Moderation::default();
         moderation.user_type = UserType::Guest;
@@ -210,7 +210,8 @@ impl<
             .await?;
 
         let refresh_token = self
-            .account_service
+            .ports
+            .authentication_port()
             .generate_refresh_token(user_id, REFRESH_TOKEN_DURATION)?;
 
         Ok(AuthenticatedUser {
@@ -224,7 +225,7 @@ impl<
         user_id: UserId,
         refresh_token: String,
     ) -> AppResult<AuthenticatedUser, (InvalidCredentials, InternalError)> {
-        let new_token = self.account_service.rotate_refresh_token(
+        let new_token = self.ports.authentication_port().rotate_refresh_token(
             user_id,
             &refresh_token,
             REFRESH_TOKEN_DURATION,
@@ -237,6 +238,8 @@ impl<
     }
 
     async fn logout(&self, user_id: UserId) -> AppResult<(), (InternalError,)> {
-        self.account_service.invalidate_refresh_token(user_id)
+        self.ports
+            .authentication_port()
+            .invalidate_refresh_token(user_id)
     }
 }

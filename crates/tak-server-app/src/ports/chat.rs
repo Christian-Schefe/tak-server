@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use more_concurrent_maps::multi::ConcurrentMultiMap;
 use tak_domain::{
-    ChatMessageId, ListenerId,
+    ChatMessageId, UserId,
     chat::{ChatConversation, ChatMessage},
 };
 
@@ -26,14 +26,14 @@ pub trait ChatRepository<RpCtx> {
 }
 
 pub trait ChatRoomService {
-    fn join_room(&self, room_name: &String, listener_id: ListenerId);
-    fn leave_room(&self, room_name: &String, listener_id: ListenerId);
-    fn leave_all_rooms(&self, listener_id: ListenerId);
-    fn get_listeners_in_room(&self, room_name: &String) -> Vec<ListenerId>;
+    fn join_room(&self, user_id: UserId, room_name: &String);
+    fn leave_room(&self, user_id: UserId, room_name: &String);
+    fn leave_all_rooms(&self, user_id: UserId);
+    fn get_users_in_room(&self, room_name: &String) -> Vec<UserId>;
 }
 
 pub struct ChatRoomServiceImpl {
-    rooms: Arc<ConcurrentMultiMap<String, ListenerId>>,
+    rooms: Arc<ConcurrentMultiMap<String, UserId>>,
 }
 
 impl ChatRoomServiceImpl {
@@ -45,19 +45,19 @@ impl ChatRoomServiceImpl {
 }
 
 impl ChatRoomService for ChatRoomServiceImpl {
-    fn join_room(&self, room_name: &String, listener_id: ListenerId) {
-        self.rooms.insert(room_name.to_string(), listener_id);
+    fn join_room(&self, user_id: UserId, room_name: &String) {
+        self.rooms.insert(room_name.to_string(), user_id);
     }
 
-    fn leave_room(&self, room_name: &String, listener_id: ListenerId) {
-        self.rooms.remove(room_name, &listener_id);
+    fn leave_room(&self, user_id: UserId, room_name: &String) {
+        self.rooms.remove(room_name, &user_id);
     }
 
-    fn leave_all_rooms(&self, listener_id: ListenerId) {
-        self.rooms.remove_by_right(&listener_id);
+    fn leave_all_rooms(&self, user_id: UserId) {
+        self.rooms.remove_by_right(&user_id);
     }
 
-    fn get_listeners_in_room(&self, room_name: &String) -> Vec<ListenerId> {
+    fn get_users_in_room(&self, room_name: &String) -> Vec<UserId> {
         self.rooms.get_by_left(room_name)
     }
 }

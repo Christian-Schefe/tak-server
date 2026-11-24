@@ -5,23 +5,23 @@ use country_code_enum::CountryCode;
 use sea_orm::{EntityTrait, Iterable, sea_query::OnConflict};
 use tak_domain::{
     UserId,
-    profile::{AccountProfile, ProfilePictureVersion},
+    profile::{Profile, ProfilePictureVersion},
 };
 use tak_persistence_sea_orm_entities::profile;
 use tak_server_app::{
     errors::{AppResult, InternalError, OneOf},
-    ports::profile::AccountProfileRepository,
+    ports::profile::ProfileRepository,
 };
 
 pub struct ProfileRepositoryImpl;
 
 #[async_trait::async_trait]
-impl AccountProfileRepository<RepositoryContext> for ProfileRepositoryImpl {
+impl ProfileRepository<RepositoryContext> for ProfileRepositoryImpl {
     async fn insert_profile_information(
         &self,
         ctx: &RepositoryContext,
         user_id: UserId,
-        profile_information: AccountProfile,
+        profile_information: Profile,
     ) -> AppResult<(), (InternalError,)> {
         let active_model = profile::ActiveModel {
             user_id: sea_orm::ActiveValue::Set(user_id.0),
@@ -60,7 +60,7 @@ impl AccountProfileRepository<RepositoryContext> for ProfileRepositoryImpl {
         &self,
         ctx: &RepositoryContext,
         user_id: UserId,
-    ) -> AppResult<Option<AccountProfile>, (InternalError,)> {
+    ) -> AppResult<Option<Profile>, (InternalError,)> {
         let profile_model = profile::Entity::find_by_id(user_id.0)
             .one(ctx)
             .await
@@ -74,7 +74,7 @@ impl AccountProfileRepository<RepositoryContext> for ProfileRepositoryImpl {
             })?;
 
         if let Some(model) = profile_model {
-            let profile_information = AccountProfile {
+            let profile_information = Profile {
                 display_name: model.display_name,
                 country: model
                     .country

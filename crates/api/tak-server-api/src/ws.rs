@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use axum::{
     extract::{
@@ -7,14 +10,13 @@ use axum::{
     },
     response::Response,
 };
-use dashmap::DashMap;
 use futures::{
     SinkExt, StreamExt,
     stream::{SplitSink, SplitStream},
 };
+use parking_lot::RwLock;
 use tak_core::ptn::{action_from_ptn, action_to_ptn, game_result_to_string};
 use tak_domain::{GameId, UserId, chat::ChatConversation, game::GameRequest};
-use tak_player_connection::{ConnectionId, PlayerSimpleConnectionPort};
 use tak_server_api_contract::{
     game::{ForPlayerResponse, GameRequestResponse},
     ws::{
@@ -23,8 +25,15 @@ use tak_server_api_contract::{
     },
 };
 use tak_server_app::{
-    errors::{InternalError, OneOf},
-    ports::notification::{ListenerGameMessageType, ListenerMatchEventType, ListenerMessage},
+    Application,
+    errors::{AppResult, InternalError, OneOf},
+    ports::{
+        connection::UserOnlineStatusPort,
+        notification::{
+            NotificationGameMessageType, NotificationMatchEventType, NotificationMessage,
+            NotificationPort,
+        },
+    },
 };
 use tokio::select;
 use tokio_util::sync::CancellationToken;
@@ -69,8 +78,10 @@ pub async fn ws_handler(ws: WebSocketUpgrade, State(app): State<AppState>) -> Re
             tracing::error!("WebSocket send task failed: {}", e);
         }
 
-        app.ws.remove_connection(conn_id);
-        app.connection_driver.remove_connection(&conn_id).await;
+        if let Err(_) = app.ws.remove_connection(conn_id).await {
+            tracing::error!("Failed to remove connection: Internal error");
+        }
+
         tracing::debug!("WebSocket connection {} handler finished", conn_id);
     })
 }
@@ -180,9 +191,10 @@ async fn handle_client_message(
                     "Invalid or expired authentication token".to_string(),
                 )),
             }?;
-            app.connection_driver
+            app.ws
                 .associate_connection(user_id, connection_id)
-                .await;
+                .await
+                .map_err(OneOf::convert::<ServiceError>)?;
             tracing::info!(
                 "WS connection {} associated with account {}",
                 connection_id,
@@ -191,15 +203,10 @@ async fn handle_client_message(
             Ok(())
         }
         _ => {
-            let user_id = app
-                .connection_driver
-                .get_user_id(&connection_id)
-                .ok_or_else(|| {
-                    ServiceError::Unauthorized(
-                        "WebSocket connection is not authenticated".to_string(),
-                    )
-                })?;
-            handle_authenticated_client_message(app, user_id, msg, connection_id).await
+            let user_id = app.ws.get_user_id(connection_id).ok_or_else(|| {
+                ServiceError::Unauthorized("WebSocket connection is not authenticated".to_string())
+            })?;
+            handle_authenticated_client_message(app, user_id, msg).await
         }
     }
 }
@@ -208,7 +215,6 @@ async fn handle_authenticated_client_message(
     app: &AppState,
     user_id: UserId,
     msg: ClientMessage,
-    connection_id: ConnectionId,
 ) -> Result<(), ServiceError> {
     match msg {
         ClientMessage::Authenticate { .. } => Err(ServiceError::BadRequest(
@@ -275,73 +281,32 @@ async fn handle_authenticated_client_message(
             if spectate {
                 app.app
                     .gameplay_use_case
-                    .observe_game(game_id, connection_id.0)
+                    .observe_game(user_id, game_id)
                     .await
                     .map_err(OneOf::convert::<ServiceError>)?;
             } else {
-                app.app
-                    .gameplay_use_case
-                    .unobserve_game(game_id, connection_id.0);
+                app.app.gameplay_use_case.unobserve_game(user_id, game_id);
             }
             Ok(())
         }
         ClientMessage::JoinChatRoom { room_name, join } => {
             tracing::info!("Received JoinChatRoom for room {}: {}", room_name, join);
             if join {
-                app.app.chat_use_case.join_room(&room_name, connection_id.0);
+                app.app.chat_use_case.join_room(user_id, &room_name);
             } else {
-                app.app
-                    .chat_use_case
-                    .leave_room(&room_name, connection_id.0);
+                app.app.chat_use_case.leave_room(user_id, &room_name);
             }
             Ok(())
         }
     }
 }
 
-struct ConnectionEntry {
-    cancellation_token: CancellationToken,
-    sender: tokio::sync::mpsc::UnboundedSender<ServerMessage>,
-}
-
-pub struct WsService {
-    connections: Arc<DashMap<ConnectionId, ConnectionEntry>>,
-}
-
-impl WsService {
-    pub fn new() -> Self {
-        Self {
-            connections: Arc::new(DashMap::new()),
-        }
-    }
-
-    fn add_connection(&self, id: ConnectionId, entry: ConnectionEntry) {
-        self.connections.insert(id, entry);
-    }
-
-    fn remove_connection(&self, id: ConnectionId) {
-        if let Some((_, entry)) = self.connections.remove(&id) {
-            entry.cancellation_token.cancel();
-        }
-    }
-}
-
-impl PlayerSimpleConnectionPort for WsService {
-    fn notify_connection(&self, connection_id: ConnectionId, message: &ListenerMessage) {
-        if let Some(entry) = self.connections.get(&connection_id) {
-            if let Some(server_msg) = from_listener_message(message.clone()) {
-                let _ = entry.sender.send(server_msg);
-            }
-        }
-    }
-}
-
-fn from_listener_game_event_type(event_type: ListenerGameMessageType) -> ServerGameEventType {
+fn from_listener_game_event_type(event_type: NotificationGameMessageType) -> ServerGameEventType {
     match event_type {
-        ListenerGameMessageType::GameOver { game_result } => ServerGameEventType::GameEnded {
+        NotificationGameMessageType::GameOver { game_result } => ServerGameEventType::GameEnded {
             result: game_result_to_string(game_result),
         },
-        ListenerGameMessageType::GameAction {
+        NotificationGameMessageType::GameAction {
             user_id: _,
             action,
             ply_index,
@@ -349,10 +314,10 @@ fn from_listener_game_event_type(event_type: ListenerGameMessageType) -> ServerG
             ply_index,
             action: action_to_ptn(&action),
         },
-        ListenerGameMessageType::GameActionUndone { ply_index } => {
+        NotificationGameMessageType::GameActionUndone { ply_index } => {
             ServerGameEventType::GameActionUndone { ply_index }
         }
-        ListenerGameMessageType::GameRequestChanged { user_id, request } => {
+        NotificationGameMessageType::GameRequestChanged { user_id, request } => {
             ServerGameEventType::GameRequestChanged {
                 user_id: user_id.0.to_string(),
                 request: match request {
@@ -367,17 +332,16 @@ fn from_listener_game_event_type(event_type: ListenerGameMessageType) -> ServerG
     }
 }
 
-fn from_listener_message(message: ListenerMessage) -> Option<ServerMessage> {
+fn from_listener_message(message: NotificationMessage) -> Option<ServerMessage> {
     match message {
-        ListenerMessage::SeekCreated { seek } => Some(ServerMessage::SeekCreated {
+        NotificationMessage::SeekCreated { seek } => Some(ServerMessage::SeekCreated {
             seek: from_seek_view(seek),
         }),
-        ListenerMessage::SeekCancelled { seek } | ListenerMessage::SeekAccepted { seek } => {
-            Some(ServerMessage::SeekRemoved {
-                seek_id: seek.id.to_string(),
-            })
-        }
-        ListenerMessage::GameEvent {
+        NotificationMessage::SeekCancelled { seek }
+        | NotificationMessage::SeekAccepted { seek } => Some(ServerMessage::SeekRemoved {
+            seek_id: seek.id.to_string(),
+        }),
+        NotificationMessage::GameEvent {
             game_id,
             event_type,
             time_info,
@@ -389,14 +353,14 @@ fn from_listener_message(message: ListenerMessage) -> Option<ServerMessage> {
                 black: time_info.black_remaining.as_millis() as u64,
             },
         }),
-        ListenerMessage::GameStarted { game_id, game } => Some(ServerMessage::GameStarted {
+        NotificationMessage::GameStarted { game_id, game } => Some(ServerMessage::GameStarted {
             game: from_metadata(game_id, &game.metadata),
         }),
-        ListenerMessage::GameEnded { game_id, .. } => Some(ServerMessage::GameEnded {
+        NotificationMessage::GameEnded { game_id, .. } => Some(ServerMessage::GameEnded {
             game_id: game_id.to_string(),
         }),
 
-        ListenerMessage::ChatMessage {
+        NotificationMessage::ChatMessage {
             message,
             conversation,
         } => {
@@ -422,22 +386,249 @@ fn from_listener_message(message: ListenerMessage) -> Option<ServerMessage> {
                 conversation,
             })
         }
-        ListenerMessage::MatchEvent {
+        NotificationMessage::MatchEvent {
             match_id,
             event_type,
         } => Some(ServerMessage::MatchEvent {
             match_id: match_id.to_string(),
             event_type: match event_type {
-                ListenerMatchEventType::MatchReadinessChanged { user_id } => {
+                NotificationMatchEventType::MatchReadinessChanged { user_id } => {
                     ServerMatchEventType::ReadinessChanged {
                         user_id: user_id.map(|id| id.to_string()),
                     }
                 }
             },
         }),
-        ListenerMessage::UsersOnline { users: accounts } => Some(ServerMessage::UsersOnline {
+        NotificationMessage::UsersOnline { users: accounts } => Some(ServerMessage::UsersOnline {
             user_ids: accounts.into_iter().map(|a| a.to_string()).collect(),
         }),
-        ListenerMessage::ServerAlert { .. } => None,
+        NotificationMessage::ServerAlert { .. } => None,
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ConnectionId(Uuid);
+
+impl ConnectionId {
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
+
+impl std::fmt::Display for ConnectionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+struct ConnectionEntry {
+    cancellation_token: CancellationToken,
+    sender: tokio::sync::mpsc::UnboundedSender<ServerMessage>,
+}
+
+pub struct WsService {
+    notification_adapter: Arc<WsNotificationAdapter>,
+    app: Arc<Application>,
+}
+
+impl WsService {
+    pub fn new(app: Arc<Application>, notification_adapter: Arc<WsNotificationAdapter>) -> Self {
+        Self {
+            notification_adapter,
+            app,
+        }
+    }
+
+    fn add_connection(&self, id: ConnectionId, entry: ConnectionEntry) {
+        self.notification_adapter.add_connection(id, entry);
+    }
+
+    async fn remove_connection(&self, id: ConnectionId) -> AppResult<(), (InternalError,)> {
+        let offline_user_id = self.notification_adapter.remove_conn(id);
+        if let Some(offline_user_id) = offline_user_id {
+            self.app
+                .player_use_case
+                .set_offline(offline_user_id)
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn associate_connection(
+        &self,
+        user_id: UserId,
+        connection_id: ConnectionId,
+    ) -> AppResult<(), (InternalError,)> {
+        let (set_online, offline_user_id) = self
+            .notification_adapter
+            .associate_conn(user_id, connection_id);
+        if let Some(offline_user_id) = offline_user_id {
+            self.app
+                .player_use_case
+                .set_offline(offline_user_id)
+                .await?;
+        }
+        if set_online {
+            self.app.player_use_case.set_online(user_id).await;
+        }
+        Ok(())
+    }
+
+    fn get_user_id(&self, connection_id: ConnectionId) -> Option<UserId> {
+        self.notification_adapter.get_user_id(connection_id)
+    }
+}
+
+pub struct WsConnectionRegistry {
+    connections: HashMap<ConnectionId, ConnectionEntry>,
+    connection_to_user: HashMap<ConnectionId, UserId>,
+    user_to_connections: HashMap<UserId, HashSet<ConnectionId>>,
+}
+
+impl WsConnectionRegistry {
+    pub fn new() -> Self {
+        Self {
+            connections: HashMap::new(),
+            connection_to_user: HashMap::new(),
+            user_to_connections: HashMap::new(),
+        }
+    }
+
+    fn add_connection(&mut self, id: ConnectionId, entry: ConnectionEntry) {
+        self.connections.insert(id, entry);
+    }
+
+    fn associate_conn(
+        &mut self,
+        user_id: UserId,
+        connection_id: ConnectionId,
+    ) -> (bool, Option<UserId>) {
+        let offline_user_id = self.remove_conn(connection_id);
+        self.connection_to_user.insert(connection_id, user_id);
+        let mut set_online = false;
+        self.user_to_connections
+            .entry(user_id)
+            .or_insert_with(|| {
+                set_online = true;
+                HashSet::new()
+            })
+            .insert(connection_id);
+        (set_online, offline_user_id)
+    }
+
+    fn remove_conn(&mut self, connection_id: ConnectionId) -> Option<UserId> {
+        let mut set_offline = None;
+        let entry = self.connections.remove(&connection_id);
+        if let Some(entry) = entry {
+            entry.cancellation_token.cancel();
+        }
+        if let Some(user_id) = self.connection_to_user.remove(&connection_id) {
+            if let Some(connections) = self.user_to_connections.get_mut(&user_id) {
+                connections.remove(&connection_id);
+                if connections.is_empty() {
+                    self.user_to_connections.remove(&user_id);
+                    set_offline = Some(user_id);
+                }
+            }
+        }
+        set_offline
+    }
+
+    fn notify_connection(&self, connection_id: ConnectionId, message: &NotificationMessage) {
+        if let Some(entry) = self.connections.get(&connection_id) {
+            if let Some(server_msg) = from_listener_message(message.clone()) {
+                let _ = entry.sender.send(server_msg);
+            }
+        }
+    }
+}
+
+pub struct WsNotificationAdapter {
+    registry: Arc<RwLock<WsConnectionRegistry>>,
+}
+
+impl WsNotificationAdapter {
+    pub fn new() -> Self {
+        Self {
+            registry: Arc::new(RwLock::new(WsConnectionRegistry::new())),
+        }
+    }
+
+    fn get_user_id(&self, connection_id: ConnectionId) -> Option<UserId> {
+        self.registry
+            .read()
+            .connection_to_user
+            .get(&connection_id)
+            .cloned()
+    }
+
+    fn add_connection(&self, id: ConnectionId, entry: ConnectionEntry) {
+        self.registry.write().add_connection(id, entry);
+    }
+
+    fn associate_conn(
+        &self,
+        user_id: UserId,
+        connection_id: ConnectionId,
+    ) -> (bool, Option<UserId>) {
+        self.registry.write().associate_conn(user_id, connection_id)
+    }
+
+    fn remove_conn(&self, connection_id: ConnectionId) -> Option<UserId> {
+        self.registry.write().remove_conn(connection_id)
+    }
+}
+
+impl NotificationPort for WsNotificationAdapter {
+    fn notify_user(&self, user_id: UserId, message: &NotificationMessage) {
+        let registry = self.registry.read();
+        if let Some(connections) = registry.user_to_connections.get(&user_id) {
+            for connection_id in connections {
+                registry.notify_connection(*connection_id, message);
+            }
+        }
+    }
+
+    fn notify_all(&self, message: &NotificationMessage) {
+        let registry = self.registry.read();
+        for connection_id in registry.connection_to_user.keys() {
+            registry.notify_connection(*connection_id, message);
+        }
+    }
+}
+
+pub struct UserOnlineStatusService {
+    online_accounts: Arc<RwLock<HashSet<UserId>>>,
+}
+
+impl UserOnlineStatusService {
+    pub fn new() -> Self {
+        Self {
+            online_accounts: Arc::new(RwLock::new(HashSet::new())),
+        }
+    }
+}
+
+impl UserOnlineStatusPort for UserOnlineStatusService {
+    fn set_user_online(&self, user_id: UserId) -> Option<Vec<UserId>> {
+        let mut online_accounts = self.online_accounts.write();
+        if online_accounts.insert(user_id.clone()) {
+            Some(online_accounts.iter().cloned().collect())
+        } else {
+            None
+        }
+    }
+
+    fn set_user_offline(&self, user_id: UserId) -> Option<Vec<UserId>> {
+        let mut online_accounts = self.online_accounts.write();
+        if online_accounts.remove(&user_id) {
+            Some(online_accounts.iter().cloned().collect())
+        } else {
+            None
+        }
+    }
+
+    fn get_online_users(&self) -> Vec<UserId> {
+        self.online_accounts.read().iter().cloned().collect()
     }
 }

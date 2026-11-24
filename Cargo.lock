@@ -5265,7 +5265,6 @@ dependencies = [
  "tak-events-google-sheets",
  "tak-persistence-profile-pictures",
  "tak-persistence-sea-orm",
- "tak-player-connection",
  "tak-server-api",
  "tak-server-app",
  "tokio",
@@ -5335,18 +5334,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tak-player-connection"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "more-concurrent-maps",
- "parking_lot",
- "tak-domain",
- "tak-server-app",
- "tracing",
-]
-
-[[package]]
 name = "tak-server-api"
 version = "0.1.0"
 dependencies = [
@@ -5359,11 +5346,11 @@ dependencies = [
  "futures",
  "image",
  "jsonwebtoken",
+ "parking_lot",
  "serde",
  "serde_json",
  "tak-core",
  "tak-domain",
- "tak-player-connection",
  "tak-server-api-contract",
  "tak-server-app",
  "tokio",

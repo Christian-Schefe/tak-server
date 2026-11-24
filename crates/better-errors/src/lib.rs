@@ -195,7 +195,7 @@ pub trait ConvertAs<T> {
 
 impl<T> ConvertAs<T> for CNil {
     fn convert(self) -> T {
-        unreachable!()
+        match self {}
     }
 }
 

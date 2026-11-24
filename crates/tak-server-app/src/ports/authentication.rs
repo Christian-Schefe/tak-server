@@ -5,7 +5,7 @@ use tak_domain::UserId;
 use crate::errors::{AppResult, EmailTaken, InternalError, InvalidCredentials};
 
 #[async_trait::async_trait]
-pub trait AccountPort {
+pub trait AuthenticationPort {
     async fn register_account(
         &self,
         email: &str,

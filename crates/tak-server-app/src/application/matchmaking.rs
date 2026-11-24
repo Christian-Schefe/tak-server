@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use tak_core::{TakGameSettings, TakPlayer, TakTimeSettings};
+use tak_core::{TakGameSettings, TakPlayer};
 
+use better_errors::OneOf;
 use tak_domain::{
     MatchId, SeekId, UserId,
     game::Game,
@@ -9,7 +10,6 @@ use tak_domain::{
     matches::{Match, MatchMode, MatchSettings, MatchStatus},
     seek::Seek,
 };
-use better_errors::OneOf;
 
 use crate::{
     PortsCollection,
@@ -17,15 +17,9 @@ use crate::{
         AppResult, InternalError, InvalidGameSettings, InvalidMatchStatus, MatchNotFound,
         SeekNotFound, UnexpectedPlayer, UserNotFound,
     },
-    ports::{
-        game::{GameRepository, GameStateRepository},
-        matches::{MatchReadinessService, MatchRepository},
-        notification::{ListenerMatchEventType, ListenerMessage, ListenerNotificationPort},
-        seeks::SeekService,
-        transaction::TransactionManager,
-    },
+    ports::notification::{NotificationMatchEventType, NotificationMessage},
     processes::game_timeout_runner::GameTimeoutRunner,
-    workflow::{get_snapshot::GetSnapshotWorkflow, notify_player::NotifyPlayerWorkflow},
+    workflow::get_snapshot::get_snapshot,
 };
 
 #[derive(Clone, Debug)]
@@ -97,54 +91,23 @@ pub trait MatchmakingUseCase {
     fn cancel_seek(&self, player: UserId, seek_id: SeekId) -> bool;
 }
 
-pub struct MatchmakingUseCaseImpl<
-    Ports: PortsCollection,
-    S: SeekService,
-    N: ListenerNotificationPort,
-    M: MatchReadinessService,
-    P: NotifyPlayerWorkflow,
-    GT: GameTimeoutRunner,
-    GS: GetSnapshotWorkflow<Ports::TrCtx>,
-> {
+pub struct MatchmakingUseCaseImpl<Ports: PortsCollection, GT: GameTimeoutRunner> {
     ports: Arc<Ports>,
-    seek_service: Arc<S>,
-    notification_port: Arc<N>,
-    match_readiness_service: Arc<M>,
-    notify_players_workflow: Arc<P>,
     game_timeout_runner: Arc<GT>,
-    get_snapshot_workflow: Arc<GS>,
 }
 
-impl<
-    Ports: PortsCollection,
-    S: SeekService,
-    N: ListenerNotificationPort,
-    M: MatchReadinessService,
-    P: NotifyPlayerWorkflow,
-    GT: GameTimeoutRunner,
-    GS: GetSnapshotWorkflow<Ports::TrCtx>,
-> MatchmakingUseCaseImpl<Ports, S, N, M, P, GT, GS>
-{
-    pub fn new(
-        ports: Arc<Ports>,
-        seek_service: Arc<S>,
-        notification_port: Arc<N>,
-        match_readiness_service: Arc<M>,
-        notify_players_workflow: Arc<P>,
-        game_timeout_runner: Arc<GT>,
-        get_snapshot_workflow: Arc<GS>,
-    ) -> Self {
+impl<Ports: PortsCollection, GT: GameTimeoutRunner> MatchmakingUseCaseImpl<Ports, GT> {
+    pub fn new(ports: Arc<Ports>, game_timeout_runner: Arc<GT>) -> Self {
         Self {
             ports,
-            seek_service,
-            notification_port,
-            match_readiness_service,
-            notify_players_workflow,
             game_timeout_runner,
-            get_snapshot_workflow,
         }
     }
+}
 
+impl<Ports: PortsCollection + Send + Sync + 'static, GT: GameTimeoutRunner + Send + Sync + 'static>
+    MatchmakingUseCaseImpl<Ports, GT>
+{
     async fn get_match(
         &self,
         match_id: MatchId,
@@ -165,7 +128,7 @@ impl<
     #[tracing::instrument(skip(self, ctx))]
     async fn create_game_from_match(
         &self,
-        ctx: &Ports::TrCtx,
+        ctx: &Ports::RpCtx,
         match_id: MatchId,
     ) -> AppResult<
         (),
@@ -197,17 +160,13 @@ impl<
             TakPlayer::Black => (match_entry.player2.user_id, match_entry.player1.user_id),
         };
 
-        let Some(snapshot_white) = self
-            .get_snapshot_workflow
-            .get_snapshot(ctx, white_id)
+        let Some(snapshot_white) = get_snapshot(self.ports.as_ref(), ctx, white_id)
             .await
             .map_err(OneOf::broaden)?
         else {
             return Err(OneOf::new(UserNotFound));
         };
-        let Some(snapshot_black) = self
-            .get_snapshot_workflow
-            .get_snapshot(ctx, black_id)
+        let Some(snapshot_black) = get_snapshot(self.ports.as_ref(), ctx, black_id)
             .await
             .map_err(OneOf::broaden)?
         else {
@@ -245,36 +204,31 @@ impl<
             .await
             .map_err(OneOf::broaden)?;
         GameTimeoutRunner::schedule_game_timeout_check(self.game_timeout_runner.clone(), game_id);
-        let msg = ListenerMessage::GameStarted {
+        let msg = NotificationMessage::GameStarted {
             game_id,
             game: game_record,
         };
-        self.notification_port.notify_all(&msg);
+        self.ports.notification_port().notify_all(&msg);
 
         Ok(())
     }
 }
 
 #[async_trait::async_trait]
-impl<
-    Ports: PortsCollection + Send + Sync + 'static,
-    S: SeekService + Send + Sync + 'static,
-    N: ListenerNotificationPort + Send + Sync + 'static,
-    M: MatchReadinessService + Send + Sync + 'static,
-    P: NotifyPlayerWorkflow + Send + Sync + 'static,
-    GT: GameTimeoutRunner + Send + Sync + 'static,
-    GS: GetSnapshotWorkflow<Ports::TrCtx> + Send + Sync + 'static,
-> MatchmakingUseCase for MatchmakingUseCaseImpl<Ports, S, N, M, P, GT, GS>
+impl<Ports: PortsCollection + Send + Sync + 'static, GT: GameTimeoutRunner + Send + Sync + 'static>
+    MatchmakingUseCase for MatchmakingUseCaseImpl<Ports, GT>
 {
     fn get_seek(&self, seek_id: SeekId) -> Option<SeekView> {
-        self.seek_service
+        self.ports
+            .seek_service()
             .get_seek(seek_id)
             .map(|seek| SeekView::from(seek_id, &seek))
     }
 
     fn list_seeks(&self) -> Vec<SeekView> {
         let res = self
-            .seek_service
+            .ports
+            .seek_service()
             .list_seeks()
             .into_iter()
             .map(|(seek_id, seek)| SeekView::from(seek_id, &seek))
@@ -292,13 +246,13 @@ impl<
         let Some(seek) = Seek::new(player, color, game_settings, is_rated) else {
             return Err(OneOf::new(InvalidGameSettings));
         };
-        let seek_id = self.seek_service.create_seek(seek.clone());
+        let seek_id = self.ports.seek_service().create_seek(seek.clone());
         let seek_view: SeekView = SeekView::from(seek_id, &seek);
-        let message = ListenerMessage::SeekCreated {
+        let message = NotificationMessage::SeekCreated {
             seek: seek_view.clone(),
         };
 
-        self.notification_port.notify_all(&message);
+        self.ports.notification_port().notify_all(&message);
 
         Ok(seek_view)
     }
@@ -322,7 +276,10 @@ impl<
 
     fn get_readiness_status(&self, match_id: MatchId) -> MatchReadinessStatus {
         MatchReadinessStatus {
-            player_ready: self.match_readiness_service.get_readiness_status(match_id),
+            player_ready: self
+                .ports
+                .match_readiness_service()
+                .get_readiness_status(match_id),
         }
     }
 
@@ -350,7 +307,8 @@ impl<
             return Err(OneOf::new(MatchNotFound));
         };
         let should_create_game = self
-            .match_readiness_service
+            .ports
+            .match_readiness_service()
             .set_player_ready(match_id, user_id);
 
         if should_create_game {
@@ -370,14 +328,14 @@ impl<
                 .await
                 .map_err(OneOf::broaden)?;
         } else {
-            let msg = ListenerMessage::MatchEvent {
+            let msg = NotificationMessage::MatchEvent {
                 match_id,
-                event_type: ListenerMatchEventType::MatchReadinessChanged {
+                event_type: NotificationMatchEventType::MatchReadinessChanged {
                     user_id: Some(user_id),
                 },
             };
 
-            self.notify_players_workflow.notify_players(
+            self.ports.notification_port().notify_users(
                 &[match_entry.player1.user_id, match_entry.player2.user_id],
                 &msg,
             );
@@ -418,14 +376,15 @@ impl<
             return Err(OneOf::new(InvalidMatchStatus));
         };
         let did_remove = self
-            .match_readiness_service
+            .ports
+            .match_readiness_service()
             .set_player_not_ready(match_id, user_id);
         if did_remove {
-            let msg = ListenerMessage::MatchEvent {
+            let msg = NotificationMessage::MatchEvent {
                 match_id,
-                event_type: ListenerMatchEventType::MatchReadinessChanged { user_id: None },
+                event_type: NotificationMatchEventType::MatchReadinessChanged { user_id: None },
             };
-            self.notify_players_workflow.notify_players(
+            self.ports.notification_port().notify_users(
                 &[match_entry.player1.user_id, match_entry.player2.user_id],
                 &msg,
             );
@@ -439,39 +398,31 @@ impl<
         seek_id: SeekId,
     ) -> AppResult<(), (SeekNotFound, InternalError)> {
         let seek = self
-            .seek_service
-            .remove_seek_if(seek_id, |s| s.creator_id != player)
+            .ports
+            .seek_service()
+            .try_accept_seek(seek_id, player)
             .ok_or(OneOf::new(SeekNotFound))?;
 
-        let cancelled_seeks = self.seek_service.cancel_player_seeks(player, |seek| {
-            matches!(
-                seek.game_settings.time_settings,
-                TakTimeSettings::Realtime(_)
-            )
-        });
+        let cancelled_seeks = self.ports.seek_service().cancel_player_seeks(player, true);
         let cancelled_seeks2 = self
-            .seek_service
-            .cancel_player_seeks(seek.creator_id, |seek| {
-                matches!(
-                    seek.game_settings.time_settings,
-                    TakTimeSettings::Realtime(_)
-                )
-            });
+            .ports
+            .seek_service()
+            .cancel_player_seeks(seek.creator_id, true);
 
         for (cancelled_seek_id, cancelled_seek) in cancelled_seeks
             .into_iter()
             .chain(cancelled_seeks2.into_iter())
         {
-            let message = ListenerMessage::SeekCancelled {
+            let message = NotificationMessage::SeekCancelled {
                 seek: SeekView::from(cancelled_seek_id, &cancelled_seek),
             };
-            self.notification_port.notify_all(&message);
+            self.ports.notification_port().notify_all(&message);
         }
 
-        let message = ListenerMessage::SeekAccepted {
+        let message = NotificationMessage::SeekAccepted {
             seek: SeekView::from(seek_id, &seek),
         };
-        self.notification_port.notify_all(&message);
+        self.ports.notification_port().notify_all(&message);
 
         let initial_color = seek.color.unwrap_or_else(|| {
             if rand::random::<bool>() {
@@ -526,21 +477,21 @@ impl<
 
     fn cancel_seeks(&self, player: UserId) {
         for (cancelled_seek_id, cancelled_seek) in
-            self.seek_service.cancel_player_seeks(player, |_| true)
+            self.ports.seek_service().cancel_player_seeks(player, false)
         {
-            let message = ListenerMessage::SeekCancelled {
+            let message = NotificationMessage::SeekCancelled {
                 seek: SeekView::from(cancelled_seek_id, &cancelled_seek),
             };
-            self.notification_port.notify_all(&message);
+            self.ports.notification_port().notify_all(&message);
         }
     }
 
     fn cancel_seek(&self, player: UserId, seek_id: SeekId) -> bool {
-        if let Some(cancelled_seek) = self.seek_service.cancel_seek(player, seek_id) {
-            let message = ListenerMessage::SeekCancelled {
+        if let Some(cancelled_seek) = self.ports.seek_service().cancel_seek(player, seek_id) {
+            let message = NotificationMessage::SeekCancelled {
                 seek: SeekView::from(seek_id, &cancelled_seek),
             };
-            self.notification_port.notify_all(&message);
+            self.ports.notification_port().notify_all(&message);
             return true;
         }
         false

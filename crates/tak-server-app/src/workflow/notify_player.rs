@@ -1,76 +1,13 @@
-use std::sync::Arc;
-
-use crate::ports::{
-    connection::UserConnectionPort,
-    notification::{ListenerMessage, ListenerNotificationPort},
-    spectator::SpectatorService,
-};
+use crate::{PortsCollection, ports::notification::NotificationMessage};
 use tak_domain::{GameId, UserId};
 
-pub trait NotifyPlayerWorkflow {
-    fn notify_players_and_observers_of_game(
-        &self,
-        game_id: GameId,
-        players: &[UserId],
-        message: &ListenerMessage,
-    );
-    fn notify_players(&self, players: &[UserId], message: &ListenerMessage);
-}
-
-pub struct NotifyPlayerWorkflowImpl<
-    L: ListenerNotificationPort,
-    P: UserConnectionPort,
-    S: SpectatorService,
-> {
-    listener_notification_port: Arc<L>,
-    player_connection_port: Arc<P>,
-    spectator_service: Arc<S>,
-}
-
-impl<L: ListenerNotificationPort, P: UserConnectionPort, S: SpectatorService>
-    NotifyPlayerWorkflowImpl<L, P, S>
-{
-    pub fn new(
-        listener_notification_port: Arc<L>,
-        player_connection_port: Arc<P>,
-        spectator_service: Arc<S>,
-    ) -> Self {
-        Self {
-            listener_notification_port,
-            player_connection_port,
-            spectator_service,
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl<
-    L: ListenerNotificationPort + Send + Sync,
-    P: UserConnectionPort + Send + Sync,
-    S: SpectatorService + Send + Sync,
-> NotifyPlayerWorkflow for NotifyPlayerWorkflowImpl<L, P, S>
-{
-    fn notify_players_and_observers_of_game(
-        &self,
-        game_id: GameId,
-        players: &[UserId],
-        message: &ListenerMessage,
-    ) {
-        self.notify_players(players, message);
-        let observers = self.spectator_service.get_spectators_for_game(game_id);
-        self.listener_notification_port
-            .notify_listeners(&observers, message);
-    }
-
-    fn notify_players(&self, players: &[UserId], message: &ListenerMessage) {
-        let listener_ids = players
-            .iter()
-            .map(|user_id| self.player_connection_port.get_connection_id(*user_id));
-        for listener_id_opt in listener_ids {
-            if let Some(connection_id) = listener_id_opt {
-                self.listener_notification_port
-                    .notify_listener(connection_id, message);
-            }
-        }
-    }
+pub fn notify_players_and_observers_of_game<Ports: PortsCollection + Send + Sync + 'static>(
+    ports: &Ports,
+    game_id: GameId,
+    players: &[UserId],
+    message: &NotificationMessage,
+) {
+    let observers = ports.spectator_service().get_spectators_for_game(game_id);
+    let users = [players, &observers].concat();
+    ports.notification_port().notify_users(&users, message);
 }

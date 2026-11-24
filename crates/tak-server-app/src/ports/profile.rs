@@ -1,24 +1,24 @@
 use image::DynamicImage;
 use tak_domain::{
     UserId,
-    profile::{AccountProfile, ProfilePicture},
+    profile::{Profile, ProfilePicture},
 };
 
 use crate::errors::{AppResult, InternalError};
 
 #[async_trait::async_trait]
-pub trait AccountProfileRepository<RpCtx> {
+pub trait ProfileRepository<RpCtx> {
     async fn insert_profile_information(
         &self,
         ctx: &RpCtx,
         user_id: UserId,
-        profile_information: AccountProfile,
+        profile_information: Profile,
     ) -> AppResult<(), (InternalError,)>;
     async fn get_profile_information(
         &self,
         ctx: &RpCtx,
         user_id: UserId,
-    ) -> AppResult<Option<AccountProfile>, (InternalError,)>;
+    ) -> AppResult<Option<Profile>, (InternalError,)>;
 }
 
 #[async_trait::async_trait]

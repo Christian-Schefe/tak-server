@@ -17,13 +17,6 @@ use crate::{
         AppResult, InsufficientPermissions, InternalError, TournamentNotFound,
         UnexpectedTournamentStatus, UserNotFound,
     },
-    ports::{
-        matches::MatchRepository,
-        moderation::ModerationRepository,
-        rating::RatingRepository,
-        tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
-        transaction::TransactionManager,
-    },
 };
 
 #[derive(Clone, Debug)]
@@ -210,7 +203,7 @@ impl<Ports: PortsCollection> TournamentUseCaseImpl<Ports> {
 
     async fn is_admin(
         &self,
-        ctx: &Ports::TrCtx,
+        ctx: &Ports::RpCtx,
         user_id: UserId,
     ) -> AppResult<bool, (UserNotFound, InternalError)> {
         Ok(self

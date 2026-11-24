@@ -128,18 +128,3 @@ impl std::fmt::Display for TournamentId {
         write!(f, "{}", self.0)
     }
 }
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ListenerId(uuid::Uuid);
-
-impl ListenerId {
-    pub fn new() -> Self {
-        ListenerId(uuid::Uuid::new_v4())
-    }
-}
-
-impl std::fmt::Display for ListenerId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.as_hyphenated())
-    }
-}
