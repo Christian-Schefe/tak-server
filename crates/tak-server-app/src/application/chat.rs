@@ -101,24 +101,8 @@ impl<Ports: PortsCollection + Send + Sync + 'static> ChatUseCase for ChatUseCase
             message: ChatMessageView::from(msg_id, chat_msg),
             conversation: conversation.clone(),
         };
+        self.ports.notification_port().notify(&msg);
 
-        match conversation {
-            ChatConversation::Private { user_ids } => {
-                self.ports
-                    .notification_port()
-                    .notify_users(&[user_ids.0, user_ids.1], &msg);
-            }
-            ChatConversation::Global => {
-                self.ports.notification_port().notify_all(&msg);
-            }
-            ChatConversation::Room { room_name } => {
-                let listeners_in_room =
-                    self.ports.chat_room_service().get_users_in_room(&room_name);
-                self.ports
-                    .notification_port()
-                    .notify_users(&listeners_in_room, &msg);
-            }
-        }
         Ok(())
     }
 

@@ -1,18 +1,13 @@
-use tak_core::{TakAction, TakGameResult, TakTimeInfo};
+use tak_core::{TakAction, TakGameResult, TakPlayer, TakTimeInfo};
 
 use crate::application::{chat::ChatMessageView, matchmaking::SeekView};
 use tak_domain::{
     GameId, MatchId, UserId, chat::ChatConversation, game::GameRequest, game_record::GameRecord,
+    matches::Match,
 };
 
 pub trait NotificationPort {
-    fn notify_user(&self, user_id: UserId, message: &NotificationMessage);
-    fn notify_users(&self, user_ids: &[UserId], message: &NotificationMessage) {
-        for listener in user_ids {
-            self.notify_user(*listener, message);
-        }
-    }
-    fn notify_all(&self, message: &NotificationMessage);
+    fn notify(&self, message: &NotificationMessage);
 }
 
 #[derive(Clone, Debug)]
@@ -39,19 +34,18 @@ pub enum NotificationMessage {
     },
     GameEvent {
         game_id: GameId,
+        game: GameRecord,
         event_type: NotificationGameMessageType,
         time_info: TakTimeInfo,
     },
     MatchEvent {
         match_id: MatchId,
+        match_entry: Match,
         event_type: NotificationMatchEventType,
     },
     ChatMessage {
         message: ChatMessageView,
         conversation: ChatConversation,
-    },
-    ServerAlert {
-        message: ServerAlertMessage,
     },
 }
 
@@ -66,7 +60,6 @@ pub enum NotificationGameMessageType {
         game_result: TakGameResult,
     },
     GameAction {
-        user_id: UserId,
         action: TakAction,
         ply_index: usize,
     },
@@ -74,13 +67,7 @@ pub enum NotificationGameMessageType {
         ply_index: usize,
     },
     GameRequestChanged {
-        user_id: UserId,
+        player: TakPlayer,
         request: GameRequest,
     },
-}
-
-#[derive(Clone, Debug)]
-pub enum ServerAlertMessage {
-    Shutdown,
-    Custom(String),
 }

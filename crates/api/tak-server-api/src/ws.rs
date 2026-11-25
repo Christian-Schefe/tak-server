@@ -15,7 +15,10 @@ use futures::{
     stream::{SplitSink, SplitStream},
 };
 use parking_lot::RwLock;
-use tak_core::ptn::{action_from_ptn, action_to_ptn, game_result_to_string};
+use tak_core::{
+    TakPlayer,
+    ptn::{action_from_ptn, action_to_ptn, game_result_to_string},
+};
 use tak_domain::{GameId, UserId, chat::ChatConversation, game::GameRequest};
 use tak_server_api_contract::{
     game::{ForPlayerResponse, GameRequestResponse},
@@ -306,20 +309,21 @@ fn from_listener_game_event_type(event_type: NotificationGameMessageType) -> Ser
         NotificationGameMessageType::GameOver { game_result } => ServerGameEventType::GameEnded {
             result: game_result_to_string(game_result),
         },
-        NotificationGameMessageType::GameAction {
-            user_id: _,
-            action,
-            ply_index,
-        } => ServerGameEventType::GameAction {
-            ply_index,
-            action: action_to_ptn(&action),
-        },
+        NotificationGameMessageType::GameAction { action, ply_index } => {
+            ServerGameEventType::GameAction {
+                ply_index,
+                action: action_to_ptn(&action),
+            }
+        }
         NotificationGameMessageType::GameActionUndone { ply_index } => {
             ServerGameEventType::GameActionUndone { ply_index }
         }
-        NotificationGameMessageType::GameRequestChanged { user_id, request } => {
+        NotificationGameMessageType::GameRequestChanged { player, request } => {
             ServerGameEventType::GameRequestChanged {
-                user_id: user_id.0.to_string(),
+                player: match player {
+                    TakPlayer::White => "white".to_string(),
+                    TakPlayer::Black => "black".to_string(),
+                },
                 request: match request {
                     GameRequest::Draw(offer) => GameRequestResponse::Draw { offer },
                     GameRequest::Undo(request) => GameRequestResponse::Undo { request },
@@ -343,6 +347,7 @@ fn from_listener_message(message: NotificationMessage) -> Option<ServerMessage> 
         }),
         NotificationMessage::GameEvent {
             game_id,
+            game: _,
             event_type,
             time_info,
         } => Some(ServerMessage::GameEvent {
@@ -388,6 +393,7 @@ fn from_listener_message(message: NotificationMessage) -> Option<ServerMessage> 
         }
         NotificationMessage::MatchEvent {
             match_id,
+            match_entry: _,
             event_type,
         } => Some(ServerMessage::MatchEvent {
             match_id: match_id.to_string(),
@@ -402,7 +408,6 @@ fn from_listener_message(message: NotificationMessage) -> Option<ServerMessage> 
         NotificationMessage::UsersOnline { users: accounts } => Some(ServerMessage::UsersOnline {
             user_ids: accounts.into_iter().map(|a| a.to_string()).collect(),
         }),
-        NotificationMessage::ServerAlert { .. } => None,
     }
 }
 
@@ -483,6 +488,7 @@ pub struct WsConnectionRegistry {
     connections: HashMap<ConnectionId, ConnectionEntry>,
     connection_to_user: HashMap<ConnectionId, UserId>,
     user_to_connections: HashMap<UserId, HashSet<ConnectionId>>,
+    games_to_spectators: HashMap<GameId, HashSet<ConnectionId>>,
 }
 
 impl WsConnectionRegistry {
@@ -491,6 +497,7 @@ impl WsConnectionRegistry {
             connections: HashMap::new(),
             connection_to_user: HashMap::new(),
             user_to_connections: HashMap::new(),
+            games_to_spectators: HashMap::new(),
         }
     }
 
@@ -580,19 +587,20 @@ impl WsNotificationAdapter {
 }
 
 impl NotificationPort for WsNotificationAdapter {
-    fn notify_user(&self, user_id: UserId, message: &NotificationMessage) {
+    fn notify(&self, message: &NotificationMessage) {
         let registry = self.registry.read();
-        if let Some(connections) = registry.user_to_connections.get(&user_id) {
-            for connection_id in connections {
-                registry.notify_connection(*connection_id, message);
+        match message {
+            NotificationMessage::GameEvent { game, .. } => todo!(),
+            NotificationMessage::MatchEvent { match_entry, .. } => todo!(),
+            NotificationMessage::ChatMessage {
+                message,
+                conversation,
+            } => todo!(),
+            _ => {
+                for connection_id in registry.connection_to_user.keys() {
+                    registry.notify_connection(*connection_id, message);
+                }
             }
-        }
-    }
-
-    fn notify_all(&self, message: &NotificationMessage) {
-        let registry = self.registry.read();
-        for connection_id in registry.connection_to_user.keys() {
-            registry.notify_connection(*connection_id, message);
         }
     }
 }

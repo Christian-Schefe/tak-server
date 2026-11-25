@@ -127,7 +127,7 @@ pub enum ServerGameEventType {
         result: String,
     },
     GameRequestChanged {
-        user_id: String,
+        player: String,
         request: GameRequestResponse,
     },
 }

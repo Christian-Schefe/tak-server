@@ -182,7 +182,7 @@ pub fn status_from_game_detail(game_id: GameId, detail: GameDetailView) -> GameS
             GameEventType::ActionUndone { .. } => {
                 history.pop();
             }
-            GameEventType::GameOver { .. } => {}
+            _ => {}
         };
         time_info = event.time_info;
     }

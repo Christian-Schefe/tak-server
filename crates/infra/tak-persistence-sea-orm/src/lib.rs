@@ -10,16 +10,16 @@ use tak_core::{
 };
 use tak_domain::{
     MatchId, UserId,
-    game::{GameEvent, GameEventType, GameRequests},
+    game::{GameEvent, GameEventType, GameRequest, GameRequests},
     matches::{MatchMode, MatchSettings, MatchStatus},
     tournament::{TournamentFormat, TournamentRound, TournamentStatus},
 };
 use tak_persistence_sea_orm_entities::{
     JsonActionRecord, JsonAsyncTimeSettings, JsonClock, JsonGameEvent, JsonGameEventType,
-    JsonGameRequests, JsonGameSettings, JsonHistory, JsonMatchMode, JsonMatchSettings,
-    JsonMatchStatus, JsonRealtimeTimeExtra, JsonRealtimeTimeSettings, JsonTakOpening,
-    JsonTakPlayer, JsonTimeInfo, JsonTimeSettings, JsonTournamentFormat, JsonTournamentRound,
-    JsonTournamentStatus,
+    JsonGameRequest, JsonGameRequests, JsonGameSettings, JsonHistory, JsonMatchMode,
+    JsonMatchSettings, JsonMatchStatus, JsonRealtimeTimeExtra, JsonRealtimeTimeSettings,
+    JsonTakOpening, JsonTakPlayer, JsonTimeInfo, JsonTimeSettings, JsonTournamentFormat,
+    JsonTournamentRound, JsonTournamentStatus,
 };
 use tak_persistence_sea_orm_migrations::Migrator;
 
@@ -209,13 +209,8 @@ fn game_event_to_json(event: &GameEvent) -> JsonGameEvent {
     JsonGameEvent {
         remaining_ms: time_info_to_json(&event.time_info),
         event_type: match &event.event_type {
-            GameEventType::ActionPerformed {
-                action,
-                player,
-                ply_index,
-            } => JsonGameEventType::Action {
+            GameEventType::ActionPerformed { action, ply_index } => JsonGameEventType::Action {
                 action: action_to_ptn(&action),
-                player: tak_player_to_json(&player),
                 ply_index: *ply_index as u32,
             },
             GameEventType::ActionUndone { ply_index } => JsonGameEventType::Undo {
@@ -223,6 +218,10 @@ fn game_event_to_json(event: &GameEvent) -> JsonGameEvent {
             },
             GameEventType::GameOver { result } => JsonGameEventType::GameOver {
                 result: game_result_to_string(*result),
+            },
+            GameEventType::RequestSet { player, request } => JsonGameEventType::RequestSet {
+                player: tak_player_to_json(player),
+                request: game_request_to_json(&request),
             },
         },
     }
@@ -232,12 +231,7 @@ fn game_event_from_json(event: &JsonGameEvent) -> Result<GameEvent, String> {
     Ok(GameEvent {
         time_info: time_info_from_json(&event.remaining_ms),
         event_type: match &event.event_type {
-            JsonGameEventType::Action {
-                action,
-                player,
-                ply_index,
-            } => GameEventType::ActionPerformed {
-                player: tak_player_from_json(&player),
+            JsonGameEventType::Action { action, ply_index } => GameEventType::ActionPerformed {
                 ply_index: *ply_index as usize,
                 action: action_from_ptn(&action)
                     .ok_or_else(|| format!("Failed to parse action from PTN"))?,
@@ -249,8 +243,32 @@ fn game_event_from_json(event: &JsonGameEvent) -> Result<GameEvent, String> {
                 result: game_result_from_string(&result)
                     .ok_or_else(|| format!("Failed to parse game result from string"))?,
             },
+            JsonGameEventType::RequestSet { player, request } => GameEventType::RequestSet {
+                player: tak_player_from_json(&player),
+                request: game_request_from_json(&request),
+            },
         },
     })
+}
+
+fn game_request_to_json(request: &GameRequest) -> JsonGameRequest {
+    match request {
+        GameRequest::Draw(value) => JsonGameRequest::Draw { value: *value },
+        GameRequest::Undo(value) => JsonGameRequest::Undo { value: *value },
+        GameRequest::MoreTime(value) => JsonGameRequest::MoreTime {
+            value: value.map(|d| d.as_millis() as u64),
+        },
+    }
+}
+
+fn game_request_from_json(request: &JsonGameRequest) -> GameRequest {
+    match request {
+        JsonGameRequest::Draw { value } => GameRequest::Draw(*value),
+        JsonGameRequest::Undo { value } => GameRequest::Undo(*value),
+        JsonGameRequest::MoreTime { value } => {
+            GameRequest::MoreTime(value.map(|ms| Duration::from_millis(ms)))
+        }
+    }
 }
 
 fn time_info_to_json(time_info: &TakTimeInfo) -> JsonTimeInfo {

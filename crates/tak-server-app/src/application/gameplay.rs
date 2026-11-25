@@ -9,12 +9,8 @@ use crate::{
         AppResult, GameCantAbort, GameNotFound, GameNotOngoing, GameRequestNotFound, InternalError,
         InvalidGameAction, UnexpectedPlayer,
     },
-    ports::{
-        PaginatedResponse,
-        game::GameQuery,
-        notification::{NotificationGameMessageType, NotificationMessage},
-    },
-    workflow::{lifecycle::modify_game, notify_player::notify_players_and_observers_of_game},
+    ports::{PaginatedResponse, game::GameQuery},
+    workflow::lifecycle::modify_game,
 };
 use better_errors::OneOf;
 use tak_core::{InvalidUndoReason, TakAction};
@@ -286,7 +282,6 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameplayUseCase
         ),
     > {
         let now = SystemTime::now();
-        let mut message = None;
         let ctx = self
             .ports
             .transaction_manager()
@@ -300,22 +295,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameplayUseCase
             match game.set_request(player, request.clone(), now) {
                 Err(GameSetRequestError::Timeout) => Ok(()),
                 Err(GameSetRequestError::RequestAlreadySet) => Ok(()),
-                Ok(()) => {
-                    let time_info = game.game.get_time_info(now);
-                    message = Some((
-                        NotificationMessage::GameEvent {
-                            game_id,
-                            event_type: NotificationGameMessageType::GameRequestChanged {
-                                user_id,
-                                request,
-                            },
-                            time_info,
-                        },
-                        metadata.white.user_id,
-                        metadata.black.user_id,
-                    ));
-                    Ok(())
-                }
+                Ok(()) => Ok(()),
             }
         })
         .await
@@ -325,14 +305,6 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameplayUseCase
             .commit(ctx)
             .await
             .map_err(OneOf::broaden)?;
-        if let Some((msg, white_user_id, black_user_id)) = message {
-            notify_players_and_observers_of_game(
-                self.ports.as_ref(),
-                game_id,
-                &[white_user_id, black_user_id],
-                &msg,
-            );
-        }
         Ok(())
     }
 
@@ -358,7 +330,6 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameplayUseCase
             game_id
         );
         let now = SystemTime::now();
-        let mut messages = Vec::new();
         let ctx = self
             .ports
             .transaction_manager()
@@ -369,29 +340,13 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameplayUseCase
             let Some(player) = metadata.get_player(user_id) else {
                 return Err(OneOf::new(UnexpectedPlayer));
             };
-            let opponent_id = metadata.get_user_id(player.opponent());
             match request_type {
                 GameRequestType::Draw => match game.accept_draw_request(player, now) {
                     Err(GameAcceptRequestError::Timeout) => Ok(()),
                     Err(GameAcceptRequestError::NoRequestToAccept) => {
                         return Err(OneOf::new(GameRequestNotFound));
                     }
-                    Ok(()) => {
-                        let time_info = game.game.get_time_info(now);
-                        messages.push((
-                            NotificationMessage::GameEvent {
-                                game_id,
-                                event_type: NotificationGameMessageType::GameRequestChanged {
-                                    user_id: opponent_id,
-                                    request: GameRequest::Draw(false),
-                                },
-                                time_info,
-                            },
-                            metadata.white.user_id,
-                            metadata.black.user_id,
-                        ));
-                        Ok(())
-                    }
+                    Ok(()) => Ok(()),
                 },
                 GameRequestType::Undo => match game.accept_undo_request(player, now) {
                     Err(GameUndoActionError::Timeout) => Ok(()),
@@ -409,19 +364,6 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameplayUseCase
                     }
                     Ok(())
                     | Err(GameUndoActionError::FailedToUndo(InvalidUndoReason::NoHistory)) => {
-                        let time_info = game.game.get_time_info(now);
-                        messages.push((
-                            NotificationMessage::GameEvent {
-                                game_id,
-                                event_type: NotificationGameMessageType::GameRequestChanged {
-                                    user_id: opponent_id,
-                                    request: GameRequest::Undo(false),
-                                },
-                                time_info: time_info.clone(),
-                            },
-                            metadata.white.user_id,
-                            metadata.black.user_id,
-                        ));
                         Ok(())
                     }
                 },
@@ -430,22 +372,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameplayUseCase
                     Err(GameAcceptRequestError::NoRequestToAccept) => {
                         return Err(OneOf::new(GameRequestNotFound));
                     }
-                    Ok(()) => {
-                        let time_info = game.game.get_time_info(now);
-                        messages.push((
-                            NotificationMessage::GameEvent {
-                                game_id,
-                                event_type: NotificationGameMessageType::GameRequestChanged {
-                                    user_id: opponent_id,
-                                    request: GameRequest::MoreTime(None),
-                                },
-                                time_info,
-                            },
-                            metadata.white.user_id,
-                            metadata.black.user_id,
-                        ));
-                        Ok(())
-                    }
+                    Ok(()) => Ok(()),
                 },
             }
         })
@@ -456,14 +383,6 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameplayUseCase
             .commit(ctx)
             .await
             .map_err(OneOf::broaden)?;
-        for (msg, white_user_id, black_user_id) in messages {
-            notify_players_and_observers_of_game(
-                self.ports.as_ref(),
-                game_id,
-                &[white_user_id, black_user_id],
-                &msg,
-            );
-        }
         Ok(())
     }
 

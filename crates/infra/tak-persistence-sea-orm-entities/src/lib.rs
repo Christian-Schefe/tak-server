@@ -167,7 +167,6 @@ pub struct JsonGameEvent {
 pub enum JsonGameEventType {
     Action {
         action: String,
-        player: JsonTakPlayer,
         ply_index: u32,
     },
     Undo {
@@ -176,6 +175,10 @@ pub enum JsonGameEventType {
     GameOver {
         result: String,
     },
+    RequestSet {
+        player: JsonTakPlayer,
+        request: JsonGameRequest,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, FromJsonQueryResult)]
@@ -183,6 +186,18 @@ pub enum JsonGameEventType {
 pub struct JsonClock {
     pub remaining_time: JsonTimeInfo,
     pub is_ticking: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum JsonGameRequest {
+    Draw { value: bool },
+    Undo { value: bool },
+    MoreTime { value: Option<u64> },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, FromJsonQueryResult)]

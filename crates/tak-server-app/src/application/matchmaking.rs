@@ -208,7 +208,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static, GT: GameTimeoutRunner + Sen
             game_id,
             game: game_record,
         };
-        self.ports.notification_port().notify_all(&msg);
+        self.ports.notification_port().notify(&msg);
 
         Ok(())
     }
@@ -252,7 +252,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static, GT: GameTimeoutRunner + Sen
             seek: seek_view.clone(),
         };
 
-        self.ports.notification_port().notify_all(&message);
+        self.ports.notification_port().notify(&message);
 
         Ok(seek_view)
     }
@@ -330,15 +330,13 @@ impl<Ports: PortsCollection + Send + Sync + 'static, GT: GameTimeoutRunner + Sen
         } else {
             let msg = NotificationMessage::MatchEvent {
                 match_id,
+                match_entry: match_entry,
                 event_type: NotificationMatchEventType::MatchReadinessChanged {
                     user_id: Some(user_id),
                 },
             };
 
-            self.ports.notification_port().notify_users(
-                &[match_entry.player1.user_id, match_entry.player2.user_id],
-                &msg,
-            );
+            self.ports.notification_port().notify(&msg);
         }
 
         Ok(())
@@ -382,12 +380,10 @@ impl<Ports: PortsCollection + Send + Sync + 'static, GT: GameTimeoutRunner + Sen
         if did_remove {
             let msg = NotificationMessage::MatchEvent {
                 match_id,
+                match_entry: match_entry,
                 event_type: NotificationMatchEventType::MatchReadinessChanged { user_id: None },
             };
-            self.ports.notification_port().notify_users(
-                &[match_entry.player1.user_id, match_entry.player2.user_id],
-                &msg,
-            );
+            self.ports.notification_port().notify(&msg);
         }
         Ok(())
     }
@@ -416,13 +412,13 @@ impl<Ports: PortsCollection + Send + Sync + 'static, GT: GameTimeoutRunner + Sen
             let message = NotificationMessage::SeekCancelled {
                 seek: SeekView::from(cancelled_seek_id, &cancelled_seek),
             };
-            self.ports.notification_port().notify_all(&message);
+            self.ports.notification_port().notify(&message);
         }
 
         let message = NotificationMessage::SeekAccepted {
             seek: SeekView::from(seek_id, &seek),
         };
-        self.ports.notification_port().notify_all(&message);
+        self.ports.notification_port().notify(&message);
 
         let initial_color = seek.color.unwrap_or_else(|| {
             if rand::random::<bool>() {
@@ -482,7 +478,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static, GT: GameTimeoutRunner + Sen
             let message = NotificationMessage::SeekCancelled {
                 seek: SeekView::from(cancelled_seek_id, &cancelled_seek),
             };
-            self.ports.notification_port().notify_all(&message);
+            self.ports.notification_port().notify(&message);
         }
     }
 
@@ -491,7 +487,7 @@ impl<Ports: PortsCollection + Send + Sync + 'static, GT: GameTimeoutRunner + Sen
             let message = NotificationMessage::SeekCancelled {
                 seek: SeekView::from(seek_id, &cancelled_seek),
             };
-            self.ports.notification_port().notify_all(&message);
+            self.ports.notification_port().notify(&message);
             return true;
         }
         false

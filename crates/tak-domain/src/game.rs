@@ -7,8 +7,11 @@ use tak_core::{
 
 #[derive(Debug, Clone)]
 pub enum GameEventType {
-    ActionPerformed {
+    RequestSet {
         player: TakPlayer,
+        request: GameRequest,
+    },
+    ActionPerformed {
         ply_index: usize,
         action: TakAction,
     },
@@ -167,7 +170,6 @@ impl Game {
                 self.event_log.push(GameEvent {
                     event_type: GameEventType::ActionPerformed {
                         action: action.clone(),
-                        player,
                         ply_index,
                     },
                     time_info: self.game.get_time_info(now),
@@ -235,6 +237,10 @@ impl Game {
         if !requests.set_request(&request) {
             return Err(GameSetRequestError::RequestAlreadySet);
         }
+        self.event_log.push(GameEvent {
+            event_type: GameEventType::RequestSet { player, request },
+            time_info: self.game.get_time_info(now),
+        });
         Ok(())
     }
 
@@ -254,6 +260,13 @@ impl Game {
         if !requests.accept_draw_request() {
             return Err(GameAcceptRequestError::NoRequestToAccept);
         };
+        self.event_log.push(GameEvent {
+            event_type: GameEventType::RequestSet {
+                player: player.opponent(),
+                request: GameRequest::Draw(false),
+            },
+            time_info: self.game.get_time_info(now),
+        });
         match self.game.agree_draw(now) {
             MaybeTimeout::Timeout(result) => {
                 self.handle_game_over(result);
@@ -283,6 +296,13 @@ impl Game {
         if !requests.accept_undo_request() {
             return Err(GameUndoActionError::NoUndoAvailable);
         };
+        self.event_log.push(GameEvent {
+            event_type: GameEventType::RequestSet {
+                player: player.opponent(),
+                request: GameRequest::Undo(false),
+            },
+            time_info: self.game.get_time_info(now),
+        });
         match self.game.try_undo_action(now) {
             MaybeTimeout::Timeout(result) => {
                 self.handle_game_over(result);
@@ -316,6 +336,13 @@ impl Game {
         let Some(duration) = requests.accept_more_time_request() else {
             return Err(GameAcceptRequestError::NoRequestToAccept);
         };
+        self.event_log.push(GameEvent {
+            event_type: GameEventType::RequestSet {
+                player: player.opponent(),
+                request: GameRequest::MoreTime(None),
+            },
+            time_info: self.game.get_time_info(now),
+        });
         match self.game.give_time_to_player(player, duration, now) {
             MaybeTimeout::Timeout(result) => {
                 self.handle_game_over(result);

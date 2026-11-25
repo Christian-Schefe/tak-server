@@ -2,7 +2,6 @@ use crate::{
     PortsCollection,
     errors::{AppResult, GameNotFound, GameNotOngoing, InternalError, MatchNotFound},
     ports::notification::{NotificationGameMessageType, NotificationMessage},
-    workflow::notify_player::notify_players_and_observers_of_game,
 };
 use better_errors::OneOf;
 use tak_core::{TakActionRecord, TakGameResult, TakPlayer};
@@ -330,7 +329,7 @@ async fn finalize_game<Ports: PortsCollection + Send + Sync + 'static>(
         game_id,
         game: record,
     };
-    ports.notification_port().notify_all(&ended_msg);
+    ports.notification_port().notify(&ended_msg);
 
     tracing::debug!("Finished finalizing game {}", game_id);
     Ok(())
@@ -383,52 +382,61 @@ where
     let events = game.drain_event_log();
     let new_state = game.to_game_state();
 
-    let notify_players_and_spectators = |event: &NotificationMessage| {
-        notify_players_and_observers_of_game(
-            ports,
-            game_id,
-            &[record.metadata.white.user_id, record.metadata.black.user_id],
-            event,
-        );
-    };
-
     let mut game_ended = false;
     for event in &events {
         match &event.event_type {
-            GameEventType::ActionPerformed {
-                player,
-                ply_index,
-                action,
-            } => {
+            GameEventType::RequestSet { player, request } => {
+                let game_request = NotificationGameMessageType::GameRequestChanged {
+                    player: *player,
+                    request: request.clone(),
+                };
+                ports
+                    .notification_port()
+                    .notify(&NotificationMessage::GameEvent {
+                        game_id,
+                        game: record.clone(),
+                        event_type: game_request,
+                        time_info: event.time_info,
+                    });
+            }
+            GameEventType::ActionPerformed { ply_index, action } => {
                 let game_action = NotificationGameMessageType::GameAction {
-                    user_id: record.metadata.get_user_id(*player),
                     action: action.clone(),
                     ply_index: *ply_index,
                 };
-                notify_players_and_spectators(&NotificationMessage::GameEvent {
-                    game_id,
-                    event_type: game_action,
-                    time_info: event.time_info,
-                });
+                ports
+                    .notification_port()
+                    .notify(&NotificationMessage::GameEvent {
+                        game_id,
+                        game: record.clone(),
+                        event_type: game_action,
+                        time_info: event.time_info,
+                    });
             }
             GameEventType::ActionUndone { ply_index } => {
                 let game_action = NotificationGameMessageType::GameActionUndone {
                     ply_index: *ply_index,
                 };
-                notify_players_and_spectators(&NotificationMessage::GameEvent {
-                    game_id,
-                    event_type: game_action,
-                    time_info: event.time_info,
-                });
+                ports
+                    .notification_port()
+                    .notify(&NotificationMessage::GameEvent {
+                        game_id,
+                        game: record.clone(),
+                        event_type: game_action,
+                        time_info: event.time_info,
+                    });
             }
             GameEventType::GameOver { result } => {
-                notify_players_and_spectators(&NotificationMessage::GameEvent {
-                    game_id,
-                    event_type: NotificationGameMessageType::GameOver {
-                        game_result: result.clone(),
-                    },
-                    time_info: event.time_info,
-                });
+                ports
+                    .notification_port()
+                    .notify(&NotificationMessage::GameEvent {
+                        game_id,
+                        game: record.clone(),
+                        event_type: NotificationGameMessageType::GameOver {
+                            game_result: result.clone(),
+                        },
+                        time_info: event.time_info,
+                    });
 
                 tracing::debug!(
                     "Notified players and spectators about game {} ending, updating ratings and stats",

@@ -206,7 +206,7 @@ impl<
             .set_user_online(user_id)
         {
             let message = NotificationMessage::UsersOnline { users };
-            self.ports.notification_port().notify_all(&message);
+            self.ports.notification_port().notify(&message);
         }
         self.disconnect_timeout_runner
             .cancel_disconnect_timeout(user_id);
@@ -220,14 +220,14 @@ impl<
             .set_user_offline(user_id)
         {
             let message = NotificationMessage::UsersOnline { users };
-            self.ports.notification_port().notify_all(&message);
+            self.ports.notification_port().notify(&message);
         }
         let cancelled_seeks = self.ports.seek_service().cancel_player_seeks(user_id, true);
         for (cancelled_seek_id, cancelled_seek) in cancelled_seeks {
             let message = NotificationMessage::SeekCancelled {
                 seek: SeekView::from(cancelled_seek_id, &cancelled_seek),
             };
-            self.ports.notification_port().notify_all(&message);
+            self.ports.notification_port().notify(&message);
         }
         let cancelled_match_readiness = self
             .ports
@@ -253,14 +253,12 @@ impl<
                 Some(match_entry) => {
                     let message = NotificationMessage::MatchEvent {
                         match_id: match_id,
+                        match_entry: match_entry,
                         event_type: NotificationMatchEventType::MatchReadinessChanged {
                             user_id: None,
                         },
                     };
-                    self.ports.notification_port().notify_users(
-                        &[match_entry.player1.user_id, match_entry.player2.user_id],
-                        &message,
-                    );
+                    self.ports.notification_port().notify(&message);
                 }
                 None => {
                     tracing::error!("Match {match_id} not found when setting account offline",);
