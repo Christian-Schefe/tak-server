@@ -28,9 +28,13 @@ pub enum ClientMessage {
         game_id: String,
         spectate: bool,
     },
-    JoinChatRoom {
-        room_name: String,
-        join: bool,
+    SpectateMatch {
+        match_id: String,
+        spectate: bool,
+    },
+    SpectateChatConversation {
+        conversation: ChatConversationResponse,
+        spectate: bool,
     },
 }
 

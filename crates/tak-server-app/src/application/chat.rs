@@ -45,8 +45,6 @@ pub trait ChatUseCase {
         before: Option<ChatMessageId>,
         limit: usize,
     ) -> AppResult<Vec<ChatMessageView>, (InternalError,)>;
-    fn join_room(&self, user_id: UserId, room_name: &String);
-    fn leave_room(&self, user_id: UserId, room_name: &String);
 }
 
 pub struct ChatUseCaseImpl<Ports: PortsCollection> {
@@ -123,15 +121,5 @@ impl<Ports: PortsCollection + Send + Sync + 'static> ChatUseCase for ChatUseCase
             .into_iter()
             .map(|(id, msg)| ChatMessageView::from(id, msg))
             .collect())
-    }
-
-    fn join_room(&self, user_id: UserId, room_name: &String) {
-        self.ports.chat_room_service().join_room(user_id, room_name);
-    }
-
-    fn leave_room(&self, user_id: UserId, room_name: &String) {
-        self.ports
-            .chat_room_service()
-            .leave_room(user_id, room_name);
     }
 }

@@ -19,7 +19,7 @@ use tak_core::{
     TakPlayer,
     ptn::{action_from_ptn, action_to_ptn, game_result_to_string},
 };
-use tak_domain::{GameId, UserId, chat::ChatConversation, game::GameRequest};
+use tak_domain::{GameId, MatchId, UserId, chat::ChatConversation, game::GameRequest};
 use tak_server_api_contract::{
     game::{ForPlayerResponse, GameRequestResponse},
     ws::{
@@ -30,12 +30,9 @@ use tak_server_api_contract::{
 use tak_server_app::{
     Application,
     errors::{AppResult, InternalError, OneOf},
-    ports::{
-        connection::UserOnlineStatusPort,
-        notification::{
-            NotificationGameMessageType, NotificationMatchEventType, NotificationMessage,
-            NotificationPort,
-        },
+    ports::notification::{
+        NotificationGameMessageType, NotificationMatchEventType, NotificationMessage,
+        NotificationPort,
     },
 };
 use tokio::select;
@@ -209,7 +206,32 @@ async fn handle_client_message(
             let user_id = app.ws.get_user_id(connection_id).ok_or_else(|| {
                 ServiceError::Unauthorized("WebSocket connection is not authenticated".to_string())
             })?;
-            handle_authenticated_client_message(app, user_id, msg).await
+            handle_authenticated_client_message(app, user_id, msg, connection_id).await
+        }
+    }
+}
+
+fn chat_conversation_from_response(
+    conversation: &ChatConversationResponse,
+) -> Result<ChatConversation, ServiceError> {
+    match conversation {
+        ChatConversationResponse::Global => Ok(ChatConversation::Global),
+        ChatConversationResponse::Room { room_name } => Ok(ChatConversation::Room {
+            room_name: room_name.clone(),
+        }),
+        ChatConversationResponse::Private { user_id1, user_id2 } => {
+            let Ok(user_id1) = UserId::try_from(user_id1.clone()) else {
+                return Err(ServiceError::BadRequest(
+                    "Invalid user ID format in private conversation".to_string(),
+                ));
+            };
+            let Ok(user_id2) = UserId::try_from(user_id2.clone()) else {
+                return Err(ServiceError::BadRequest(
+                    "Invalid user ID format in private conversation".to_string(),
+                ));
+            };
+            let members = UnorderedPair(user_id1, user_id2);
+            Ok(ChatConversation::Private { user_ids: members })
         }
     }
 }
@@ -218,6 +240,7 @@ async fn handle_authenticated_client_message(
     app: &AppState,
     user_id: UserId,
     msg: ClientMessage,
+    connection_id: ConnectionId,
 ) -> Result<(), ServiceError> {
     match msg {
         ClientMessage::Authenticate { .. } => Err(ServiceError::BadRequest(
@@ -247,26 +270,7 @@ async fn handle_authenticated_client_message(
             conversation,
         } => {
             tracing::info!("Received ChatMessage: {:?} -> {}", conversation, message);
-            let message_target = match conversation {
-                ChatConversationResponse::Global => ChatConversation::Global,
-                ChatConversationResponse::Room { room_name } => {
-                    ChatConversation::Room { room_name }
-                }
-                ChatConversationResponse::Private { user_id1, user_id2 } => {
-                    let Ok(user_id1) = UserId::try_from(user_id1) else {
-                        return Err(ServiceError::BadRequest(
-                            "Invalid user ID format in private conversation".to_string(),
-                        ));
-                    };
-                    let Ok(user_id2) = UserId::try_from(user_id2) else {
-                        return Err(ServiceError::BadRequest(
-                            "Invalid user ID format in private conversation".to_string(),
-                        ));
-                    };
-                    let members = UnorderedPair(user_id1, user_id2);
-                    ChatConversation::Private { user_ids: members }
-                }
-            };
+            let message_target = chat_conversation_from_response(&conversation)?;
             app.app
                 .chat_use_case
                 .send_message(user_id, &message_target, &message)
@@ -282,22 +286,63 @@ async fn handle_authenticated_client_message(
                 ));
             };
             if spectate {
-                app.app
-                    .gameplay_use_case
-                    .observe_game(user_id, game_id)
-                    .await
-                    .map_err(OneOf::convert::<ServiceError>)?;
+                app.ws
+                    .notification_adapter
+                    .spectate_game(game_id, connection_id);
             } else {
-                app.app.gameplay_use_case.unobserve_game(user_id, game_id);
+                app.ws
+                    .notification_adapter
+                    .unspectate_game(game_id, connection_id);
             }
             Ok(())
         }
-        ClientMessage::JoinChatRoom { room_name, join } => {
-            tracing::info!("Received JoinChatRoom for room {}: {}", room_name, join);
-            if join {
-                app.app.chat_use_case.join_room(user_id, &room_name);
+        ClientMessage::SpectateMatch { match_id, spectate } => {
+            tracing::info!(
+                "Received SpectateMatch for match {}: {}",
+                match_id,
+                spectate
+            );
+            let Ok(match_id) = MatchId::try_from(match_id) else {
+                return Err(ServiceError::BadRequest(
+                    "Invalid match ID format".to_string(),
+                ));
+            };
+            if spectate {
+                app.ws
+                    .notification_adapter
+                    .spectate_match(match_id, connection_id);
             } else {
-                app.app.chat_use_case.leave_room(user_id, &room_name);
+                app.ws
+                    .notification_adapter
+                    .unspectate_match(match_id, connection_id);
+            }
+            Ok(())
+        }
+        ClientMessage::SpectateChatConversation {
+            conversation,
+            spectate,
+        } => {
+            tracing::info!(
+                "Received SpectateChatConversation for conversation {:?}: {}",
+                conversation,
+                spectate
+            );
+            let conversation = chat_conversation_from_response(&conversation)?;
+            if let ChatConversation::Private { user_ids } = &conversation {
+                if user_ids.0 != user_id && user_ids.1 != user_id {
+                    return Err(ServiceError::Unauthorized(
+                        "Cannot spectate private conversation without being a member".to_string(),
+                    ));
+                }
+            }
+            if spectate {
+                app.ws
+                    .notification_adapter
+                    .spectate_chat_conversation(conversation, connection_id);
+            } else {
+                app.ws
+                    .notification_adapter
+                    .unspectate_chat_conversation(conversation, connection_id);
             }
             Ok(())
         }
@@ -347,7 +392,6 @@ fn from_listener_message(message: NotificationMessage) -> Option<ServerMessage> 
         }),
         NotificationMessage::GameEvent {
             game_id,
-            game: _,
             event_type,
             time_info,
         } => Some(ServerMessage::GameEvent {
@@ -393,7 +437,6 @@ fn from_listener_message(message: NotificationMessage) -> Option<ServerMessage> 
         }
         NotificationMessage::MatchEvent {
             match_id,
-            match_entry: _,
             event_type,
         } => Some(ServerMessage::MatchEvent {
             match_id: match_id.to_string(),
@@ -489,6 +532,8 @@ pub struct WsConnectionRegistry {
     connection_to_user: HashMap<ConnectionId, UserId>,
     user_to_connections: HashMap<UserId, HashSet<ConnectionId>>,
     games_to_spectators: HashMap<GameId, HashSet<ConnectionId>>,
+    matches_to_spectators: HashMap<MatchId, HashSet<ConnectionId>>,
+    chat_conversations_to_connections: HashMap<ChatConversation, HashSet<ConnectionId>>,
 }
 
 impl WsConnectionRegistry {
@@ -498,6 +543,8 @@ impl WsConnectionRegistry {
             connection_to_user: HashMap::new(),
             user_to_connections: HashMap::new(),
             games_to_spectators: HashMap::new(),
+            matches_to_spectators: HashMap::new(),
+            chat_conversations_to_connections: HashMap::new(),
         }
     }
 
@@ -548,6 +595,80 @@ impl WsConnectionRegistry {
             }
         }
     }
+
+    fn spectate_game(&mut self, game_id: GameId, connection_id: ConnectionId) {
+        self.games_to_spectators
+            .entry(game_id)
+            .or_insert_with(HashSet::new)
+            .insert(connection_id);
+    }
+
+    fn unspectate_game(&mut self, game_id: GameId, connection_id: ConnectionId) {
+        if let Some(spectators) = self.games_to_spectators.get_mut(&game_id) {
+            spectators.remove(&connection_id);
+            if spectators.is_empty() {
+                self.games_to_spectators.remove(&game_id);
+            }
+        }
+    }
+
+    fn get_game_spectators(&self, game_id: GameId) -> Option<&HashSet<ConnectionId>> {
+        self.games_to_spectators.get(&game_id)
+    }
+
+    fn spectate_match(&mut self, match_id: MatchId, connection_id: ConnectionId) {
+        self.matches_to_spectators
+            .entry(match_id)
+            .or_insert_with(HashSet::new)
+            .insert(connection_id);
+    }
+
+    fn unspectate_match(&mut self, match_id: MatchId, connection_id: ConnectionId) {
+        if let Some(spectators) = self.matches_to_spectators.get_mut(&match_id) {
+            spectators.remove(&connection_id);
+            if spectators.is_empty() {
+                self.matches_to_spectators.remove(&match_id);
+            }
+        }
+    }
+
+    fn get_match_spectators(&self, match_id: MatchId) -> Option<&HashSet<ConnectionId>> {
+        self.matches_to_spectators.get(&match_id)
+    }
+
+    fn spectate_chat_conversation(
+        &mut self,
+        conversation: ChatConversation,
+        connection_id: ConnectionId,
+    ) {
+        self.chat_conversations_to_connections
+            .entry(conversation)
+            .or_insert_with(HashSet::new)
+            .insert(connection_id);
+    }
+
+    fn unspectate_chat_conversation(
+        &mut self,
+        conversation: ChatConversation,
+        connection_id: ConnectionId,
+    ) {
+        if let Some(connections) = self
+            .chat_conversations_to_connections
+            .get_mut(&conversation)
+        {
+            connections.remove(&connection_id);
+            if connections.is_empty() {
+                self.chat_conversations_to_connections.remove(&conversation);
+            }
+        }
+    }
+
+    fn get_chat_conversation_connections(
+        &self,
+        conversation: &ChatConversation,
+    ) -> Option<&HashSet<ConnectionId>> {
+        self.chat_conversations_to_connections.get(conversation)
+    }
 }
 
 pub struct WsNotificationAdapter {
@@ -584,59 +705,82 @@ impl WsNotificationAdapter {
     fn remove_conn(&self, connection_id: ConnectionId) -> Option<UserId> {
         self.registry.write().remove_conn(connection_id)
     }
+
+    fn spectate_game(&self, game_id: GameId, connection_id: ConnectionId) {
+        self.registry.write().spectate_game(game_id, connection_id);
+    }
+
+    fn unspectate_game(&self, game_id: GameId, connection_id: ConnectionId) {
+        self.registry
+            .write()
+            .unspectate_game(game_id, connection_id);
+    }
+
+    fn spectate_match(&self, match_id: MatchId, connection_id: ConnectionId) {
+        self.registry
+            .write()
+            .spectate_match(match_id, connection_id);
+    }
+
+    fn unspectate_match(&self, match_id: MatchId, connection_id: ConnectionId) {
+        self.registry
+            .write()
+            .unspectate_match(match_id, connection_id);
+    }
+
+    fn spectate_chat_conversation(
+        &self,
+        conversation: ChatConversation,
+        connection_id: ConnectionId,
+    ) {
+        self.registry
+            .write()
+            .spectate_chat_conversation(conversation, connection_id);
+    }
+
+    fn unspectate_chat_conversation(
+        &self,
+        conversation: ChatConversation,
+        connection_id: ConnectionId,
+    ) {
+        self.registry
+            .write()
+            .unspectate_chat_conversation(conversation, connection_id);
+    }
 }
 
 impl NotificationPort for WsNotificationAdapter {
     fn notify(&self, message: &NotificationMessage) {
         let registry = self.registry.read();
         match message {
-            NotificationMessage::GameEvent { game, .. } => todo!(),
-            NotificationMessage::MatchEvent { match_entry, .. } => todo!(),
-            NotificationMessage::ChatMessage {
-                message,
-                conversation,
-            } => todo!(),
+            NotificationMessage::GameEvent { game_id, .. } => {
+                for connection_id in registry.get_game_spectators(*game_id).into_iter().flatten() {
+                    registry.notify_connection(*connection_id, message);
+                }
+            }
+            NotificationMessage::MatchEvent { match_id, .. } => {
+                for connection_id in registry
+                    .get_match_spectators(*match_id)
+                    .into_iter()
+                    .flatten()
+                {
+                    registry.notify_connection(*connection_id, message);
+                }
+            }
+            NotificationMessage::ChatMessage { conversation, .. } => {
+                for connection_id in registry
+                    .get_chat_conversation_connections(conversation)
+                    .into_iter()
+                    .flatten()
+                {
+                    registry.notify_connection(*connection_id, message);
+                }
+            }
             _ => {
                 for connection_id in registry.connection_to_user.keys() {
                     registry.notify_connection(*connection_id, message);
                 }
             }
         }
-    }
-}
-
-pub struct UserOnlineStatusService {
-    online_accounts: Arc<RwLock<HashSet<UserId>>>,
-}
-
-impl UserOnlineStatusService {
-    pub fn new() -> Self {
-        Self {
-            online_accounts: Arc::new(RwLock::new(HashSet::new())),
-        }
-    }
-}
-
-impl UserOnlineStatusPort for UserOnlineStatusService {
-    fn set_user_online(&self, user_id: UserId) -> Option<Vec<UserId>> {
-        let mut online_accounts = self.online_accounts.write();
-        if online_accounts.insert(user_id.clone()) {
-            Some(online_accounts.iter().cloned().collect())
-        } else {
-            None
-        }
-    }
-
-    fn set_user_offline(&self, user_id: UserId) -> Option<Vec<UserId>> {
-        let mut online_accounts = self.online_accounts.write();
-        if online_accounts.remove(&user_id) {
-            Some(online_accounts.iter().cloned().collect())
-        } else {
-            None
-        }
-    }
-
-    fn get_online_users(&self) -> Vec<UserId> {
-        self.online_accounts.read().iter().cloned().collect()
     }
 }

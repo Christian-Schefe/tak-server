@@ -12,7 +12,7 @@ use tak_server_app::{
 };
 
 use tower_http::csrf::CsrfLayer;
-pub use ws::{UserOnlineStatusService, WsNotificationAdapter, WsService};
+pub use ws::{WsNotificationAdapter, WsService};
 
 mod auth;
 mod chat;

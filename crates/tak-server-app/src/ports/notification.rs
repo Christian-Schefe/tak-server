@@ -3,7 +3,6 @@ use tak_core::{TakAction, TakGameResult, TakPlayer, TakTimeInfo};
 use crate::application::{chat::ChatMessageView, matchmaking::SeekView};
 use tak_domain::{
     GameId, MatchId, UserId, chat::ChatConversation, game::GameRequest, game_record::GameRecord,
-    matches::Match,
 };
 
 pub trait NotificationPort {
@@ -34,13 +33,11 @@ pub enum NotificationMessage {
     },
     GameEvent {
         game_id: GameId,
-        game: GameRecord,
         event_type: NotificationGameMessageType,
         time_info: TakTimeInfo,
     },
     MatchEvent {
         match_id: MatchId,
-        match_entry: Match,
         event_type: NotificationMatchEventType,
     },
     ChatMessage {

@@ -10,7 +10,6 @@ pub mod notification;
 pub mod profile;
 pub mod rating;
 pub mod seeks;
-pub mod spectator;
 pub mod stats;
 pub mod tournament;
 pub mod transaction;

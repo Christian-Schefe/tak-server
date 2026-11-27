@@ -15,7 +15,7 @@ use crate::{
     },
     ports::{
         authentication::AuthenticationPort,
-        chat::{ChatRepository, ChatRoomService, ChatRoomServiceImpl},
+        chat::ChatRepository,
         connection::{UserOnlineStatusPort, UserOnlineStatusService},
         email::EmailPort,
         event::EventRepository,
@@ -26,7 +26,6 @@ use crate::{
         profile::{ProfilePictureRepository, ProfileRepository},
         rating::RatingRepository,
         seeks::{SeekService, SeekServiceImpl},
-        spectator::{SpectatorService, SpectatorServiceImpl},
         stats::{RatingHistoryRepository, StatsRepository},
         tournament::{TournamentPlayerRepository, TournamentRepository, TournamentRoundRepository},
         transaction::TransactionManager,
@@ -100,8 +99,6 @@ pub trait PortsCollection {
     fn user_online_status_port(&self) -> Arc<dyn UserOnlineStatusPort + Send + Sync + 'static>;
 
     fn seek_service(&self) -> Arc<dyn SeekService + Send + Sync + 'static>;
-    fn spectator_service(&self) -> Arc<dyn SpectatorService + Send + Sync + 'static>;
-    fn chat_room_service(&self) -> Arc<dyn ChatRoomService + Send + Sync + 'static>;
     fn match_readiness_service(&self) -> Arc<dyn MatchReadinessService + Send + Sync + 'static>;
 }
 
@@ -131,8 +128,6 @@ pub struct PortsCollectionImpl<TrCtx> {
     pub user_online_status_port: Arc<dyn UserOnlineStatusPort + Send + Sync + 'static>,
 
     pub seek_service: Arc<dyn SeekService + Send + Sync + 'static>,
-    pub spectator_service: Arc<dyn SpectatorService + Send + Sync + 'static>,
-    pub chat_room_service: Arc<dyn ChatRoomService + Send + Sync + 'static>,
     pub match_readiness_service: Arc<dyn MatchReadinessService + Send + Sync + 'static>,
 }
 
@@ -165,8 +160,6 @@ impl<TrCtx> PortsCollectionImpl<TrCtx> {
         user_online_status_port: Arc<dyn UserOnlineStatusPort + Send + Sync + 'static>,
 
         seek_service: Arc<dyn SeekService + Send + Sync + 'static>,
-        spectator_service: Arc<dyn SpectatorService + Send + Sync + 'static>,
-        chat_room_service: Arc<dyn ChatRoomService + Send + Sync + 'static>,
         match_readiness_service: Arc<dyn MatchReadinessService + Send + Sync + 'static>,
     ) -> Self {
         Self {
@@ -191,8 +184,6 @@ impl<TrCtx> PortsCollectionImpl<TrCtx> {
             authentication_port,
             user_online_status_port,
             seek_service,
-            spectator_service,
-            chat_room_service,
             match_readiness_service,
         }
     }
@@ -279,12 +270,6 @@ impl<RpCtx: Send + Sync + 'static> PortsCollection for PortsCollectionImpl<RpCtx
     fn seek_service(&self) -> Arc<dyn SeekService + Send + Sync + 'static> {
         self.seek_service.clone()
     }
-    fn spectator_service(&self) -> Arc<dyn SpectatorService + Send + Sync + 'static> {
-        self.spectator_service.clone()
-    }
-    fn chat_room_service(&self) -> Arc<dyn ChatRoomService + Send + Sync + 'static> {
-        self.chat_room_service.clone()
-    }
     fn match_readiness_service(&self) -> Arc<dyn MatchReadinessService + Send + Sync + 'static> {
         self.match_readiness_service.clone()
     }
@@ -336,8 +321,6 @@ pub async fn build_application<TrCtx: Send + Sync + 'static>(
         authentication_port,
         Arc::new(UserOnlineStatusService::new()),
         Arc::new(SeekServiceImpl::new()),
-        Arc::new(SpectatorServiceImpl::new()),
-        Arc::new(ChatRoomServiceImpl::new()),
         Arc::new(MatchReadinessServiceImpl::new()),
     ));
 

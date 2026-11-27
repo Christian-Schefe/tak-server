@@ -234,40 +234,13 @@ impl<
             .match_readiness_service()
             .set_player_not_ready_everywhere(user_id);
 
-        let ctx = self.ports.transaction_manager().simple();
-        let ctx_ref = &ctx;
-        let matches = futures::future::join_all(cancelled_match_readiness.into_iter().map(
-            |match_id| async move {
-                self.ports
-                    .match_repository()
-                    .get_match(ctx_ref, match_id)
-                    .await
-                    .map(|opt_match| (match_id, opt_match))
-            },
-        ))
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>, _>>()?;
-        for (match_id, match_entry) in matches {
-            match match_entry {
-                Some(match_entry) => {
-                    let message = NotificationMessage::MatchEvent {
-                        match_id: match_id,
-                        match_entry: match_entry,
-                        event_type: NotificationMatchEventType::MatchReadinessChanged {
-                            user_id: None,
-                        },
-                    };
-                    self.ports.notification_port().notify(&message);
-                }
-                None => {
-                    tracing::error!("Match {match_id} not found when setting account offline",);
-                }
-            }
+        for match_id in cancelled_match_readiness {
+            let message = NotificationMessage::MatchEvent {
+                match_id: match_id,
+                event_type: NotificationMatchEventType::MatchReadinessChanged { user_id: None },
+            };
+            self.ports.notification_port().notify(&message);
         }
-
-        self.ports.spectator_service().unobserve_all_games(user_id);
-        self.ports.chat_room_service().leave_all_rooms(user_id);
 
         DisconnectTimeoutRunner::start_disconnect_timeout(
             self.disconnect_timeout_runner.clone(),

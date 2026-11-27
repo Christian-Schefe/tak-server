@@ -330,7 +330,6 @@ impl<Ports: PortsCollection + Send + Sync + 'static, GT: GameTimeoutRunner + Sen
         } else {
             let msg = NotificationMessage::MatchEvent {
                 match_id,
-                match_entry: match_entry,
                 event_type: NotificationMatchEventType::MatchReadinessChanged {
                     user_id: Some(user_id),
                 },
@@ -380,7 +379,6 @@ impl<Ports: PortsCollection + Send + Sync + 'static, GT: GameTimeoutRunner + Sen
         if did_remove {
             let msg = NotificationMessage::MatchEvent {
                 match_id,
-                match_entry: match_entry,
                 event_type: NotificationMatchEventType::MatchReadinessChanged { user_id: None },
             };
             self.ports.notification_port().notify(&msg);

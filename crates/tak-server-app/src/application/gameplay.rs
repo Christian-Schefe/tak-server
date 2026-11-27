@@ -135,12 +135,6 @@ pub trait GameplayUseCase {
             InternalError,
         ),
     >;
-    async fn observe_game(
-        &self,
-        user_id: UserId,
-        game_id: GameId,
-    ) -> AppResult<(), (GameNotFound, InternalError)>;
-    fn unobserve_game(&self, user_id: UserId, game_id: GameId);
 }
 
 pub struct GameplayUseCaseImpl<Ports: PortsCollection> {
@@ -539,32 +533,5 @@ impl<Ports: PortsCollection + Send + Sync + 'static> GameplayUseCase
             )),
             None => Ok(ObserveOutcome::Finished),
         }
-    }
-
-    async fn observe_game(
-        &self,
-        user_id: UserId,
-        game_id: GameId,
-    ) -> AppResult<(), (GameNotFound, InternalError)> {
-        let ctx = self.ports.transaction_manager().simple();
-        let Some(_) = self
-            .ports
-            .game_state_repository()
-            .get_state(&ctx, game_id)
-            .await
-            .map_err(OneOf::broaden)?
-        else {
-            return Err(OneOf::new(GameNotFound));
-        };
-        self.ports
-            .spectator_service()
-            .observe_game(user_id, game_id);
-        Ok(())
-    }
-
-    fn unobserve_game(&self, user_id: UserId, game_id: GameId) {
-        self.ports
-            .spectator_service()
-            .unobserve_game(user_id, game_id);
     }
 }

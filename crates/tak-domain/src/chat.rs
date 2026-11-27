@@ -10,7 +10,7 @@ pub struct ChatMessage {
     pub message: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ChatConversation {
     Private { user_ids: UnorderedPair<UserId> },
     Room { room_name: String },

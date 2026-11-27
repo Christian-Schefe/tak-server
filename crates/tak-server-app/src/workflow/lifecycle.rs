@@ -394,7 +394,6 @@ where
                     .notification_port()
                     .notify(&NotificationMessage::GameEvent {
                         game_id,
-                        game: record.clone(),
                         event_type: game_request,
                         time_info: event.time_info,
                     });
@@ -408,7 +407,6 @@ where
                     .notification_port()
                     .notify(&NotificationMessage::GameEvent {
                         game_id,
-                        game: record.clone(),
                         event_type: game_action,
                         time_info: event.time_info,
                     });
@@ -421,7 +419,6 @@ where
                     .notification_port()
                     .notify(&NotificationMessage::GameEvent {
                         game_id,
-                        game: record.clone(),
                         event_type: game_action,
                         time_info: event.time_info,
                     });
@@ -431,7 +428,6 @@ where
                     .notification_port()
                     .notify(&NotificationMessage::GameEvent {
                         game_id,
-                        game: record.clone(),
                         event_type: NotificationGameMessageType::GameOver {
                             game_result: result.clone(),
                         },
